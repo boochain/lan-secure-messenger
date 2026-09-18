@@ -19,6 +19,7 @@ use tokio::net::TcpListener;
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tracing::{info, warn};
 use uuid::Uuid;
+use crate::util::sanitize_display_name;
 
 #[derive(Debug, Clone)]
 pub enum NodeEvent {
@@ -565,8 +566,10 @@ impl Node {
             paths: self.paths,
             downloads: self.downloads,
             sessions: std::collections::HashMap::new(),
+            session_busy: std::collections::HashSet::new(),
             pending_pin: None,
             cancel_transfers: std::collections::HashSet::new(),
+            transfer_slots: std::sync::Arc::new(tokio::sync::Semaphore::new(4)),
         }));
 
         tokio::spawn(run_loop(state, discovery, listener, cmd_rx, ev_tx));
@@ -584,10 +587,14 @@ struct RuntimeState {
     downloads: PathBuf,
     /// Reusable outbound Noise sessions keyed by peer fingerprint.
     sessions: std::collections::HashMap<String, SecureSession>,
+    /// Peers currently using a session (send/recv) — prevents pool races.
+    session_busy: std::collections::HashSet<String>,
     /// Optional PIN offered locally for pairing (expires).
     pending_pin: Option<(String, std::time::Instant)>,
     /// Transfer IDs requested to cancel.
     cancel_transfers: std::collections::HashSet<Uuid>,
+    /// Bound concurrent file transfers (send+recv).
+    transfer_slots: std::sync::Arc<tokio::sync::Semaphore>,
 }
 
 async fn run_loop(
@@ -911,7 +918,7 @@ Some(Command::Shutdown { reply }) => {
                     }
                     Some(Command::SetDisplayName { name, reply }) => {
                         let mut s = state.lock();
-                        s.config.display_name = name;
+                        s.config.display_name = sanitize_display_name(&name);
                         let res = s.config.save(&s.paths);
                         let _ = reply.send(res);
                     }
@@ -940,9 +947,18 @@ Some(Command::Shutdown { reply }) => {
                     }
                     Some(Command::SendFile { peer_fp, path, reply }) => {
                         let retries = state.lock().config.transfer_retries.max(1);
+                        let slots = state.lock().transfer_slots.clone();
                         let mut result = Err(anyhow!("send_file: no attempt"));
                         for attempt in 1..=retries {
+                            let permit = match slots.clone().acquire_owned().await {
+                                Ok(p) => p,
+                                Err(_) => {
+                                    result = Err(anyhow!("transfer limiter closed"));
+                                    break;
+                                }
+                            };
                             result = do_send_file(&state, &ev_tx, &peer_fp, &path).await;
+                            drop(permit);
                             if result.is_ok() {
                                 break;
                             }
@@ -997,22 +1013,96 @@ async fn take_or_connect_session(
     peer_fp: &str,
     addr: std::net::SocketAddr,
 ) -> Result<SecureSession> {
-    if let Some(sess) = state.lock().sessions.remove(peer_fp) {
-        return Ok(sess);
+    // Wait briefly if another task is using this peer's pooled session.
+    for _ in 0..50 {
+        let pooled = {
+            let mut s = state.lock();
+            if s.session_busy.contains(peer_fp) {
+                None
+            } else {
+                s.session_busy.insert(peer_fp.to_string());
+                Some(s.sessions.remove(peer_fp))
+            }
+        };
+        match pooled {
+            None => {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                continue;
+            }
+            Some(Some(sess)) => return Ok(sess),
+            Some(None) => {
+                let identity = state.lock().identity.clone();
+                match SecureSession::connect(&identity, addr).await {
+                    Ok(session) => {
+                        if session.peer_fp.as_str() != peer_fp {
+                            release_session_busy(state, peer_fp);
+                            anyhow::bail!(
+                                "fingerprint mismatch during handshake: got {} expected {}",
+                                session.peer_fp,
+                                peer_fp
+                            );
+                        }
+                        return Ok(session);
+                    }
+                    Err(e) => {
+                        release_session_busy(state, peer_fp);
+                        return Err(e);
+                    }
+                }
+            }
+        }
     }
-    let identity = state.lock().identity.clone();
-    let session = SecureSession::connect(&identity, addr).await?;
-    anyhow::ensure!(
-        session.peer_fp.as_str() == peer_fp,
-        "fingerprint mismatch during handshake: got {} expected {}",
-        session.peer_fp,
-        peer_fp
-    );
-    Ok(session)
+    anyhow::bail!("peer session busy: {peer_fp}");
 }
 
 fn store_session(state: &Arc<Mutex<RuntimeState>>, peer_fp: &str, session: SecureSession) {
-    state.lock().sessions.insert(peer_fp.to_string(), session);
+    let mut s = state.lock();
+    s.sessions.insert(peer_fp.to_string(), session);
+    s.session_busy.remove(peer_fp);
+}
+
+fn release_session_busy(state: &Arc<Mutex<RuntimeState>>, peer_fp: &str) {
+    state.lock().session_busy.remove(peer_fp);
+}
+
+/// Drop a broken pooled session and clear busy mark (do not reuse).
+
+/// Reconnect while `session_busy` is already held by the caller (e.g. after a stale pool hit).
+async fn force_reconnect_session(
+    state: &Arc<Mutex<RuntimeState>>,
+    peer_fp: &str,
+    addr: std::net::SocketAddr,
+) -> Result<SecureSession> {
+    {
+        let mut s = state.lock();
+        s.sessions.remove(peer_fp);
+        // busy must already be set by take_or_connect_session
+        s.session_busy.insert(peer_fp.to_string());
+    }
+    let identity = state.lock().identity.clone();
+    match SecureSession::connect(&identity, addr).await {
+        Ok(session) => {
+            if session.peer_fp.as_str() != peer_fp {
+                discard_session(state, peer_fp);
+                anyhow::bail!(
+                    "fingerprint mismatch during reconnect: got {} expected {}",
+                    session.peer_fp,
+                    peer_fp
+                );
+            }
+            Ok(session)
+        }
+        Err(e) => {
+            discard_session(state, peer_fp);
+            Err(e)
+        }
+    }
+}
+
+fn discard_session(state: &Arc<Mutex<RuntimeState>>, peer_fp: &str) {
+    let mut s = state.lock();
+    s.sessions.remove(peer_fp);
+    s.session_busy.remove(peer_fp);
 }
 
 async fn do_send_text(
@@ -1027,14 +1117,7 @@ async fn do_send_text(
     let my_fp = identity.fingerprint().as_str().to_string();
     let my_name = state.lock().config.display_name.clone();
 
-    let mut session = match take_or_connect_session(state, peer_fp, peer.addr).await {
-        Ok(s) => s,
-        Err(_) => {
-            // stale pooled session — force fresh connect
-            state.lock().sessions.remove(peer_fp);
-            take_or_connect_session(state, peer_fp, peer.addr).await?
-        }
-    };
+    let mut session = take_or_connect_session(state, peer_fp, peer.addr).await?;
     let id = Uuid::new_v4();
     let ts_ms = chrono::Utc::now().timestamp_millis();
     let msg = if is_broadcast {
@@ -1051,10 +1134,12 @@ async fn do_send_text(
         }
     };
     if let Err(e) = session.send_msg(&msg).await {
-        // reconnect once
-        state.lock().sessions.remove(peer_fp);
-        session = take_or_connect_session(state, peer_fp, peer.addr).await?;
-        session.send_msg(&msg).await.map_err(|_| e)?;
+        // reconnect once (busy already held)
+        session = force_reconnect_session(state, peer_fp, peer.addr).await.map_err(|_| e)?;
+        if let Err(e2) = session.send_msg(&msg).await {
+            discard_session(state, peer_fp);
+            return Err(e2);
+        }
     }
 
     // Wait for delivery receipt (non-broadcast). Loop so Ping/Pong/other
@@ -1212,11 +1297,18 @@ async fn do_send_file(
         });
     };
     let st_c = state.clone();
-    let meta = transfer::send_file(&mut session, path, &mut progress, &mut || {
+    let meta = match transfer::send_file(&mut session, path, &mut progress, &mut || {
         let s = st_c.lock();
         !s.cancel_transfers.is_empty()
     })
-    .await?;
+    .await
+    {
+        Ok(m) => m,
+        Err(e) => {
+            discard_session(state, peer_fp);
+            return Err(e);
+        }
+    };
     *meta_id.lock() = meta.id;
 
     let chat = ChatMessage {
@@ -1243,6 +1335,8 @@ async fn do_send_file(
         name: meta.name.clone(),
         ok: true,
     });
+    // File sessions are single-use — never return to pool.
+    discard_session(state, peer_fp);
     Ok(meta)
 }
 

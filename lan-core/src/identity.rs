@@ -8,6 +8,8 @@ use std::fmt;
 use std::fs;
 use std::sync::Arc;
 use x25519_dalek::{PublicKey as X25519Public, StaticSecret};
+#[cfg(not(unix))]
+use crate::util::atomic_write;
 
 /// Human-readable fingerprint of an identity public key.
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -20,7 +22,7 @@ impl Fingerprint {
         let parts: Vec<_> = hex
             .as_bytes()
             .chunks(4)
-            .map(|c| std::str::from_utf8(c).unwrap())
+            .map(|c| std::str::from_utf8(c).unwrap_or(""))
             .collect();
         Self(parts.join("-"))
     }
@@ -129,17 +131,24 @@ impl Identity {
         {
             use std::io::Write;
             use std::os::unix::fs::OpenOptionsExt;
-            let mut f = fs::OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .mode(0o600)
-                .open(&paths.identity)?;
-            f.write_all(data.as_bytes())?;
+            let parent = paths.identity.parent().unwrap_or_else(|| std::path::Path::new("."));
+            let tmp = parent.join(format!(".identity.tmp-{}", std::process::id()));
+            {
+                let mut f = fs::OpenOptions::new()
+                    .write(true)
+                    .create(true)
+                    .truncate(true)
+                    .mode(0o600)
+                    .open(&tmp)?;
+                f.write_all(data.as_bytes())?;
+                f.sync_all()?;
+            }
+            fs::rename(&tmp, &paths.identity)?;
+            let _ = fs::OpenOptions::new().write(true).open(parent).and_then(|f| f.sync_all());
         }
         #[cfg(not(unix))]
         {
-            fs::write(&paths.identity, data)?;
+            atomic_write(&paths.identity, data.as_bytes())?;
         }
         Ok(())
     }

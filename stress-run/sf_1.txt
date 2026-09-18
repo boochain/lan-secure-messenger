@@ -1,0 +1,4 @@
+2026-09-18T18:59:31.228272Z  INFO discovery listening addr=0.0.0.0:41334
+2026-09-18T18:59:31.228350Z  INFO TCP listening addr=0.0.0.0:41601
+2026-09-18T18:59:32.590615Z  INFO file send complete file=f1.txt size=59
+文件已发送: f1.txt (59 bytes, sha256=608d39700fd52f0c35d721851e6ae11d721a024973dbb24a70ee0ebbca5d9f03)

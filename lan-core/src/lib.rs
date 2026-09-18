@@ -15,6 +15,7 @@ pub mod peer;
 pub mod protocol;
 pub mod session;
 pub mod transfer;
+pub mod util;
 
 pub use config::{AppConfig, ConfigPaths};
 pub use identity::{Fingerprint, Identity};

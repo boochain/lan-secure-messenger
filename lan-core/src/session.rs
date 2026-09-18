@@ -13,6 +13,9 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tracing::debug;
 
+const HANDSHAKE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(12);
+const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(8);
+
 pub struct SecureSession {
     pub peer_fp: Fingerprint,
     pub peer_x25519: [u8; 32],
@@ -24,8 +27,9 @@ pub struct SecureSession {
 impl SecureSession {
     /// Dial peer and complete Noise XX as initiator.
     pub async fn connect(identity: &Identity, addr: SocketAddr) -> Result<Self> {
-        let mut stream = TcpStream::connect(addr)
+        let mut stream = tokio::time::timeout(CONNECT_TIMEOUT, TcpStream::connect(addr))
             .await
+            .map_err(|_| anyhow!("connect timeout to {addr}"))?
             .with_context(|| format!("connect {addr}"))?;
         stream.set_nodelay(true)?;
         let kp = identity.snow_private();
@@ -36,7 +40,7 @@ impl SecureSession {
         write_frame(&mut stream, &msg1).await?;
 
         // <- e, ee, s, es
-        let msg2 = read_frame(&mut stream).await?;
+        let msg2 = read_frame_timeout(&mut stream, HANDSHAKE_TIMEOUT).await?;
         handshake_read(&mut hs, &msg2)?;
 
         // -> s, se
@@ -70,7 +74,7 @@ impl SecureSession {
         let mut hs = build_responder(&kp)?;
 
         // <- e
-        let msg1 = read_frame(&mut stream).await?;
+        let msg1 = read_frame_timeout(&mut stream, HANDSHAKE_TIMEOUT).await?;
         handshake_read(&mut hs, &msg1)?;
 
         // -> e, ee, s, es
@@ -78,7 +82,7 @@ impl SecureSession {
         write_frame(&mut stream, &msg2).await?;
 
         // <- s, se
-        let msg3 = read_frame(&mut stream).await?;
+        let msg3 = read_frame_timeout(&mut stream, HANDSHAKE_TIMEOUT).await?;
         handshake_read(&mut hs, &msg3)?;
 
         let peer_static = hs
@@ -125,11 +129,17 @@ async fn write_frame(stream: &mut TcpStream, payload: &[u8]) -> Result<()> {
     Ok(())
 }
 
+async fn read_frame_timeout(stream: &mut TcpStream, timeout: std::time::Duration) -> Result<Vec<u8>> {
+    tokio::time::timeout(timeout, read_frame(stream))
+        .await
+        .map_err(|_| anyhow!("frame read timeout"))?
+}
+
 async fn read_frame(stream: &mut TcpStream) -> Result<Vec<u8>> {
     let mut len_buf = [0u8; 4];
     stream.read_exact(&mut len_buf).await?;
     let len = u32::from_be_bytes(len_buf) as usize;
-    anyhow::ensure!(len > 0 && len <= 16 * 1024 * 1024, "frame too large: {len}");
+    anyhow::ensure!(len > 0 && len <= 256 * 1024, "frame too large: {len}");
     let mut buf = vec![0u8; len];
     stream.read_exact(&mut buf).await?;
     Ok(buf)

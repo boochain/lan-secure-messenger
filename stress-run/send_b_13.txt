@@ -1,0 +1,3 @@
+2026-09-18T18:59:38.289442Z  INFO discovery listening addr=0.0.0.0:41334
+2026-09-18T18:59:38.289515Z  INFO TCP listening addr=0.0.0.0:41513
+Error: 等待对等端超时: 4CF5-C620-7EB1-0A78

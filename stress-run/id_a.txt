@@ -1,0 +1,3 @@
+显示名: StressA
+指纹:   0CA5-95A8-512D-5A9A
+配置:   /workspace/lan-secure-messenger/stress-run/a

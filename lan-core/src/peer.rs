@@ -7,6 +7,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
+use crate::util::atomic_write;
+use crate::util::sanitize_display_name;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TrustState {
@@ -82,7 +84,7 @@ impl PeerStore {
         let file = PeerFile {
             peers: self.records.values().cloned().collect(),
         };
-        fs::write(&paths.peers, serde_json::to_string_pretty(&file)?)?;
+        atomic_write(&paths.peers, serde_json::to_string_pretty(&file)?.as_bytes())?;
         Ok(())
     }
 
@@ -119,7 +121,7 @@ impl PeerStore {
 
         let record = PeerRecord {
             fingerprint: fp.as_str().to_string(),
-            display_name: display_name.clone(),
+            display_name: sanitize_display_name(&display_name),
             x25519_pk,
             ed25519_pk,
             trust,

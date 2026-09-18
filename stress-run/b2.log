@@ -1,0 +1,8 @@
+2026-09-18T18:59:35.644012Z  INFO discovery listening addr=0.0.0.0:41334
+2026-09-18T18:59:35.644102Z  INFO TCP listening addr=0.0.0.0:41336
+lan-msg 守护进程已启动
+  显示名: StressB
+  指纹:   34A6-FC48-DE48-6695
+按 Ctrl+C 退出
+[在线] StressA (0CA5-95A8-512D-5A9A) Trusted
+[消息] StressA (0CA5-95A8-512D-5A9A): after-kill-ok

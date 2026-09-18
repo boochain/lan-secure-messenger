@@ -2647,7 +2647,7 @@ checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 
 [[package]]
 name = "lan-cli"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2664,7 +2664,7 @@ dependencies = [
 
 [[package]]
 name = "lan-core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "bincode",
@@ -2695,7 +2695,7 @@ dependencies = [
 
 [[package]]
 name = "lan-gui"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "chrono",

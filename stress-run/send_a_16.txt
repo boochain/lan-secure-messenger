@@ -1,0 +1,3 @@
+2026-09-18T19:00:04.533495Z  INFO discovery listening addr=0.0.0.0:41334
+2026-09-18T19:00:04.533621Z  INFO TCP listening addr=0.0.0.0:41416
+Error: 等待对等端超时: 20D0-1877-1725-01A6

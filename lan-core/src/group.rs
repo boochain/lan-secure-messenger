@@ -13,6 +13,7 @@
 use crate::config::ConfigPaths;
 use crate::crypto::{open_at_rest, seal_at_rest};
 use crate::identity::Identity;
+use crate::util::atomic_write;
 use anyhow::{anyhow, Context, Result};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
@@ -104,7 +105,7 @@ impl GroupStore {
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent)?;
         }
-        fs::write(&self.path, sealed)?;
+        atomic_write(&self.path, &sealed)?;
         Ok(())
     }
 
@@ -221,7 +222,7 @@ fn load_or_create_seal_key(paths: &ConfigPaths) -> Result<[u8; 32]> {
         if bytes.len() == 32 {
             let mut k = [0u8; 32];
             k.copy_from_slice(&bytes);
-            let _ = fs::write(&groups_key, k);
+            let _ = atomic_write(&groups_key, &k);
             return Ok(k);
         }
     }
@@ -241,7 +242,7 @@ fn load_or_create_seal_key(paths: &ConfigPaths) -> Result<[u8; 32]> {
     }
     #[cfg(not(unix))]
     {
-        fs::write(&groups_key, k)?;
+        atomic_write(&groups_key, &k)?;
     }
     Ok(k)
 }

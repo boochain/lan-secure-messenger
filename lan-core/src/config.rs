@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::net::Ipv4Addr;
 use std::path::{Path, PathBuf};
+use crate::util::{atomic_write, sanitize_display_name};
 
 #[derive(Debug, Clone)]
 pub struct ConfigPaths {
@@ -107,7 +108,7 @@ impl Default for AppConfig {
             .and_then(|h| h.into_string().ok())
             .unwrap_or_else(|| "unknown".into());
         Self {
-            display_name: hostname,
+            display_name: sanitize_display_name(&hostname),
             discovery_port: DEFAULT_DISCOVERY_PORT,
             listen_port: DEFAULT_LISTEN_PORT,
             bind_addr: Ipv4Addr::UNSPECIFIED.to_string(),
@@ -143,7 +144,7 @@ impl AppConfig {
     pub fn save(&self, paths: &ConfigPaths) -> Result<()> {
         paths.ensure_dirs()?;
         let data = serde_json::to_string_pretty(self)?;
-        fs::write(&paths.settings, data)?;
+        atomic_write(&paths.settings, data.as_bytes())?;
         Ok(())
     }
 }

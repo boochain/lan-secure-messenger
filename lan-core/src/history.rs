@@ -6,6 +6,7 @@ use crate::protocol::ChatMessage;
 use anyhow::{Context, Result};
 use std::fs;
 use tracing::warn;
+use crate::util::atomic_write;
 
 pub struct HistoryStore {
     key: [u8; 32],
@@ -40,7 +41,7 @@ impl HistoryStore {
             }
             #[cfg(not(unix))]
             {
-                fs::write(&paths.history_key, k)?;
+                atomic_write(&paths.history_key, &k)?;
             }
             k
         };
@@ -141,7 +142,7 @@ impl HistoryStore {
         }
         let plain = serde_json::to_vec(&self.messages)?;
         let sealed = seal_at_rest(&self.key, &plain)?;
-        fs::write(&self.path, sealed)?;
+        atomic_write(&self.path, &sealed)?;
         let _ = &self.key_path; // kept for clarity
         Ok(())
     }

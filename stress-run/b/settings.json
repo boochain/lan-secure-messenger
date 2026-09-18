@@ -1,0 +1,18 @@
+{
+  "display_name": "StressB",
+  "discovery_port": 41334,
+  "listen_port": 41520,
+  "bind_addr": "0.0.0.0",
+  "broadcast_addr": null,
+  "auto_trust": true,
+  "history_enabled": true,
+  "max_file_bytes": 268435456,
+  "session_idle_secs": 120,
+  "first_run_done": false,
+  "start_in_tray": false,
+  "download_dir": null,
+  "transfer_retries": 3,
+  "muted_peers": [],
+  "muted_groups": [],
+  "check_updates": true
+}

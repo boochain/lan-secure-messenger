@@ -1,0 +1,4 @@
+2026-09-18T18:59:19.375265Z  INFO discovery listening addr=0.0.0.0:41334
+2026-09-18T18:59:19.375341Z  INFO TCP listening addr=0.0.0.0:41406
+已发送 id=5aa7f9be-b466-4418-915d-6f273da55a8f
+[回执] 已送达 34A6-FC48-DE48-6695 id=5aa7f9be-b466-4418-915d-6f273da55a8f

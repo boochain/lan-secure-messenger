@@ -16,7 +16,7 @@ use uuid::Uuid;
 
 fn main() -> eframe::Result<()> {
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env().add_directive("lan_core=info".parse().unwrap()))
+        .with_env_filter(EnvFilter::from_default_env().add_directive("lan_core=info".parse().unwrap_or_else(|_| tracing::level_filters::LevelFilter::INFO.into())))
         .with_target(false)
         .init();
 
@@ -79,6 +79,7 @@ enum Cmd {
     OpenDownloadDir,
     RemoveGroupMember(Uuid, String),
     CheckUpdate,
+    Shutdown,
 }
 
 enum Msg {
@@ -129,6 +130,8 @@ struct App {
     show_new_group: bool,
     tray: Option<TrayBits>,
     dark: bool,
+    /// When true, close is real exit (tray Quit), not minimize-to-tray.
+    force_quit: bool,
     search_query: String,
     search_hits: Vec<ChatMessage>,
     show_search: bool,
@@ -176,6 +179,7 @@ impl App {
             show_new_group: false,
             tray: make_tray(),
             dark: true,
+            force_quit: false,
             search_query: String::new(),
             search_hits: Vec::new(),
             show_search: false,
@@ -194,7 +198,11 @@ impl App {
     fn pump(&mut self, ctx: &egui::Context) {
         if let Some(t) = &self.tray {
             if let Ok(mut q) = t.quit.lock() {
-                if *q { *q = false; ctx.send_viewport_cmd(egui::ViewportCommand::Close); }
+                if *q {
+                    *q = false;
+                    self.force_quit = true;
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
             }
             if let Ok(mut s) = t.show.lock() {
                 if *s {
@@ -343,10 +351,20 @@ impl eframe::App for App {
         self.pump(ctx);
         ctx.request_repaint_after(Duration::from_millis(200));
 
-        if ctx.input(|i| i.viewport().close_requested()) && self.tray.is_some() {
-            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
-            self.status = "已最小化到托盘".into();
+        if ctx.input(|i| i.viewport().close_requested()) {
+            if self.tray.is_some() && !self.force_quit {
+                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+                self.status = "已最小化到托盘".into();
+            } else if self.force_quit {
+                // Real quit: ask backend to shut down (channel drop also ends loop)
+                if let Some(tx) = self.cmd_tx.take() {
+                    let _ = tx.send(Cmd::Shutdown);
+                }
+                // Drop handle so Drop/shutdown runs; allow close to proceed
+                self.handle = None;
+                self.tray = None;
+            }
         }
 
         if self.first_run {
@@ -512,6 +530,11 @@ impl eframe::App for App {
                         }
                         ui.small(format!("{} 码:{}", g.id, g.join_code));
                         if ui.small_button("退出").clicked() { self.cmd(Cmd::LeaveGroup(g.id)); }
+                        let muted = self.muted_groups.contains(&g.id);
+                        if ui.small_button(if muted {"取消静音"} else {"静音"}).clicked() {
+                            self.cmd(Cmd::MuteGroup(g.id, !muted));
+                            if muted { self.muted_groups.remove(&g.id); } else { self.muted_groups.insert(g.id); }
+                        }
                         ui.separator();
                     }
                 }
@@ -578,6 +601,18 @@ impl eframe::App for App {
                                 }
                             }
                         });
+                        if g.creator_fp == self.my_fp {
+                            ui.collapsing("移除成员（会轮换群密钥）", |ui| {
+                                for mfp in &g.members {
+                                    if mfp == &self.my_fp { continue; }
+                                    let label = self.peers.iter().find(|p| p.fingerprint.as_str()==mfp)
+                                        .map(|p| p.display_name.clone()).unwrap_or_else(|| mfp.clone());
+                                    if ui.button(format!("移除 {label}")).clicked() {
+                                        self.cmd(Cmd::RemoveGroupMember(gid, mfp.clone()));
+                                    }
+                                }
+                            });
+                        }
                     }
                 }
                 _ => {
@@ -769,6 +804,10 @@ async fn backend(msg_tx: Sender<Msg>, cmd_rx: Receiver<Cmd>) -> anyhow::Result<(
                 let _ = msg_tx.send(Msg::UpdateInfo(note));
             }
 
+            Ok(Cmd::Shutdown) => {
+                handle.shutdown().await;
+                break;
+            }
             Err(mpsc::TryRecvError::Disconnected) => break,
         }
     }

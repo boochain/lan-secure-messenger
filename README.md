@@ -256,6 +256,15 @@ LAN_MSG_NAME=Alice LAN_MSG_CONFIG=/tmp/lsm-gui lan-gui
 - UDP `41234`（发现，可配置）
 - TCP `41235`（会话，可配置）
 
+## 稳定性（v0.3.1）
+
+- 文本会话池：`session_busy` 防止同 peer 并发复用；断线用 `force_reconnect`（不再二次 `take` 死锁）
+- 文件接收写 `.part` 再 `rename`；失败清理半成品；块大小/总大小校验
+- 配置/历史/群/信任库：`atomic_write`（临时文件 + fsync + rename）
+- 握手/连接超时；帧长上限收紧；传输并发信号量（默认 4）
+- GUI 托盘「退出」真正退出并 `shutdown` 后端（不再被最小化逻辑吞掉）
+- 冒烟：`./scripts/smoke_test.sh`；压力：`./scripts/stress_test.sh`
+
 ## 已知限制（MVP）
 
 - 会话可复用，但非完整多路复用长连接
