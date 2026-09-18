@@ -58,6 +58,49 @@ pub enum WireMessage {
         ok: bool,
         message: String,
     },
+    /// Invite peer into a group (group_key carried inside Noise).
+    GroupInvite {
+        group_id: Uuid,
+        name: String,
+        creator_fp: String,
+        members: Vec<String>,
+        group_key: [u8; 32],
+        created_ms: i64,
+        join_code: String,
+        /// Ed25519 signature over invite_sign_bytes(...)
+        creator_sig: Vec<u8>,
+    },
+    /// Accept / reject group invite
+    GroupInviteAck {
+        group_id: Uuid,
+        accept: bool,
+    },
+    /// Group text (fan-out over 1:1 Noise; body is plaintext inside Noise)
+    GroupText {
+        group_id: Uuid,
+        id: Uuid,
+        body: String,
+        ts_ms: i64,
+        sender_fp: String,
+        sender_name: String,
+    },
+    /// Group file offer (metadata); chunks reuse FileChunk with same id
+    GroupFileOffer {
+        group_id: Uuid,
+        id: Uuid,
+        name: String,
+        size: u64,
+        mime: String,
+        sha256: String,
+        ts_ms: i64,
+        sender_fp: String,
+        sender_name: String,
+    },
+    /// Member left group
+    GroupLeave {
+        group_id: Uuid,
+        sender_fp: String,
+    },
     /// Keepalive
     Ping { ts_ms: i64 },
     Pong { ts_ms: i64 },
@@ -89,6 +132,19 @@ pub struct ChatMessage {
     /// Delivery receipt received (outbound text)
     #[serde(default)]
     pub delivered: bool,
+    /// None = DM / broadcast; Some = group thread
+    #[serde(default)]
+    pub group_id: Option<Uuid>,
+    #[serde(default)]
+    pub chat_scope: ChatScope,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub enum ChatScope {
+    #[default]
+    Direct,
+    Group,
+    Broadcast,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

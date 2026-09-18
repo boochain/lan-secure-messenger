@@ -112,7 +112,47 @@ enum Commands {
         #[arg(long, default_value = "5")]
         wait: u64,
     },
-    /// 请求取消进行中的文件传输（传 transfer uuid）
+    /// 创建群聊（成员为已信任指纹，逗号分隔）
+    CreateGroup {
+        name: String,
+        /// 成员指纹，逗号分隔
+        #[arg(long)]
+        members: String,
+    },
+    /// 列出本地群组
+    Groups,
+    /// 发送群文本
+    GroupSend {
+        group_id: String,
+        message: String,
+        #[arg(long, default_value = "3")]
+        wait: u64,
+    },
+    /// 发送群文件
+    GroupSendFile {
+        group_id: String,
+        path: PathBuf,
+        #[arg(long, default_value = "3")]
+        wait: u64,
+    },
+    /// 邀请已信任对等端入群
+    GroupInvite {
+        group_id: String,
+        fingerprint: String,
+        #[arg(long, default_value = "3")]
+        wait: u64,
+    },
+    /// 退出群组
+    GroupLeave {
+        group_id: String,
+    },
+    /// 查看群历史
+    GroupHistory {
+        group_id: String,
+        #[arg(long, default_value = "50")]
+        limit: usize,
+    },
+        /// 请求取消进行中的文件传输（传 transfer uuid）
     CancelTransfer {
         id: String,
     },
@@ -225,6 +265,85 @@ async fn main() -> Result<()> {
             handle.shutdown().await;
             Ok(())
         }
+        
+        Commands::CreateGroup { name, members } => {
+            let handle = start_node(paths, config).await?;
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            let fps: Vec<String> = members
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            let g = handle.create_group(&name, fps).await?;
+            println!("已创建群组: {} id={} 邀请码={}", g.name, g.id, g.join_code);
+            handle.shutdown().await;
+            Ok(())
+        }
+        Commands::Groups => {
+            let handle = start_node(paths, config).await?;
+            let list = handle.list_groups().await?;
+            if list.is_empty() {
+                println!("(暂无群组)");
+            } else {
+                for g in list {
+                    println!(
+                        "{}  {}  成员{}  邀请码{}",
+                        g.id,
+                        g.name,
+                        g.members.len(),
+                        g.join_code
+                    );
+                }
+            }
+            handle.shutdown().await;
+            Ok(())
+        }
+        Commands::GroupSend { group_id, message, wait } => {
+            let handle = start_node(paths, config).await?;
+            tokio::time::sleep(Duration::from_secs(wait)).await;
+            let gid = uuid::Uuid::parse_str(&group_id)?;
+            let id = handle.send_group_text(gid, &message).await?;
+            println!("群消息已发送 id={id}");
+            handle.shutdown().await;
+            Ok(())
+        }
+        Commands::GroupSendFile { group_id, path, wait } => {
+            let handle = start_node(paths, config).await?;
+            tokio::time::sleep(Duration::from_secs(wait)).await;
+            let gid = uuid::Uuid::parse_str(&group_id)?;
+            let meta = handle.send_group_file(gid, &path).await?;
+            println!("群文件已发送: {} ({} bytes)", meta.name, meta.size);
+            handle.shutdown().await;
+            Ok(())
+        }
+        Commands::GroupInvite { group_id, fingerprint, wait } => {
+            let handle = start_node(paths, config).await?;
+            wait_for_peer(&handle, &fingerprint, wait).await?;
+            let gid = uuid::Uuid::parse_str(&group_id)?;
+            handle.invite_to_group(gid, &fingerprint).await?;
+            println!("已邀请 {fingerprint} 加入群 {group_id}");
+            handle.shutdown().await;
+            Ok(())
+        }
+        Commands::GroupLeave { group_id } => {
+            let handle = start_node(paths, config).await?;
+            let gid = uuid::Uuid::parse_str(&group_id)?;
+            handle.leave_group(gid).await?;
+            println!("已退出群 {group_id}");
+            handle.shutdown().await;
+            Ok(())
+        }
+        Commands::GroupHistory { group_id, limit } => {
+            let handle = start_node(paths, config).await?;
+            let gid = uuid::Uuid::parse_str(&group_id)?;
+            let msgs = handle.group_history(gid, limit).await?;
+            for m in msgs {
+                println!("{} {} {}: {}", m.ts_ms, m.peer_name, m.peer_fp, m.body);
+            }
+            handle.shutdown().await;
+            Ok(())
+        }
+
         Commands::CancelTransfer { id } => {
             let handle = start_node(paths, config).await?;
             let uuid = uuid::Uuid::parse_str(&id)?;
@@ -428,6 +547,21 @@ async fn run_daemon(paths: ConfigPaths, config: AppConfig) -> Result<()> {
                     }
                     NodeEvent::TransferComplete { name, ok, .. } => {
                         println!("[传输] {name} {}", if ok { "完成" } else { "失败" });
+                    }
+                    NodeEvent::GroupInviteReceived(g) => {
+                        println!("[群邀请] {} id={} 成员{:?}", g.name, g.id, g.members);
+                    }
+                    NodeEvent::GroupUpdated(g) => {
+                        println!("[群更新] {} ({})", g.name, g.id);
+                    }
+                    NodeEvent::GroupRemoved { name, .. } => {
+                        println!("[退群] {name}");
+                    }
+                    NodeEvent::GroupText { from_name, body, group_id, .. } => {
+                        println!("[群消息:{group_id}] {from_name}: {body}");
+                    }
+                    NodeEvent::GroupFileReceived { from_name, meta, group_id, path, .. } => {
+                        println!("[群文件:{group_id}] {from_name}: {} -> {}", meta.name, path.display());
                     }
                     NodeEvent::TextDelivered { id, peer_fp } => {
                         println!("[回执] 已送达 {peer_fp} id={id}");

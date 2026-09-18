@@ -141,10 +141,40 @@ else
   DELIV_OK=1
 fi
 
-if [[ "$TEXT_OK" -eq 1 && "$FILE_OK" -eq 1 && "$BIG_OK" -eq 1 && "$BCAST_OK" -eq 1 && "$DELIV_OK" -eq 1 ]]; then
+echo "=== DM history A (peer thread) ==="
+"$BIN" --config-dir "$DIR/a" --name Alice --bind 0.0.0.0 \
+  --discovery-port "$DISC" --listen-port 41250 --auto-trust \
+  history "$FP_B" --limit 20 | tee "$DIR/dm_hist.txt"
+DM_OK=0
+if grep -q '你好 Bob' "$DIR/dm_hist.txt"; then DM_OK=1; echo "DM HISTORY OK"; else echo "DM HISTORY FAIL"; fi
+
+echo "=== Create group A + invite B ==="
+"$BIN" --config-dir "$DIR/a" --name Alice --bind 0.0.0.0 \
+  --discovery-port "$DISC" --listen-port 41251 --auto-trust \
+  create-group "测试群" --members "$FP_B" | tee "$DIR/create_group.txt"
+GID=$(grep -Eo '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' "$DIR/create_group.txt" | head -1)
+echo "GID=$GID"
+test -n "$GID"
+sleep 2
+
+GROUP_OK=0
+if grep -Eqi "群组|GroupInvite|测试群|邀请" "$DIR/b.log"; then
+  echo "GROUP INVITE SEEN ON B"
+fi
+
+echo "=== Group send A -> members ==="
+"$BIN" --config-dir "$DIR/a" --name Alice --bind 0.0.0.0 \
+  --discovery-port "$DISC" --listen-port 41252 --auto-trust \
+  group-send "$GID" "群聊你好各位" --wait 3 | tee "$DIR/group_send.txt"
+sleep 2
+tail -30 "$DIR/b.log"
+if grep -q '群聊你好各位' "$DIR/b.log"; then GROUP_OK=1; echo "GROUP TEXT OK"; else echo "GROUP TEXT FAIL"; fi
+
+if [[ "$TEXT_OK" -eq 1 && "$FILE_OK" -eq 1 && "$BIG_OK" -eq 1 && "$BCAST_OK" -eq 1 && "$DELIV_OK" -eq 1 && "$DM_OK" -eq 1 && "$GROUP_OK" -eq 1 ]]; then
   echo "=== SMOKE PASSED ==="
   exit 0
 else
   echo "=== SMOKE FAILED ==="
+  echo "TEXT=$TEXT_OK FILE=$FILE_OK BIG=$BIG_OK BCAST=$BCAST_OK DELIV=$DELIV_OK DM=$DM_OK GROUP=$GROUP_OK"
   exit 1
 fi

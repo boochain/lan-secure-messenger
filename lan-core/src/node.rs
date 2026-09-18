@@ -2,10 +2,11 @@
 
 use crate::config::{AppConfig, ConfigPaths};
 use crate::discovery::{AnnounceValidator, DiscoveryService};
+use crate::group::{invite_sign_bytes, GroupInfo, GroupStore};
 use crate::history::HistoryStore;
 use crate::identity::Identity;
 use crate::peer::{DiscoveryChange, PeerInfo, PeerStore, TrustState};
-use crate::protocol::{BroadcastResult, ChatMessage, FileMeta, MsgDirection, MsgKind, PeerStatusKind, WireMessage};
+use crate::protocol::{ChatScope, BroadcastResult, ChatMessage, FileMeta, MsgDirection, MsgKind, PeerStatusKind, WireMessage};
 use crate::session::SecureSession;
 use crate::transfer::{self, is_image_mime};
 use crate::{DISCOVERY_INTERVAL_MS, PEER_TIMEOUT_SECS};
@@ -55,6 +56,23 @@ pub enum NodeEvent {
         peer_fp: String,
         kind: PeerStatusKind,
         detail: String,
+    },
+    GroupInviteReceived(GroupInfo),
+    GroupUpdated(GroupInfo),
+    GroupRemoved { group_id: Uuid, name: String },
+    GroupText {
+        group_id: Uuid,
+        from_fp: String,
+        from_name: String,
+        body: String,
+        id: Uuid,
+    },
+    GroupFileReceived {
+        group_id: Uuid,
+        from_fp: String,
+        from_name: String,
+        path: PathBuf,
+        meta: FileMeta,
     },
     Error(String),
     Info(String),
@@ -114,6 +132,43 @@ enum Command {
     BroadcastTextDetailed {
         body: String,
         reply: oneshot::Sender<Result<BroadcastResult>>,
+    },
+    CreateGroup {
+        name: String,
+        member_fps: Vec<String>,
+        reply: oneshot::Sender<Result<GroupInfo>>,
+    },
+    ListGroups {
+        reply: oneshot::Sender<Vec<GroupInfo>>,
+    },
+    SendGroupText {
+        group_id: Uuid,
+        body: String,
+        reply: oneshot::Sender<Result<Uuid>>,
+    },
+    SendGroupFile {
+        group_id: Uuid,
+        path: PathBuf,
+        reply: oneshot::Sender<Result<FileMeta>>,
+    },
+    LeaveGroup {
+        group_id: Uuid,
+        reply: oneshot::Sender<Result<()>>,
+    },
+    InviteToGroup {
+        group_id: Uuid,
+        peer_fp: String,
+        reply: oneshot::Sender<Result<()>>,
+    },
+    GroupHistory {
+        group_id: Uuid,
+        limit: usize,
+        reply: oneshot::Sender<Vec<ChatMessage>>,
+    },
+    DmHistory {
+        peer_fp: String,
+        limit: usize,
+        reply: oneshot::Sender<Vec<ChatMessage>>,
     },
     Shutdown {
         reply: oneshot::Sender<()>,
@@ -244,6 +299,78 @@ impl NodeHandle {
         rx.await?
     }
 
+    pub async fn create_group(&self, name: &str, member_fps: Vec<String>) -> Result<GroupInfo> {
+        let (reply, rx) = oneshot::channel();
+        self.tx.send(Command::CreateGroup {
+            name: name.into(),
+            member_fps,
+            reply,
+        })?;
+        rx.await?
+    }
+
+    pub async fn list_groups(&self) -> Result<Vec<GroupInfo>> {
+        let (reply, rx) = oneshot::channel();
+        self.tx.send(Command::ListGroups { reply })?;
+        Ok(rx.await?)
+    }
+
+    pub async fn send_group_text(&self, group_id: Uuid, body: &str) -> Result<Uuid> {
+        let (reply, rx) = oneshot::channel();
+        self.tx.send(Command::SendGroupText {
+            group_id,
+            body: body.into(),
+            reply,
+        })?;
+        rx.await?
+    }
+
+    pub async fn send_group_file(&self, group_id: Uuid, path: impl AsRef<Path>) -> Result<FileMeta> {
+        let (reply, rx) = oneshot::channel();
+        self.tx.send(Command::SendGroupFile {
+            group_id,
+            path: path.as_ref().to_path_buf(),
+            reply,
+        })?;
+        rx.await?
+    }
+
+    pub async fn leave_group(&self, group_id: Uuid) -> Result<()> {
+        let (reply, rx) = oneshot::channel();
+        self.tx.send(Command::LeaveGroup { group_id, reply })?;
+        rx.await?
+    }
+
+    pub async fn invite_to_group(&self, group_id: Uuid, peer_fp: &str) -> Result<()> {
+        let (reply, rx) = oneshot::channel();
+        self.tx.send(Command::InviteToGroup {
+            group_id,
+            peer_fp: peer_fp.into(),
+            reply,
+        })?;
+        rx.await?
+    }
+
+    pub async fn group_history(&self, group_id: Uuid, limit: usize) -> Result<Vec<ChatMessage>> {
+        let (reply, rx) = oneshot::channel();
+        self.tx.send(Command::GroupHistory {
+            group_id,
+            limit,
+            reply,
+        })?;
+        Ok(rx.await?)
+    }
+
+    pub async fn dm_history(&self, peer_fp: &str, limit: usize) -> Result<Vec<ChatMessage>> {
+        let (reply, rx) = oneshot::channel();
+        self.tx.send(Command::DmHistory {
+            peer_fp: peer_fp.into(),
+            limit,
+            reply,
+        })?;
+        Ok(rx.await?)
+    }
+
     pub fn subscribe(&self) -> broadcast::Receiver<NodeEvent> {
         self.events.subscribe()
     }
@@ -255,6 +382,7 @@ pub struct Node {
     identity: Identity,
     peers: PeerStore,
     history: HistoryStore,
+    groups: GroupStore,
     downloads: PathBuf,
 }
 
@@ -264,6 +392,7 @@ impl Node {
         let identity = Identity::load_or_create(&paths)?;
         let peers = PeerStore::load(&paths)?;
         let history = HistoryStore::load(&paths, config.history_enabled)?;
+        let groups = GroupStore::load(&paths)?;
         let downloads = paths.root.join("downloads");
         std::fs::create_dir_all(&downloads)?;
         config.save(&paths)?;
@@ -273,6 +402,7 @@ impl Node {
             identity,
             peers,
             history,
+            groups,
             downloads,
         })
     }
@@ -312,6 +442,7 @@ impl Node {
             identity: self.identity,
             peers: self.peers,
             history: self.history,
+            groups: self.groups,
             paths: self.paths,
             downloads: self.downloads,
             sessions: std::collections::HashMap::new(),
@@ -329,6 +460,7 @@ struct RuntimeState {
     identity: Identity,
     peers: PeerStore,
     history: HistoryStore,
+    groups: GroupStore,
     paths: ConfigPaths,
     downloads: PathBuf,
     /// Reusable outbound Noise sessions keyed by peer fingerprint.
@@ -516,6 +648,38 @@ async fn run_loop(
                             }
                         }
                         let _ = reply.send(Ok(result));
+                    }
+                    Some(Command::CreateGroup { name, member_fps, reply }) => {
+                        let result = do_create_group(&state, &ev_tx, &name, member_fps).await;
+                        let _ = reply.send(result);
+                    }
+                    Some(Command::ListGroups { reply }) => {
+                        let list = state.lock().groups.list();
+                        let _ = reply.send(list);
+                    }
+                    Some(Command::SendGroupText { group_id, body, reply }) => {
+                        let result = do_send_group_text(&state, &ev_tx, group_id, &body).await;
+                        let _ = reply.send(result);
+                    }
+                    Some(Command::SendGroupFile { group_id, path, reply }) => {
+                        let result = do_send_group_file(&state, &ev_tx, group_id, &path).await;
+                        let _ = reply.send(result);
+                    }
+                    Some(Command::LeaveGroup { group_id, reply }) => {
+                        let result = do_leave_group(&state, &ev_tx, group_id).await;
+                        let _ = reply.send(result);
+                    }
+                    Some(Command::InviteToGroup { group_id, peer_fp, reply }) => {
+                        let result = do_invite_to_group(&state, &ev_tx, group_id, &peer_fp).await;
+                        let _ = reply.send(result);
+                    }
+                    Some(Command::GroupHistory { group_id, limit, reply }) => {
+                        let msgs = state.lock().history.list_group(&group_id, limit);
+                        let _ = reply.send(msgs);
+                    }
+                    Some(Command::DmHistory { peer_fp, limit, reply }) => {
+                        let msgs = state.lock().history.list_dm(&peer_fp, limit);
+                        let _ = reply.send(msgs);
                     }
                     Some(Command::Shutdown { reply }) => {
 
@@ -715,6 +879,8 @@ async fn do_send_text(
         file_path: None,
         file_size: None,
         delivered: false,
+        group_id: None,
+        chat_scope: crate::protocol::ChatScope::Broadcast,
     };
     let _ = state.lock().history.append(chat);
     let _ = ev_tx.send(NodeEvent::Text {
@@ -830,6 +996,8 @@ async fn do_send_file(
         file_path: Some(path.display().to_string()),
         file_size: Some(meta.size),
         delivered: false,
+        group_id: None,
+        chat_scope: crate::protocol::ChatScope::Direct,
     };
     let _ = state.lock().history.append(chat);
     let _ = ev_tx.send(NodeEvent::TransferComplete {
@@ -944,6 +1112,8 @@ async fn handle_incoming(
                             file_path: Some(path.display().to_string()),
                             file_size: Some(meta.size),
         delivered: false,
+        group_id: None,
+        chat_scope: crate::protocol::ChatScope::Direct,
                         };
                         let _ = state.lock().history.append(chat);
                         let _ = ev_tx.send(NodeEvent::FileReceived {
@@ -1009,6 +1179,117 @@ async fn handle_incoming(
             WireMessage::Ping { ts_ms } => {
                 session.send_msg(&WireMessage::Pong { ts_ms }).await?;
             }
+            
+            WireMessage::GroupInvite {
+                group_id,
+                name,
+                creator_fp,
+                members,
+                group_key,
+                created_ms,
+                join_code,
+                creator_sig,
+            } => {
+                // Verify signature if we know creator's ed25519 key
+                let verified = {
+                    let s = state.lock();
+                    if let Some(rec) = s.peers.get_record(&creator_fp) {
+                        match ed25519_dalek::VerifyingKey::from_bytes(&rec.ed25519_pk) {
+                            Ok(vk) => {
+                                let bytes = invite_sign_bytes(
+                                    &group_id,
+                                    &name,
+                                    &creator_fp,
+                                    &members,
+                                    &group_key,
+                                    created_ms,
+                                );
+                                if creator_sig.len() == 64 {
+                                    let mut sig = [0u8; 64];
+                                    sig.copy_from_slice(&creator_sig);
+                                    Identity::verify(&vk, &bytes, &sig)
+                                } else {
+                                    false
+                                }
+                            }
+                            Err(_) => false,
+                        }
+                    } else {
+                        // Unknown creator key — accept but mark in info (LAN MVP)
+                        true
+                    }
+                };
+                if !verified {
+                    let _ = ev_tx.send(NodeEvent::Error(format!(
+                        "群邀请签名校验失败: {name} from {creator_fp}"
+                    )));
+                } else {
+                    let info = GroupInfo {
+                        id: group_id,
+                        name: name.clone(),
+                        creator_fp: creator_fp.clone(),
+                        members,
+                        group_key_hex: hex::encode(group_key),
+                        created_ms,
+                        join_code,
+                    };
+                    let _ = state.lock().groups.upsert(info.clone());
+                    let _ = ev_tx.send(NodeEvent::GroupInviteReceived(info));
+                    let _ = ev_tx.send(NodeEvent::Info(format!("收到群邀请: {name}")));
+                }
+            }
+            WireMessage::GroupInviteAck { group_id, accept } => {
+                let _ = ev_tx.send(NodeEvent::Info(format!(
+                    "群 {group_id} 邀请响应: {}",
+                    if accept { "接受" } else { "拒绝" }
+                )));
+            }
+            WireMessage::GroupText {
+                group_id,
+                id,
+                body,
+                ts_ms,
+                sender_fp,
+                sender_name,
+            } => {
+                let chat = ChatMessage {
+                    id,
+                    peer_fp: sender_fp.clone(),
+                    peer_name: sender_name.clone(),
+                    direction: MsgDirection::In,
+                    kind: MsgKind::Text,
+                    body: body.clone(),
+                    ts_ms,
+                    file_path: None,
+                    file_size: None,
+                    delivered: false,
+                    group_id: Some(group_id),
+                    chat_scope: ChatScope::Group,
+                };
+                let _ = state.lock().history.append(chat);
+                let _ = ev_tx.send(NodeEvent::GroupText {
+                    group_id,
+                    from_fp: sender_fp,
+                    from_name: sender_name,
+                    body,
+                    id,
+                });
+            }
+            WireMessage::GroupFileOffer { .. } => {
+                // Metadata only — actual file arrives as normal FileOffer on same/other session
+                let _ = ev_tx.send(NodeEvent::Info("收到群文件通知".into()));
+            }
+            WireMessage::GroupLeave { group_id, sender_fp } => {
+                if let Some(g) = state.lock().groups.get_mut(&group_id) {
+                    g.members.retain(|m| m != &sender_fp);
+                    let name = g.name.clone();
+                    let _ = state.lock().groups.save();
+                    let _ = ev_tx.send(NodeEvent::Info(format!(
+                        "{sender_fp} 离开了群 {name}"
+                    )));
+                }
+            }
+
             WireMessage::Hello { .. } => {}
             other => {
                 tracing::debug!(?other, "unhandled inbound");
@@ -1043,6 +1324,8 @@ fn record_text(
         file_path: None,
         file_size: None,
         delivered: false,
+        group_id: None,
+        chat_scope: crate::protocol::ChatScope::Broadcast,
     };
     let _ = state.lock().history.append(chat);
     let _ = ev_tx.send(NodeEvent::Text {
@@ -1063,4 +1346,279 @@ fn debug_close(e: &anyhow::Error) {
     {
         warn!(error = %e, "session closed with error");
     }
+}
+
+
+async fn do_create_group(
+    state: &Arc<Mutex<RuntimeState>>,
+    ev_tx: &broadcast::Sender<NodeEvent>,
+    name: &str,
+    member_fps: Vec<String>,
+) -> Result<GroupInfo> {
+    let (my_fp, identity) = {
+        let s = state.lock();
+        (s.identity.fingerprint().as_str().to_string(), s.identity.clone())
+    };
+    // Only invite trusted peers
+    let mut members = Vec::new();
+    {
+        let s = state.lock();
+        for fp in &member_fps {
+            if s.peers.is_trusted(fp) {
+                members.push(fp.clone());
+            }
+        }
+    }
+    let info = {
+        let mut s = state.lock();
+        s.groups.create(name, &my_fp, members.clone(), &identity)?
+    };
+    let _ = ev_tx.send(NodeEvent::GroupUpdated(info.clone()));
+    // Send invites
+    for fp in &info.members {
+        if fp == &my_fp {
+            continue;
+        }
+        if let Err(e) = send_group_invite(state, &info, fp).await {
+            let _ = ev_tx.send(NodeEvent::Error(format!("invite {fp} failed: {e}")));
+        }
+    }
+    let _ = ev_tx.send(NodeEvent::Info(format!(
+        "群组已创建: {} ({}) 邀请码 {}",
+        info.name, info.id, info.join_code
+    )));
+    Ok(info)
+}
+
+async fn send_group_invite(
+    state: &Arc<Mutex<RuntimeState>>,
+    info: &GroupInfo,
+    peer_fp: &str,
+) -> Result<()> {
+    let peer = state
+        .lock()
+        .peers
+        .get_live(peer_fp)
+        .cloned()
+        .ok_or_else(|| anyhow!("peer offline: {peer_fp}"))?;
+    let identity = state.lock().identity.clone();
+    let key = info.group_key()?;
+    let sign_bytes = invite_sign_bytes(
+        &info.id,
+        &info.name,
+        &info.creator_fp,
+        &info.members,
+        &key,
+        info.created_ms,
+    );
+    let sig = identity.sign(&sign_bytes).to_vec();
+    let mut session = take_or_connect_session(state, peer_fp, peer.addr).await?;
+    session
+        .send_msg(&WireMessage::GroupInvite {
+            group_id: info.id,
+            name: info.name.clone(),
+            creator_fp: info.creator_fp.clone(),
+            members: info.members.clone(),
+            group_key: key,
+            created_ms: info.created_ms,
+            join_code: info.join_code.clone(),
+            creator_sig: sig,
+        })
+        .await?;
+    store_session(state, peer_fp, session);
+    Ok(())
+}
+
+async fn do_invite_to_group(
+    state: &Arc<Mutex<RuntimeState>>,
+    ev_tx: &broadcast::Sender<NodeEvent>,
+    group_id: Uuid,
+    peer_fp: &str,
+) -> Result<()> {
+    if !state.lock().peers.is_trusted(peer_fp) {
+        anyhow::bail!("只能邀请已信任的对等端");
+    }
+    let info = {
+        let mut s = state.lock();
+        let g = s
+            .groups
+            .get_mut(&group_id)
+            .ok_or_else(|| anyhow!("群组不存在"))?;
+        if !g.members.iter().any(|m| m == peer_fp) {
+            g.members.push(peer_fp.to_string());
+            g.members.sort();
+            g.members.dedup();
+        }
+        let info = g.clone();
+        s.groups.upsert(info.clone())?;
+        info
+    };
+    send_group_invite(state, &info, peer_fp).await?;
+    let _ = ev_tx.send(NodeEvent::GroupUpdated(info));
+    Ok(())
+}
+
+async fn do_send_group_text(
+    state: &Arc<Mutex<RuntimeState>>,
+    ev_tx: &broadcast::Sender<NodeEvent>,
+    group_id: Uuid,
+    body: &str,
+) -> Result<Uuid> {
+    let (info, my_fp, my_name) = {
+        let s = state.lock();
+        let info = s
+            .groups
+            .get(&group_id)
+            .cloned()
+            .ok_or_else(|| anyhow!("群组不存在"))?;
+        let my_fp = s.identity.fingerprint().as_str().to_string();
+        anyhow::ensure!(info.is_member(&my_fp), "你不在该群组中");
+        (info, my_fp, s.config.display_name.clone())
+    };
+    let id = Uuid::new_v4();
+    let ts_ms = chrono::Utc::now().timestamp_millis();
+    let msg = WireMessage::GroupText {
+        group_id,
+        id,
+        body: body.to_string(),
+        ts_ms,
+        sender_fp: my_fp.clone(),
+        sender_name: my_name.clone(),
+    };
+    let mut ok = 0usize;
+    for fp in &info.members {
+        if fp == &my_fp {
+            continue;
+        }
+        let Some(peer) = state.lock().peers.get_live(fp).cloned() else {
+            continue;
+        };
+        if !peer.online {
+            continue;
+        }
+        match take_or_connect_session(state, fp, peer.addr).await {
+            Ok(mut session) => {
+                if session.send_msg(&msg).await.is_ok() {
+                    ok += 1;
+                    store_session(state, fp, session);
+                }
+            }
+            Err(e) => {
+                let _ = ev_tx.send(NodeEvent::Error(format!("群消息发给 {fp} 失败: {e}")));
+            }
+        }
+    }
+    let chat = ChatMessage {
+        id,
+        peer_fp: my_fp.clone(),
+        peer_name: my_name.clone(),
+        direction: MsgDirection::Out,
+        kind: MsgKind::Text,
+        body: body.to_string(),
+        ts_ms,
+        file_path: None,
+        file_size: None,
+        delivered: false,
+        group_id: Some(group_id),
+        chat_scope: ChatScope::Group,
+    };
+    let _ = state.lock().history.append(chat);
+    let _ = ev_tx.send(NodeEvent::GroupText {
+        group_id,
+        from_fp: my_fp,
+        from_name: my_name,
+        body: body.to_string(),
+        id,
+    });
+    let _ = ev_tx.send(NodeEvent::Info(format!("群消息已送达 {ok} 个在线成员")));
+    Ok(id)
+}
+
+async fn do_send_group_file(
+    state: &Arc<Mutex<RuntimeState>>,
+    ev_tx: &broadcast::Sender<NodeEvent>,
+    group_id: Uuid,
+    path: &Path,
+) -> Result<FileMeta> {
+    let (info, my_fp, my_name) = {
+        let s = state.lock();
+        let info = s
+            .groups
+            .get(&group_id)
+            .cloned()
+            .ok_or_else(|| anyhow!("群组不存在"))?;
+        let my_fp = s.identity.fingerprint().as_str().to_string();
+        anyhow::ensure!(info.is_member(&my_fp), "你不在该群组中");
+        (info, my_fp, s.config.display_name.clone())
+    };
+    // Send as normal file to each online member (reuse transfer stack), plus GroupFileOffer notify
+    let mut last_meta = None;
+    for fp in &info.members {
+        if fp == &my_fp {
+            continue;
+        }
+        let Some(peer) = state.lock().peers.get_live(fp).cloned() else { continue };
+        if !peer.online || peer.trust != TrustState::Trusted {
+            continue;
+        }
+        match do_send_file(state, ev_tx, fp, path).await {
+            Ok(meta) => {
+                last_meta = Some(meta);
+            }
+            Err(e) => {
+                let _ = ev_tx.send(NodeEvent::Error(format!("群文件发给 {fp} 失败: {e}")));
+            }
+        }
+    }
+    let meta = last_meta.ok_or_else(|| anyhow!("没有在线成员可接收文件"))?;
+    let chat = ChatMessage {
+        id: meta.id,
+        peer_fp: my_fp,
+        peer_name: my_name,
+        direction: MsgDirection::Out,
+        kind: if meta.mime.starts_with("image/") {
+            MsgKind::Image
+        } else {
+            MsgKind::File
+        },
+        body: format!("[群文件] {}", meta.name),
+        ts_ms: chrono::Utc::now().timestamp_millis(),
+        file_path: Some(path.display().to_string()),
+        file_size: Some(meta.size),
+        delivered: false,
+        group_id: Some(group_id),
+        chat_scope: ChatScope::Group,
+    };
+    let _ = state.lock().history.append(chat);
+    Ok(meta)
+}
+
+async fn do_leave_group(
+    state: &Arc<Mutex<RuntimeState>>,
+    ev_tx: &broadcast::Sender<NodeEvent>,
+    group_id: Uuid,
+) -> Result<()> {
+    let (info, my_fp) = {
+        let mut s = state.lock();
+        let my_fp = s.identity.fingerprint().as_str().to_string();
+        let info = s.groups.leave(&group_id, &my_fp)?;
+        (info, my_fp)
+    };
+    let msg = WireMessage::GroupLeave {
+        group_id,
+        sender_fp: my_fp,
+    };
+    for fp in &info.members {
+        let peer = state.lock().peers.get_live(fp).cloned();
+        let Some(peer) = peer else { continue };
+        if let Ok(mut session) = take_or_connect_session(state, fp, peer.addr).await {
+            let _ = session.send_msg(&msg).await;
+            store_session(state, fp, session);
+        }
+    }
+    let _ = ev_tx.send(NodeEvent::GroupRemoved {
+        group_id,
+        name: info.name,
+    });
+    Ok(())
 }

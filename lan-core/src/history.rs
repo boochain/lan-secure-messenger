@@ -81,11 +81,38 @@ impl HistoryStore {
 
     pub fn list(&self, peer_fp: Option<&str>, limit: usize) -> Vec<ChatMessage> {
         let iter = self.messages.iter().rev().filter(|m| {
-            peer_fp.map(|fp| m.peer_fp == fp).unwrap_or(true)
+            if m.group_id.is_some() {
+                return peer_fp.is_none(); // only in unfiltered dumps
+            }
+            peer_fp.map(|fp| m.peer_fp == fp && m.group_id.is_none()).unwrap_or(m.group_id.is_none())
         });
         let mut out: Vec<_> = iter.take(limit).cloned().collect();
         out.reverse();
         out
+    }
+
+    pub fn list_dm(&self, peer_fp: &str, limit: usize) -> Vec<ChatMessage> {
+        let iter = self.messages.iter().rev().filter(|m| {
+            m.group_id.is_none() && m.peer_fp == peer_fp
+        });
+        let mut out: Vec<_> = iter.take(limit).cloned().collect();
+        out.reverse();
+        out
+    }
+
+    pub fn list_group(&self, group_id: &uuid::Uuid, limit: usize) -> Vec<ChatMessage> {
+        let iter = self.messages.iter().rev().filter(|m| m.group_id.as_ref() == Some(group_id));
+        let mut out: Vec<_> = iter.take(limit).cloned().collect();
+        out.reverse();
+        out
+    }
+
+    pub fn mark_delivered(&mut self, id: uuid::Uuid) -> Result<()> {
+        if let Some(m) = self.messages.iter_mut().find(|m| m.id == id) {
+            m.delivered = true;
+            self.persist()?;
+        }
+        Ok(())
     }
 
     pub fn all(&self) -> &[ChatMessage] {

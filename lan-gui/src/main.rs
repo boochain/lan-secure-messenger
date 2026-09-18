@@ -1,15 +1,18 @@
-//! LAN Secure Messenger GUI (egui/eframe).
+//! 局域网加密通讯 GUI：私聊 / 群聊、首次运行、系统托盘。
 
 use eframe::egui;
 use lan_core::config::{AppConfig, ConfigPaths};
+use lan_core::group::GroupInfo;
 use lan_core::node::{Node, NodeEvent, NodeHandle};
 use lan_core::peer::{PeerInfo, TrustState};
 use lan_core::protocol::{ChatMessage, MsgDirection};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tracing_subscriber::EnvFilter;
+use uuid::Uuid;
 
 fn main() -> eframe::Result<()> {
     tracing_subscriber::fmt()
@@ -19,8 +22,9 @@ fn main() -> eframe::Result<()> {
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([960.0, 640.0])
-            .with_title("局域网加密通讯"),
+            .with_inner_size([1000.0, 680.0])
+            .with_title("局域网加密通讯")
+            .with_icon(make_icon()),
         ..Default::default()
     };
     eframe::run_native(
@@ -30,7 +34,29 @@ fn main() -> eframe::Result<()> {
     )
 }
 
-enum UiCmd {
+fn make_icon() -> egui::IconData {
+    let n = 32usize;
+    let mut rgba = vec![0u8; n * n * 4];
+    for y in 0..n {
+        for x in 0..n {
+            let dx = x as f32 - 15.5;
+            let dy = y as f32 - 15.5;
+            let i = (y * n + x) * 4;
+            if dx * dx + dy * dy <= 14.0 * 14.0 {
+                rgba[i] = 40; rgba[i+1] = 120; rgba[i+2] = 220; rgba[i+3] = 255;
+            }
+        }
+    }
+    egui::IconData { rgba, width: 32, height: 32 }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Tab { Dm, Groups }
+
+#[derive(Clone)]
+enum Target { Peer(String), Group(Uuid) }
+
+enum Cmd {
     SendText(String, String),
     Broadcast(String),
     SendFile(String, PathBuf),
@@ -38,544 +64,538 @@ enum UiCmd {
     Block(String),
     SetName(String),
     Refresh,
+    CreateGroup(String, Vec<String>),
+    SendGroupText(Uuid, String),
+    SendGroupFile(Uuid, PathBuf),
+    LeaveGroup(Uuid),
+    Invite(Uuid, String),
+    FinishFirstRun(String),
 }
 
-enum UiMsg {
-    Ready {
-        fp: String,
-        name: String,
-        handle: NodeHandle,
-    },
+enum Msg {
+    Ready { fp: String, name: String, handle: NodeHandle, first_run: bool },
     Event(NodeEvent),
     Peers(Vec<PeerInfo>),
+    Groups(Vec<GroupInfo>),
     History(Vec<ChatMessage>),
+    GroupHistory(Uuid, Vec<ChatMessage>),
     Status(String),
     Error(String),
+}
+
+#[derive(Clone)]
+struct Line { dir: MsgDirection, text: String, ts: String }
+
+struct TrayBits {
+    #[cfg(feature = "tray")]
+    _tray: Option<tray_icon::TrayIcon>,
+    show: Arc<Mutex<bool>>,
+    quit: Arc<Mutex<bool>>,
 }
 
 struct App {
     my_fp: String,
     my_name: String,
     peers: Vec<PeerInfo>,
-    selected: Option<String>,
-    chat: HashMap<String, Vec<ChatLine>>,
+    groups: Vec<GroupInfo>,
+    tab: Tab,
+    target: Option<Target>,
+    dm: HashMap<String, Vec<Line>>,
+    group_msgs: HashMap<Uuid, Vec<Line>>,
     compose: String,
     status: String,
-    unread: std::collections::HashMap<String, u32>,
+    unread_dm: HashMap<String, u32>,
+    unread_g: HashMap<Uuid, u32>,
     name_edit: String,
-    dark: bool,
     handle: Option<NodeHandle>,
-    cmd_tx: Option<Sender<UiCmd>>,
-    msg_rx: Receiver<UiMsg>,
-    /// Keep runtime alive
-    _rt_guard: Option<tokio::runtime::Runtime>,
-    show_trust_prompt: Option<PeerInfo>,
-}
-
-#[derive(Clone)]
-struct ChatLine {
-    direction: MsgDirection,
-    text: String,
-    ts: String,
+    cmd_tx: Option<Sender<Cmd>>,
+    msg_rx: Receiver<Msg>,
+    _rt: Option<tokio::runtime::Runtime>,
+    trust_prompt: Option<PeerInfo>,
+    first_run: bool,
+    first_name: String,
+    new_group: String,
+    show_new_group: bool,
+    tray: Option<TrayBits>,
+    dark: bool,
 }
 
 impl App {
-    fn new(_cc: &eframe::CreationContext<'_>) -> Self {
-        let (msg_tx, msg_rx) = mpsc::channel::<UiMsg>();
-        let (cmd_tx, cmd_rx) = mpsc::channel::<UiCmd>();
-
-        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
-        let msg_tx2 = msg_tx.clone();
+    fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        cc.egui_ctx.set_visuals(egui::Visuals::dark());
+        let (msg_tx, msg_rx) = mpsc::channel();
+        let (cmd_tx, cmd_rx) = mpsc::channel();
+        let rt = tokio::runtime::Runtime::new().expect("rt");
+        let tx = msg_tx.clone();
         rt.spawn(async move {
-            if let Err(e) = backend_main(msg_tx2, cmd_rx).await {
-                let _ = msg_tx.send(UiMsg::Error(format!("后端启动失败: {e}")));
+            if let Err(e) = backend(tx.clone(), cmd_rx).await {
+                let _ = tx.send(Msg::Error(format!("后端失败: {e}")));
             }
         });
-
         Self {
             my_fp: String::new(),
             my_name: String::new(),
-            peers: Vec::new(),
-            selected: None,
-            chat: HashMap::new(),
+            peers: vec![],
+            groups: vec![],
+            tab: Tab::Dm,
+            target: None,
+            dm: HashMap::new(),
+            group_msgs: HashMap::new(),
             compose: String::new(),
-            status: "正在启动…".into(),
-            unread: Default::default(),
+            status: "启动中…".into(),
+            unread_dm: HashMap::new(),
+            unread_g: HashMap::new(),
             name_edit: String::new(),
-            dark: true,
             handle: None,
             cmd_tx: Some(cmd_tx),
             msg_rx,
-            _rt_guard: Some(rt),
-            show_trust_prompt: None,
+            _rt: Some(rt),
+            trust_prompt: None,
+            first_run: false,
+            first_name: host(),
+            new_group: String::new(),
+            show_new_group: false,
+            tray: make_tray(),
+            dark: true,
         }
     }
 
-    fn pump(&mut self) {
-        while let Ok(msg) = self.msg_rx.try_recv() {
-            match msg {
-                UiMsg::Ready { fp, name, handle } => {
-                    self.my_fp = fp;
-                    self.my_name = name;
-                    self.handle = Some(handle);
-                    self.status = "已就绪 — 正在发现局域网对等端".into();
-                    self.send_cmd(UiCmd::Refresh);
+    fn cmd(&self, c: Cmd) {
+        if let Some(tx) = &self.cmd_tx { let _ = tx.send(c); }
+    }
+
+    fn pump(&mut self, ctx: &egui::Context) {
+        if let Some(t) = &self.tray {
+            if let Ok(mut q) = t.quit.lock() {
+                if *q { *q = false; ctx.send_viewport_cmd(egui::ViewportCommand::Close); }
+            }
+            if let Ok(mut s) = t.show.lock() {
+                if *s {
+                    *s = false;
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
                 }
-                UiMsg::Peers(p) => self.peers = p,
-                UiMsg::History(msgs) => {
+            }
+        }
+        while let Ok(m) = self.msg_rx.try_recv() {
+            match m {
+                Msg::Ready { fp, name, handle, first_run } => {
+                    self.my_fp = fp; self.my_name = name.clone(); self.name_edit = name.clone();
+                    self.first_name = name; self.handle = Some(handle); self.first_run = first_run;
+                    self.status = if first_run { "首次运行：设置显示名即可开始".into() } else { "已就绪".into() };
+                    self.cmd(Cmd::Refresh);
+                }
+                Msg::Peers(p) => self.peers = p,
+                Msg::Groups(g) => self.groups = g,
+                Msg::History(msgs) => {
                     for m in msgs {
-                        self.push_chat(
-                            &m.peer_fp,
-                            ChatLine {
-                                direction: m.direction,
-                                text: m.body,
-                                ts: format_ts(m.ts_ms),
-                            },
-                        );
+                        if m.group_id.is_some() { continue; }
+                        self.dm.entry(m.peer_fp.clone()).or_default().push(Line {
+                            dir: m.direction, text: m.body, ts: ts(m.ts_ms),
+                        });
                     }
                 }
-                UiMsg::Status(s) => self.status = s,
-                UiMsg::Error(e) => self.status = format!("错误: {e}"),
-                UiMsg::Event(ev) => self.on_event(ev),
+                Msg::GroupHistory(gid, msgs) => {
+                    let v = self.group_msgs.entry(gid).or_default();
+                    v.clear();
+                    for m in msgs {
+                        v.push(Line { dir: m.direction, text: format!("{}: {}", m.peer_name, m.body), ts: ts(m.ts_ms) });
+                    }
+                }
+                Msg::Status(s) => self.status = s,
+                Msg::Error(e) => self.status = format!("错误: {e}"),
+                Msg::Event(ev) => self.on_ev(ev),
             }
         }
     }
 
-    fn on_event(&mut self, ev: NodeEvent) {
+    fn on_ev(&mut self, ev: NodeEvent) {
         match ev {
             NodeEvent::PeerOnline(p) | NodeEvent::PeerUpdated(p) => {
-                if let Some(i) = self.peers.iter().position(|x| x.fingerprint == p.fingerprint) {
-                    self.peers[i] = p;
-                } else {
-                    self.peers.push(p);
-                }
+                if let Some(i) = self.peers.iter().position(|x| x.fingerprint == p.fingerprint) { self.peers[i] = p; }
+                else { self.peers.push(p); }
             }
             NodeEvent::PeerOffline { fingerprint, .. } => {
-                if let Some(p) = self.peers.iter_mut().find(|x| x.fingerprint.as_str() == fingerprint)
-                {
-                    p.online = false;
-                }
+                if let Some(p) = self.peers.iter_mut().find(|x| x.fingerprint.as_str() == fingerprint) { p.online = false; }
             }
             NodeEvent::NewPeerNeedsTrust(p) => {
-                self.show_trust_prompt = Some(p.clone());
-                if let Some(i) = self.peers.iter().position(|x| x.fingerprint == p.fingerprint) {
-                    self.peers[i] = p;
-                } else {
-                    self.peers.push(p);
-                }
+                self.trust_prompt = Some(p.clone());
+                if let Some(i) = self.peers.iter().position(|x| x.fingerprint == p.fingerprint) { self.peers[i] = p; }
+                else { self.peers.push(p); }
             }
-            NodeEvent::Text {
-                from_fp,
-                from_name,
-                body,
-                broadcast,
-                ..
-            } => {
+            NodeEvent::Text { from_fp, from_name, body, broadcast, .. } => {
                 let mine = from_fp == self.my_fp;
                 let key = if mine {
-                    self.selected.clone().unwrap_or_else(|| from_fp.clone())
-                } else {
-                    from_fp.clone()
-                };
+                    match &self.target { Some(Target::Peer(fp)) => fp.clone(), _ => from_fp.clone() }
+                } else { from_fp.clone() };
                 let prefix = if broadcast { "[广播] " } else { "" };
-                self.push_chat(
-                    &key,
-                    ChatLine {
-                        direction: if mine {
-                            MsgDirection::Out
-                        } else {
-                            MsgDirection::In
-                        },
-                        text: format!("{prefix}{body}"),
-                        ts: format_ts(chrono::Utc::now().timestamp_millis()),
-                    },
-                );
+                self.dm.entry(key).or_default().push(Line {
+                    dir: if mine { MsgDirection::Out } else { MsgDirection::In },
+                    text: format!("{prefix}{body}"), ts: ts(chrono::Utc::now().timestamp_millis()),
+                });
                 if !mine {
-                    self.status = format!("新消息来自 {from_name}");
-                    if self.selected.as_deref() != Some(from_fp.as_str()) {
-                        *self.unread.entry(from_fp.clone()).or_insert(0) += 1;
+                    let sel = matches!(&self.target, Some(Target::Peer(fp)) if fp == &from_fp) && self.tab == Tab::Dm;
+                    if !sel { *self.unread_dm.entry(from_fp).or_insert(0) += 1; }
+                    self.status = format!("消息来自 {from_name}");
+                }
+            }
+            NodeEvent::TextDelivered { peer_fp, .. } => {
+                if let Some(lines) = self.dm.get_mut(&peer_fp) {
+                    if let Some(l) = lines.iter_mut().rev().find(|l| l.dir == MsgDirection::Out && !l.text.ends_with(" ✓")) {
+                        l.text.push_str(" ✓");
                     }
                 }
             }
-            NodeEvent::FileReceived {
-                from_fp,
-                from_name,
-                path,
-                meta,
-                ..
-            } => {
-                self.push_chat(
-                    &from_fp,
-                    ChatLine {
-                        direction: MsgDirection::In,
-                        text: format!("📥 文件 {} → {}", meta.name, path.display()),
-                        ts: format_ts(chrono::Utc::now().timestamp_millis()),
-                    },
-                );
-                self.status = format!("已收文件来自 {from_name}: {}", meta.name);
+            NodeEvent::FileReceived { from_fp, from_name, path, meta, .. } => {
+                self.dm.entry(from_fp).or_default().push(Line {
+                    dir: MsgDirection::In,
+                    text: format!("📥 {} → {}", meta.name, path.display()),
+                    ts: ts(chrono::Utc::now().timestamp_millis()),
+                });
+                self.status = format!("文件来自 {from_name}: {}", meta.name);
             }
-            NodeEvent::FileProgress {
-                received, total, ..
-            } => {
-                if total > 0 {
-                    self.status = format!(
-                        "传输进度 {}/{} ({}%)",
-                        received,
-                        total,
-                        received * 100 / total
-                    );
-                }
+            NodeEvent::FileProgress { received, total, .. } => {
+                if total > 0 { self.status = format!("进度 {received}/{total} ({}%)", received*100/total); }
             }
             NodeEvent::TransferComplete { name, ok, .. } => {
-                self.status = format!("传输 {}: {}", name, if ok { "完成" } else { "失败" });
-            }
-            NodeEvent::Error(e) => self.status = format!("错误: {e}"),
-            NodeEvent::Info(i) => self.status = i,
-            NodeEvent::TextDelivered { id, peer_fp } => {
-                self.status = format!("已送达 {peer_fp} ({id})");
-                // mark last outbound as delivered in chat if present
-                if let Some(lines) = self.chat.get_mut(&peer_fp) {
-                    if let Some(line) = lines.iter_mut().rev().find(|l| l.text.contains(&id.to_string()) || true) {
-                        if !line.text.ends_with(" ✓") && line.direction == MsgDirection::Out {
-                            line.text.push_str(" ✓");
-                        }
-                    }
-                }
+                self.status = format!("传输 {name}: {}", if ok {"完成"} else {"失败"});
             }
             NodeEvent::PeerStatus { peer_fp, kind, detail } => {
                 self.status = format!("{peer_fp}: {kind:?} {detail}");
             }
-        }
-    }
-
-    fn push_chat(&mut self, fp: &str, line: ChatLine) {
-        self.chat.entry(fp.to_string()).or_default().push(line);
-    }
-
-    fn send_cmd(&self, cmd: UiCmd) {
-        if let Some(tx) = &self.cmd_tx {
-            let _ = tx.send(cmd);
+            NodeEvent::GroupInviteReceived(g) | NodeEvent::GroupUpdated(g) => {
+                if let Some(i) = self.groups.iter().position(|x| x.id == g.id) { self.groups[i] = g.clone(); }
+                else { self.groups.push(g.clone()); }
+                self.status = format!("群: {}", g.name);
+            }
+            NodeEvent::GroupRemoved { group_id, name } => {
+                self.groups.retain(|g| g.id != group_id);
+                self.group_msgs.remove(&group_id);
+                self.status = format!("已离开 {name}");
+            }
+            NodeEvent::GroupText { group_id, from_fp, from_name, body, .. } => {
+                let mine = from_fp == self.my_fp;
+                self.group_msgs.entry(group_id).or_default().push(Line {
+                    dir: if mine { MsgDirection::Out } else { MsgDirection::In },
+                    text: format!("{from_name}: {body}"),
+                    ts: ts(chrono::Utc::now().timestamp_millis()),
+                });
+                if !mine {
+                    let sel = matches!(&self.target, Some(Target::Group(id)) if *id == group_id) && self.tab == Tab::Groups;
+                    if !sel { *self.unread_g.entry(group_id).or_insert(0) += 1; }
+                }
+            }
+            NodeEvent::GroupFileReceived { group_id, from_name, path, meta, .. } => {
+                self.group_msgs.entry(group_id).or_default().push(Line {
+                    dir: MsgDirection::In,
+                    text: format!("📥 {from_name}: {} → {}", meta.name, path.display()),
+                    ts: ts(chrono::Utc::now().timestamp_millis()),
+                });
+            }
+            NodeEvent::Error(e) => self.status = format!("错误: {e}"),
+            NodeEvent::Info(i) => self.status = i,
         }
     }
 }
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.pump();
+        self.pump(ctx);
         ctx.request_repaint_after(Duration::from_millis(200));
 
-        // Trust modal
-        if let Some(p) = self.show_trust_prompt.clone() {
-            egui::Window::new("新设备待确认 (TOFU)")
-                .collapsible(false)
-                .resizable(false)
+        if ctx.input(|i| i.viewport().close_requested()) && self.tray.is_some() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+            self.status = "已最小化到托盘".into();
+        }
+
+        if self.first_run {
+            egui::Window::new("欢迎 · 一键开始")
+                .collapsible(false).resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                 .show(ctx, |ui| {
-                    ui.label(format!("名称: {}", p.display_name));
-                    ui.label(format!("指纹: {}", p.fingerprint));
-                    ui.label("请与对方当面核对指纹后再信任。");
+                    ui.label("无需编译配置。设置显示名后即可发现局域网好友。");
+                    ui.text_edit_singleline(&mut self.first_name);
+                    ui.small(format!("指纹: {}", self.my_fp));
+                    if ui.button("开始使用").clicked() {
+                        let name = if self.first_name.trim().is_empty() { host() } else { self.first_name.trim().into() };
+                        self.cmd(Cmd::FinishFirstRun(name.clone()));
+                        self.my_name = name; self.first_run = false;
+                    }
+                });
+            return;
+        }
+
+        if let Some(p) = self.trust_prompt.clone() {
+            egui::Window::new("新设备 TOFU 确认").collapsible(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    ui.label(format!("{} · {}", p.display_name, p.fingerprint));
                     ui.horizontal(|ui| {
-                        if ui.button("信任").clicked() {
-                            self.send_cmd(UiCmd::Trust(p.fingerprint.as_str().to_string()));
-                            self.show_trust_prompt = None;
-                        }
-                        if ui.button("拉黑").clicked() {
-                            self.send_cmd(UiCmd::Block(p.fingerprint.as_str().to_string()));
-                            self.show_trust_prompt = None;
-                        }
-                        if ui.button("稍后").clicked() {
-                            self.show_trust_prompt = None;
-                        }
+                        if ui.button("信任").clicked() { self.cmd(Cmd::Trust(p.fingerprint.as_str().into())); self.trust_prompt=None; }
+                        if ui.button("拉黑").clicked() { self.cmd(Cmd::Block(p.fingerprint.as_str().into())); self.trust_prompt=None; }
+                        if ui.button("稍后").clicked() { self.trust_prompt=None; }
+                        if ui.button("复制").clicked() { ctx.copy_text(p.fingerprint.as_str().into()); }
                     });
                 });
+        }
+
+        if self.show_new_group {
+            egui::Window::new("创建群聊").show(ctx, |ui| {
+                ui.text_edit_singleline(&mut self.new_group);
+                let members: Vec<String> = self.peers.iter()
+                    .filter(|p| p.trust == TrustState::Trusted)
+                    .map(|p| p.fingerprint.as_str().to_string()).collect();
+                ui.label(format!("将邀请 {} 个已信任成员", members.len()));
+                ui.horizontal(|ui| {
+                    if ui.button("创建").clicked() && !self.new_group.trim().is_empty() {
+                        self.cmd(Cmd::CreateGroup(self.new_group.trim().into(), members));
+                        self.new_group.clear(); self.show_new_group=false; self.tab=Tab::Groups;
+                    }
+                    if ui.button("取消").clicked() { self.show_new_group=false; }
+                });
+            });
         }
 
         egui::TopBottomPanel::top("top").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.heading("局域网加密通讯");
-                ui.separator();
-                ui.label(format!("{}  ·  {}", self.my_name, self.my_fp));
+                ui.selectable_value(&mut self.tab, Tab::Dm, "私聊");
+                ui.selectable_value(&mut self.tab, Tab::Groups, "群聊");
+                ui.label(format!("{} · {}", self.my_name, self.my_fp));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button("主题").clicked() {
                         self.dark = !self.dark;
-                        if self.dark {
-                            ctx.set_visuals(egui::Visuals::dark());
-                        } else {
-                            ctx.set_visuals(egui::Visuals::light());
-                        }
+                        ctx.set_visuals(if self.dark { egui::Visuals::dark() } else { egui::Visuals::light() });
                     }
-                    if ui.button("复制指纹").clicked() {
-                        ctx.copy_text(self.my_fp.clone());
-                        self.status = "已复制本机指纹到剪贴板".into();
+                    if ui.button("复制指纹").clicked() { ctx.copy_text(self.my_fp.clone()); }
+                    if ui.button("改名").clicked() && !self.name_edit.is_empty() {
+                        self.cmd(Cmd::SetName(self.name_edit.clone())); self.my_name = self.name_edit.clone();
                     }
-                    if ui.button("改名").clicked() {
-                        let name = if !self.name_edit.is_empty() {
-                            self.name_edit.clone()
-                        } else {
-                            self.compose.clone()
-                        };
-                        if !name.is_empty() {
-                            self.send_cmd(UiCmd::SetName(name.clone()));
-                            self.my_name = name;
-                            self.name_edit.clear();
-                            self.status = "显示名已更新".into();
-                        } else {
-                            self.status = "在下方名称框输入新名称后点「改名」".into();
-                        }
-                    }
-                    if ui.button("刷新").clicked() {
-                        self.send_cmd(UiCmd::Refresh);
-                    }
-                });
-                ui.horizontal(|ui| {
-                    ui.label("显示名:");
-                    ui.text_edit_singleline(&mut self.name_edit);
+                    if ui.button("刷新").clicked() { self.cmd(Cmd::Refresh); }
+                    if self.tab == Tab::Groups && ui.button("新建群").clicked() { self.show_new_group = true; }
                 });
             });
+            ui.horizontal(|ui| { ui.label("显示名"); ui.text_edit_singleline(&mut self.name_edit); });
         });
+        egui::TopBottomPanel::bottom("bot").show(ctx, |ui| { ui.label(&self.status); });
 
-        egui::TopBottomPanel::bottom("bottom").show(ctx, |ui| {
-            ui.label(&self.status);
-        });
-
-        egui::SidePanel::left("peers")
-            .default_width(220.0)
-            .show(ctx, |ui| {
-                ui.heading("对等端");
-                ui.separator();
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    let peers_snapshot = self.peers.clone();
-                    for p in &peers_snapshot {
-                        let selected = self.selected.as_deref() == Some(p.fingerprint.as_str());
-                        let badge = self
-                            .unread
-                            .get(p.fingerprint.as_str())
-                            .filter(|n| **n > 0)
-                            .map(|n| format!(" ({n})"))
-                            .unwrap_or_default();
-                        let label = format!(
-                            "{} {} {}{}",
-                            if p.online { "🟢" } else { "⚫" },
-                            p.display_name,
-                            match p.trust {
-                                TrustState::Trusted => "✓",
-                                TrustState::Unknown => "?",
-                                TrustState::Blocked => "✕",
-                            },
-                            badge
-                        );
-                        if ui.selectable_label(selected, label).clicked() {
-                            self.selected = Some(p.fingerprint.as_str().to_string());
-                            self.unread.remove(p.fingerprint.as_str());
+        egui::SidePanel::left("side").default_width(250.0).show(ctx, |ui| {
+            match self.tab {
+                Tab::Dm => {
+                    ui.heading("私聊");
+                    let peers = self.peers.clone();
+                    for p in &peers {
+                        let badge = self.unread_dm.get(p.fingerprint.as_str()).filter(|n| **n>0).map(|n| format!(" ({n})")).unwrap_or_default();
+                        let label = format!("{} {} {}{}", if p.online{"🟢"}else{"⚫"}, p.display_name,
+                            match p.trust { TrustState::Trusted=>"✓", TrustState::Unknown=>"?", TrustState::Blocked=>"✕" }, badge);
+                        let sel = matches!(&self.target, Some(Target::Peer(fp)) if fp==p.fingerprint.as_str());
+                        if ui.selectable_label(sel, label).clicked() {
+                            self.target = Some(Target::Peer(p.fingerprint.as_str().into()));
+                            self.unread_dm.remove(p.fingerprint.as_str());
                         }
                         ui.small(p.fingerprint.as_str());
                         ui.horizontal(|ui| {
-                            if ui.small_button("信任").clicked() {
-                                self.send_cmd(UiCmd::Trust(p.fingerprint.as_str().to_string()));
-                            }
-                            if ui.small_button("拉黑").clicked() {
-                                self.send_cmd(UiCmd::Block(p.fingerprint.as_str().to_string()));
-                            }
-                            if ui.small_button("复制指纹").clicked() {
-                                ctx.copy_text(p.fingerprint.as_str().to_string());
-                                self.status = format!("已复制 {}", p.fingerprint);
-                            }
+                            if ui.small_button("信任").clicked() { self.cmd(Cmd::Trust(p.fingerprint.as_str().into())); }
+                            if ui.small_button("拉黑").clicked() { self.cmd(Cmd::Block(p.fingerprint.as_str().into())); }
+                            if ui.small_button("复制").clicked() { ctx.copy_text(p.fingerprint.as_str().into()); }
                         });
                         ui.separator();
                     }
-                });
-            });
+                }
+                Tab::Groups => {
+                    ui.heading("群聊");
+                    let groups = self.groups.clone();
+                    for g in &groups {
+                        let badge = self.unread_g.get(&g.id).filter(|n| **n>0).map(|n| format!(" ({n})")).unwrap_or_default();
+                        let label = format!("👥 {} · {}人{}", g.name, g.members.len(), badge);
+                        let sel = matches!(&self.target, Some(Target::Group(id)) if *id==g.id);
+                        if ui.selectable_label(sel, label).clicked() {
+                            self.target = Some(Target::Group(g.id));
+                            self.unread_g.remove(&g.id);
+                        }
+                        ui.small(format!("{} 码:{}", g.id, g.join_code));
+                        if ui.small_button("退出").clicked() { self.cmd(Cmd::LeaveGroup(g.id)); }
+                        ui.separator();
+                    }
+                }
+            }
+        });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            let fp = self.selected.clone();
-            if let Some(ref fp) = fp {
-                let peer_name = self
-                    .peers
-                    .iter()
-                    .find(|p| p.fingerprint.as_str() == fp)
-                    .map(|p| p.display_name.clone())
-                    .unwrap_or_else(|| fp.clone());
-                ui.heading(format!("与 {peer_name} 的会话"));
-                ui.separator();
-
-                let lines = self.chat.get(fp).cloned().unwrap_or_default();
-                egui::ScrollArea::vertical()
-                    .stick_to_bottom(true)
-                    .max_height(ui.available_height() - 80.0)
-                    .show(ui, |ui| {
-                        for line in &lines {
-                            let prefix = match line.direction {
-                                MsgDirection::In => "←",
-                                MsgDirection::Out => "→",
-                            };
-                            ui.horizontal(|ui| {
-                                ui.small(&line.ts);
-                                ui.label(format!("{prefix} {}", line.text));
-                            });
+            match (&self.tab, self.target.clone()) {
+                (Tab::Dm, Some(Target::Peer(fp))) => {
+                    let name = self.peers.iter().find(|p| p.fingerprint.as_str()==fp).map(|p| p.display_name.clone()).unwrap_or(fp.clone());
+                    ui.heading(format!("私聊 · {name}"));
+                    let lines = self.dm.get(&fp).cloned().unwrap_or_default();
+                    egui::ScrollArea::vertical().stick_to_bottom(true).max_height(ui.available_height()-90.0).show(ui, |ui| {
+                        for l in &lines {
+                            let d = match l.dir { MsgDirection::In=>"←", MsgDirection::Out=>"→" };
+                            ui.horizontal(|ui| { ui.small(&l.ts); ui.label(format!("{d} {}", l.text)); });
                         }
                     });
-
-                ui.separator();
-                ui.horizontal(|ui| {
-                    let edit = ui.text_edit_singleline(&mut self.compose);
-                    if (edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))
-                        || ui.button("发送").clicked()
-                    {
-                        if !self.compose.is_empty() {
-                            self.push_chat(
-                                fp,
-                                ChatLine {
-                                    direction: MsgDirection::Out,
-                                    text: self.compose.clone(),
-                                    ts: format_ts(chrono::Utc::now().timestamp_millis()),
-                                },
-                            );
-                            self.send_cmd(UiCmd::SendText(fp.clone(), self.compose.clone()));
-                            self.compose.clear();
+                    ui.separator();
+                    ui.horizontal(|ui| {
+                        let _ = ui.text_edit_singleline(&mut self.compose);
+                        if ui.button("发送").clicked() && !self.compose.is_empty() {
+                            self.dm.entry(fp.clone()).or_default().push(Line{dir:MsgDirection::Out,text:self.compose.clone(),ts:ts(chrono::Utc::now().timestamp_millis())});
+                            self.cmd(Cmd::SendText(fp.clone(), self.compose.clone())); self.compose.clear();
                         }
-                    }
-                    if ui.button("发文件").clicked() {
-                        if let Some(path) = rfd::FileDialog::new().pick_file() {
-                            self.send_cmd(UiCmd::SendFile(fp.clone(), path));
+                        if ui.button("发文件").clicked() {
+                            if let Some(p)=rfd::FileDialog::new().pick_file() { self.cmd(Cmd::SendFile(fp.clone(), p)); }
                         }
-                    }
-                    if ui.button("广播").clicked() {
-                        if !self.compose.is_empty() {
-                            self.send_cmd(UiCmd::Broadcast(self.compose.clone()));
-                            self.compose.clear();
+                        if ui.button("广播").clicked() && !self.compose.is_empty() {
+                            self.cmd(Cmd::Broadcast(self.compose.clone())); self.compose.clear();
                         }
-                    }
-                    if ui.button("剪贴板→输入").clicked() {
-                        self.status = "请使用 Ctrl+V 粘贴到输入框后发送".into();
-                    }
-                });
-
-                // Drag-drop files
-                ctx.input(|i| {
-                    if !i.raw.dropped_files.is_empty() {
+                    });
+                    ctx.input(|i| {
                         for f in &i.raw.dropped_files {
-                            if let Some(path) = &f.path {
-                                self.send_cmd(UiCmd::SendFile(fp.clone(), path.clone()));
-                            }
+                            if let Some(p)=&f.path { self.cmd(Cmd::SendFile(fp.clone(), p.clone())); }
                         }
+                    });
+                }
+                (Tab::Groups, Some(Target::Group(gid))) => {
+                    let name = self.groups.iter().find(|g| g.id==gid).map(|g| g.name.clone()).unwrap_or_default();
+                    ui.heading(format!("群聊 · {name}"));
+                    let lines = self.group_msgs.get(&gid).cloned().unwrap_or_default();
+                    egui::ScrollArea::vertical().stick_to_bottom(true).max_height(ui.available_height()-120.0).show(ui, |ui| {
+                        for l in &lines { ui.horizontal(|ui| { ui.small(&l.ts); ui.label(&l.text); }); }
+                    });
+                    ui.separator();
+                    ui.horizontal(|ui| {
+                        let _ = ui.text_edit_singleline(&mut self.compose);
+                        if ui.button("发送").clicked() && !self.compose.is_empty() {
+                            self.group_msgs.entry(gid).or_default().push(Line{dir:MsgDirection::Out,text:format!("{}: {}", self.my_name, self.compose),ts:ts(chrono::Utc::now().timestamp_millis())});
+                            self.cmd(Cmd::SendGroupText(gid, self.compose.clone())); self.compose.clear();
+                        }
+                        if ui.button("发文件").clicked() {
+                            if let Some(p)=rfd::FileDialog::new().pick_file() { self.cmd(Cmd::SendGroupFile(gid, p)); }
+                        }
+                    });
+                    if let Some(g)=self.groups.iter().find(|g| g.id==gid).cloned() {
+                        ui.collapsing("邀请已信任成员", |ui| {
+                            for p in &self.peers {
+                                if p.trust==TrustState::Trusted && !g.members.iter().any(|m| m==p.fingerprint.as_str()) {
+                                    if ui.button(format!("邀请 {}", p.display_name)).clicked() {
+                                        self.cmd(Cmd::Invite(gid, p.fingerprint.as_str().into()));
+                                    }
+                                }
+                            }
+                        });
                     }
-                });
-            } else {
-                ui.vertical_centered(|ui| {
-                    ui.add_space(120.0);
-                    ui.heading("选择左侧对等端开始聊天");
-                    ui.label("支持文本、图片/文件拖放发送、广播已信任在线节点");
-                });
+                }
+                _ => {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(120.0);
+                        ui.heading(if self.tab==Tab::Dm {"选择左侧好友开始私聊"} else {"选择或新建群聊"});
+                        ui.label("关闭窗口 → 托盘后台运行；双击托盘图标恢复。");
+                    });
+                }
             }
         });
     }
 }
 
-async fn backend_main(msg_tx: Sender<UiMsg>, cmd_rx: Receiver<UiCmd>) -> anyhow::Result<()> {
-    let paths = if let Ok(dir) = std::env::var("LAN_MSG_CONFIG") {
-        let dir = PathBuf::from(dir);
-        std::fs::create_dir_all(&dir)?;
-        ConfigPaths::from_dir(dir)
-    } else {
-        ConfigPaths::resolve()?
-    };
+fn make_tray() -> Option<TrayBits> {
+    #[cfg(feature = "tray")]
+    {
+        use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
+        use tray_icon::{TrayIconBuilder, TrayIconEvent};
+        let show = Arc::new(Mutex::new(false));
+        let quit = Arc::new(Mutex::new(false));
+        let show2 = show.clone();
+        let quit2 = quit.clone();
+        let menu = Menu::new();
+        let show_i = MenuItem::new("显示窗口", true, None);
+        let quit_i = MenuItem::new("退出", true, None);
+        let _ = menu.append(&show_i);
+        let _ = menu.append(&PredefinedMenuItem::separator());
+        let _ = menu.append(&quit_i);
+        let show_id = show_i.id().clone();
+        let quit_id = quit_i.id().clone();
+        let mut rgba = vec![0u8; 32*32*4];
+        for y in 0..32 { for x in 0..32 {
+            let dx=x as f32-15.5; let dy=y as f32-15.5; let i=(y*32+x)*4;
+            if dx*dx+dy*dy<=14.0*14.0 { rgba[i]=40; rgba[i+1]=120; rgba[i+2]=220; rgba[i+3]=255; }
+        }}
+        let icon = tray_icon::Icon::from_rgba(rgba, 32, 32).ok()?;
+        let tray = TrayIconBuilder::new().with_menu(Box::new(menu)).with_tooltip("局域网加密通讯").with_icon(icon).build().ok()?;
+        std::thread::spawn(move || {
+            let mc = MenuEvent::receiver();
+            let tc = TrayIconEvent::receiver();
+            loop {
+                if let Ok(ev) = mc.try_recv() {
+                    if ev.id == show_id { if let Ok(mut s)=show2.lock() { *s=true; } }
+                    else if ev.id == quit_id { if let Ok(mut q)=quit2.lock() { *q=true; } }
+                }
+                if let Ok(TrayIconEvent::Click{..}) = tc.try_recv() {
+                    if let Ok(mut s)=show2.lock() { *s=true; }
+                }
+                std::thread::sleep(Duration::from_millis(120));
+            }
+        });
+        Some(TrayBits { #[cfg(feature = "tray")] _tray: Some(tray), show, quit })
+    }
+    #[cfg(not(feature = "tray"))]
+    { None }
+}
 
+async fn backend(msg_tx: Sender<Msg>, cmd_rx: Receiver<Cmd>) -> anyhow::Result<()> {
+    let paths = if let Ok(d)=std::env::var("LAN_MSG_CONFIG") {
+        let d=PathBuf::from(d); std::fs::create_dir_all(&d)?; ConfigPaths::from_dir(d)
+    } else { ConfigPaths::resolve()? };
     let mut config = AppConfig::load(&paths)?;
-    if let Ok(name) = std::env::var("LAN_MSG_NAME") {
-        config.display_name = name;
-    }
-    if let Ok(bind) = std::env::var("LAN_MSG_BIND") {
-        config.bind_addr = bind;
-    }
-    if let Ok(p) = std::env::var("LAN_MSG_DISCOVERY_PORT") {
-        if let Ok(v) = p.parse() {
-            config.discovery_port = v;
-        }
-    }
-    if let Ok(p) = std::env::var("LAN_MSG_LISTEN_PORT") {
-        if let Ok(v) = p.parse() {
-            config.listen_port = v;
-        }
-    }
-    if let Ok(b) = std::env::var("LAN_MSG_BROADCAST") {
-        config.broadcast_addr = Some(b);
-    }
-    if std::env::var("LAN_MSG_AUTO_TRUST").is_ok() {
-        config.auto_trust = true;
-    }
-
-    let node = Node::open(paths, config)?;
+    if let Ok(n)=std::env::var("LAN_MSG_NAME") { config.display_name = n; }
+    if let Ok(b)=std::env::var("LAN_MSG_BIND") { config.bind_addr = b; }
+    if std::env::var("LAN_MSG_AUTO_TRUST").is_ok() { config.auto_trust = true; }
+    let first_run = !config.first_run_done;
+    let node = Node::open(paths.clone(), config)?;
     let handle = node.start().await?;
     let (fp, name) = handle.fingerprint().await?;
-    let _ = msg_tx.send(UiMsg::Ready {
-        fp,
-        name,
-        handle: handle.clone(),
-    });
-
+    let _ = msg_tx.send(Msg::Ready { fp, name, handle: handle.clone(), first_run });
     let mut ev = handle.subscribe();
-    let msg_tx2 = msg_tx.clone();
+    let tx2 = msg_tx.clone();
     tokio::spawn(async move {
         while let Ok(e) = ev.recv().await {
-            if msg_tx2.send(UiMsg::Event(e)).is_err() {
-                break;
-            }
+            if tx2.send(Msg::Event(e)).is_err() { break; }
         }
     });
-
-    // Command loop in blocking thread via async
     loop {
-        // poll cmd channel without blocking runtime too hard
         match cmd_rx.try_recv() {
-            Ok(UiCmd::SendText(fp, body)) => {
-                match handle.send_text(&fp, &body).await {
-                    Ok(_) => {
-                        let _ = msg_tx.send(UiMsg::Status("已发送".into()));
-                    }
-                    Err(e) => {
-                        let _ = msg_tx.send(UiMsg::Error(e.to_string()));
-                    }
+            Ok(Cmd::SendText(fp, body)) => { if let Err(e)=handle.send_text(&fp,&body).await { let _=msg_tx.send(Msg::Error(e.to_string())); } }
+            Ok(Cmd::Broadcast(body)) => {
+                match handle.broadcast_text_detailed(&body).await {
+                    Ok(r) => { let _=msg_tx.send(Msg::Status(format!("广播 成功{} 失败{}", r.ok.len(), r.failed.len()))); }
+                    Err(e) => { let _=msg_tx.send(Msg::Error(e.to_string())); }
                 }
             }
-            Ok(UiCmd::Broadcast(body)) => match handle.broadcast_text(&body).await {
-                Ok(n) => {
-                    let _ = msg_tx.send(UiMsg::Status(format!("已广播给 {n} 人")));
-                }
-                Err(e) => {
-                    let _ = msg_tx.send(UiMsg::Error(e.to_string()));
-                }
-            },
-            Ok(UiCmd::SendFile(fp, path)) => match handle.send_file(&fp, &path).await {
-                Ok(meta) => {
-                    let _ = msg_tx.send(UiMsg::Status(format!("文件已发送: {}", meta.name)));
-                }
-                Err(e) => {
-                    let _ = msg_tx.send(UiMsg::Error(e.to_string()));
-                }
-            },
-            Ok(UiCmd::Trust(fp)) => {
-                let _ = handle.trust_peer(&fp, TrustState::Trusted).await;
-                let _ = msg_tx.send(UiMsg::Status(format!("已信任 {fp}")));
-                let _ = msg_tx.send(UiMsg::Peers(handle.list_peers().await.unwrap_or_default()));
+            Ok(Cmd::SendFile(fp, path)) => { if let Err(e)=handle.send_file(&fp,&path).await { let _=msg_tx.send(Msg::Error(e.to_string())); } }
+            Ok(Cmd::Trust(fp)) => { let _=handle.trust_peer(&fp, TrustState::Trusted).await; let _=msg_tx.send(Msg::Peers(handle.list_peers().await.unwrap_or_default())); }
+            Ok(Cmd::Block(fp)) => { let _=handle.trust_peer(&fp, TrustState::Blocked).await; }
+            Ok(Cmd::SetName(name)) => { let _=handle.set_display_name(&name).await; }
+            Ok(Cmd::FinishFirstRun(name)) => {
+                let _=handle.set_display_name(&name).await;
+                if let Ok(mut cfg)=AppConfig::load(&paths) { cfg.display_name=name; cfg.first_run_done=true; let _=cfg.save(&paths); }
             }
-            Ok(UiCmd::Block(fp)) => {
-                let _ = handle.trust_peer(&fp, TrustState::Blocked).await;
-                let _ = msg_tx.send(UiMsg::Status(format!("已拉黑 {fp}")));
-            }
-            Ok(UiCmd::SetName(name)) => {
-                let _ = handle.set_display_name(&name).await;
-                let _ = msg_tx.send(UiMsg::Status(format!("显示名: {name}")));
-            }
-            Ok(UiCmd::Refresh) => {
-                let peers = handle.list_peers().await.unwrap_or_default();
-                let _ = msg_tx.send(UiMsg::Peers(peers));
-                if let Ok(h) = handle.history(None, 200).await {
-                    let _ = msg_tx.send(UiMsg::History(h));
+            Ok(Cmd::Refresh) => {
+                let _=msg_tx.send(Msg::Peers(handle.list_peers().await.unwrap_or_default()));
+                let _=msg_tx.send(Msg::Groups(handle.list_groups().await.unwrap_or_default()));
+                if let Ok(h)=handle.history(None, 300).await { let _=msg_tx.send(Msg::History(h)); }
+                if let Ok(gs)=handle.list_groups().await {
+                    for g in gs { if let Ok(h)=handle.group_history(g.id, 200).await { let _=msg_tx.send(Msg::GroupHistory(g.id, h)); } }
                 }
             }
-            Err(mpsc::TryRecvError::Empty) => {
-                tokio::time::sleep(Duration::from_millis(50)).await;
+            Ok(Cmd::CreateGroup(name, members)) => {
+                match handle.create_group(&name, members).await {
+                    Ok(g) => { let _=msg_tx.send(Msg::Status(format!("已建群 {} 码 {}", g.name, g.join_code))); let _=msg_tx.send(Msg::Groups(handle.list_groups().await.unwrap_or_default())); }
+                    Err(e) => { let _=msg_tx.send(Msg::Error(e.to_string())); }
+                }
             }
+            Ok(Cmd::SendGroupText(gid, body)) => { if let Err(e)=handle.send_group_text(gid,&body).await { let _=msg_tx.send(Msg::Error(e.to_string())); } }
+            Ok(Cmd::SendGroupFile(gid, path)) => { if let Err(e)=handle.send_group_file(gid,&path).await { let _=msg_tx.send(Msg::Error(e.to_string())); } }
+            Ok(Cmd::LeaveGroup(gid)) => { let _=handle.leave_group(gid).await; let _=msg_tx.send(Msg::Groups(handle.list_groups().await.unwrap_or_default())); }
+            Ok(Cmd::Invite(gid, fp)) => { if let Err(e)=handle.invite_to_group(gid,&fp).await { let _=msg_tx.send(Msg::Error(e.to_string())); } }
+            Err(mpsc::TryRecvError::Empty) => { tokio::time::sleep(Duration::from_millis(40)).await; }
             Err(mpsc::TryRecvError::Disconnected) => break,
         }
     }
@@ -583,10 +603,13 @@ async fn backend_main(msg_tx: Sender<UiMsg>, cmd_rx: Receiver<UiCmd>) -> anyhow:
     Ok(())
 }
 
-fn format_ts(ts_ms: i64) -> String {
+fn ts(ms: i64) -> String {
     use chrono::{Local, TimeZone};
-    match Local.timestamp_millis_opt(ts_ms) {
+    match Local.timestamp_millis_opt(ms) {
         chrono::LocalResult::Single(dt) => dt.format("%H:%M:%S").to_string(),
-        _ => ts_ms.to_string(),
+        _ => ms.to_string(),
     }
+}
+fn host() -> String {
+    hostname::get().ok().and_then(|h| h.into_string().ok()).unwrap_or_else(|| "我的电脑".into())
 }

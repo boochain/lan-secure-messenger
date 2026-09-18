@@ -24,3 +24,11 @@ hex = { workspace = true }
 serde_json = { workspace = true }
 image = { workspace = true }
 parking_lot = { workspace = true }
+tray-icon = { workspace = true, optional = true }
+tao = { workspace = true, optional = true }
+uuid = { workspace = true }
+hostname = { workspace = true }
+
+[features]
+default = ["tray"]
+tray = ["dep:tray-icon", "dep:tao"]

@@ -6,6 +6,7 @@
 pub mod config;
 pub mod crypto;
 pub mod discovery;
+pub mod group;
 pub mod history;
 pub mod identity;
 pub mod node;
@@ -18,7 +19,8 @@ pub use config::{AppConfig, ConfigPaths};
 pub use identity::{Fingerprint, Identity};
 pub use node::{Node, NodeEvent, NodeHandle};
 pub use peer::{PeerInfo, PeerStore, TrustState};
-pub use protocol::{ChatMessage, FileMeta, WireMessage};
+pub use group::{GroupInfo, GroupStore};
+pub use protocol::{ChatMessage, ChatScope, FileMeta, WireMessage};
 
 pub const APP_NAME: &str = "lan-secure-messenger";
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");

@@ -9,3 +9,7 @@
 smoke-run/
 smoke-run/
 /smoke-*/
+
+/dist/
+
+*.exe

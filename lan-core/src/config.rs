@@ -14,6 +14,7 @@ pub struct ConfigPaths {
     pub history: PathBuf,
     pub history_key: PathBuf,
     pub settings: PathBuf,
+    pub groups: PathBuf,
 }
 
 impl ConfigPaths {
@@ -35,6 +36,7 @@ impl ConfigPaths {
             history: root.join("history.enc"),
             history_key: root.join("history.key"),
             settings: root.join("settings.json"),
+            groups: root.join("groups.json"),
             root,
         }
     }
@@ -64,6 +66,12 @@ pub struct AppConfig {
     /// Keep idle TCP/Noise sessions for reuse (seconds).
     #[serde(default = "default_session_idle_secs")]
     pub session_idle_secs: u64,
+    /// First-run wizard completed.
+    #[serde(default)]
+    pub first_run_done: bool,
+    /// Start GUI minimized to tray.
+    #[serde(default)]
+    pub start_in_tray: bool,
 }
 
 fn default_max_file_bytes() -> u64 {
@@ -89,6 +97,8 @@ impl Default for AppConfig {
             history_enabled: true,
             max_file_bytes: default_max_file_bytes(),
             session_idle_secs: default_session_idle_secs(),
+            first_run_done: false,
+            start_in_tray: false,
         }
     }
 }
