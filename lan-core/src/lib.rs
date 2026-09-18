@@ -26,6 +26,6 @@ pub const DEFAULT_DISCOVERY_PORT: u16 = 41234;
 pub const DEFAULT_LISTEN_PORT: u16 = 41235;
 pub const PROTOCOL_MAGIC: [u8; 4] = *b"LSM1";
 pub const PROTOCOL_VERSION: u16 = 1;
-pub const CHUNK_SIZE: usize = 64 * 1024;
+pub const CHUNK_SIZE: usize = 48 * 1024;
 pub const DISCOVERY_INTERVAL_MS: u64 = 2000;
 pub const PEER_TIMEOUT_SECS: u64 = 8;

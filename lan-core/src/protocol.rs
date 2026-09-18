@@ -10,6 +10,11 @@ pub enum WireMessage {
         body: String,
         ts_ms: i64,
     },
+    /// Delivery receipt for a text message
+    TextAck {
+        id: Uuid,
+        ts_ms: i64,
+    },
     /// Broadcast text (sender already delivered to multiple peers)
     BroadcastText {
         id: Uuid,
@@ -37,6 +42,22 @@ pub enum WireMessage {
     FileAck { id: Uuid, received: u64 },
     /// Transfer complete
     FileDone { id: Uuid, ok: bool },
+    /// Cancel an in-progress transfer
+    FileCancel { id: Uuid },
+    /// Peer is receiving / processing (lightweight presence)
+    Status {
+        kind: PeerStatusKind,
+        detail: String,
+    },
+    /// PIN pairing proof (plaintext PIN only sent inside Noise session)
+    PinPair {
+        pin: String,
+    },
+    /// PIN pairing accepted → mutual trust
+    PinPairAck {
+        ok: bool,
+        message: String,
+    },
     /// Keepalive
     Ping { ts_ms: i64 },
     Pong { ts_ms: i64 },
@@ -45,6 +66,13 @@ pub enum WireMessage {
         display_name: String,
         fingerprint: String,
     },
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum PeerStatusKind {
+    Idle,
+    Typing,
+    ReceivingFile,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -58,6 +86,9 @@ pub struct ChatMessage {
     pub ts_ms: i64,
     pub file_path: Option<String>,
     pub file_size: Option<u64>,
+    /// Delivery receipt received (outbound text)
+    #[serde(default)]
+    pub delivered: bool,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -96,7 +127,7 @@ pub struct DiscoveryAnnounce {
     pub ts_ms: i64,
     pub nonce: [u8; 16],
     /// Signature over canonical bytes (everything except sig itself).
-    pub sig: Vec<u8>,  // 64 bytes
+    pub sig: Vec<u8>, // 64 bytes
 }
 
 impl DiscoveryAnnounce {
@@ -121,4 +152,20 @@ pub fn encode_frame(payload: &[u8]) -> Vec<u8> {
     out.extend_from_slice(&(payload.len() as u32).to_be_bytes());
     out.extend_from_slice(payload);
     out
+}
+
+/// Result of a broadcast fan-out.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BroadcastResult {
+    pub ok: Vec<String>,
+    pub failed: Vec<(String, String)>,
+}
+
+impl BroadcastResult {
+    pub fn ok_count(&self) -> usize {
+        self.ok.len()
+    }
+    pub fn fail_count(&self) -> usize {
+        self.failed.len()
+    }
 }

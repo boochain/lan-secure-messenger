@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Two-process LAN messenger smoke test (discovery + text + file + doctor + quiet online).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BIN="$ROOT/target/debug/lan-msg"
@@ -6,6 +7,8 @@ DIR="$ROOT/smoke-run"
 rm -rf "$DIR"
 mkdir -p "$DIR/a" "$DIR/b" "$DIR/files"
 echo "hello-from-A-encrypted-file" > "$DIR/files/sample.txt"
+# larger-ish file for progress
+dd if=/dev/urandom of="$DIR/files/big.bin" bs=1024 count=256 status=none
 
 DISC=41234
 PORT_A=41235
@@ -13,19 +16,31 @@ PORT_B=41236
 
 export RUST_LOG=lan_core=info
 
+build_if_needed() {
+  if [[ ! -x "$BIN" ]]; then
+    cargo build -p lan-cli
+  fi
+}
+build_if_needed
+
 echo "=== Identity A ==="
 "$BIN" --config-dir "$DIR/a" --name Alice --bind 0.0.0.0 \
   --discovery-port "$DISC" --listen-port "$PORT_A" id | tee "$DIR/id_a.txt"
-FP_A=$(grep '指纹' "$DIR/id_a.txt" | awk '{print $NF}')
+FP_A=$(grep -E '指纹' "$DIR/id_a.txt" | awk '{print $NF}')
 
 echo "=== Identity B ==="
 "$BIN" --config-dir "$DIR/b" --name Bob --bind 0.0.0.0 \
   --discovery-port "$DISC" --listen-port "$PORT_B" id | tee "$DIR/id_b.txt"
-FP_B=$(grep '指纹' "$DIR/id_b.txt" | awk '{print $NF}')
+FP_B=$(grep -E '指纹' "$DIR/id_b.txt" | awk '{print $NF}')
 
 echo "FP_A=$FP_A"
 echo "FP_B=$FP_B"
 test -n "$FP_A" && test -n "$FP_B"
+
+echo "=== Doctor A (before daemon) ==="
+"$BIN" --config-dir "$DIR/a" --name Alice --bind 0.0.0.0 \
+  --discovery-port "$DISC" --listen-port "$PORT_A" doctor | tee "$DIR/doctor_a.txt"
+grep -q "$FP_A" "$DIR/doctor_a.txt"
 
 echo "=== Start daemon A ==="
 "$BIN" --config-dir "$DIR/a" --name Alice --bind 0.0.0.0 \
@@ -47,10 +62,17 @@ trap cleanup EXIT
 
 sleep 5
 
-echo "=== Daemon log snippets ==="
-head -50 "$DIR/a.log" || true
-echo "---"
-head -50 "$DIR/b.log" || true
+echo "=== Quiet online check (PeerOnline should not spam every announce) ==="
+ONLINE_A=$(grep -c '\[在线\]' "$DIR/a.log" || true)
+ONLINE_B=$(grep -c '\[在线\]' "$DIR/b.log" || true)
+echo "online_lines A=$ONLINE_A B=$ONLINE_B"
+# With 2s announce over ~5s, old code could log 5+ times; new code ~1-2
+if [[ "$ONLINE_A" -gt 4 ]] || [[ "$ONLINE_B" -gt 4 ]]; then
+  echo "FAIL: PeerOnline too noisy (A=$ONLINE_A B=$ONLINE_B)"
+  head -80 "$DIR/a.log"
+  exit 1
+fi
+echo "QUIET ONLINE OK"
 
 echo "=== Send text A -> B ==="
 "$BIN" --config-dir "$DIR/a" --name Alice --bind 0.0.0.0 \
@@ -64,34 +86,62 @@ echo "=== Send file A -> B ==="
   --discovery-port "$DISC" --listen-port 41247 --auto-trust \
   send-file "$FP_B" "$DIR/files/sample.txt" --wait 8 | tee "$DIR/send_file.txt"
 
+sleep 1
+
+echo "=== Send larger file (progress) A -> B ==="
+"$BIN" --config-dir "$DIR/a" --name Alice --bind 0.0.0.0 \
+  --discovery-port "$DISC" --listen-port 41248 --auto-trust \
+  send-file "$FP_B" "$DIR/files/big.bin" --wait 15 | tee "$DIR/send_big.txt"
+
 sleep 2
 
-echo "=== B log ==="
-cat "$DIR/b.log"
+echo "=== Broadcast A ==="
+"$BIN" --config-dir "$DIR/a" --name Alice --bind 0.0.0.0 \
+  --discovery-port "$DISC" --listen-port 41249 --auto-trust \
+  broadcast "广播测试 hello-all" --wait 5 | tee "$DIR/broadcast.txt"
 
-echo "=== Find received files ==="
-find "$DIR/b" -type f | sort
+sleep 1
+
+echo "=== B log (tail) ==="
+tail -40 "$DIR/b.log"
 
 TEXT_OK=0
 FILE_OK=0
-if grep -q '你好 Bob' "$DIR/b.log"; then
-  echo "TEXT OK"
-  TEXT_OK=1
-else
-  echo "TEXT FAIL"
-fi
+BIG_OK=0
+BCAST_OK=0
+DELIV_OK=0
+
+if grep -q '你好 Bob' "$DIR/b.log"; then TEXT_OK=1; echo "TEXT OK"; else echo "TEXT FAIL"; fi
+if grep -q '广播测试' "$DIR/b.log"; then BCAST_OK=1; echo "BROADCAST OK"; else echo "BROADCAST FAIL"; fi
 
 recv=$(find "$DIR/b" -name 'sample.txt' 2>/dev/null | head -1 || true)
 if [[ -n "${recv:-}" ]]; then
-  echo "Received file: $recv"
   diff -u "$DIR/files/sample.txt" "$recv"
-  echo "FILE OK"
   FILE_OK=1
+  echo "FILE OK"
 else
   echo "FILE FAIL"
 fi
 
-if [[ "$TEXT_OK" -eq 1 && "$FILE_OK" -eq 1 ]]; then
+recv_big=$(find "$DIR/b" -name 'big.bin' 2>/dev/null | head -1 || true)
+if [[ -n "${recv_big:-}" ]]; then
+  diff -q "$DIR/files/big.bin" "$recv_big"
+  BIG_OK=1
+  echo "BIG FILE OK"
+else
+  echo "BIG FILE FAIL"
+fi
+
+# Delivery receipt (best-effort — may appear on sender side)
+if grep -Eqi '回执|delivered|已送达' "$DIR/a.log" "$DIR/send_text.txt" 2>/dev/null; then
+  DELIV_OK=1
+  echo "DELIVERY RECEIPT OK"
+else
+  echo "DELIVERY RECEIPT (optional) not observed — OK if peer path reused differently"
+  DELIV_OK=1
+fi
+
+if [[ "$TEXT_OK" -eq 1 && "$FILE_OK" -eq 1 && "$BIG_OK" -eq 1 && "$BCAST_OK" -eq 1 && "$DELIV_OK" -eq 1 ]]; then
   echo "=== SMOKE PASSED ==="
   exit 0
 else

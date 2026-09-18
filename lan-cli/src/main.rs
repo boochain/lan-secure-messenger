@@ -94,6 +94,28 @@ enum Commands {
     SetName {
         name: String,
     },
+    /// 诊断：端口、指纹、对等端数量、配置路径
+    Doctor,
+    /// 生成本地 PIN 并等待对方配对（默认随机 6 位）
+    PairOffer {
+        /// 自定义 PIN（4-12 位数字）；省略则随机生成
+        #[arg(long)]
+        pin: Option<String>,
+        /// 保持守护并等待配对的秒数
+        #[arg(long, default_value = "120")]
+        wait: u64,
+    },
+    /// 使用 PIN 与指定对等端配对（互相信任）
+    Pair {
+        fingerprint: String,
+        pin: String,
+        #[arg(long, default_value = "5")]
+        wait: u64,
+    },
+    /// 请求取消进行中的文件传输（传 transfer uuid）
+    CancelTransfer {
+        id: String,
+    },
 }
 
 #[tokio::main]
@@ -137,6 +159,78 @@ async fn main() -> Result<()> {
             config.display_name = name.clone();
             config.save(&paths)?;
             println!("显示名已设为: {name}");
+            Ok(())
+        }
+        Commands::Doctor => {
+            let handle = start_node(paths, config).await?;
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            let d = handle.doctor().await?;
+            println!("=== lan-msg 诊断 ===");
+            println!("显示名:     {}", d.display_name);
+            println!("指纹:       {}", d.fingerprint);
+            println!("配置目录:   {}", d.config_dir);
+            println!("绑定地址:   {}", d.bind_addr);
+            println!("发现端口:   {}", d.discovery_port);
+            println!("TCP 端口:   {}", d.listen_port);
+            println!("广播覆盖:   {:?}", d.broadcast_addr);
+            println!("自动信任:   {}", d.auto_trust);
+            println!("历史加密:   {}", d.history_enabled);
+            println!("最大文件:   {} bytes", d.max_file_bytes);
+            println!("会话空闲:   {} s", d.session_idle_secs);
+            println!(
+                "对等端:     {} 总计 / {} 在线 / {} 已信任",
+                d.peer_total, d.peer_online, d.peer_trusted
+            );
+            handle.shutdown().await;
+            Ok(())
+        }
+        Commands::PairOffer { pin, wait } => {
+            let pin = pin.unwrap_or_else(|| {
+                use rand::Rng;
+                format!("{:06}", rand::thread_rng().gen_range(0..1_000_000u32))
+            });
+            let handle = start_node(paths, config).await?;
+            handle.offer_pin(&pin).await?;
+            let (fp, name) = handle.fingerprint().await?;
+            println!("配对 PIN: {pin}");
+            println!("本机: {name} ({fp})");
+            println!("请对方运行: lan-msg pair {fp} {pin}");
+            println!("等待最多 {wait}s…");
+            let mut ev = handle.subscribe();
+            let deadline = tokio::time::Instant::now() + Duration::from_secs(wait);
+            loop {
+                tokio::select! {
+                    _ = tokio::signal::ctrl_c() => break,
+                    _ = tokio::time::sleep_until(deadline) => break,
+                    Ok(ev) = ev.recv() => {
+                        match ev {
+                            NodeEvent::PeerUpdated(p) if p.trust == TrustState::Trusted => {
+                                println!("[配对成功] {} ({})", p.display_name, p.fingerprint);
+                            }
+                            NodeEvent::Info(i) => println!("[信息] {i}"),
+                            NodeEvent::Error(e) => eprintln!("[错误] {e}"),
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            handle.shutdown().await;
+            Ok(())
+        }
+        Commands::Pair { fingerprint, pin, wait } => {
+            let handle = start_node(paths, config).await?;
+            wait_for_peer(&handle, &fingerprint, wait).await?;
+            handle.pair_with_pin(&fingerprint, &pin).await?;
+            println!("已与 {fingerprint} 完成 PIN 配对并信任");
+            handle.shutdown().await;
+            Ok(())
+        }
+        Commands::CancelTransfer { id } => {
+            let handle = start_node(paths, config).await?;
+            let uuid = uuid::Uuid::parse_str(&id)?;
+            handle.cancel_transfer(uuid).await?;
+            println!("已请求取消传输 {id}");
+            handle.shutdown().await;
             Ok(())
         }
         Commands::Daemon => run_daemon(paths, config).await,
@@ -206,8 +300,18 @@ async fn main() -> Result<()> {
                         .await;
                 }
             }
-            let n = handle.broadcast_text(&message).await?;
-            println!("已广播给 {n} 个对等端");
+            let result = handle.broadcast_text_detailed(&message).await?;
+            println!(
+                "广播完成: 成功 {} / 失败 {}",
+                result.ok.len(),
+                result.failed.len()
+            );
+            for fp in &result.ok {
+                println!("  ✓ {fp}");
+            }
+            for (fp, err) in &result.failed {
+                println!("  ✗ {fp}: {err}");
+            }
             handle.shutdown().await;
             Ok(())
         }
@@ -325,10 +429,17 @@ async fn run_daemon(paths: ConfigPaths, config: AppConfig) -> Result<()> {
                     NodeEvent::TransferComplete { name, ok, .. } => {
                         println!("[传输] {name} {}", if ok { "完成" } else { "失败" });
                     }
+                    NodeEvent::TextDelivered { id, peer_fp } => {
+                        println!("[回执] 已送达 {peer_fp} id={id}");
+                    }
+                    NodeEvent::PeerStatus { peer_fp, kind, detail } => {
+                        println!("[状态] {peer_fp}: {kind:?} {detail}");
+                    }
                     NodeEvent::Error(e) => eprintln!("[错误] {e}"),
                     NodeEvent::Info(i) => println!("[信息] {i}"),
                     NodeEvent::PeerUpdated(p) => {
-                        println!("[更新] {} {:?} ", p.display_name, p.trust);
+                        // Trust/name changes only (discovery heartbeats no longer spam PeerOnline)
+                        println!("[更新] {} {:?}", p.display_name, p.trust);
                     }
                 }
             }

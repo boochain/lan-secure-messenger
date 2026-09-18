@@ -2192,10 +2192,12 @@ dependencies = [
  "clap",
  "hex",
  "lan-core",
+ "rand 0.8.8",
  "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]

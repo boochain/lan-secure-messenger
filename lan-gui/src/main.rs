@@ -61,6 +61,9 @@ struct App {
     chat: HashMap<String, Vec<ChatLine>>,
     compose: String,
     status: String,
+    unread: std::collections::HashMap<String, u32>,
+    name_edit: String,
+    dark: bool,
     handle: Option<NodeHandle>,
     cmd_tx: Option<Sender<UiCmd>>,
     msg_rx: Receiver<UiMsg>,
@@ -97,6 +100,9 @@ impl App {
             chat: HashMap::new(),
             compose: String::new(),
             status: "正在启动…".into(),
+            unread: Default::default(),
+            name_edit: String::new(),
+            dark: true,
             handle: None,
             cmd_tx: Some(cmd_tx),
             msg_rx,
@@ -186,6 +192,9 @@ impl App {
                 );
                 if !mine {
                     self.status = format!("新消息来自 {from_name}");
+                    if self.selected.as_deref() != Some(from_fp.as_str()) {
+                        *self.unread.entry(from_fp.clone()).or_insert(0) += 1;
+                    }
                 }
             }
             NodeEvent::FileReceived {
@@ -222,6 +231,20 @@ impl App {
             }
             NodeEvent::Error(e) => self.status = format!("错误: {e}"),
             NodeEvent::Info(i) => self.status = i,
+            NodeEvent::TextDelivered { id, peer_fp } => {
+                self.status = format!("已送达 {peer_fp} ({id})");
+                // mark last outbound as delivered in chat if present
+                if let Some(lines) = self.chat.get_mut(&peer_fp) {
+                    if let Some(line) = lines.iter_mut().rev().find(|l| l.text.contains(&id.to_string()) || true) {
+                        if !line.text.ends_with(" ✓") && line.direction == MsgDirection::Out {
+                            line.text.push_str(" ✓");
+                        }
+                    }
+                }
+            }
+            NodeEvent::PeerStatus { peer_fp, kind, detail } => {
+                self.status = format!("{peer_fp}: {kind:?} {detail}");
+            }
         }
     }
 
@@ -273,19 +296,40 @@ impl eframe::App for App {
                 ui.separator();
                 ui.label(format!("{}  ·  {}", self.my_name, self.my_fp));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("改名").clicked() {
-                        // simple prompt via compose area reuse
-                        if !self.compose.is_empty() {
-                            self.send_cmd(UiCmd::SetName(self.compose.clone()));
-                            self.my_name = self.compose.clone();
-                            self.compose.clear();
+                    if ui.button("主题").clicked() {
+                        self.dark = !self.dark;
+                        if self.dark {
+                            ctx.set_visuals(egui::Visuals::dark());
                         } else {
-                            self.status = "在输入框输入新名称后点「改名」".into();
+                            ctx.set_visuals(egui::Visuals::light());
+                        }
+                    }
+                    if ui.button("复制指纹").clicked() {
+                        ctx.copy_text(self.my_fp.clone());
+                        self.status = "已复制本机指纹到剪贴板".into();
+                    }
+                    if ui.button("改名").clicked() {
+                        let name = if !self.name_edit.is_empty() {
+                            self.name_edit.clone()
+                        } else {
+                            self.compose.clone()
+                        };
+                        if !name.is_empty() {
+                            self.send_cmd(UiCmd::SetName(name.clone()));
+                            self.my_name = name;
+                            self.name_edit.clear();
+                            self.status = "显示名已更新".into();
+                        } else {
+                            self.status = "在下方名称框输入新名称后点「改名」".into();
                         }
                     }
                     if ui.button("刷新").clicked() {
                         self.send_cmd(UiCmd::Refresh);
                     }
+                });
+                ui.horizontal(|ui| {
+                    ui.label("显示名:");
+                    ui.text_edit_singleline(&mut self.name_edit);
                 });
             });
         });
@@ -300,20 +344,29 @@ impl eframe::App for App {
                 ui.heading("对等端");
                 ui.separator();
                 egui::ScrollArea::vertical().show(ui, |ui| {
-                    for p in &self.peers {
+                    let peers_snapshot = self.peers.clone();
+                    for p in &peers_snapshot {
                         let selected = self.selected.as_deref() == Some(p.fingerprint.as_str());
+                        let badge = self
+                            .unread
+                            .get(p.fingerprint.as_str())
+                            .filter(|n| **n > 0)
+                            .map(|n| format!(" ({n})"))
+                            .unwrap_or_default();
                         let label = format!(
-                            "{} {} {}",
+                            "{} {} {}{}",
                             if p.online { "🟢" } else { "⚫" },
                             p.display_name,
                             match p.trust {
                                 TrustState::Trusted => "✓",
                                 TrustState::Unknown => "?",
                                 TrustState::Blocked => "✕",
-                            }
+                            },
+                            badge
                         );
                         if ui.selectable_label(selected, label).clicked() {
                             self.selected = Some(p.fingerprint.as_str().to_string());
+                            self.unread.remove(p.fingerprint.as_str());
                         }
                         ui.small(p.fingerprint.as_str());
                         ui.horizontal(|ui| {
@@ -322,6 +375,10 @@ impl eframe::App for App {
                             }
                             if ui.small_button("拉黑").clicked() {
                                 self.send_cmd(UiCmd::Block(p.fingerprint.as_str().to_string()));
+                            }
+                            if ui.small_button("复制指纹").clicked() {
+                                ctx.copy_text(p.fingerprint.as_str().to_string());
+                                self.status = format!("已复制 {}", p.fingerprint);
                             }
                         });
                         ui.separator();
@@ -387,6 +444,9 @@ impl eframe::App for App {
                             self.send_cmd(UiCmd::Broadcast(self.compose.clone()));
                             self.compose.clear();
                         }
+                    }
+                    if ui.button("剪贴板→输入").clicked() {
+                        self.status = "请使用 Ctrl+V 粘贴到输入框后发送".into();
                     }
                 });
 

@@ -4,8 +4,8 @@ use crate::config::{AppConfig, ConfigPaths};
 use crate::discovery::{AnnounceValidator, DiscoveryService};
 use crate::history::HistoryStore;
 use crate::identity::Identity;
-use crate::peer::{PeerInfo, PeerStore, TrustState};
-use crate::protocol::{ChatMessage, FileMeta, MsgDirection, MsgKind, WireMessage};
+use crate::peer::{DiscoveryChange, PeerInfo, PeerStore, TrustState};
+use crate::protocol::{BroadcastResult, ChatMessage, FileMeta, MsgDirection, MsgKind, PeerStatusKind, WireMessage};
 use crate::session::SecureSession;
 use crate::transfer::{self, is_image_mime};
 use crate::{DISCOVERY_INTERVAL_MS, PEER_TIMEOUT_SECS};
@@ -32,6 +32,8 @@ pub enum NodeEvent {
         id: Uuid,
         broadcast: bool,
     },
+    /// Delivery receipt for an outbound text we sent.
+    TextDelivered { id: Uuid, peer_fp: String },
     FileReceived {
         from_fp: String,
         from_name: String,
@@ -48,6 +50,11 @@ pub enum NodeEvent {
         id: Uuid,
         name: String,
         ok: bool,
+    },
+    PeerStatus {
+        peer_fp: String,
+        kind: PeerStatusKind,
+        detail: String,
     },
     Error(String),
     Info(String),
@@ -87,6 +94,26 @@ enum Command {
     SetDisplayName {
         name: String,
         reply: oneshot::Sender<Result<()>>,
+    },
+    OfferPin {
+        pin: String,
+        reply: oneshot::Sender<Result<()>>,
+    },
+    PairWithPin {
+        peer_fp: String,
+        pin: String,
+        reply: oneshot::Sender<Result<()>>,
+    },
+    CancelTransfer {
+        id: Uuid,
+        reply: oneshot::Sender<Result<()>>,
+    },
+    Doctor {
+        reply: oneshot::Sender<crate::config::DoctorReport>,
+    },
+    BroadcastTextDetailed {
+        body: String,
+        reply: oneshot::Sender<Result<BroadcastResult>>,
     },
     Shutdown {
         reply: oneshot::Sender<()>,
@@ -176,6 +203,47 @@ impl NodeHandle {
         let _ = rx.await;
     }
 
+
+    pub async fn offer_pin(&self, pin: &str) -> Result<()> {
+        let (reply, rx) = oneshot::channel();
+        self.tx.send(Command::OfferPin {
+            pin: pin.into(),
+            reply,
+        })?;
+        rx.await?
+    }
+
+    pub async fn pair_with_pin(&self, peer_fp: &str, pin: &str) -> Result<()> {
+        let (reply, rx) = oneshot::channel();
+        self.tx.send(Command::PairWithPin {
+            peer_fp: peer_fp.into(),
+            pin: pin.into(),
+            reply,
+        })?;
+        rx.await?
+    }
+
+    pub async fn cancel_transfer(&self, id: Uuid) -> Result<()> {
+        let (reply, rx) = oneshot::channel();
+        self.tx.send(Command::CancelTransfer { id, reply })?;
+        rx.await?
+    }
+
+    pub async fn doctor(&self) -> Result<crate::config::DoctorReport> {
+        let (reply, rx) = oneshot::channel();
+        self.tx.send(Command::Doctor { reply })?;
+        Ok(rx.await?)
+    }
+
+    pub async fn broadcast_text_detailed(&self, body: &str) -> Result<BroadcastResult> {
+        let (reply, rx) = oneshot::channel();
+        self.tx.send(Command::BroadcastTextDetailed {
+            body: body.into(),
+            reply,
+        })?;
+        rx.await?
+    }
+
     pub fn subscribe(&self) -> broadcast::Receiver<NodeEvent> {
         self.events.subscribe()
     }
@@ -246,6 +314,9 @@ impl Node {
             history: self.history,
             paths: self.paths,
             downloads: self.downloads,
+            sessions: std::collections::HashMap::new(),
+            pending_pin: None,
+            cancel_transfers: std::collections::HashSet::new(),
         }));
 
         tokio::spawn(run_loop(state, discovery, listener, cmd_rx, ev_tx));
@@ -260,6 +331,12 @@ struct RuntimeState {
     history: HistoryStore,
     paths: ConfigPaths,
     downloads: PathBuf,
+    /// Reusable outbound Noise sessions keyed by peer fingerprint.
+    sessions: std::collections::HashMap<String, SecureSession>,
+    /// Optional PIN offered locally for pairing (expires).
+    pending_pin: Option<(String, std::time::Instant)>,
+    /// Transfer IDs requested to cancel.
+    cancel_transfers: std::collections::HashSet<Uuid>,
 }
 
 async fn run_loop(
@@ -296,7 +373,7 @@ async fn run_loop(
                         match validator.validate(&buf[..n], from, &self_fp) {
                             Ok(vp) => {
                                 let auto = state.lock().config.auto_trust;
-                                let (info, is_new) = {
+                                let (info, is_new, change) = {
                                     let mut s = state.lock();
                                     let r = s.peers.upsert_discovery(
                                         vp.fingerprint.clone(),
@@ -313,7 +390,17 @@ async fn run_loop(
                                 if is_new && info.trust == TrustState::Unknown {
                                     let _ = ev_tx.send(NodeEvent::NewPeerNeedsTrust(info.clone()));
                                 }
-                                let _ = ev_tx.send(NodeEvent::PeerOnline(info));
+                                match change {
+                                    DiscoveryChange::CameOnline => {
+                                        let _ = ev_tx.send(NodeEvent::PeerOnline(info));
+                                    }
+                                    DiscoveryChange::Updated => {
+                                        let _ = ev_tx.send(NodeEvent::PeerUpdated(info));
+                                    }
+                                    DiscoveryChange::Refreshed => {
+                                        // Heartbeat only — do not spam PeerOnline.
+                                    }
+                                }
                             }
                             Err(e) => {
                                 let msg = e.to_string();
@@ -361,7 +448,77 @@ async fn run_loop(
             cmd = cmd_rx.recv() => {
                 match cmd {
                     None => break,
+                    Some(Command::OfferPin { pin, reply }) => {
+                        if pin.len() < 4 || pin.len() > 12 || !pin.chars().all(|c| c.is_ascii_digit()) {
+                            let _ = reply.send(Err(anyhow!("PIN must be 4-12 digits")));
+                        } else {
+                            let mut s = state.lock();
+                            s.pending_pin = Some((pin, std::time::Instant::now()));
+                            let _ = reply.send(Ok(()));
+                            let _ = ev_tx.send(NodeEvent::Info(
+                                "PIN pairing armed for 5 minutes — tell the peer your PIN".into(),
+                            ));
+                        }
+                    }
+                    Some(Command::PairWithPin { peer_fp, pin, reply }) => {
+                        let result = do_pair_with_pin(&state, &ev_tx, &peer_fp, &pin).await;
+                        let _ = reply.send(result);
+                    }
+                    Some(Command::CancelTransfer { id, reply }) => {
+                        state.lock().cancel_transfers.insert(id);
+                        let _ = reply.send(Ok(()));
+                        let _ = ev_tx.send(NodeEvent::Info(format!("cancel requested for {id}")));
+                    }
+                    Some(Command::Doctor { reply }) => {
+                        let s = state.lock();
+                        let peers = s.peers.list_all();
+                        let report = crate::config::DoctorReport {
+                            display_name: s.config.display_name.clone(),
+                            fingerprint: s.identity.fingerprint().as_str().to_string(),
+                            config_dir: s.paths.root.display().to_string(),
+                            bind_addr: s.config.bind_addr.clone(),
+                            discovery_port: s.config.discovery_port,
+                            listen_port: s.config.listen_port,
+                            broadcast_addr: s.config.broadcast_addr.clone(),
+                            auto_trust: s.config.auto_trust,
+                            history_enabled: s.config.history_enabled,
+                            max_file_bytes: s.config.max_file_bytes,
+                            session_idle_secs: s.config.session_idle_secs,
+                            peer_total: peers.len(),
+                            peer_online: peers.iter().filter(|p| p.online).count(),
+                            peer_trusted: peers
+                                .iter()
+                                .filter(|p| p.trust == TrustState::Trusted)
+                                .count(),
+                        };
+                        let _ = reply.send(report);
+                    }
+                    Some(Command::BroadcastTextDetailed { body, reply }) => {
+                        let peers: Vec<_> = state
+                            .lock()
+                            .peers
+                            .list_online()
+                            .into_iter()
+                            .filter(|p| p.trust == TrustState::Trusted && p.online)
+                            .collect();
+                        let mut result = BroadcastResult {
+                            ok: Vec::new(),
+                            failed: Vec::new(),
+                        };
+                        for p in &peers {
+                            match do_send_text(&state, &ev_tx, p.fingerprint.as_str(), &body, true)
+                                .await
+                            {
+                                Ok(_) => result.ok.push(p.fingerprint.as_str().to_string()),
+                                Err(e) => result
+                                    .failed
+                                    .push((p.fingerprint.as_str().to_string(), e.to_string())),
+                            }
+                        }
+                        let _ = reply.send(Ok(result));
+                    }
                     Some(Command::Shutdown { reply }) => {
+
                         let _ = reply.send(());
                         break;
                     }
@@ -382,10 +539,12 @@ async fn run_loop(
                     }
                     Some(Command::TrustPeer { fp, trust, reply }) => {
                         let mut s = state.lock();
-                        s.peers.set_trust(&fp, trust);
+                        let changed = s.peers.set_trust(&fp, trust);
                         let res = s.peers.save(&s.paths);
-                        if let Some(info) = s.peers.get_live(&fp).cloned() {
-                            let _ = ev_tx.send(NodeEvent::PeerUpdated(info));
+                        if changed {
+                            if let Some(info) = s.peers.get_live(&fp).cloned() {
+                                let _ = ev_tx.send(NodeEvent::PeerUpdated(info));
+                            }
                         }
                         let _ = reply.send(res);
                     }
@@ -458,6 +617,29 @@ async fn ensure_trusted(state: &Arc<Mutex<RuntimeState>>, fp: &str) -> Result<Pe
     Ok(peer)
 }
 
+async fn take_or_connect_session(
+    state: &Arc<Mutex<RuntimeState>>,
+    peer_fp: &str,
+    addr: std::net::SocketAddr,
+) -> Result<SecureSession> {
+    if let Some(sess) = state.lock().sessions.remove(peer_fp) {
+        return Ok(sess);
+    }
+    let identity = state.lock().identity.clone();
+    let session = SecureSession::connect(&identity, addr).await?;
+    anyhow::ensure!(
+        session.peer_fp.as_str() == peer_fp,
+        "fingerprint mismatch during handshake: got {} expected {}",
+        session.peer_fp,
+        peer_fp
+    );
+    Ok(session)
+}
+
+fn store_session(state: &Arc<Mutex<RuntimeState>>, peer_fp: &str, session: SecureSession) {
+    state.lock().sessions.insert(peer_fp.to_string(), session);
+}
+
 async fn do_send_text(
     state: &Arc<Mutex<RuntimeState>>,
     ev_tx: &broadcast::Sender<NodeEvent>,
@@ -470,13 +652,14 @@ async fn do_send_text(
     let my_fp = identity.fingerprint().as_str().to_string();
     let my_name = state.lock().config.display_name.clone();
 
-    let mut session = SecureSession::connect(&identity, peer.addr).await?;
-    anyhow::ensure!(
-        session.peer_fp.as_str() == peer_fp,
-        "fingerprint mismatch during handshake: got {} expected {}",
-        session.peer_fp,
-        peer_fp
-    );
+    let mut session = match take_or_connect_session(state, peer_fp, peer.addr).await {
+        Ok(s) => s,
+        Err(_) => {
+            // stale pooled session — force fresh connect
+            state.lock().sessions.remove(peer_fp);
+            take_or_connect_session(state, peer_fp, peer.addr).await?
+        }
+    };
     let id = Uuid::new_v4();
     let ts_ms = chrono::Utc::now().timestamp_millis();
     let msg = if is_broadcast {
@@ -492,7 +675,30 @@ async fn do_send_text(
             ts_ms,
         }
     };
-    session.send_msg(&msg).await?;
+    if let Err(e) = session.send_msg(&msg).await {
+        // reconnect once
+        state.lock().sessions.remove(peer_fp);
+        session = take_or_connect_session(state, peer_fp, peer.addr).await?;
+        session.send_msg(&msg).await.map_err(|_| e)?;
+    }
+
+    // Wait briefly for delivery receipt (non-broadcast).
+    if !is_broadcast {
+        match tokio::time::timeout(std::time::Duration::from_secs(2), session.recv_msg()).await {
+            Ok(Ok(WireMessage::TextAck { id: ack_id, .. })) if ack_id == id => {
+                let _ = ev_tx.send(NodeEvent::TextDelivered {
+                    id,
+                    peer_fp: peer_fp.to_string(),
+                });
+            }
+            Ok(Ok(other)) => {
+                tracing::debug!(?other, "unexpected msg while awaiting TextAck");
+            }
+            _ => {
+                // No ack — still OK; message may have been delivered without ack support.
+            }
+        }
+    }
 
     let chat = ChatMessage {
         id,
@@ -508,6 +714,7 @@ async fn do_send_text(
         ts_ms,
         file_path: None,
         file_size: None,
+        delivered: false,
     };
     let _ = state.lock().history.append(chat);
     let _ = ev_tx.send(NodeEvent::Text {
@@ -517,7 +724,46 @@ async fn do_send_text(
         id,
         broadcast: is_broadcast,
     });
+    store_session(state, peer_fp, session);
     Ok(id)
+}
+
+async fn do_pair_with_pin(
+    state: &Arc<Mutex<RuntimeState>>,
+    ev_tx: &broadcast::Sender<NodeEvent>,
+    peer_fp: &str,
+    pin: &str,
+) -> Result<()> {
+    let peer = state
+        .lock()
+        .peers
+        .get_live(peer_fp)
+        .cloned()
+        .ok_or_else(|| anyhow!("peer not found / offline: {peer_fp}"))?;
+    let mut session = take_or_connect_session(state, peer_fp, peer.addr).await?;
+    session
+        .send_msg(&WireMessage::PinPair {
+            pin: pin.to_string(),
+        })
+        .await?;
+    let resp = tokio::time::timeout(std::time::Duration::from_secs(5), session.recv_msg()).await??;
+    match resp {
+        WireMessage::PinPairAck { ok: true, message } => {
+            let mut s = state.lock();
+            s.peers.set_trust(peer_fp, TrustState::Trusted);
+            s.peers.save(&s.paths)?;
+            if let Some(info) = s.peers.get_live(peer_fp).cloned() {
+                let _ = ev_tx.send(NodeEvent::PeerUpdated(info));
+            }
+            let _ = ev_tx.send(NodeEvent::Info(format!("PIN pairing OK: {message}")));
+            store_session(state, peer_fp, session);
+            Ok(())
+        }
+        WireMessage::PinPairAck { ok: false, message } => {
+            Err(anyhow!("PIN pairing rejected: {message}"))
+        }
+        other => Err(anyhow!("unexpected pairing response: {other:?}")),
+    }
 }
 
 async fn do_send_file(
@@ -527,8 +773,26 @@ async fn do_send_file(
     path: &Path,
 ) -> Result<FileMeta> {
     let peer = ensure_trusted(state, peer_fp).await?;
-    let identity = state.lock().identity.clone();
-    let mut session = SecureSession::connect(&identity, peer.addr).await?;
+    // File transfer uses a dedicated session (not the text pool).
+    state.lock().sessions.remove(peer_fp);
+    let max_bytes = state.lock().config.max_file_bytes;
+    let meta_len = tokio::fs::metadata(path).await?.len();
+    anyhow::ensure!(
+        meta_len <= max_bytes,
+        "file too large: {meta_len} bytes (max {max_bytes})"
+    );
+    // Notify peer we are about to send
+    let mut session = take_or_connect_session(state, peer_fp, peer.addr).await?;
+    let _ = session
+        .send_msg(&WireMessage::Status {
+            kind: PeerStatusKind::ReceivingFile,
+            detail: path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("file")
+                .to_string(),
+        })
+        .await;
     anyhow::ensure!(session.peer_fp.as_str() == peer_fp, "fingerprint mismatch");
 
     let ev = ev_tx.clone();
@@ -543,7 +807,12 @@ async fn do_send_file(
             total,
         });
     };
-    let meta = transfer::send_file(&mut session, path, &mut progress).await?;
+    let st_c = state.clone();
+    let meta = transfer::send_file(&mut session, path, &mut progress, &mut || {
+        let s = st_c.lock();
+        !s.cancel_transfers.is_empty()
+    })
+    .await?;
     *meta_id.lock() = meta.id;
 
     let chat = ChatMessage {
@@ -560,6 +829,7 @@ async fn do_send_file(
         ts_ms: chrono::Utc::now().timestamp_millis(),
         file_path: Some(path.display().to_string()),
         file_size: Some(meta.size),
+        delivered: false,
     };
     let _ = state.lock().history.append(chat);
     let _ = ev_tx.send(NodeEvent::TransferComplete {
@@ -613,6 +883,12 @@ async fn handle_incoming(
         match msg {
             WireMessage::Text { id, body, ts_ms } => {
                 record_text(&state, &ev_tx, &peer_fp, &peer_name, id, body, ts_ms, false);
+                let _ = session
+                    .send_msg(&WireMessage::TextAck {
+                        id,
+                        ts_ms: chrono::Utc::now().timestamp_millis(),
+                    })
+                    .await;
             }
             WireMessage::BroadcastText { id, body, ts_ms } => {
                 record_text(&state, &ev_tx, &peer_fp, &peer_name, id, body, ts_ms, true);
@@ -667,6 +943,7 @@ async fn handle_incoming(
                             ts_ms: chrono::Utc::now().timestamp_millis(),
                             file_path: Some(path.display().to_string()),
                             file_size: Some(meta.size),
+        delivered: false,
                         };
                         let _ = state.lock().history.append(chat);
                         let _ = ev_tx.send(NodeEvent::FileReceived {
@@ -681,6 +958,53 @@ async fn handle_incoming(
                         break;
                     }
                 }
+            }
+            WireMessage::PinPair { pin } => {
+                let (ok, info_opt) = {
+                    let mut s = state.lock();
+                    let ok = match &s.pending_pin {
+                        Some((expected, at))
+                            if at.elapsed() < std::time::Duration::from_secs(300) =>
+                        {
+                            expected == &pin
+                        }
+                        _ => false,
+                    };
+                    let mut info_opt = None;
+                    if ok {
+                        s.pending_pin = None;
+                        s.peers.set_trust(&peer_fp, TrustState::Trusted);
+                        let _ = s.peers.save(&s.paths);
+                        info_opt = s.peers.get_live(&peer_fp).cloned();
+                    }
+                    (ok, info_opt)
+                };
+                if let Some(info) = info_opt {
+                    let _ = ev_tx.send(NodeEvent::PeerUpdated(info));
+                }
+                session
+                    .send_msg(&WireMessage::PinPairAck {
+                        ok,
+                        message: if ok {
+                            "trusted via PIN".into()
+                        } else {
+                            "PIN mismatch or expired".into()
+                        },
+                    })
+                    .await?;
+            }
+            WireMessage::Status { kind, detail } => {
+                let _ = ev_tx.send(NodeEvent::PeerStatus {
+                    peer_fp: peer_fp.clone(),
+                    kind,
+                    detail,
+                });
+            }
+            WireMessage::TextAck { id, .. } => {
+                let _ = ev_tx.send(NodeEvent::TextDelivered {
+                    id,
+                    peer_fp: peer_fp.clone(),
+                });
             }
             WireMessage::Ping { ts_ms } => {
                 session.send_msg(&WireMessage::Pong { ts_ms }).await?;
@@ -718,6 +1042,7 @@ fn record_text(
         ts_ms,
         file_path: None,
         file_size: None,
+        delivered: false,
     };
     let _ = state.lock().history.append(chat);
     let _ = ev_tx.send(NodeEvent::Text {

@@ -18,6 +18,10 @@ pub struct ConfigPaths {
 
 impl ConfigPaths {
     pub fn resolve() -> Result<Self> {
+        // Qualifier / Organization / Application — cross-platform via `directories`
+        // Windows: %APPDATA%\FREC86\lan-secure-messenger\
+        // Linux:   ~/.config/lan-secure-messenger/
+        // macOS:   ~/Library/Application Support/com.FREC86.lan-secure-messenger/
         let dirs = ProjectDirs::from("com", "FREC86", APP_NAME)
             .context("cannot resolve config directory")?;
         Ok(Self::from_dir(dirs.config_dir()))
@@ -48,12 +52,25 @@ pub struct AppConfig {
     pub listen_port: u16,
     /// Bind address for TCP/UDP. Use 0.0.0.0 for all interfaces.
     pub bind_addr: String,
-    /// Optional broadcast address override (e.g. 127.0.0.1 for local smoke test).
+    /// Optional broadcast/multicast send override (e.g. 127.0.0.1 for local smoke test).
     pub broadcast_addr: Option<String>,
     /// Auto-trust new peers (CLI convenience; GUI should confirm).
     pub auto_trust: bool,
     /// Enable encrypted at-rest history.
     pub history_enabled: bool,
+    /// Max outbound/inbound file size in bytes (default 256 MiB).
+    #[serde(default = "default_max_file_bytes")]
+    pub max_file_bytes: u64,
+    /// Keep idle TCP/Noise sessions for reuse (seconds).
+    #[serde(default = "default_session_idle_secs")]
+    pub session_idle_secs: u64,
+}
+
+fn default_max_file_bytes() -> u64 {
+    256 * 1024 * 1024
+}
+fn default_session_idle_secs() -> u64 {
+    120
 }
 
 impl Default for AppConfig {
@@ -70,6 +87,8 @@ impl Default for AppConfig {
             broadcast_addr: None,
             auto_trust: false,
             history_enabled: true,
+            max_file_bytes: default_max_file_bytes(),
+            session_idle_secs: default_session_idle_secs(),
         }
     }
 }
@@ -93,4 +112,23 @@ impl AppConfig {
         fs::write(&paths.settings, data)?;
         Ok(())
     }
+}
+
+/// Snapshot for `lan-msg doctor` / status.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DoctorReport {
+    pub display_name: String,
+    pub fingerprint: String,
+    pub config_dir: String,
+    pub bind_addr: String,
+    pub discovery_port: u16,
+    pub listen_port: u16,
+    pub broadcast_addr: Option<String>,
+    pub auto_trust: bool,
+    pub history_enabled: bool,
+    pub max_file_bytes: u64,
+    pub session_idle_secs: u64,
+    pub peer_total: usize,
+    pub peer_online: usize,
+    pub peer_trusted: usize,
 }

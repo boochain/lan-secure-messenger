@@ -8,14 +8,18 @@
 
 ## 功能
 
-- UDP 组播发现 + 在线/离线（Ed25519 签名公告，防伪造 / 重放）
+- UDP 组播发现 + 在线/离线（Ed25519 签名公告；仅在状态变化时提示，心跳不再刷屏）
 - 1:1 端到端加密文本（Noise XX：X25519 + ChaCha20-Poly1305）
-- 分块文件 / 图片传输（进度、SHA-256 校验）
+- **文本送达回执**（`TextAck`）
+- 分块文件 / 图片传输（进度、SHA-256 校验、**可取消**、最大体积可配置）
+- **会话复用**：文本连接可池化复用，降低握手开销
 - TOFU 信任 + 人类可读指纹核对
-- 向所有**已信任且在线**对等端安全广播
+- **可选 PIN 配对**（`pair-offer` / `pair`）快速互信
+- 向所有**已信任且在线**对等端安全广播（带成功/失败明细）
 - 本地聊天历史（ChaCha20-Poly1305 静态加密）
-- 显示名、对等端列表、传输历史
-- CLI（`lan-msg`）+ GUI（`lan-gui`，egui，支持拖放发文件）
+- 显示名、对等端列表、传输历史、**未读角标**（GUI）
+- CLI（`lan-msg`）含 **`doctor` 诊断**；GUI（`lan-gui`）支持拖放、复制指纹、改名、明暗主题
+
 
 ## 架构
 
@@ -52,6 +56,9 @@ lan-secure-messenger/
 - 持有受害者长期私钥的攻击者
 
 ### 使用建议
+
+- PIN 配对仅证明双方知道同一短码；请在可信环境下当面或带外确认 PIN，勿在不可信聊天中传递
+
 
 1. 首次见面**当面核对指纹**再信任
 2. 不可信网络不要开启 `--auto-trust`
@@ -100,7 +107,7 @@ cargo build --release -p lan-cli --target x86_64-pc-windows-gnu
 
 | 平台 | 默认路径 |
 |------|----------|
-| Windows | `%APPDATA%\lan-secure-messenger\`（`directories` crate：`com.FREC86`） |
+| Windows | `%APPDATA%\FREC86\lan-secure-messenger\`（`directories`：`ProjectDirs::from("com", "FREC86", "lan-secure-messenger")` → Windows `%APPDATA%\FREC86\lan-secure-messenger\`） |
 | Linux | `~/.config/lan-secure-messenger/` |
 | macOS | `~/Library/Application Support/com.FREC86.lan-secure-messenger/` |
 

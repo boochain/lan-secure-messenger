@@ -15,6 +15,18 @@ pub enum TrustState {
     Blocked,
 }
 
+/// What changed when a discovery announce was applied.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiscoveryChange {
+    /// Peer newly discovered (or first live sighting this run).
+    CameOnline,
+    /// Already online; metadata refreshed (name/addr) — do not spam logs.
+    Refreshed,
+    /// Metadata meaningful change while online.
+    Updated,
+}
+
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PeerRecord {
     pub fingerprint: String,
@@ -81,7 +93,7 @@ impl PeerStore {
         addr: SocketAddr,
         listen_port: u16,
         auto_trust: bool,
-    ) -> (PeerInfo, bool) {
+    ) -> (PeerInfo, bool, DiscoveryChange) {
         let now = Utc::now();
         let is_new = !self.records.contains_key(fp.as_str());
         let trust = if let Some(r) = self.records.get(fp.as_str()) {
@@ -91,6 +103,17 @@ impl PeerStore {
         } else {
             TrustState::Unknown
         };
+
+        let prev = self.live.get(fp.as_str()).cloned();
+        let was_online = prev.as_ref().map(|p| p.online).unwrap_or(false);
+        let name_changed = prev
+            .as_ref()
+            .map(|p| p.display_name != display_name)
+            .unwrap_or(false);
+        let addr_changed = prev
+            .as_ref()
+            .map(|p| p.addr != addr || p.listen_port != listen_port)
+            .unwrap_or(false);
 
         let record = PeerRecord {
             fingerprint: fp.as_str().to_string(),
@@ -119,16 +142,28 @@ impl PeerStore {
             online: true,
         };
         self.live.insert(fp.as_str().to_string(), info.clone());
-        (info, is_new)
+
+        // Address can jitter on multi-homed hosts; only treat name changes as "Updated".
+        let change = if !was_online {
+            DiscoveryChange::CameOnline
+        } else if name_changed {
+            DiscoveryChange::Updated
+        } else {
+            let _ = addr_changed; // still refresh last_seen/addr silently
+            DiscoveryChange::Refreshed
+        };
+        (info, is_new, change)
     }
 
-    pub fn set_trust(&mut self, fp: &str, trust: TrustState) {
+    pub fn set_trust(&mut self, fp: &str, trust: TrustState) -> bool {
+        let prev = self.records.get(fp).map(|r| r.trust);
         if let Some(r) = self.records.get_mut(fp) {
             r.trust = trust;
         }
         if let Some(l) = self.live.get_mut(fp) {
             l.trust = trust;
         }
+        prev != Some(trust)
     }
 
     pub fn get_live(&self, fp: &str) -> Option<&PeerInfo> {

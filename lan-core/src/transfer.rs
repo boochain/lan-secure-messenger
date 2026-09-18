@@ -53,6 +53,7 @@ pub async fn send_file(
     session: &mut SecureSession,
     path: &Path,
     progress: &mut (dyn FnMut(u64, u64) + Send),
+    should_cancel: &mut (dyn FnMut() -> bool + Send),
 ) -> Result<FileMeta> {
     let name = path
         .file_name()
@@ -90,6 +91,9 @@ pub async fn send_file(
                 }
                 break;
             }
+            WireMessage::FileCancel { id: cid } if cid == id => {
+                anyhow::bail!("transfer cancelled before accept");
+            }
             WireMessage::Ping { ts_ms } => {
                 session.send_msg(&WireMessage::Pong { ts_ms }).await?;
             }
@@ -103,6 +107,10 @@ pub async fn send_file(
     let mut buf = vec![0u8; CHUNK_SIZE];
     let mut offset = 0u64;
     while offset < size {
+        if should_cancel() {
+            session.send_msg(&WireMessage::FileCancel { id }).await?;
+            anyhow::bail!("transfer cancelled");
+        }
         let n = file.read(&mut buf).await?;
         if n == 0 {
             break;
@@ -116,8 +124,27 @@ pub async fn send_file(
             .await?;
         offset += n as u64;
         progress(offset, size);
+        // Drain optional acks / cancel from peer
+        // (non-blocking not available; rely on receiver FileAck path in separate msgs if interleaved)
     }
     session.send_msg(&WireMessage::FileDone { id, ok: true }).await?;
+    // Give the receiver a moment to finish hashing / writing before we drop TCP.
+    // Best-effort drain of trailing FileAcks (Noise is duplex-independent, but
+    // closing too fast can RST before the last frames are read).
+    let _ = tokio::time::timeout(std::time::Duration::from_millis(500), async {
+        loop {
+            match session.recv_msg().await {
+                Ok(WireMessage::FileAck { .. }) => continue,
+                Ok(WireMessage::Ping { ts_ms }) => {
+                    let _ = session.send_msg(&WireMessage::Pong { ts_ms }).await;
+                }
+                _ => break,
+            }
+        }
+    })
+    .await;
+    // Half-close write side politely if possible
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     info!(file = %meta.name, size, "file send complete");
     Ok(meta)
 }
@@ -164,6 +191,10 @@ pub async fn receive_file(
             WireMessage::FileDone { id, ok } if id == offer.id => {
                 anyhow::ensure!(ok, "sender aborted");
                 break;
+            }
+            WireMessage::FileCancel { id } if id == offer.id => {
+                let _ = tokio::fs::remove_file(&dest).await;
+                anyhow::bail!("transfer cancelled by peer");
             }
             WireMessage::Ping { ts_ms } => {
                 session.send_msg(&WireMessage::Pong { ts_ms }).await?;
