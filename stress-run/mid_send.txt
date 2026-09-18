@@ -1,3 +1,0 @@
-2026-09-18T18:59:33.612759Z  INFO discovery listening addr=0.0.0.0:41334
-2026-09-18T18:59:33.612867Z  INFO TCP listening addr=0.0.0.0:41710
-Error: 等待对等端超时: 34A6-FC48-DE48-6695

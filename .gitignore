@@ -13,3 +13,7 @@ smoke-run/
 /dist/
 
 *.exe
+
+/stress-run/
+/smoke-run/
+/dist/

@@ -1,7 +1,0 @@
-2026-09-18T18:59:27.795411Z  INFO discovery listening addr=0.0.0.0:41334
-2026-09-18T18:59:27.795488Z  INFO TCP listening addr=0.0.0.0:41512
-2026-09-18T18:59:32.037894Z  INFO file receive complete path=/workspace/lan-secure-messenger/stress-run/b/downloads/f2.txt size=59
-2026-09-18T18:59:32.038522Z  INFO file receive complete path=/workspace/lan-secure-messenger/stress-run/b/downloads/f1.txt size=59
-2026-09-18T18:59:32.038562Z  INFO file receive complete path=/workspace/lan-secure-messenger/stress-run/b/downloads/f3.txt size=59
-2026-09-18T18:59:32.038682Z  INFO file receive complete path=/workspace/lan-secure-messenger/stress-run/b/downloads/f4.txt size=59
-Error: 等待对等端超时: 4CF5-C620-7EB1-0A78

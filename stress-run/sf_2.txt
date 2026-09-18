@@ -1,4 +1,0 @@
-2026-09-18T18:59:31.228260Z  INFO discovery listening addr=0.0.0.0:41334
-2026-09-18T18:59:31.228325Z  INFO TCP listening addr=0.0.0.0:41602
-2026-09-18T18:59:32.590046Z  INFO file send complete file=f2.txt size=59
-文件已发送: f2.txt (59 bytes, sha256=5f4e20d98ec0806d26dde2f61fe4a65c75637c827bd17afaddd9a38e515d7c58)
