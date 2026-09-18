@@ -1,0 +1,22 @@
+[package]
+name = "lan-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "CLI for LAN secure messenger"
+
+[[bin]]
+name = "lan-msg"
+path = "src/main.rs"
+
+[dependencies]
+lan-core = { workspace = true }
+tokio = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+hex = { workspace = true }
