@@ -152,7 +152,53 @@ enum Commands {
         #[arg(long, default_value = "50")]
         limit: usize,
     },
-        /// 请求取消进行中的文件传输（传 transfer uuid）
+
+    /// 群主移除成员并轮换群密钥
+    GroupRemoveMember {
+        group_id: String,
+        fingerprint: String,
+        #[arg(long, default_value = "3")]
+        wait: u64,
+    },
+    /// 搜索本地历史（私聊+群聊）
+    Search {
+        query: String,
+        #[arg(long, default_value = "50")]
+        limit: usize,
+    },
+    /// 加密备份身份与信任库
+    Backup {
+        path: PathBuf,
+        #[arg(long)]
+        password: String,
+    },
+    /// 从加密备份恢复（需重启守护进程）
+    Restore {
+        path: PathBuf,
+        #[arg(long)]
+        password: String,
+    },
+    /// 设置下载目录
+    SetDownloadDir {
+        path: PathBuf,
+    },
+    /// 显示当前下载目录
+    DownloadDir,
+    /// 静音/取消静音对等端通知
+    Mute {
+        fingerprint: String,
+        #[arg(long)]
+        off: bool,
+    },
+    /// 静音/取消静音群通知
+    MuteGroup {
+        group_id: String,
+        #[arg(long)]
+        off: bool,
+    },
+    /// 检查 GitHub Releases 是否有新版本（仅提示）
+    CheckUpdate,
+    /// 请求取消进行中的文件传输（传 transfer uuid）
     CancelTransfer {
         id: String,
     },
@@ -344,6 +390,89 @@ async fn main() -> Result<()> {
             Ok(())
         }
 
+        
+        Commands::GroupRemoveMember { group_id, fingerprint, wait } => {
+            let handle = start_node(paths, config).await?;
+            tokio::time::sleep(Duration::from_secs(wait)).await;
+            let gid = uuid::Uuid::parse_str(&group_id)?;
+            let g = handle.remove_group_member(gid, &fingerprint).await?;
+            println!(
+                "已移除 {}，群 {} 新 epoch={}",
+                fingerprint, g.name, g.key_epoch
+            );
+            handle.shutdown().await;
+            Ok(())
+        }
+        Commands::Search { query, limit } => {
+            let handle = start_node(paths, config).await?;
+            let msgs = handle.search_history(&query, limit).await?;
+            if msgs.is_empty() {
+                println!("(无匹配)");
+            } else {
+                for m in msgs {
+                    let scope = if m.group_id.is_some() { "群" } else { "私" };
+                    println!(
+                        "[{scope}] {} {} {}: {}",
+                        m.ts_ms, m.peer_name, m.peer_fp, m.body
+                    );
+                }
+            }
+            handle.shutdown().await;
+            Ok(())
+        }
+        Commands::Backup { path, password } => {
+            let handle = start_node(paths, config).await?;
+            handle.backup_identity(&path, &password).await?;
+            println!("备份已写入 {}", path.display());
+            handle.shutdown().await;
+            Ok(())
+        }
+        Commands::Restore { path, password } => {
+            // restore does not need running sessions; still go through node API
+            let handle = start_node(paths, config).await?;
+            handle.restore_identity(&path, &password).await?;
+            println!("已恢复备份。请重启 lan-msg/lan-gui 以加载新身份。");
+            handle.shutdown().await;
+            Ok(())
+        }
+        Commands::SetDownloadDir { path } => {
+            let handle = start_node(paths, config).await?;
+            handle.set_download_dir(Some(path.clone())).await?;
+            println!("下载目录已设为 {}", path.display());
+            handle.shutdown().await;
+            Ok(())
+        }
+        Commands::DownloadDir => {
+            let handle = start_node(paths, config).await?;
+            let d = handle.get_download_dir().await?;
+            println!("{}", d.display());
+            handle.shutdown().await;
+            Ok(())
+        }
+        Commands::Mute { fingerprint, off } => {
+            let handle = start_node(paths, config).await?;
+            handle.mute_peer(&fingerprint, !off).await?;
+            println!("{}", if off { "已取消静音" } else { "已静音" });
+            handle.shutdown().await;
+            Ok(())
+        }
+        Commands::MuteGroup { group_id, off } => {
+            let handle = start_node(paths, config).await?;
+            let gid = uuid::Uuid::parse_str(&group_id)?;
+            handle.mute_group(gid, !off).await?;
+            println!("{}", if off { "已取消群静音" } else { "已静音群" });
+            handle.shutdown().await;
+            Ok(())
+        }
+        Commands::CheckUpdate => {
+            match check_github_update() {
+                Ok(Some(tag)) => println!("发现新版本: {tag}（当前 {}）\n下载: https://github.com/FREC86/lan-secure-messenger/releases", env!("CARGO_PKG_VERSION")),
+                Ok(None) => println!("已是最新（或无法比较）。当前 {}", env!("CARGO_PKG_VERSION")),
+                Err(e) => println!("检查更新失败（可忽略）: {e}"),
+            }
+            Ok(())
+        }
+
         Commands::CancelTransfer { id } => {
             let handle = start_node(paths, config).await?;
             let uuid = uuid::Uuid::parse_str(&id)?;
@@ -403,8 +532,13 @@ async fn main() -> Result<()> {
             wait_for_peer(&handle, &fingerprint, wait).await?;
             // auto trust for convenience when sending after discovery if already trusted path fails
             let _ = handle.trust_peer(&fingerprint, TrustState::Trusted).await;
-            let id = handle.send_text(&fingerprint, &message).await?;
+            let (id, delivered) = handle.send_text(&fingerprint, &message).await?;
             println!("已发送 id={id}");
+            if delivered {
+                println!("[回执] 已送达 {fingerprint} id={id}");
+            } else {
+                println!("[回执] 未确认（对端可能离线或超时） id={id}");
+            }
             handle.shutdown().await;
             Ok(())
         }
@@ -610,5 +744,33 @@ fn truncate(s: &str, max: usize) -> String {
     } else {
         let t: String = s.chars().take(max.saturating_sub(1)).collect();
         format!("{t}…")
+    }
+}
+
+
+fn check_github_update() -> anyhow::Result<Option<String>> {
+    // Soft check — never fail the app hard.
+    let url = "https://api.github.com/repos/FREC86/lan-secure-messenger/releases/latest";
+    let body = {
+            let out = std::process::Command::new("curl")
+                .args(["-fsSL", "-H", "User-Agent: lan-secure-messenger", url])
+                .output()?;
+            if !out.status.success() {
+                anyhow::bail!("curl failed");
+            }
+            String::from_utf8_lossy(&out.stdout).to_string()
+    };
+    let v: serde_json::Value = serde_json::from_str(&body)?;
+    let tag = v.get("tag_name").and_then(|x| x.as_str()).unwrap_or("").to_string();
+    if tag.is_empty() {
+        return Ok(None);
+    }
+    let current = env!("CARGO_PKG_VERSION");
+    // Compare tag like v0.3.0 vs 0.1.0 loosely
+    let norm = |s: &str| s.trim().trim_start_matches('v').to_string();
+    if norm(&tag) != norm(current) && !tag.is_empty() {
+        Ok(Some(tag))
+    } else {
+        Ok(None)
     }
 }

@@ -72,7 +72,26 @@ pub struct AppConfig {
     /// Start GUI minimized to tray.
     #[serde(default)]
     pub start_in_tray: bool,
+    /// Custom download directory (None = config_dir/downloads).
+    #[serde(default)]
+    pub download_dir: Option<String>,
+    /// Auto-retry failed file transfers (attempts, default 3).
+    #[serde(default = "default_transfer_retries")]
+    pub transfer_retries: u32,
+    /// Muted peer fingerprints (suppress notifications).
+    #[serde(default)]
+    pub muted_peers: Vec<String>,
+    /// Muted group ids (as strings).
+    #[serde(default)]
+    pub muted_groups: Vec<String>,
+    /// Soft-check GitHub Releases for updates.
+    #[serde(default = "default_true")]
+    pub check_updates: bool,
 }
+
+fn default_transfer_retries() -> u32 { 3 }
+fn default_true() -> bool { true }
+
 
 fn default_max_file_bytes() -> u64 {
     256 * 1024 * 1024
@@ -99,6 +118,11 @@ impl Default for AppConfig {
             session_idle_secs: default_session_idle_secs(),
             first_run_done: false,
             start_in_tray: false,
+            download_dir: None,
+            transfer_retries: default_transfer_retries(),
+            muted_peers: Vec::new(),
+            muted_groups: Vec::new(),
+            check_updates: true,
         }
     }
 }

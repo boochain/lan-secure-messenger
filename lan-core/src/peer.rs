@@ -49,6 +49,8 @@ pub struct PeerInfo {
     pub trust: TrustState,
     pub last_seen: Instant,
     pub online: bool,
+    /// Wall-clock last seen (unix ms) for UI / last-seen display.
+    pub last_seen_unix: i64,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -140,6 +142,7 @@ impl PeerStore {
             trust,
             last_seen: Instant::now(),
             online: true,
+            last_seen_unix: Utc::now().timestamp_millis(),
         };
         self.live.insert(fp.as_str().to_string(), info.clone());
 

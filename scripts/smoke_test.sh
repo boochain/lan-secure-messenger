@@ -132,13 +132,13 @@ else
   echo "BIG FILE FAIL"
 fi
 
-# Delivery receipt (best-effort — may appear on sender side)
-if grep -Eqi '回执|delivered|已送达' "$DIR/a.log" "$DIR/send_text.txt" 2>/dev/null; then
+# Delivery receipt must appear on sender CLI (TextAck wait)
+if grep -Eqi '回执|已送达' "$DIR/send_text.txt" 2>/dev/null; then
   DELIV_OK=1
   echo "DELIVERY RECEIPT OK"
 else
-  echo "DELIVERY RECEIPT (optional) not observed — OK if peer path reused differently"
-  DELIV_OK=1
+  echo "DELIVERY RECEIPT FAIL — expected [回执] on send"
+  DELIV_OK=0
 fi
 
 echo "=== DM history A (peer thread) ==="
@@ -170,11 +170,47 @@ sleep 2
 tail -30 "$DIR/b.log"
 if grep -q '群聊你好各位' "$DIR/b.log"; then GROUP_OK=1; echo "GROUP TEXT OK"; else echo "GROUP TEXT FAIL"; fi
 
-if [[ "$TEXT_OK" -eq 1 && "$FILE_OK" -eq 1 && "$BIG_OK" -eq 1 && "$BCAST_OK" -eq 1 && "$DELIV_OK" -eq 1 && "$DM_OK" -eq 1 && "$GROUP_OK" -eq 1 ]]; then
+echo "=== Group remove member + rekey ==="
+"$BIN" --config-dir "$DIR/a" --name Alice --bind 0.0.0.0 \
+  --discovery-port "$DISC" --listen-port 41253 --auto-trust \
+  group-remove-member "$GID" "$FP_B" --wait 2 | tee "$DIR/group_remove.txt"
+sleep 2
+"$BIN" --config-dir "$DIR/a" --name Alice --bind 0.0.0.0 \
+  --discovery-port "$DISC" --listen-port 41254 --auto-trust \
+  group-send "$GID" "移除后不应被Bob收到" --wait 2 | tee "$DIR/group_send2.txt" || true
+sleep 2
+REKEY_OK=0
+if grep -Eqi '移除|轮换|epoch' "$DIR/group_remove.txt"; then
+  echo "GROUP REMOVE/REKEY CMD OK"
+fi
+# Bob should have been notified of removal OR must not see the post-remove message
+if grep -q '移除后不应被Bob收到' "$DIR/b.log"; then
+  echo "GROUP REKEY FAIL — removed member still got message"
+  REKEY_OK=0
+else
+  REKEY_OK=1
+  echo "GROUP REKEY OK (removed member did not get post-rekey message)"
+fi
+
+echo "=== History search ==="
+"$BIN" --config-dir "$DIR/a" --name Alice --bind 0.0.0.0 \
+  --discovery-port "$DISC" --listen-port 41255 --auto-trust \
+  search "你好 Bob" --limit 20 | tee "$DIR/search.txt"
+SEARCH_OK=0
+if grep -q '你好 Bob' "$DIR/search.txt"; then SEARCH_OK=1; echo "SEARCH OK"; else echo "SEARCH FAIL"; fi
+
+echo "=== Backup/restore roundtrip ==="
+"$BIN" --config-dir "$DIR/a" --name Alice --bind 0.0.0.0 \
+  --discovery-port "$DISC" --listen-port 41256 --auto-trust \
+  backup "$DIR/backup.lsmb" --password "test-pass-123" | tee "$DIR/backup.txt"
+BACKUP_OK=0
+if [[ -f "$DIR/backup.lsmb" ]]; then BACKUP_OK=1; echo "BACKUP OK"; else echo "BACKUP FAIL"; fi
+
+if [[ "$TEXT_OK" -eq 1 && "$FILE_OK" -eq 1 && "$BIG_OK" -eq 1 && "$BCAST_OK" -eq 1 && "$DELIV_OK" -eq 1 && "$DM_OK" -eq 1 && "$GROUP_OK" -eq 1 && "$REKEY_OK" -eq 1 && "$SEARCH_OK" -eq 1 && "$BACKUP_OK" -eq 1 ]]; then
   echo "=== SMOKE PASSED ==="
   exit 0
 else
   echo "=== SMOKE FAILED ==="
-  echo "TEXT=$TEXT_OK FILE=$FILE_OK BIG=$BIG_OK BCAST=$BCAST_OK DELIV=$DELIV_OK DM=$DM_OK GROUP=$GROUP_OK"
+  echo "TEXT=$TEXT_OK FILE=$FILE_OK BIG=$BIG_OK BCAST=$BCAST_OK DELIV=$DELIV_OK DM=$DM_OK GROUP=$GROUP_OK REKEY=$REKEY_OK SEARCH=$SEARCH_OK BACKUP=$BACKUP_OK"
   exit 1
 fi

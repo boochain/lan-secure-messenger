@@ -82,7 +82,7 @@ enum Command {
     SendText {
         peer_fp: String,
         body: String,
-        reply: oneshot::Sender<Result<Uuid>>,
+        reply: oneshot::Sender<Result<(Uuid, bool)>>,
     },
     BroadcastText {
         body: String,
@@ -170,6 +170,46 @@ enum Command {
         limit: usize,
         reply: oneshot::Sender<Vec<ChatMessage>>,
     },
+    RemoveGroupMember {
+        group_id: Uuid,
+        member_fp: String,
+        reply: oneshot::Sender<Result<GroupInfo>>,
+    },
+    SearchHistory {
+        query: String,
+        limit: usize,
+        reply: oneshot::Sender<Vec<ChatMessage>>,
+    },
+    BackupIdentity {
+        path: PathBuf,
+        password: String,
+        reply: oneshot::Sender<Result<()>>,
+    },
+    RestoreIdentity {
+        path: PathBuf,
+        password: String,
+        reply: oneshot::Sender<Result<()>>,
+    },
+    SetDownloadDir {
+        path: Option<PathBuf>,
+        reply: oneshot::Sender<Result<()>>,
+    },
+    GetDownloadDir {
+        reply: oneshot::Sender<PathBuf>,
+    },
+    MutePeer {
+        peer_fp: String,
+        mute: bool,
+        reply: oneshot::Sender<Result<()>>,
+    },
+    MuteGroup {
+        group_id: Uuid,
+        mute: bool,
+        reply: oneshot::Sender<Result<()>>,
+    },
+    GetConfigSnapshot {
+        reply: oneshot::Sender<AppConfig>,
+    },
     Shutdown {
         reply: oneshot::Sender<()>,
     },
@@ -182,7 +222,8 @@ pub struct NodeHandle {
 }
 
 impl NodeHandle {
-    pub async fn send_text(&self, peer_fp: &str, body: &str) -> Result<Uuid> {
+    /// Returns `(message_id, delivered)` where `delivered` means TextAck received.
+    pub async fn send_text(&self, peer_fp: &str, body: &str) -> Result<(Uuid, bool)> {
         let (reply, rx) = oneshot::channel();
         self.tx.send(Command::SendText {
             peer_fp: peer_fp.into(),
@@ -368,6 +409,84 @@ impl NodeHandle {
             limit,
             reply,
         })?;
+        Ok(rx.await?)
+    }
+
+    pub async fn remove_group_member(&self, group_id: Uuid, member_fp: &str) -> Result<GroupInfo> {
+        let (reply, rx) = oneshot::channel();
+        self.tx.send(Command::RemoveGroupMember {
+            group_id,
+            member_fp: member_fp.into(),
+            reply,
+        })?;
+        rx.await?
+    }
+
+    pub async fn search_history(&self, query: &str, limit: usize) -> Result<Vec<ChatMessage>> {
+        let (reply, rx) = oneshot::channel();
+        self.tx.send(Command::SearchHistory {
+            query: query.into(),
+            limit,
+            reply,
+        })?;
+        Ok(rx.await?)
+    }
+
+    pub async fn backup_identity(&self, path: impl AsRef<Path>, password: &str) -> Result<()> {
+        let (reply, rx) = oneshot::channel();
+        self.tx.send(Command::BackupIdentity {
+            path: path.as_ref().to_path_buf(),
+            password: password.into(),
+            reply,
+        })?;
+        rx.await?
+    }
+
+    pub async fn restore_identity(&self, path: impl AsRef<Path>, password: &str) -> Result<()> {
+        let (reply, rx) = oneshot::channel();
+        self.tx.send(Command::RestoreIdentity {
+            path: path.as_ref().to_path_buf(),
+            password: password.into(),
+            reply,
+        })?;
+        rx.await?
+    }
+
+    pub async fn set_download_dir(&self, path: Option<PathBuf>) -> Result<()> {
+        let (reply, rx) = oneshot::channel();
+        self.tx.send(Command::SetDownloadDir { path, reply })?;
+        rx.await?
+    }
+
+    pub async fn get_download_dir(&self) -> Result<PathBuf> {
+        let (reply, rx) = oneshot::channel();
+        self.tx.send(Command::GetDownloadDir { reply })?;
+        Ok(rx.await?)
+    }
+
+    pub async fn mute_peer(&self, peer_fp: &str, mute: bool) -> Result<()> {
+        let (reply, rx) = oneshot::channel();
+        self.tx.send(Command::MutePeer {
+            peer_fp: peer_fp.into(),
+            mute,
+            reply,
+        })?;
+        rx.await?
+    }
+
+    pub async fn mute_group(&self, group_id: Uuid, mute: bool) -> Result<()> {
+        let (reply, rx) = oneshot::channel();
+        self.tx.send(Command::MuteGroup {
+            group_id,
+            mute,
+            reply,
+        })?;
+        rx.await?
+    }
+
+    pub async fn config_snapshot(&self) -> Result<AppConfig> {
+        let (reply, rx) = oneshot::channel();
+        self.tx.send(Command::GetConfigSnapshot { reply })?;
         Ok(rx.await?)
     }
 
@@ -681,7 +800,85 @@ async fn run_loop(
                         let msgs = state.lock().history.list_dm(&peer_fp, limit);
                         let _ = reply.send(msgs);
                     }
-                    Some(Command::Shutdown { reply }) => {
+                                        Some(Command::RemoveGroupMember { group_id, member_fp, reply }) => {
+                        let result = do_remove_group_member(&state, &ev_tx, group_id, &member_fp).await;
+                        let _ = reply.send(result);
+                    }
+                    Some(Command::SearchHistory { query, limit, reply }) => {
+                        let msgs = state.lock().history.search(&query, limit);
+                        let _ = reply.send(msgs);
+                    }
+                    Some(Command::BackupIdentity { path, password, reply }) => {
+                        let paths = state.lock().paths.clone();
+                        let result = crate::backup::export_backup(&paths, &password, &path);
+                        let _ = reply.send(result);
+                    }
+                    Some(Command::RestoreIdentity { path, password, reply }) => {
+                        let paths = state.lock().paths.clone();
+                        let result = crate::backup::import_backup(&paths, &password, &path);
+                        if result.is_ok() {
+                            let _ = ev_tx.send(NodeEvent::Info(
+                                "身份已恢复，请重启应用以加载新密钥".into(),
+                            ));
+                        }
+                        let _ = reply.send(result);
+                    }
+                    Some(Command::SetDownloadDir { path, reply }) => {
+                        let result = (|| {
+                            let mut s = state.lock();
+                            if let Some(ref p) = path {
+                                std::fs::create_dir_all(p)?;
+                                s.downloads = p.clone();
+                                s.config.download_dir = Some(p.to_string_lossy().into_owned());
+                            } else {
+                                let d = s.paths.root.join("downloads");
+                                std::fs::create_dir_all(&d)?;
+                                s.downloads = d;
+                                s.config.download_dir = None;
+                            }
+                            s.config.save(&s.paths)?;
+                            Ok(())
+                        })();
+                        let _ = reply.send(result);
+                    }
+                    Some(Command::GetDownloadDir { reply }) => {
+                        let d = state.lock().downloads.clone();
+                        let _ = reply.send(d);
+                    }
+                    Some(Command::MutePeer { peer_fp, mute, reply }) => {
+                        let result = (|| {
+                            let mut s = state.lock();
+                            if mute {
+                                if !s.config.muted_peers.contains(&peer_fp) {
+                                    s.config.muted_peers.push(peer_fp);
+                                }
+                            } else {
+                                s.config.muted_peers.retain(|x| x != &peer_fp);
+                            }
+                            s.config.save(&s.paths)
+                        })();
+                        let _ = reply.send(result);
+                    }
+                    Some(Command::MuteGroup { group_id, mute, reply }) => {
+                        let result = (|| {
+                            let mut s = state.lock();
+                            let id = group_id.to_string();
+                            if mute {
+                                if !s.config.muted_groups.contains(&id) {
+                                    s.config.muted_groups.push(id);
+                                }
+                            } else {
+                                s.config.muted_groups.retain(|x| x != &id);
+                            }
+                            s.config.save(&s.paths)
+                        })();
+                        let _ = reply.send(result);
+                    }
+                    Some(Command::GetConfigSnapshot { reply }) => {
+                        let cfg = state.lock().config.clone();
+                        let _ = reply.send(cfg);
+                    }
+Some(Command::Shutdown { reply }) => {
 
                         let _ = reply.send(());
                         break;
@@ -742,7 +939,21 @@ async fn run_loop(
                         let _ = reply.send(Ok(ok));
                     }
                     Some(Command::SendFile { peer_fp, path, reply }) => {
-                        let result = do_send_file(&state, &ev_tx, &peer_fp, &path).await;
+                        let retries = state.lock().config.transfer_retries.max(1);
+                        let mut result = Err(anyhow!("send_file: no attempt"));
+                        for attempt in 1..=retries {
+                            result = do_send_file(&state, &ev_tx, &peer_fp, &path).await;
+                            if result.is_ok() {
+                                break;
+                            }
+                            let err = result.as_ref().err().map(|e| e.to_string()).unwrap_or_default();
+                            let _ = ev_tx.send(NodeEvent::Info(format!(
+                                "文件发送失败({attempt}/{retries}): {err}"
+                            )));
+                            if attempt < retries {
+                                tokio::time::sleep(Duration::from_millis(400 * attempt as u64)).await;
+                            }
+                        }
                         let _ = reply.send(result);
                     }
                 }
@@ -810,7 +1021,7 @@ async fn do_send_text(
     peer_fp: &str,
     body: &str,
     is_broadcast: bool,
-) -> Result<Uuid> {
+) -> Result<(Uuid, bool)> {
     let peer = ensure_trusted(state, peer_fp).await?;
     let identity = state.lock().identity.clone();
     let my_fp = identity.fingerprint().as_str().to_string();
@@ -846,21 +1057,38 @@ async fn do_send_text(
         session.send_msg(&msg).await.map_err(|_| e)?;
     }
 
-    // Wait briefly for delivery receipt (non-broadcast).
+    // Wait for delivery receipt (non-broadcast). Loop so Ping/Pong/other
+    // frames don't drop the TextAck (common race with pooled sessions).
+    let mut delivered = false;
     if !is_broadcast {
-        match tokio::time::timeout(std::time::Duration::from_secs(2), session.recv_msg()).await {
-            Ok(Ok(WireMessage::TextAck { id: ack_id, .. })) if ack_id == id => {
-                let _ = ev_tx.send(NodeEvent::TextDelivered {
-                    id,
-                    peer_fp: peer_fp.to_string(),
-                });
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+        while tokio::time::Instant::now() < deadline {
+            let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+            match tokio::time::timeout(left, session.recv_msg()).await {
+                Ok(Ok(WireMessage::TextAck { id: ack_id, .. })) if ack_id == id => {
+                    delivered = true;
+                    let _ = ev_tx.send(NodeEvent::TextDelivered {
+                        id,
+                        peer_fp: peer_fp.to_string(),
+                    });
+                    break;
+                }
+                Ok(Ok(WireMessage::Ping { ts_ms })) => {
+                    let _ = session.send_msg(&WireMessage::Pong { ts_ms }).await;
+                }
+                Ok(Ok(WireMessage::Pong { .. })) => {}
+                Ok(Ok(other)) => {
+                    tracing::debug!(?other, "skipping non-ack while awaiting TextAck");
+                }
+                Ok(Err(e)) => {
+                    tracing::debug!(error = %e, "recv error while awaiting TextAck");
+                    break;
+                }
+                Err(_) => break, // timeout
             }
-            Ok(Ok(other)) => {
-                tracing::debug!(?other, "unexpected msg while awaiting TextAck");
-            }
-            _ => {
-                // No ack — still OK; message may have been delivered without ack support.
-            }
+        }
+        if !delivered {
+            tracing::debug!(%id, peer = %peer_fp, "TextAck not received within timeout");
         }
     }
 
@@ -878,11 +1106,21 @@ async fn do_send_text(
         ts_ms,
         file_path: None,
         file_size: None,
-        delivered: false,
+        delivered,
         group_id: None,
-        chat_scope: crate::protocol::ChatScope::Broadcast,
+        chat_scope: if is_broadcast {
+            crate::protocol::ChatScope::Broadcast
+        } else {
+            crate::protocol::ChatScope::Direct
+        },
     };
-    let _ = state.lock().history.append(chat);
+    {
+        let mut s = state.lock();
+        let _ = s.history.append(chat);
+        if delivered {
+            let _ = s.history.mark_delivered(id);
+        }
+    }
     let _ = ev_tx.send(NodeEvent::Text {
         from_fp: my_fp,
         from_name: my_name,
@@ -891,7 +1129,7 @@ async fn do_send_text(
         broadcast: is_broadcast,
     });
     store_session(state, peer_fp, session);
-    Ok(id)
+    Ok((id, delivered))
 }
 
 async fn do_pair_with_pin(
@@ -1170,7 +1408,8 @@ async fn handle_incoming(
                     detail,
                 });
             }
-            WireMessage::TextAck { id, .. } => {
+                        WireMessage::TextAck { id, .. } => {
+                let _ = state.lock().history.mark_delivered(id);
                 let _ = ev_tx.send(NodeEvent::TextDelivered {
                     id,
                     peer_fp: peer_fp.clone(),
@@ -1232,6 +1471,7 @@ async fn handle_incoming(
                         group_key_hex: hex::encode(group_key),
                         created_ms,
                         join_code,
+                        key_epoch: 0,
                     };
                     let _ = state.lock().groups.upsert(info.clone());
                     let _ = ev_tx.send(NodeEvent::GroupInviteReceived(info));
@@ -1621,4 +1861,95 @@ async fn do_leave_group(
         name: info.name,
     });
     Ok(())
+}
+
+async fn do_remove_group_member(
+    state: &Arc<Mutex<RuntimeState>>,
+    ev_tx: &broadcast::Sender<NodeEvent>,
+    group_id: Uuid,
+    member_fp: &str,
+) -> Result<GroupInfo> {
+    let (my_fp, identity, info) = {
+        let mut s = state.lock();
+        let my_fp = s.identity.fingerprint().as_str().to_string();
+        let identity = s.identity.clone();
+        let info = s.groups.remove_and_rekey(&group_id, &my_fp, member_fp)?;
+        (my_fp, identity, info)
+    };
+    let key = info.group_key()?;
+    let sign = crate::group::rekey_sign_bytes(
+        &info.id,
+        &info.members,
+        &key,
+        info.key_epoch,
+        member_fp,
+    );
+    let sig = identity.sign(&sign).to_vec();
+
+    // Notify removed member (best-effort) — drop locks before await
+    let removed_addr = {
+        let s = state.lock();
+        s.peers
+            .get_live(member_fp)
+            .filter(|p| p.online)
+            .map(|p| p.addr)
+    };
+    if let Some(addr) = removed_addr {
+        if let Ok(mut session) = take_or_connect_session(state, member_fp, addr).await {
+            let _ = session
+                .send_msg(&WireMessage::GroupMemberRemoved {
+                    group_id,
+                    removed_fp: member_fp.to_string(),
+                    by_fp: my_fp.clone(),
+                })
+                .await;
+            store_session(state, member_fp, session);
+        }
+    }
+
+    // Distribute new key to remaining members
+    let targets: Vec<(String, std::net::SocketAddr)> = {
+        let s = state.lock();
+        info.members
+            .iter()
+            .filter(|fp| fp.as_str() != my_fp.as_str())
+            .filter_map(|fp| {
+                s.peers
+                    .get_live(fp)
+                    .filter(|p| p.online)
+                    .map(|p| (fp.clone(), p.addr))
+            })
+            .collect()
+    };
+    for (fp, addr) in targets {
+        match take_or_connect_session(state, &fp, addr).await {
+            Ok(mut session) => {
+                if let Err(e) = session
+                    .send_msg(&WireMessage::GroupRekey {
+                        group_id,
+                        members: info.members.clone(),
+                        group_key: key,
+                        key_epoch: info.key_epoch,
+                        removed_fp: member_fp.to_string(),
+                        creator_sig: sig.clone(),
+                    })
+                    .await
+                {
+                    let _ = ev_tx.send(NodeEvent::Error(format!("rekey to {fp} failed: {e}")));
+                } else {
+                    store_session(state, &fp, session);
+                }
+            }
+            Err(e) => {
+                let _ = ev_tx.send(NodeEvent::Error(format!("rekey connect {fp}: {e}")));
+            }
+        }
+    }
+
+    let _ = ev_tx.send(NodeEvent::GroupUpdated(info.clone()));
+    let _ = ev_tx.send(NodeEvent::Info(format!(
+        "已移除成员并轮换群密钥 epoch={}",
+        info.key_epoch
+    )));
+    Ok(info)
 }

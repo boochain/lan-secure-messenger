@@ -101,6 +101,22 @@ pub enum WireMessage {
         group_id: Uuid,
         sender_fp: String,
     },
+    /// Creator removed a member and rotated the group key (sent to remaining members).
+    GroupRekey {
+        group_id: Uuid,
+        members: Vec<String>,
+        group_key: [u8; 32],
+        key_epoch: u64,
+        removed_fp: String,
+        /// Ed25519 signature over invite_sign_bytes-style payload including epoch
+        creator_sig: Vec<u8>,
+    },
+    /// Notify a removed member that they were kicked (no new key).
+    GroupMemberRemoved {
+        group_id: Uuid,
+        removed_fp: String,
+        by_fp: String,
+    },
     /// Keepalive
     Ping { ts_ms: i64 },
     Pong { ts_ms: i64 },

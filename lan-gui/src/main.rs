@@ -70,6 +70,15 @@ enum Cmd {
     LeaveGroup(Uuid),
     Invite(Uuid, String),
     FinishFirstRun(String),
+    Search(String),
+    Backup(PathBuf, String),
+    Restore(PathBuf, String),
+    MutePeer(String, bool),
+    MuteGroup(Uuid, bool),
+    SetDownloadDir(PathBuf),
+    OpenDownloadDir,
+    RemoveGroupMember(Uuid, String),
+    CheckUpdate,
 }
 
 enum Msg {
@@ -81,6 +90,8 @@ enum Msg {
     GroupHistory(Uuid, Vec<ChatMessage>),
     Status(String),
     Error(String),
+    SearchResults(Vec<ChatMessage>),
+    UpdateInfo(String),
 }
 
 #[derive(Clone)]
@@ -118,6 +129,14 @@ struct App {
     show_new_group: bool,
     tray: Option<TrayBits>,
     dark: bool,
+    search_query: String,
+    search_hits: Vec<ChatMessage>,
+    show_search: bool,
+    muted_peers: std::collections::HashSet<String>,
+    muted_groups: std::collections::HashSet<Uuid>,
+    backup_password: String,
+    update_note: String,
+    download_dir_display: String,
 }
 
 impl App {
@@ -157,6 +176,14 @@ impl App {
             show_new_group: false,
             tray: make_tray(),
             dark: true,
+            search_query: String::new(),
+            search_hits: Vec::new(),
+            show_search: false,
+            muted_peers: std::collections::HashSet::new(),
+            muted_groups: std::collections::HashSet::new(),
+            backup_password: String::new(),
+            update_note: String::new(),
+            download_dir_display: String::new(),
         }
     }
 
@@ -204,6 +231,15 @@ impl App {
                 }
                 Msg::Status(s) => self.status = s,
                 Msg::Error(e) => self.status = format!("错误: {e}"),
+                Msg::SearchResults(hits) => {
+                    self.search_hits = hits;
+                    self.show_search = true;
+                    self.status = format!("搜索结果 {} 条", self.search_hits.len());
+                }
+                Msg::UpdateInfo(s) => {
+                    self.update_note = s.clone();
+                    self.status = s;
+                }
                 Msg::Event(ev) => self.on_ev(ev),
             }
         }
@@ -235,8 +271,12 @@ impl App {
                 });
                 if !mine {
                     let sel = matches!(&self.target, Some(Target::Peer(fp)) if fp == &from_fp) && self.tab == Tab::Dm;
-                    if !sel { *self.unread_dm.entry(from_fp).or_insert(0) += 1; }
-                    self.status = format!("消息来自 {from_name}");
+                    if !sel && !self.muted_peers.contains(&from_fp) {
+                        *self.unread_dm.entry(from_fp.clone()).or_insert(0) += 1;
+                    }
+                    if !self.muted_peers.contains(&from_fp) {
+                        self.status = format!("消息来自 {from_name}");
+                    }
                 }
             }
             NodeEvent::TextDelivered { peer_fp, .. } => {
@@ -373,10 +413,60 @@ impl eframe::App for App {
                         self.cmd(Cmd::SetName(self.name_edit.clone())); self.my_name = self.name_edit.clone();
                     }
                     if ui.button("刷新").clicked() { self.cmd(Cmd::Refresh); }
+                    if ui.button("全部已读").clicked() {
+                        self.unread_dm.clear();
+                        self.unread_g.clear();
+                        self.status = "已全部标为已读".into();
+                    }
+                    if ui.button("搜索").clicked() { self.show_search = !self.show_search; }
+                    if ui.button("检查更新").clicked() { self.cmd(Cmd::CheckUpdate); }
+                    if ui.button("打开下载目录").clicked() { self.cmd(Cmd::OpenDownloadDir); }
                     if self.tab == Tab::Groups && ui.button("新建群").clicked() { self.show_new_group = true; }
                 });
             });
             ui.horizontal(|ui| { ui.label("显示名"); ui.text_edit_singleline(&mut self.name_edit); });
+            if self.show_search {
+                ui.horizontal(|ui| {
+                    ui.label("搜索");
+                    let r = ui.text_edit_singleline(&mut self.search_query);
+                    if (r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))
+                        || ui.button("查找").clicked()
+                    {
+                        if !self.search_query.is_empty() {
+                            self.cmd(Cmd::Search(self.search_query.clone()));
+                        }
+                    }
+                });
+                for m in &self.search_hits {
+                    ui.small(format!("{} {} {}: {}", m.ts_ms, m.peer_name, m.peer_fp, m.body));
+                }
+            }
+            if !self.update_note.is_empty() {
+                ui.colored_label(egui::Color32::from_rgb(220, 160, 40), &self.update_note);
+            }
+            ui.horizontal(|ui| {
+                ui.label("备份密码");
+                ui.add(egui::TextEdit::singleline(&mut self.backup_password).password(true));
+                if ui.button("备份身份").clicked() {
+                    if let Some(p) = rfd::FileDialog::new().set_file_name("lan-backup.lsmb").save_file() {
+                        self.cmd(Cmd::Backup(p, self.backup_password.clone()));
+                    }
+                }
+                if ui.button("恢复备份").clicked() {
+                    if let Some(p) = rfd::FileDialog::new().pick_file() {
+                        self.cmd(Cmd::Restore(p, self.backup_password.clone()));
+                    }
+                }
+                if ui.button("下载目录…").clicked() {
+                    if let Some(p) = rfd::FileDialog::new().pick_folder() {
+                        self.download_dir_display = p.display().to_string();
+                        self.cmd(Cmd::SetDownloadDir(p));
+                    }
+                }
+                if !self.download_dir_display.is_empty() {
+                    ui.small(&self.download_dir_display);
+                }
+            });
         });
         egui::TopBottomPanel::bottom("bot").show(ctx, |ui| { ui.label(&self.status); });
 
@@ -399,6 +489,12 @@ impl eframe::App for App {
                             if ui.small_button("信任").clicked() { self.cmd(Cmd::Trust(p.fingerprint.as_str().into())); }
                             if ui.small_button("拉黑").clicked() { self.cmd(Cmd::Block(p.fingerprint.as_str().into())); }
                             if ui.small_button("复制").clicked() { ctx.copy_text(p.fingerprint.as_str().into()); }
+                            let muted = self.muted_peers.contains(p.fingerprint.as_str());
+                            if ui.small_button(if muted {"取消静音"} else {"静音"}).clicked() {
+                                self.cmd(Cmd::MutePeer(p.fingerprint.as_str().into(), !muted));
+                                if muted { self.muted_peers.remove(p.fingerprint.as_str()); }
+                                else { self.muted_peers.insert(p.fingerprint.as_str().into()); }
+                            }
                         });
                         ui.separator();
                     }
@@ -596,6 +692,83 @@ async fn backend(msg_tx: Sender<Msg>, cmd_rx: Receiver<Cmd>) -> anyhow::Result<(
             Ok(Cmd::LeaveGroup(gid)) => { let _=handle.leave_group(gid).await; let _=msg_tx.send(Msg::Groups(handle.list_groups().await.unwrap_or_default())); }
             Ok(Cmd::Invite(gid, fp)) => { if let Err(e)=handle.invite_to_group(gid,&fp).await { let _=msg_tx.send(Msg::Error(e.to_string())); } }
             Err(mpsc::TryRecvError::Empty) => { tokio::time::sleep(Duration::from_millis(40)).await; }
+            
+            Ok(Cmd::Search(q)) => {
+                match handle.search_history(&q, 100).await {
+                    Ok(hits) => { let _ = msg_tx.send(Msg::SearchResults(hits)); }
+                    Err(e) => { let _ = msg_tx.send(Msg::Error(e.to_string())); }
+                }
+            }
+            Ok(Cmd::Backup(path, password)) => {
+                match handle.backup_identity(&path, &password).await {
+                    Ok(()) => { let _ = msg_tx.send(Msg::Status(format!("备份完成 {}", path.display()))); }
+                    Err(e) => { let _ = msg_tx.send(Msg::Error(e.to_string())); }
+                }
+            }
+            Ok(Cmd::Restore(path, password)) => {
+                match handle.restore_identity(&path, &password).await {
+                    Ok(()) => { let _ = msg_tx.send(Msg::Status("恢复完成，请重启应用".into())); }
+                    Err(e) => { let _ = msg_tx.send(Msg::Error(e.to_string())); }
+                }
+            }
+            Ok(Cmd::MutePeer(fp, mute)) => {
+                let _ = handle.mute_peer(&fp, mute).await;
+                let _ = msg_tx.send(Msg::Status(if mute { format!("已静音 {fp}") } else { format!("取消静音 {fp}") }));
+            }
+            Ok(Cmd::MuteGroup(gid, mute)) => {
+                let _ = handle.mute_group(gid, mute).await;
+            }
+            Ok(Cmd::SetDownloadDir(path)) => {
+                match handle.set_download_dir(Some(path.clone())).await {
+                    Ok(()) => { let _ = msg_tx.send(Msg::Status(format!("下载目录 {}", path.display()))); }
+                    Err(e) => { let _ = msg_tx.send(Msg::Error(e.to_string())); }
+                }
+            }
+            Ok(Cmd::OpenDownloadDir) => {
+                match handle.get_download_dir().await {
+                    Ok(d) => {
+                        #[cfg(target_os = "windows")]
+                        { let _ = std::process::Command::new("explorer").arg(&d).spawn(); }
+                        #[cfg(target_os = "linux")]
+                        { let _ = std::process::Command::new("xdg-open").arg(&d).spawn(); }
+                        #[cfg(target_os = "macos")]
+                        { let _ = std::process::Command::new("open").arg(&d).spawn(); }
+                        let _ = msg_tx.send(Msg::Status(format!("下载目录 {}", d.display())));
+                    }
+                    Err(e) => { let _ = msg_tx.send(Msg::Error(e.to_string())); }
+                }
+            }
+            Ok(Cmd::RemoveGroupMember(gid, fp)) => {
+                match handle.remove_group_member(gid, &fp).await {
+                    Ok(g) => {
+                        let _ = msg_tx.send(Msg::Status(format!("已移除成员，epoch={}", g.key_epoch)));
+                        let _ = msg_tx.send(Msg::Groups(handle.list_groups().await.unwrap_or_default()));
+                    }
+                    Err(e) => { let _ = msg_tx.send(Msg::Error(e.to_string())); }
+                }
+            }
+            Ok(Cmd::CheckUpdate) => {
+                let note = tokio::task::spawn_blocking(|| {
+                    let url = "https://api.github.com/repos/FREC86/lan-secure-messenger/releases/latest";
+                    let out = std::process::Command::new("curl")
+                        .args(["-fsSL", "-H", "User-Agent: lan-secure-messenger", url])
+                        .output()
+                        .ok()?;
+                    if !out.status.success() { return None; }
+                    let body = String::from_utf8_lossy(&out.stdout);
+                    let v: serde_json::Value = serde_json::from_str(&body).ok()?;
+                    let tag = v.get("tag_name")?.as_str()?.to_string();
+                    let cur = env!("CARGO_PKG_VERSION");
+                    let norm = |s: &str| s.trim().trim_start_matches('v').to_string();
+                    if norm(&tag) != norm(cur) {
+                        Some(format!("有新版本 {tag}（当前 {cur}）https://github.com/FREC86/lan-secure-messenger/releases"))
+                    } else {
+                        Some(format!("已是最新 {cur}"))
+                    }
+                }).await.ok().flatten().unwrap_or_else(|| "检查更新失败（可忽略）".into());
+                let _ = msg_tx.send(Msg::UpdateInfo(note));
+            }
+
             Err(mpsc::TryRecvError::Disconnected) => break,
         }
     }

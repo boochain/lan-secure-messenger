@@ -3,6 +3,7 @@
 //! Provides peer discovery, Noise-based E2E encryption, text/file transfer,
 //! TOFU trust, and encrypted local history.
 
+pub mod backup;
 pub mod config;
 pub mod crypto;
 pub mod discovery;

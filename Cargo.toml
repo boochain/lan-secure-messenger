@@ -4,7 +4,7 @@ members = ["lan-core", "lan-cli", "lan-gui"]
 default-members = ["lan-core", "lan-cli"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.3.0"
 edition = "2021"
 license = "MIT"
 authors = ["Bill Ocean <FREC86>"]

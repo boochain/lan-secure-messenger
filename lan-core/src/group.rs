@@ -6,8 +6,9 @@
 //! - Membership list is Ed25519-signed by the creator; members should verify.
 //! - Group messages are fan-out over 1:1 Noise sessions (not IP multicast crypto).
 //! - Offline members do not receive store-and-forward (LAN MVP limitation).
-//! - A compromised member who has the group key can read all group history
-//!   encrypted with that key; rotate by creating a new group.
+//! - On member remove, creator rotates the group key and redistributes over Noise
+//!   to remaining members. Offline catch-up of missed messages is still absent.
+//! - Removed members may still decrypt *old* messages if they retained ciphertext.
 
 use crate::config::ConfigPaths;
 use crate::crypto::{open_at_rest, seal_at_rest};
@@ -34,6 +35,9 @@ pub struct GroupInfo {
     /// Invite / join code (short), optional convenience for LAN.
     #[serde(default)]
     pub join_code: String,
+    /// Incremented on each membership rekey.
+    #[serde(default)]
+    pub key_epoch: u64,
 }
 
 impl GroupInfo {
@@ -129,6 +133,7 @@ impl GroupStore {
             group_key_hex: hex::encode(key),
             created_ms: chrono::Utc::now().timestamp_millis(),
             join_code,
+            key_epoch: 0,
         };
         key.zeroize();
         let _ = identity; // reserved for signed invites at call site
@@ -166,6 +171,27 @@ impl GroupStore {
         if !info.is_member(my_fp) {
             self.groups.remove(id);
         }
+        self.save()?;
+        Ok(info)
+    }
+
+
+    /// Creator removes a member and rotates the shared key (forward secrecy vs removed member for *new* messages).
+    pub fn remove_and_rekey(&mut self, id: &Uuid, creator_fp: &str, member_fp: &str) -> Result<GroupInfo> {
+        let g = self
+            .groups
+            .get_mut(id)
+            .ok_or_else(|| anyhow!("group not found"))?;
+        anyhow::ensure!(g.creator_fp == creator_fp, "only creator can remove members");
+        anyhow::ensure!(member_fp != creator_fp, "creator cannot remove self; use leave");
+        anyhow::ensure!(g.is_member(member_fp), "not a member");
+        g.members.retain(|m| m != member_fp);
+        let mut key = [0u8; 32];
+        rand::thread_rng().fill_bytes(&mut key);
+        g.group_key_hex = hex::encode(key);
+        key.zeroize();
+        g.key_epoch = g.key_epoch.saturating_add(1);
+        let info = g.clone();
         self.save()?;
         Ok(info)
     }
@@ -247,3 +273,26 @@ pub fn invite_sign_bytes(
 }
 
 use rand::Rng;
+
+/// Canonical bytes for creator signature over a group rekey.
+pub fn rekey_sign_bytes(
+    group_id: &uuid::Uuid,
+    members: &[String],
+    group_key: &[u8; 32],
+    key_epoch: u64,
+    removed_fp: &str,
+) -> Vec<u8> {
+    let mut v = Vec::new();
+    v.extend_from_slice(b"REKEY1");
+    v.extend_from_slice(group_id.as_bytes());
+    let mut ms = members.to_vec();
+    ms.sort();
+    for m in ms {
+        v.extend_from_slice(m.as_bytes());
+        v.push(0);
+    }
+    v.extend_from_slice(group_key);
+    v.extend_from_slice(&key_epoch.to_le_bytes());
+    v.extend_from_slice(removed_fp.as_bytes());
+    v
+}

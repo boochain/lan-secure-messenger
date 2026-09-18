@@ -119,6 +119,22 @@ impl HistoryStore {
         &self.messages
     }
 
+    /// Case-insensitive substring search over body/peer_name (DM + group).
+    pub fn search(&self, query: &str, limit: usize) -> Vec<ChatMessage> {
+        let q = query.trim().to_lowercase();
+        if q.is_empty() {
+            return Vec::new();
+        }
+        let iter = self.messages.iter().rev().filter(|m| {
+            m.body.to_lowercase().contains(&q)
+                || m.peer_name.to_lowercase().contains(&q)
+                || m.peer_fp.to_lowercase().contains(&q)
+        });
+        let mut out: Vec<_> = iter.take(limit).cloned().collect();
+        out.reverse();
+        out
+    }
+
     fn persist(&self) -> Result<()> {
         if !self.enabled {
             return Ok(());

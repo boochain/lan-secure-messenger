@@ -19,12 +19,19 @@
 - **可选 PIN 配对**（`pair-offer` / `pair`）快速互信
 - 向所有**已信任且在线**对等端安全广播（带成功/失败明细）
 - 本地聊天历史（ChaCha20-Poly1305 静态加密；含群元数据 `groups.json`）
-- GUI：**首次运行**仅需显示名；**系统托盘**（关窗后台、显示/退出）；私聊 / 群聊页签
+- GUI：**首次运行**仅需显示名；**系统托盘**；私聊 / 群聊；**历史搜索**；静音；全部已读；备份/恢复；下载目录；检查更新
+- **送达回执**更可靠（TextAck 等待循环，忽略 Ping/Pong 干扰）
+- **群成员移除 + 群密钥轮换**（创建者操作；经 Noise 分发新密钥；仍无离线补历史）
+- **失败传输自动重试**（`transfer_retries`，默认 3）
+- **身份加密备份/恢复**（`backup` / `restore`）
+- CLI：`search`、`backup`、`restore`、`group-remove-member`、`mute`、`set-download-dir`、`check-update`
 - CLI（`lan-msg`）含 **`doctor`**、群聊子命令；一键下载即用（见下）
 
 
 
 ## 下载即用（Windows，免编译免配置）
+
+推荐下载 Release **v0.3.0** 便携包。
 
 > **启用自动构建：** 将 `packaging/ci/release.yml` 复制为 `.github/workflows/release.yml` 后推送（需具备 `workflow` 权限的 token）。此后推 `main` / 打 `v*` 标签即产出 Windows / Linux 发布包。
 
