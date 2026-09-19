@@ -117,6 +117,33 @@ pub enum WireMessage {
         removed_fp: String,
         by_fp: String,
     },
+    /// Tic-tac-toe invite (inviter is always X).
+    GameInvite { id: Uuid, kind: u8 },
+    GameInviteAck { id: Uuid, accept: bool },
+    GameMove { id: Uuid, cell: u8 },
+    GameResign { id: Uuid },
+    /// Shared-folder browse (relative path under peer opt-in root).
+    ShareListReq { req_id: Uuid, path: String },
+    ShareListResp {
+        req_id: Uuid,
+        path: String,
+        ok: bool,
+        error: String,
+        entries: Vec<ShareListEntry>,
+    },
+    /// Peer should send the file via FileOffer on this session.
+    ShareGetReq { req_id: Uuid, path: String },
+    ShareGetErr { req_id: Uuid, error: String },
+    /// Upload into peer's share (followed by normal FileOffer/chunks if accepted).
+    SharePutOffer {
+        id: Uuid,
+        rel_dir: String,
+        name: String,
+        size: u64,
+        mime: String,
+        sha256: String,
+    },
+    SharePutAck { id: Uuid, accept: bool, error: String },
     /// Keepalive
     Ping { ts_ms: i64 },
     Pong { ts_ms: i64 },
@@ -176,6 +203,13 @@ pub enum MsgKind {
     File,
     Image,
     System,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShareListEntry {
+    pub name: String,
+    pub is_dir: bool,
+    pub size: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -88,6 +88,12 @@ pub struct AppConfig {
     /// Soft-check GitHub Releases for updates.
     #[serde(default = "default_true")]
     pub check_updates: bool,
+    /// Opt-in: expose a local folder to trusted peers.
+    #[serde(default)]
+    pub share_enabled: bool,
+    /// Absolute path of shared folder (ignored unless share_enabled).
+    #[serde(default)]
+    pub share_root: Option<String>,
 }
 
 fn default_transfer_retries() -> u32 { 3 }
@@ -124,6 +130,8 @@ impl Default for AppConfig {
             muted_peers: Vec::new(),
             muted_groups: Vec::new(),
             check_updates: true,
+            share_enabled: false,
+            share_root: None,
         }
     }
 }

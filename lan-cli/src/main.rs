@@ -202,6 +202,52 @@ enum Commands {
     CancelTransfer {
         id: String,
     },
+    /// 邀请对等端玩井字棋
+    GameInvite { fingerprint: String },
+    /// 接受/拒绝井字棋邀请
+    GameAccept {
+        id: String,
+        #[arg(long)]
+        reject: bool,
+    },
+    /// 井字棋落子（格子 0-8）
+    GameMove { id: String, cell: u8 },
+    /// 认输
+    GameResign { id: String },
+    /// 显示进行中的棋局
+    GameShow {
+        id: Option<String>,
+    },
+    /// 启用/关闭本地共享目录（需已信任对等端才能被浏览）
+    ShareSet {
+        path: Option<PathBuf>,
+        #[arg(long)]
+        off: bool,
+    },
+    /// 列出对等端共享目录
+    ShareList {
+        fingerprint: String,
+        #[arg(default_value = "")]
+        path: String,
+        #[arg(long, default_value = "3")]
+        wait: u64,
+    },
+    /// 从对等端共享下载文件
+    ShareGet {
+        fingerprint: String,
+        path: String,
+        #[arg(long, default_value = "3")]
+        wait: u64,
+    },
+    /// 上传本地文件到对等端共享目录
+    SharePut {
+        fingerprint: String,
+        file: PathBuf,
+        #[arg(long, default_value = "")]
+        rel_dir: String,
+        #[arg(long, default_value = "3")]
+        wait: u64,
+    },
 }
 
 #[tokio::main]
@@ -293,7 +339,19 @@ async fn main() -> Result<()> {
                             NodeEvent::PeerUpdated(p) if p.trust == TrustState::Trusted => {
                                 println!("[配对成功] {} ({})", p.display_name, p.fingerprint);
                             }
-                            NodeEvent::Info(i) => println!("[信息] {i}"),
+                            NodeEvent::GameInviteReceived { id, from_name, .. } => {
+                        println!("[井字棋] 邀请来自 {from_name} id={id}");
+                    }
+                    NodeEvent::GameUpdated { id, board, status, my_turn, .. } => {
+                        println!("[井字棋] {id} {status} turn={}\n{board}", if my_turn {"me"} else {"peer"});
+                    }
+                    NodeEvent::ShareListed { peer_fp, path, entries } => {
+                        println!("[共享] {peer_fp}:{path}");
+                        for e in entries {
+                            println!("  {} {} {}", if e.is_dir {"DIR"} else {"FILE"}, e.size, e.name);
+                        }
+                    }
+                    NodeEvent::Info(i) => println!("[信息] {i}"),
                             NodeEvent::Error(e) => eprintln!("[错误] {e}"),
                             _ => {}
                         }
@@ -464,6 +522,91 @@ async fn main() -> Result<()> {
             handle.shutdown().await;
             Ok(())
         }
+
+        Commands::GameInvite { fingerprint } => {
+            let handle = start_node(paths, config).await?;
+            tokio::time::sleep(Duration::from_secs(3)).await;
+            let id = handle.game_invite(&fingerprint).await?;
+            println!("已邀请井字棋 id={id}");
+            handle.shutdown().await;
+            Ok(())
+        }
+        Commands::GameAccept { id, reject } => {
+            let handle = start_node(paths, config).await?;
+            let gid = uuid::Uuid::parse_str(&id)?;
+            handle.game_accept(gid, !reject).await?;
+            println!("{}", if reject { "已拒绝" } else { "已接受" });
+            handle.shutdown().await;
+            Ok(())
+        }
+        Commands::GameMove { id, cell } => {
+            let handle = start_node(paths, config).await?;
+            let gid = uuid::Uuid::parse_str(&id)?;
+            handle.game_move(gid, cell).await?;
+            for (i, board) in handle.game_show(Some(gid)).await? {
+                println!("{i}\n{board}");
+            }
+            handle.shutdown().await;
+            Ok(())
+        }
+        Commands::GameResign { id } => {
+            let handle = start_node(paths, config).await?;
+            let gid = uuid::Uuid::parse_str(&id)?;
+            handle.game_resign(gid).await?;
+            println!("已认输");
+            handle.shutdown().await;
+            Ok(())
+        }
+        Commands::GameShow { id } => {
+            let handle = start_node(paths, config).await?;
+            let oid = id.as_ref().map(|s| uuid::Uuid::parse_str(s)).transpose()?;
+            for (i, board) in handle.game_show(oid).await? {
+                println!("=== {i} ===\n{board}");
+            }
+            handle.shutdown().await;
+            Ok(())
+        }
+        Commands::ShareSet { path, off } => {
+            let handle = start_node(paths, config).await?;
+            if off {
+                handle.set_share_root(None, false).await?;
+                println!("已关闭共享");
+            } else {
+                let p = path.ok_or_else(|| anyhow::anyhow!("需要 -- 或 path"))?;
+                handle.set_share_root(Some(p.clone()), true).await?;
+                println!("已启用共享: {}", p.display());
+            }
+            handle.shutdown().await;
+            Ok(())
+        }
+        Commands::ShareList { fingerprint, path, wait } => {
+            let handle = start_node(paths, config).await?;
+            tokio::time::sleep(Duration::from_secs(wait)).await;
+            let entries = handle.share_list(&fingerprint, &path).await?;
+            for e in entries {
+                let tag = if e.is_dir { "DIR " } else { "FILE" };
+                println!("{tag} {:>10} {}", e.size, e.name);
+            }
+            handle.shutdown().await;
+            Ok(())
+        }
+        Commands::ShareGet { fingerprint, path, wait } => {
+            let handle = start_node(paths, config).await?;
+            tokio::time::sleep(Duration::from_secs(wait)).await;
+            let p = handle.share_get(&fingerprint, &path).await?;
+            println!("已下载到 {}", p.display());
+            handle.shutdown().await;
+            Ok(())
+        }
+        Commands::SharePut { fingerprint, file, rel_dir, wait } => {
+            let handle = start_node(paths, config).await?;
+            tokio::time::sleep(Duration::from_secs(wait)).await;
+            handle.share_put(&fingerprint, &file, &rel_dir).await?;
+            println!("已上传 {}", file.display());
+            handle.shutdown().await;
+            Ok(())
+        }
+
         Commands::CheckUpdate => {
             match check_github_update() {
                 Ok(Some(tag)) => println!("发现新版本: {tag}（当前 {}）\n下载: https://github.com/FREC86/lan-secure-messenger/releases", env!("CARGO_PKG_VERSION")),
@@ -708,6 +851,24 @@ async fn run_daemon(paths: ConfigPaths, config: AppConfig) -> Result<()> {
                     NodeEvent::PeerUpdated(p) => {
                         // Trust/name changes only (discovery heartbeats no longer spam PeerOnline)
                         println!("[更新] {} {:?}", p.display_name, p.trust);
+                    }
+                    NodeEvent::GameInviteReceived { id, from_name, .. } => {
+                        println!("[井字棋] 邀请来自 {from_name} id={id}");
+                    }
+                    NodeEvent::GameUpdated { id, board, status, my_turn, .. } => {
+                        let who = if my_turn { "me" } else { "peer" };
+                        println!("[井字棋] {id} {status} turn={who}\n{board}");
+                    }
+                    NodeEvent::ShareListed { peer_fp, path, entries } => {
+                        println!("[共享] {peer_fp}:{path}");
+                        for e in entries {
+                            println!(
+                                "  {} {} {}",
+                                if e.is_dir { "DIR" } else { "FILE" },
+                                e.size,
+                                e.name
+                            );
+                        }
                     }
                 }
             }

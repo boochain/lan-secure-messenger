@@ -282,3 +282,29 @@ LAN_MSG_NAME=Alice LAN_MSG_CONFIG=/tmp/lsm-gui lan-gui
 ## License
 
 MIT — 见 [LICENSE](./LICENSE)
+
+
+
+## 实验功能（分支 `feat/games-and-shares`，未并入稳定版）
+
+> 独立分支 MVP；**稳定线请用 v0.3.2**。本分支版本号暂记为 0.4.0。
+
+### 局域网井字棋（1v1，Noise 通道）
+GUI 私聊点「井字棋」，或：
+```bash
+lan-msg game-invite <peer-fp>
+lan-msg game-accept <game-id>          # 加 --reject 拒绝
+lan-msg game-move <game-id> <0-8>
+lan-msg game-resign <game-id>
+lan-msg game-show [game-id]
+```
+
+### 共享文件夹（显式 opt-in + 路径沙箱）
+仅已信任对等端可访问；拒绝 `..` / 绝对路径。
+```bash
+lan-msg share-set ~/LanShare
+lan-msg share-set --off
+lan-msg share-list <peer-fp> [relpath]
+lan-msg share-get <peer-fp> <relpath>
+lan-msg share-put <peer-fp> <local-file> [--rel-dir .]
+```

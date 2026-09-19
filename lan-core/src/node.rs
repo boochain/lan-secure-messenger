@@ -20,6 +20,9 @@ use tokio::sync::{broadcast, mpsc, oneshot};
 use tracing::{info, warn};
 use uuid::Uuid;
 use crate::util::sanitize_display_name;
+use crate::game::{GameStatus, TicTacToeGame};
+use crate::share::ShareRoot;
+use crate::protocol::ShareListEntry;
 
 #[derive(Debug, Clone)]
 pub enum NodeEvent {
@@ -74,6 +77,24 @@ pub enum NodeEvent {
         from_name: String,
         path: PathBuf,
         meta: FileMeta,
+    },
+    GameInviteReceived {
+        id: Uuid,
+        from_fp: String,
+        from_name: String,
+        kind: u8,
+    },
+    GameUpdated {
+        id: Uuid,
+        peer_fp: String,
+        board: String,
+        status: String,
+        my_turn: bool,
+    },
+    ShareListed {
+        peer_fp: String,
+        path: String,
+        entries: Vec<ShareListEntry>,
     },
     Error(String),
     Info(String),
@@ -210,6 +231,49 @@ enum Command {
     },
     GetConfigSnapshot {
         reply: oneshot::Sender<AppConfig>,
+    },
+    GameInvite {
+        peer_fp: String,
+        reply: oneshot::Sender<Result<Uuid>>,
+    },
+    GameAccept {
+        id: Uuid,
+        accept: bool,
+        reply: oneshot::Sender<Result<()>>,
+    },
+    GameMoveCmd {
+        id: Uuid,
+        cell: u8,
+        reply: oneshot::Sender<Result<()>>,
+    },
+    GameResign {
+        id: Uuid,
+        reply: oneshot::Sender<Result<()>>,
+    },
+    GameShow {
+        id: Option<Uuid>,
+        reply: oneshot::Sender<Vec<(Uuid, String)>>,
+    },
+    SetShareRoot {
+        path: Option<PathBuf>,
+        enabled: bool,
+        reply: oneshot::Sender<Result<()>>,
+    },
+    ShareList {
+        peer_fp: String,
+        path: String,
+        reply: oneshot::Sender<Result<Vec<ShareListEntry>>>,
+    },
+    ShareGet {
+        peer_fp: String,
+        path: String,
+        reply: oneshot::Sender<Result<PathBuf>>,
+    },
+    SharePut {
+        peer_fp: String,
+        local: PathBuf,
+        rel_dir: String,
+        reply: oneshot::Sender<Result<()>>,
     },
     Shutdown {
         reply: oneshot::Sender<()>,
@@ -491,6 +555,81 @@ impl NodeHandle {
         Ok(rx.await?)
     }
 
+    pub async fn game_invite(&self, peer_fp: &str) -> Result<Uuid> {
+        let (reply, rx) = oneshot::channel();
+        self.tx.send(Command::GameInvite {
+            peer_fp: peer_fp.into(),
+            reply,
+        })?;
+        rx.await?
+    }
+    pub async fn game_accept(&self, id: Uuid, accept: bool) -> Result<()> {
+        let (reply, rx) = oneshot::channel();
+        self.tx.send(Command::GameAccept { id, accept, reply })?;
+        rx.await?
+    }
+    pub async fn game_move(&self, id: Uuid, cell: u8) -> Result<()> {
+        let (reply, rx) = oneshot::channel();
+        self.tx.send(Command::GameMoveCmd { id, cell, reply })?;
+        rx.await?
+    }
+    pub async fn game_resign(&self, id: Uuid) -> Result<()> {
+        let (reply, rx) = oneshot::channel();
+        self.tx.send(Command::GameResign { id, reply })?;
+        rx.await?
+    }
+    pub async fn game_show(&self, id: Option<Uuid>) -> Result<Vec<(Uuid, String)>> {
+        let (reply, rx) = oneshot::channel();
+        self.tx.send(Command::GameShow { id, reply })?;
+        Ok(rx.await?)
+    }
+    pub async fn set_share_root(&self, path: Option<PathBuf>, enabled: bool) -> Result<()> {
+        let (reply, rx) = oneshot::channel();
+        self.tx.send(Command::SetShareRoot {
+            path,
+            enabled,
+            reply,
+        })?;
+        rx.await?
+    }
+    pub async fn share_list(
+        &self,
+        peer_fp: &str,
+        path: &str,
+    ) -> Result<Vec<ShareListEntry>> {
+        let (reply, rx) = oneshot::channel();
+        self.tx.send(Command::ShareList {
+            peer_fp: peer_fp.into(),
+            path: path.into(),
+            reply,
+        })?;
+        rx.await?
+    }
+    pub async fn share_get(&self, peer_fp: &str, path: &str) -> Result<PathBuf> {
+        let (reply, rx) = oneshot::channel();
+        self.tx.send(Command::ShareGet {
+            peer_fp: peer_fp.into(),
+            path: path.into(),
+            reply,
+        })?;
+        rx.await?
+    }
+    pub async fn share_put(
+        &self,
+        peer_fp: &str,
+        local: impl AsRef<Path>,
+        rel_dir: &str,
+    ) -> Result<()> {
+        let (reply, rx) = oneshot::channel();
+        self.tx.send(Command::SharePut {
+            peer_fp: peer_fp.into(),
+            local: local.as_ref().to_path_buf(),
+            rel_dir: rel_dir.into(),
+            reply,
+        })?;
+        rx.await?
+    }
+
     pub fn subscribe(&self) -> broadcast::Receiver<NodeEvent> {
         self.events.subscribe()
     }
@@ -570,8 +709,22 @@ impl Node {
             pending_pin: None,
             cancel_transfers: std::collections::HashSet::new(),
             transfer_slots: std::sync::Arc::new(tokio::sync::Semaphore::new(4)),
+            games: std::collections::HashMap::new(),
+            share: None,
+            pending_share_puts: std::collections::HashMap::new(),
         }));
 
+        {
+            let mut s = state.lock();
+            if s.config.share_enabled {
+                if let Some(root) = s.config.share_root.clone() {
+                    match ShareRoot::open(root) {
+                        Ok(sr) => s.share = Some(sr),
+                        Err(e) => tracing::warn!(error = %e, "share root disabled"),
+                    }
+                }
+            }
+        }
         tokio::spawn(run_loop(state, discovery, listener, cmd_rx, ev_tx));
         Ok(handle)
     }
@@ -595,6 +748,10 @@ struct RuntimeState {
     cancel_transfers: std::collections::HashSet<Uuid>,
     /// Bound concurrent file transfers (send+recv).
     transfer_slots: std::sync::Arc<tokio::sync::Semaphore>,
+    games: std::collections::HashMap<Uuid, TicTacToeGame>,
+    share: Option<ShareRoot>,
+    /// inbound SharePut destinations keyed by file transfer id
+    pending_share_puts: std::collections::HashMap<Uuid, PathBuf>,
 }
 
 async fn run_loop(
@@ -885,7 +1042,81 @@ async fn run_loop(
                         let cfg = state.lock().config.clone();
                         let _ = reply.send(cfg);
                     }
-Some(Command::Shutdown { reply }) => {
+
+                    Some(Command::GameInvite { peer_fp, reply }) => {
+                        let r = do_game_invite(&state, &ev_tx, &peer_fp).await;
+                        let _ = reply.send(r);
+                    }
+                    Some(Command::GameAccept { id, accept, reply }) => {
+                        let r = do_game_accept(&state, &ev_tx, id, accept).await;
+                        let _ = reply.send(r);
+                    }
+                    Some(Command::GameMoveCmd { id, cell, reply }) => {
+                        let r = do_game_move(&state, &ev_tx, id, cell).await;
+                        let _ = reply.send(r);
+                    }
+                    Some(Command::GameResign { id, reply }) => {
+                        let r = do_game_resign(&state, &ev_tx, id).await;
+                        let _ = reply.send(r);
+                    }
+                    Some(Command::GameShow { id, reply }) => {
+                        let list = {
+                            let s = state.lock();
+                            s.games
+                                .iter()
+                                .filter(|(gid, _)| id.map(|x| x == **gid).unwrap_or(true))
+                                .map(|(gid, g)| {
+                                    (
+                                        *gid,
+                                        format!(
+                                            "peer={} mark={:?} status={:?} my_turn={}\n{}",
+                                            g.peer_fp,
+                                            g.my_mark,
+                                            g.status,
+                                            g.is_my_turn(),
+                                            g.board_string()
+                                        ),
+                                    )
+                                })
+                                .collect()
+                        };
+                        let _ = reply.send(list);
+                    }
+                    Some(Command::SetShareRoot { path, enabled, reply }) => {
+                        let r = (|| -> Result<()> {
+                            let mut s = state.lock();
+                            if enabled {
+                                let p = path.ok_or_else(|| anyhow!("share path required"))?;
+                                let sr = ShareRoot::open(&p)?;
+                                s.config.share_enabled = true;
+                                s.config.share_root = Some(sr.root().display().to_string());
+                                s.share = Some(sr);
+                            } else {
+                                s.config.share_enabled = false;
+                                s.share = None;
+                            }
+                            s.config.save(&s.paths)
+                        })();
+                        let _ = reply.send(r);
+                    }
+                    Some(Command::ShareList { peer_fp, path, reply }) => {
+                        let r = do_share_list(&state, &peer_fp, &path).await;
+                        let _ = reply.send(r);
+                    }
+                    Some(Command::ShareGet { peer_fp, path, reply }) => {
+                        let r = do_share_get(&state, &ev_tx, &peer_fp, &path).await;
+                        let _ = reply.send(r);
+                    }
+                    Some(Command::SharePut {
+                        peer_fp,
+                        local,
+                        rel_dir,
+                        reply,
+                    }) => {
+                        let r = do_share_put(&state, &ev_tx, &peer_fp, &local, &rel_dir).await;
+                        let _ = reply.send(r);
+                    }
+                    Some(Command::Shutdown { reply }) => {
 
                         let _ = reply.send(());
                         break;
@@ -1454,6 +1685,24 @@ async fn handle_incoming(
                 .await
                 {
                     Ok(path) => {
+                        let path = {
+                            let mut s = state.lock();
+                            if let Some(dest) = s.pending_share_puts.remove(&meta.id) {
+                                if let Some(parent) = dest.parent() {
+                                    let _ = std::fs::create_dir_all(parent);
+                                }
+                                match std::fs::rename(&path, &dest) {
+                                    Ok(()) => dest,
+                                    Err(_) => {
+                                        let _ = std::fs::copy(&path, &dest);
+                                        let _ = std::fs::remove_file(&path);
+                                        dest
+                                    }
+                                }
+                            } else {
+                                path
+                            }
+                        };
                         let kind = if is_image_mime(&meta.mime) {
                             MsgKind::Image
                         } else {
@@ -1648,6 +1897,203 @@ async fn handle_incoming(
                         "{sender_fp} 离开了群 {name}"
                     )));
                 }
+            }
+
+
+            WireMessage::GameInvite { id, kind } => {
+                if !matches!(
+                    state.lock().peers.get_live(&peer_fp).map(|p| p.trust),
+                    Some(TrustState::Trusted)
+                ) {
+                    continue;
+                }
+                let g = TicTacToeGame::new_invite(id, peer_fp.clone(), false);
+                state.lock().games.insert(id, g);
+                let name = peer_name.clone();
+                let _ = ev_tx.send(NodeEvent::GameInviteReceived {
+                    id,
+                    from_fp: peer_fp.clone(),
+                    from_name: name,
+                    kind,
+                });
+                let _ = ev_tx.send(NodeEvent::Info(format!(
+                    "收到井字棋邀请 from {peer_fp} id={id}"
+                )));
+            }
+            WireMessage::GameInviteAck { id, accept } => {
+                let mut s = state.lock();
+                if let Some(g) = s.games.get_mut(&id) {
+                    if accept {
+                        g.activate();
+                        let board = g.board_string();
+                        let status = format!("{:?}", g.status);
+                        let my_turn = g.is_my_turn();
+                        let peer = g.peer_fp.clone();
+                        drop(s);
+                        let _ = ev_tx.send(NodeEvent::GameUpdated {
+                            id,
+                            peer_fp: peer,
+                            board,
+                            status,
+                            my_turn,
+                        });
+                        let _ = ev_tx.send(NodeEvent::Info(format!("井字棋已开始 id={id}")));
+                    } else {
+                        g.status = GameStatus::Declined;
+                        drop(s);
+                        let _ = ev_tx.send(NodeEvent::Info(format!("井字棋被拒绝 id={id}")));
+                    }
+                }
+            }
+            WireMessage::GameMove { id, cell } => {
+                let mut s = state.lock();
+                if let Some(g) = s.games.get_mut(&id) {
+                    let by = g.my_mark.other();
+                    if let Err(e) = g.play(cell, by) {
+                        drop(s);
+                        let _ = ev_tx.send(NodeEvent::Error(format!("无效落子: {e}")));
+                    } else {
+                        let board = g.board_string();
+                        let status = format!("{:?}", g.status);
+                        let my_turn = g.is_my_turn();
+                        let peer = g.peer_fp.clone();
+                        drop(s);
+                        let _ = ev_tx.send(NodeEvent::GameUpdated {
+                            id,
+                            peer_fp: peer,
+                            board,
+                            status,
+                            my_turn,
+                        });
+                    }
+                }
+            }
+            WireMessage::GameResign { id } => {
+                let mut s = state.lock();
+                if let Some(g) = s.games.get_mut(&id) {
+                    let by = g.my_mark.other();
+                    g.resign(by);
+                    let board = g.board_string();
+                    let status = format!("{:?}", g.status);
+                    let peer = g.peer_fp.clone();
+                    drop(s);
+                    let _ = ev_tx.send(NodeEvent::GameUpdated {
+                        id,
+                        peer_fp: peer,
+                        board,
+                        status,
+                        my_turn: false,
+                    });
+                }
+            }
+            WireMessage::ShareListReq { req_id, path } => {
+                let (ok, error, entries) = {
+                    let s = state.lock();
+                    if !matches!(
+                        s.peers.get_live(&peer_fp).map(|p| p.trust),
+                        Some(TrustState::Trusted)
+                    ) {
+                        (false, "peer not trusted".into(), vec![])
+                    } else if let Some(share) = s.share.as_ref() {
+                        match share.list(&path) {
+                            Ok(ents) => (
+                                true,
+                                String::new(),
+                                ents.into_iter()
+                                    .map(|e| ShareListEntry {
+                                        name: e.name,
+                                        is_dir: e.is_dir,
+                                        size: e.size,
+                                    })
+                                    .collect(),
+                            ),
+                            Err(e) => (false, e.to_string(), vec![]),
+                        }
+                    } else {
+                        (false, "share disabled".into(), vec![])
+                    }
+                };
+                let _ = session
+                    .send_msg(&WireMessage::ShareListResp {
+                        req_id,
+                        path: path.clone(),
+                        ok,
+                        error,
+                        entries,
+                    })
+                    .await;
+            }
+            WireMessage::ShareGetReq { req_id, path } => {
+                let file_path = {
+                    let s = state.lock();
+                    if !matches!(
+                        s.peers.get_live(&peer_fp).map(|p| p.trust),
+                        Some(TrustState::Trusted)
+                    ) {
+                        Err(anyhow!("peer not trusted"))
+                    } else if let Some(share) = s.share.as_ref() {
+                        share.read_file_path(&path)
+                    } else {
+                        Err(anyhow!("share disabled"))
+                    }
+                };
+                match file_path {
+                    Ok(fp) => {
+                        let mut progress = |_a, _b| {};
+                        if let Err(e) = transfer::send_file(&mut session, &fp, &mut progress, &mut || false).await
+                        {
+                            let _ = session
+                                .send_msg(&WireMessage::ShareGetErr {
+                                    req_id,
+                                    error: e.to_string(),
+                                })
+                                .await;
+                        }
+                    }
+                    Err(e) => {
+                        let _ = session
+                            .send_msg(&WireMessage::ShareGetErr {
+                                req_id,
+                                error: e.to_string(),
+                            })
+                            .await;
+                    }
+                }
+            }
+            WireMessage::SharePutOffer {
+                id,
+                rel_dir,
+                name,
+                size,
+                ..
+            } => {
+                let (accept, error) = {
+                    let mut s = state.lock();
+                    if !matches!(
+                        s.peers.get_live(&peer_fp).map(|p| p.trust),
+                        Some(TrustState::Trusted)
+                    ) {
+                        (false, "peer not trusted".into())
+                    } else if let Some(share) = s.share.as_ref() {
+                        match share.put_dest(&rel_dir, &name) {
+                            Ok(dest) => {
+                                s.pending_share_puts.insert(id, dest);
+                                (true, String::new())
+                            }
+                            Err(e) => (false, e.to_string()),
+                        }
+                    } else {
+                        (false, "share disabled".into())
+                    }
+                };
+                let _ = session
+                    .send_msg(&WireMessage::SharePutAck {
+                        id,
+                        accept,
+                        error,
+                    })
+                    .await;
+                let _ = size; // size checked during file transfer
             }
 
             WireMessage::Hello { .. } => {}
@@ -2080,4 +2526,400 @@ async fn do_remove_group_member(
         info.key_epoch
     )));
     Ok(info)
+}
+
+
+
+async fn do_game_invite(
+    state: &Arc<Mutex<RuntimeState>>,
+    ev_tx: &broadcast::Sender<NodeEvent>,
+    peer_fp: &str,
+) -> Result<Uuid> {
+    let peer = ensure_trusted(state, peer_fp).await?;
+    let id = Uuid::new_v4();
+    let game = TicTacToeGame::new_invite(id, peer_fp.to_string(), true);
+    state.lock().games.insert(id, game);
+    let mut session = take_or_connect_session(state, peer_fp, peer.addr).await?;
+    if let Err(e) = session
+        .send_msg(&WireMessage::GameInvite { id, kind: 1 })
+        .await
+    {
+        discard_session(state, peer_fp);
+        state.lock().games.remove(&id);
+        return Err(e);
+    }
+    store_session(state, peer_fp, session);
+    let _ = ev_tx.send(NodeEvent::Info(format!(
+        "已邀请 {peer_fp} 玩井字棋 id={id}"
+    )));
+    Ok(id)
+}
+
+async fn do_game_accept(
+    state: &Arc<Mutex<RuntimeState>>,
+    ev_tx: &broadcast::Sender<NodeEvent>,
+    id: Uuid,
+    accept: bool,
+) -> Result<()> {
+    let (peer_fp, addr) = {
+        let s = state.lock();
+        let g = s.games.get(&id).ok_or_else(|| anyhow!("game not found"))?;
+        let fp = g.peer_fp.clone();
+        let peer = s
+            .peers
+            .get_live(&fp)
+            .cloned()
+            .ok_or_else(|| anyhow!("peer offline"))?;
+        (fp, peer.addr)
+    };
+    let mut session = take_or_connect_session(state, &peer_fp, addr).await?;
+    if let Err(e) = session
+        .send_msg(&WireMessage::GameInviteAck { id, accept })
+        .await
+    {
+        discard_session(state, &peer_fp);
+        return Err(e);
+    }
+    store_session(state, &peer_fp, session);
+    let mut s = state.lock();
+    if let Some(g) = s.games.get_mut(&id) {
+        if accept {
+            g.activate();
+        } else {
+            g.status = GameStatus::Declined;
+        }
+        let board = g.board_string();
+        let status = format!("{:?}", g.status);
+        let my_turn = g.is_my_turn();
+        let peer_fp = g.peer_fp.clone();
+        drop(s);
+        let _ = ev_tx.send(NodeEvent::GameUpdated {
+            id,
+            peer_fp,
+            board,
+            status,
+            my_turn,
+        });
+    }
+    Ok(())
+}
+
+async fn do_game_move(
+    state: &Arc<Mutex<RuntimeState>>,
+    ev_tx: &broadcast::Sender<NodeEvent>,
+    id: Uuid,
+    cell: u8,
+) -> Result<()> {
+    let (peer_fp, addr, mark) = {
+        let s = state.lock();
+        let g = s.games.get(&id).ok_or_else(|| anyhow!("game not found"))?;
+        let peer = s
+            .peers
+            .get_live(&g.peer_fp)
+            .cloned()
+            .ok_or_else(|| anyhow!("peer offline"))?;
+        (g.peer_fp.clone(), peer.addr, g.my_mark)
+    };
+    {
+        let mut s = state.lock();
+        let g = s.games.get_mut(&id).ok_or_else(|| anyhow!("game not found"))?;
+        g.play(cell, mark).map_err(anyhow::Error::msg)?;
+    }
+    let mut session = take_or_connect_session(state, &peer_fp, addr).await?;
+    if let Err(e) = session
+        .send_msg(&WireMessage::GameMove { id, cell })
+        .await
+    {
+        discard_session(state, &peer_fp);
+        return Err(e);
+    }
+    store_session(state, &peer_fp, session);
+    if let Some(g) = state.lock().games.get(&id) {
+        let _ = ev_tx.send(NodeEvent::GameUpdated {
+            id,
+            peer_fp: g.peer_fp.clone(),
+            board: g.board_string(),
+            status: format!("{:?}", g.status),
+            my_turn: g.is_my_turn(),
+        });
+    }
+    Ok(())
+}
+
+async fn do_game_resign(
+    state: &Arc<Mutex<RuntimeState>>,
+    ev_tx: &broadcast::Sender<NodeEvent>,
+    id: Uuid,
+) -> Result<()> {
+    let (peer_fp, addr, mark) = {
+        let s = state.lock();
+        let g = s.games.get(&id).ok_or_else(|| anyhow!("game not found"))?;
+        let peer = s
+            .peers
+            .get_live(&g.peer_fp)
+            .cloned()
+            .ok_or_else(|| anyhow!("peer offline"))?;
+        (g.peer_fp.clone(), peer.addr, g.my_mark)
+    };
+    {
+        let mut s = state.lock();
+        if let Some(g) = s.games.get_mut(&id) {
+            g.resign(mark);
+        }
+    }
+    let mut session = take_or_connect_session(state, &peer_fp, addr).await?;
+    if let Err(e) = session.send_msg(&WireMessage::GameResign { id }).await {
+        discard_session(state, &peer_fp);
+        return Err(e);
+    }
+    store_session(state, &peer_fp, session);
+    if let Some(g) = state.lock().games.get(&id) {
+        let _ = ev_tx.send(NodeEvent::GameUpdated {
+            id,
+            peer_fp: g.peer_fp.clone(),
+            board: g.board_string(),
+            status: format!("{:?}", g.status),
+            my_turn: false,
+        });
+    }
+    Ok(())
+}
+
+async fn do_share_list(
+    state: &Arc<Mutex<RuntimeState>>,
+    peer_fp: &str,
+    path: &str,
+) -> Result<Vec<ShareListEntry>> {
+    let peer = ensure_trusted(state, peer_fp).await?;
+    let req_id = Uuid::new_v4();
+    let mut session = take_or_connect_session(state, peer_fp, peer.addr).await?;
+    if let Err(e) = session
+        .send_msg(&WireMessage::ShareListReq {
+            req_id,
+            path: path.to_string(),
+        })
+        .await
+    {
+        discard_session(state, peer_fp);
+        return Err(e);
+    }
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(8);
+    loop {
+        let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if left.is_zero() {
+            discard_session(state, peer_fp);
+            anyhow::bail!("share list timeout");
+        }
+        match tokio::time::timeout(left, session.recv_msg()).await {
+            Ok(Ok(WireMessage::ShareListResp {
+                req_id: rid,
+                ok,
+                error,
+                entries,
+                ..
+            })) if rid == req_id => {
+                store_session(state, peer_fp, session);
+                if !ok {
+                    anyhow::bail!(error);
+                }
+                return Ok(entries);
+            }
+            Ok(Ok(WireMessage::Ping { ts_ms })) => {
+                let _ = session.send_msg(&WireMessage::Pong { ts_ms }).await;
+            }
+            Ok(Ok(_)) => {}
+            Ok(Err(e)) => {
+                discard_session(state, peer_fp);
+                return Err(e);
+            }
+            Err(_) => {
+                discard_session(state, peer_fp);
+                anyhow::bail!("share list timeout");
+            }
+        }
+    }
+}
+
+async fn do_share_get(
+    state: &Arc<Mutex<RuntimeState>>,
+    ev_tx: &broadcast::Sender<NodeEvent>,
+    peer_fp: &str,
+    path: &str,
+) -> Result<PathBuf> {
+    let peer = ensure_trusted(state, peer_fp).await?;
+    let req_id = Uuid::new_v4();
+    let downloads = state.lock().downloads.clone();
+    let mut session = take_or_connect_session(state, peer_fp, peer.addr).await?;
+    if let Err(e) = session
+        .send_msg(&WireMessage::ShareGetReq {
+            req_id,
+            path: path.to_string(),
+        })
+        .await
+    {
+        discard_session(state, peer_fp);
+        return Err(e);
+    }
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(120);
+    loop {
+        let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if left.is_zero() {
+            discard_session(state, peer_fp);
+            anyhow::bail!("share get timeout");
+        }
+        match tokio::time::timeout(left, session.recv_msg()).await {
+            Ok(Ok(WireMessage::ShareGetErr {
+                req_id: rid,
+                error,
+            })) if rid == req_id => {
+                store_session(state, peer_fp, session);
+                anyhow::bail!(error);
+            }
+            Ok(Ok(WireMessage::FileOffer {
+                id,
+                name,
+                size,
+                mime,
+                sha256,
+                ..
+            })) => {
+                let meta = FileMeta {
+                    id,
+                    name: name.clone(),
+                    size,
+                    mime: mime.clone(),
+                    sha256: sha256.clone(),
+                };
+                let mut progress = |received: u64, total: u64| {
+                    let _ = ev_tx.send(NodeEvent::FileProgress {
+                        id,
+                        direction: MsgDirection::In,
+                        received,
+                        total,
+                    });
+                };
+                match transfer::receive_file(
+                    &mut session,
+                    meta.clone(),
+                    &downloads,
+                    true,
+                    &mut progress,
+                )
+                .await
+                {
+                    Ok(p) => {
+                        store_session(state, peer_fp, session);
+                        let _ = ev_tx.send(NodeEvent::FileReceived {
+                            from_fp: peer_fp.to_string(),
+                            from_name: peer.display_name.clone(),
+                            path: p.clone(),
+                            meta,
+                        });
+                        return Ok(p);
+                    }
+                    Err(e) => {
+                        discard_session(state, peer_fp);
+                        return Err(e);
+                    }
+                }
+            }
+            Ok(Ok(WireMessage::Ping { ts_ms })) => {
+                let _ = session.send_msg(&WireMessage::Pong { ts_ms }).await;
+            }
+            Ok(Ok(_)) => {}
+            Ok(Err(e)) => {
+                discard_session(state, peer_fp);
+                return Err(e);
+            }
+            Err(_) => {
+                discard_session(state, peer_fp);
+                anyhow::bail!("share get timeout");
+            }
+        }
+    }
+}
+
+async fn do_share_put(
+    state: &Arc<Mutex<RuntimeState>>,
+    ev_tx: &broadcast::Sender<NodeEvent>,
+    peer_fp: &str,
+    local: &Path,
+    rel_dir: &str,
+) -> Result<()> {
+    let peer = ensure_trusted(state, peer_fp).await?;
+    let meta_len = tokio::fs::metadata(local).await?.len();
+    let name = local
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("file")
+        .to_string();
+    let id = Uuid::new_v4();
+    let mut session = take_or_connect_session(state, peer_fp, peer.addr).await?;
+    if let Err(e) = session
+        .send_msg(&WireMessage::SharePutOffer {
+            id,
+            rel_dir: rel_dir.to_string(),
+            name: name.clone(),
+            size: meta_len,
+            mime: String::new(),
+            sha256: String::new(),
+        })
+        .await
+    {
+        discard_session(state, peer_fp);
+        return Err(e);
+    }
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if left.is_zero() {
+            discard_session(state, peer_fp);
+            anyhow::bail!("share put ack timeout");
+        }
+        match tokio::time::timeout(left, session.recv_msg()).await {
+            Ok(Ok(WireMessage::SharePutAck {
+                id: aid,
+                accept,
+                error,
+            })) if aid == id => {
+                if !accept {
+                    store_session(state, peer_fp, session);
+                    anyhow::bail!(error);
+                }
+                break;
+            }
+            Ok(Ok(WireMessage::Ping { ts_ms })) => {
+                let _ = session.send_msg(&WireMessage::Pong { ts_ms }).await;
+            }
+            Ok(Ok(_)) => {}
+            Ok(Err(e)) => {
+                discard_session(state, peer_fp);
+                return Err(e);
+            }
+            Err(_) => {
+                discard_session(state, peer_fp);
+                anyhow::bail!("share put ack timeout");
+            }
+        }
+    }
+    let mut progress = |received: u64, total: u64| {
+        let _ = ev_tx.send(NodeEvent::FileProgress {
+            id,
+            direction: MsgDirection::Out,
+            received,
+            total,
+        });
+    };
+    let mut cancel = || false;
+    match transfer::send_file(&mut session, local, &mut progress, &mut cancel).await {
+        Ok(_) => {
+            discard_session(state, peer_fp);
+            let _ = ev_tx.send(NodeEvent::Info(format!("已上传到对方共享: {name}")));
+            Ok(())
+        }
+        Err(e) => {
+            discard_session(state, peer_fp);
+            Err(e)
+        }
+    }
 }
