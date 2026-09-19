@@ -7,6 +7,7 @@ pub mod backup;
 pub mod config;
 pub mod crypto;
 pub mod discovery;
+pub mod game;
 pub mod group;
 pub mod history;
 pub mod identity;
@@ -14,6 +15,7 @@ pub mod node;
 pub mod peer;
 pub mod protocol;
 pub mod session;
+pub mod share;
 pub mod transfer;
 pub mod util;
 

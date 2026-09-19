@@ -79,6 +79,13 @@ enum Cmd {
     OpenDownloadDir,
     RemoveGroupMember(Uuid, String),
     CheckUpdate,
+    GameInvite(String),
+    GameAccept(Uuid, bool),
+    GameMove(Uuid, u8),
+    SetShareRoot(PathBuf),
+    ShareList(String, String),
+    ShareGet(String, String),
+    SharePut(String, PathBuf, String),
     Shutdown,
 }
 
@@ -116,6 +123,9 @@ struct App {
     group_msgs: HashMap<Uuid, Vec<Line>>,
     compose: String,
     status: String,
+    active_game: Option<Uuid>,
+    game_board: String,
+    share_listing: String,
     unread_dm: HashMap<String, u32>,
     unread_g: HashMap<Uuid, u32>,
     name_edit: String,
@@ -165,6 +175,9 @@ impl App {
             group_msgs: HashMap::new(),
             compose: String::new(),
             status: "启动中…".into(),
+            active_game: None,
+            game_board: String::new(),
+            share_listing: String::new(),
             unread_dm: HashMap::new(),
             unread_g: HashMap::new(),
             name_edit: String::new(),
@@ -340,6 +353,22 @@ impl App {
                     ts: ts(chrono::Utc::now().timestamp_millis()),
                 });
             }
+            NodeEvent::GameInviteReceived { id, from_name, .. } => {
+                self.active_game = Some(id);
+                self.status = format!("井字棋邀请来自 {from_name} id={id}");
+            }
+            NodeEvent::GameUpdated { id, board, status, my_turn, .. } => {
+                self.active_game = Some(id);
+                self.game_board = board;
+                self.status = format!("棋局 {id}: {status} {}", if my_turn {"轮到你"} else {"等待对方"});
+            }
+            NodeEvent::ShareListed { peer_fp, path, entries } => {
+                let mut s = format!("共享 {peer_fp}:{path}\n");
+                for e in &entries {
+                    s.push_str(&format!("{} {} {}\n", if e.is_dir {"📁"} else {"📄"}, e.size, e.name));
+                }
+                self.share_listing = s;
+            }
             NodeEvent::Error(e) => self.status = format!("错误: {e}"),
             NodeEvent::Info(i) => self.status = i,
         }
@@ -481,6 +510,11 @@ impl eframe::App for App {
                         self.cmd(Cmd::SetDownloadDir(p));
                     }
                 }
+                if ui.button("共享目录…").clicked() {
+                    if let Some(p) = rfd::FileDialog::new().pick_folder() {
+                        self.cmd(Cmd::SetShareRoot(p));
+                    }
+                }
                 if !self.download_dir_display.is_empty() {
                     ui.small(&self.download_dir_display);
                 }
@@ -566,7 +600,36 @@ impl eframe::App for App {
                         if ui.button("广播").clicked() && !self.compose.is_empty() {
                             self.cmd(Cmd::Broadcast(self.compose.clone())); self.compose.clear();
                         }
+                        if ui.button("井字棋").clicked() {
+                            self.cmd(Cmd::GameInvite(fp.clone()));
+                        }
+                        if ui.button("浏览共享").clicked() {
+                            self.cmd(Cmd::ShareList(fp.clone(), String::new()));
+                        }
+                        if ui.button("上传到共享").clicked() {
+                            if let Some(p) = rfd::FileDialog::new().pick_file() {
+                                self.cmd(Cmd::SharePut(fp.clone(), p, String::new()));
+                            }
+                        }
                     });
+                    if let Some(gid) = self.active_game {
+                        ui.separator();
+                        ui.label("井字棋");
+                        ui.monospace(&self.game_board);
+                        ui.horizontal(|ui| {
+                            if ui.small_button("接受").clicked() { self.cmd(Cmd::GameAccept(gid, true)); }
+                            if ui.small_button("拒绝").clicked() { self.cmd(Cmd::GameAccept(gid, false)); }
+                            for i in 0u8..9 {
+                                if ui.small_button(format!("{i}")).clicked() {
+                                    self.cmd(Cmd::GameMove(gid, i));
+                                }
+                            }
+                        });
+                    }
+                    if !self.share_listing.is_empty() {
+                        ui.separator();
+                        ui.monospace(&self.share_listing);
+                    }
                     ctx.input(|i| {
                         for f in &i.raw.dropped_files {
                             if let Some(p)=&f.path { self.cmd(Cmd::SendFile(fp.clone(), p.clone())); }
@@ -804,6 +867,52 @@ async fn backend(msg_tx: Sender<Msg>, cmd_rx: Receiver<Cmd>) -> anyhow::Result<(
                 let _ = msg_tx.send(Msg::UpdateInfo(note));
             }
 
+            Ok(Cmd::GameInvite(fp)) => {
+                match handle.game_invite(&fp).await {
+                    Ok(id) => { let _ = msg_tx.send(Msg::Status(format!("已邀请井字棋 id={id}"))); }
+                    Err(e) => { let _ = msg_tx.send(Msg::Error(e.to_string())); }
+                }
+            }
+            Ok(Cmd::GameAccept(id, accept)) => {
+                if let Err(e) = handle.game_accept(id, accept).await {
+                    let _ = msg_tx.send(Msg::Error(e.to_string()));
+                }
+            }
+            Ok(Cmd::GameMove(id, cell)) => {
+                if let Err(e) = handle.game_move(id, cell).await {
+                    let _ = msg_tx.send(Msg::Error(e.to_string()));
+                }
+            }
+            Ok(Cmd::SetShareRoot(p)) => {
+                match handle.set_share_root(Some(p.clone()), true).await {
+                    Ok(()) => { let _ = msg_tx.send(Msg::Status(format!("已共享 {}", p.display()))); }
+                    Err(e) => { let _ = msg_tx.send(Msg::Error(e.to_string())); }
+                }
+            }
+            Ok(Cmd::ShareList(fp, path)) => {
+                match handle.share_list(&fp, &path).await {
+                    Ok(entries) => {
+                        let _ = msg_tx.send(Msg::Event(NodeEvent::ShareListed {
+                            peer_fp: fp,
+                            path,
+                            entries,
+                        }));
+                    }
+                    Err(e) => { let _ = msg_tx.send(Msg::Error(e.to_string())); }
+                }
+            }
+            Ok(Cmd::ShareGet(fp, path)) => {
+                match handle.share_get(&fp, &path).await {
+                    Ok(p) => { let _ = msg_tx.send(Msg::Status(format!("已下载 {}", p.display()))); }
+                    Err(e) => { let _ = msg_tx.send(Msg::Error(e.to_string())); }
+                }
+            }
+            Ok(Cmd::SharePut(fp, file, rel)) => {
+                match handle.share_put(&fp, &file, &rel).await {
+                    Ok(()) => { let _ = msg_tx.send(Msg::Status(format!("已上传 {}", file.display()))); }
+                    Err(e) => { let _ = msg_tx.send(Msg::Error(e.to_string())); }
+                }
+            }
             Ok(Cmd::Shutdown) => {
                 handle.shutdown().await;
                 break;
