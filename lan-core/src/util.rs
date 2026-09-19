@@ -16,14 +16,22 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
             .unwrap_or("dat"),
         std::process::id()
     ));
-    {
+    let write_res = (|| -> Result<()> {
         let mut f = File::create(&tmp).with_context(|| format!("create temp {}", tmp.display()))?;
         f.write_all(data)?;
         f.sync_all()?;
+        Ok(())
+    })();
+    if let Err(e) = write_res {
+        let _ = fs::remove_file(&tmp);
+        return Err(e);
     }
-    fs::rename(&tmp, path).with_context(|| {
-        format!("rename {} -> {}", tmp.display(), path.display())
-    })?;
+    if let Err(e) = fs::rename(&tmp, path) {
+        let _ = fs::remove_file(&tmp);
+        return Err(e).with_context(|| {
+            format!("rename {} -> {}", tmp.display(), path.display())
+        });
+    }
     // Best-effort directory fsync (helps durability on crash).
     if let Ok(dir) = File::open(parent) {
         let _ = dir.sync_all();

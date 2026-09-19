@@ -1230,18 +1230,40 @@ async fn do_pair_with_pin(
         .cloned()
         .ok_or_else(|| anyhow!("peer not found / offline: {peer_fp}"))?;
     let mut session = take_or_connect_session(state, peer_fp, peer.addr).await?;
-    session
+    if let Err(e) = session
         .send_msg(&WireMessage::PinPair {
             pin: pin.to_string(),
         })
-        .await?;
-    let resp = tokio::time::timeout(std::time::Duration::from_secs(5), session.recv_msg()).await??;
+        .await
+    {
+        discard_session(state, peer_fp);
+        return Err(e);
+    }
+    let resp = match tokio::time::timeout(std::time::Duration::from_secs(5), session.recv_msg()).await {
+        Ok(Ok(m)) => m,
+        Ok(Err(e)) => {
+            discard_session(state, peer_fp);
+            return Err(e);
+        }
+        Err(_) => {
+            discard_session(state, peer_fp);
+            anyhow::bail!("PIN pairing timed out");
+        }
+    };
     match resp {
         WireMessage::PinPairAck { ok: true, message } => {
-            let mut s = state.lock();
-            s.peers.set_trust(peer_fp, TrustState::Trusted);
-            s.peers.save(&s.paths)?;
-            if let Some(info) = s.peers.get_live(peer_fp).cloned() {
+            let (save_res, info_opt) = {
+                let mut s = state.lock();
+                s.peers.set_trust(peer_fp, TrustState::Trusted);
+                let res = s.peers.save(&s.paths);
+                let info = s.peers.get_live(peer_fp).cloned();
+                (res, info)
+            };
+            if let Err(e) = save_res {
+                discard_session(state, peer_fp);
+                return Err(e);
+            }
+            if let Some(info) = info_opt {
                 let _ = ev_tx.send(NodeEvent::PeerUpdated(info));
             }
             let _ = ev_tx.send(NodeEvent::Info(format!("PIN pairing OK: {message}")));
@@ -1249,9 +1271,13 @@ async fn do_pair_with_pin(
             Ok(())
         }
         WireMessage::PinPairAck { ok: false, message } => {
+            discard_session(state, peer_fp);
             Err(anyhow!("PIN pairing rejected: {message}"))
         }
-        other => Err(anyhow!("unexpected pairing response: {other:?}")),
+        other => {
+            discard_session(state, peer_fp);
+            Err(anyhow!("unexpected pairing response: {other:?}"))
+        }
     }
 }
 
@@ -1747,7 +1773,7 @@ async fn send_group_invite(
     );
     let sig = identity.sign(&sign_bytes).to_vec();
     let mut session = take_or_connect_session(state, peer_fp, peer.addr).await?;
-    session
+    if let Err(e) = session
         .send_msg(&WireMessage::GroupInvite {
             group_id: info.id,
             name: info.name.clone(),
@@ -1758,7 +1784,11 @@ async fn send_group_invite(
             join_code: info.join_code.clone(),
             creator_sig: sig,
         })
-        .await?;
+        .await
+    {
+        discard_session(state, peer_fp);
+        return Err(e);
+    }
     store_session(state, peer_fp, session);
     Ok(())
 }
@@ -1835,6 +1865,9 @@ async fn do_send_group_text(
                 if session.send_msg(&msg).await.is_ok() {
                     ok += 1;
                     store_session(state, fp, session);
+                } else {
+                    // Broken session: drop it and free the busy slot so future sends can reconnect.
+                    discard_session(state, fp);
                 }
             }
             Err(e) => {
@@ -2029,6 +2062,7 @@ async fn do_remove_group_member(
                     })
                     .await
                 {
+                    discard_session(state, &fp);
                     let _ = ev_tx.send(NodeEvent::Error(format!("rekey to {fp} failed: {e}")));
                 } else {
                     store_session(state, &fp, session);

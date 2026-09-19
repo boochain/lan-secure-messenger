@@ -31,7 +31,7 @@
 
 ## 下载即用（Windows，免编译免配置）
 
-推荐下载 Release **v0.3.0** 便携包。
+推荐下载 Release **v0.3.2** 便携包。
 
 > **启用自动构建：** 将 `packaging/ci/release.yml` 复制为 `.github/workflows/release.yml` 后推送（需具备 `workflow` 权限的 token）。此后推 `main` / 打 `v*` 标签即产出 Windows / Linux 发布包。
 
@@ -255,6 +255,12 @@ LAN_MSG_NAME=Alice LAN_MSG_CONFIG=/tmp/lsm-gui lan-gui
 
 - UDP `41234`（发现，可配置）
 - TCP `41235`（会话，可配置）
+
+## 稳定性（v0.3.2）
+
+- 再验证：PIN 配对 / 群邀请 / 群消息发送失败时正确 `discard_session`，避免 `session_busy` 永久占用。
+- `atomic_write` 写失败时清理临时文件。
+- smoke + stress 全绿后重新交叉编译 Windows 便携包。
 
 ## 稳定性（v0.3.1）
 
