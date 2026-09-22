@@ -1,6 +1,8 @@
 //! 局域网加密通讯 GUI：私聊 / 群聊、首次运行、系统托盘。
 
 use eframe::egui;
+
+mod fonts;
 use lan_core::config::{AppConfig, ConfigPaths};
 use lan_core::group::GroupInfo;
 use lan_core::node::{Node, NodeEvent, NodeHandle};
@@ -154,6 +156,7 @@ struct App {
 
 impl App {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        fonts::install_cjk_fonts(&cc.egui_ctx);
         cc.egui_ctx.set_visuals(egui::Visuals::dark());
         let (msg_tx, msg_rx) = mpsc::channel();
         let (cmd_tx, cmd_rx) = mpsc::channel();

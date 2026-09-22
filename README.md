@@ -1,3 +1,13 @@
+## 中文显示 / 字体
+
+GUI 使用 egui。启动时按以下顺序加载中文字体，避免出现「□□□」：
+
+1. 系统字体（Windows 微软雅黑 / 黑体 / 宋体；Linux Noto CJK / 文泉驿等）
+2. 程序目录下 `fonts/`（便携包可附带）
+3. **内置** `LanGuiCJK-Regular.ttf` 子集（界面文案 + 常用简体，约 1 MB）
+
+若个别好友昵称仍有缺字，可把完整中文字体（如 `msyh.ttc` 或 [霞鹜文楷](https://github.com/lxgw/LxgwWenKai)）放到 `fonts/` 后重启。
+
 # 局域网加密即时通讯（LAN Secure Messenger）
 
 面向 Windows 局域网的端到端加密即时通讯：自动发现同网段对等端，支持加密文本 / 图片 / 文件传输，提供 CLI 与 GUI。
@@ -31,7 +41,7 @@
 
 ## 下载即用（Windows，免编译免配置）
 
-推荐下载 Release **v0.3.2** 便携包。
+推荐下载 Release **v0.3.3** 便携包。
 
 > **启用自动构建：** 将 `packaging/ci/release.yml` 复制为 `.github/workflows/release.yml` 后推送（需具备 `workflow` 权限的 token）。此后推 `main` / 打 `v*` 标签即产出 Windows / Linux 发布包。
 
@@ -255,6 +265,10 @@ LAN_MSG_NAME=Alice LAN_MSG_CONFIG=/tmp/lsm-gui lan-gui
 
 - UDP `41234`（发现，可配置）
 - TCP `41235`（会话，可配置）
+
+## 稳定性（v0.3.3）
+
+- GUI 中文：系统字体 + 便携 `fonts/` + 内置 CJK 子集，修复豆腐块（□□□）。
 
 ## 稳定性（v0.3.2）
 
