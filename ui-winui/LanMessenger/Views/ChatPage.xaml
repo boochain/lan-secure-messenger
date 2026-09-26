@@ -142,7 +142,7 @@
                        Visibility="{x:Bind local:B.Empty(VM.Conversations.Count), Mode=OneWay}"
                        Text="还没有发现其他人。&#x0a;请确认对方也打开了本软件且在同一局域网；如果看不到，可以在上方输入对方 IP 直接添加，或到「诊断」页检查防火墙。" />
             <TextBlock Grid.Row="3" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.7" Margin="4,0">
-                <Run Text="在线：" /><Run Text="{x:Bind VM.OnlineCount, Mode=OneWay}" /><Run Text="  ·  我：" /><Run Text="{x:Bind VM.MyName, Mode=OneWay}" />
+                <Run Text="在线：" /><Run Text="{x:Bind local:B.Str(VM.OnlineCount), Mode=OneWay}" /><Run Text="  ·  我：" /><Run Text="{x:Bind VM.MyName, Mode=OneWay}" />
             </TextBlock>
         </Grid>
 

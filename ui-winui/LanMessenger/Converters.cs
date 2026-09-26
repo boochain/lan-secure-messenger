@@ -28,6 +28,7 @@ public static class B
     public static Visibility Vis(bool v) => v ? Visibility.Visible : Visibility.Collapsed;
     public static Visibility NotEmpty(string? s) => string.IsNullOrEmpty(s) ? Visibility.Collapsed : Visibility.Visible;
     public static Visibility Empty(int count) => count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    public static string Str(int v) => v.ToString();
 }
 
 public sealed class MessageTemplateSelector : DataTemplateSelector

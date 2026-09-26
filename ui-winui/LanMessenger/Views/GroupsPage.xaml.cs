@@ -2,6 +2,7 @@ using LanMessenger.Core.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using GroupItem = LanMessenger.Core.ViewModels.GroupItem;
 
 namespace LanMessenger.Views;
 

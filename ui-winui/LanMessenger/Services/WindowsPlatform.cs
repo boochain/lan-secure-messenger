@@ -50,7 +50,8 @@ public sealed class WindowsPlatform : IPlatform
         WinRT.Interop.InitializeWithWindow.Initialize(p, Hwnd);
         p.FileTypeFilter.Add("*");
         var files = await p.PickMultipleFilesAsync();
-        return files == null ? Array.Empty<string>() : files.Select(f => f.Path).Where(x => !string.IsNullOrEmpty(x)).ToList();
+        if (files == null) return Array.Empty<string>();
+        return files.Select(f => f.Path).Where(x => !string.IsNullOrEmpty(x)).ToList();
     }
 
     public async Task<string?> PickFolderAsync()
