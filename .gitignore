@@ -17,3 +17,10 @@ smoke-run/
 /stress-run/
 /smoke-run/
 /dist/
+
+# .NET / WinUI
+ui-winui/**/bin/
+ui-winui/**/obj/
+ui-winui/**/*.user
+ui-winui/.vs/
+/ui-smoke/

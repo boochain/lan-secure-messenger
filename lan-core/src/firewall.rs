@@ -56,10 +56,12 @@ mod imp {
 
     fn rule(name: &str, exe: &str) -> (bool, bool, String) {
         let (ok, out) = run("netsh", &["advfirewall", "firewall", "show", "rule", &format!("name={name}"), "verbose"]);
-        if !ok {
+        // Real netsh exits 1 when no rule matches; also require the (ASCII) rule name in the output.
+        if !ok || !out.contains(name) {
             return (false, false, String::new());
         }
-        let mismatch = !out.to_lowercase().contains(&exe.to_lowercase());
+        // netsh prints in the OEM code page, so only compare ASCII paths reliably.
+        let mismatch = exe.is_ascii() && !out.to_lowercase().contains(&exe.to_lowercase());
         // "Profiles:  Domain,Private" / "配置文件: 域,专用" — localized; report raw line.
         let prof = out
             .lines()

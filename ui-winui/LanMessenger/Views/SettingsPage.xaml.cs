@@ -1,0 +1,62 @@
+using LanMessenger.Core.ViewModels;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+
+namespace LanMessenger.Views;
+
+public sealed partial class SettingsPage : Page
+{
+    public MainViewModel VM => App.VM;
+
+    public SettingsPage() { InitializeComponent(); }
+
+    private async Task<string?> AskPasswordAsync(string title, bool confirm)
+    {
+        var pw = new PasswordBox { Header = "密码（至少 8 位）" };
+        var pw2 = new PasswordBox { Header = "再次输入密码" };
+        var panel = new StackPanel { Spacing = 8, MinWidth = 320 };
+        panel.Children.Add(pw);
+        if (confirm) panel.Children.Add(pw2);
+        var dlg = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = title,
+            Content = panel,
+            PrimaryButtonText = "确定",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        if (await dlg.ShowAsync() != ContentDialogResult.Primary) return null;
+        if (pw.Password.Length < 8) { VM.ShowStatus("密码至少 8 位", true); return null; }
+        if (confirm && pw.Password != pw2.Password) { VM.ShowStatus("两次输入的密码不一致", true); return null; }
+        return pw.Password;
+    }
+
+    private async void Backup_Click(object sender, RoutedEventArgs e)
+    {
+        var path = await App.Platform.PickSaveFileAsync($"lan-messenger-{DateTime.Now:yyyyMMdd-HHmm}.lsmbak");
+        if (path == null) return;
+        var pw = await AskPasswordAsync("设置备份密码", true);
+        if (pw == null) return;
+        await VM.BackupAsync(path, pw);
+    }
+
+    private async void Restore_Click(object sender, RoutedEventArgs e)
+    {
+        var path = await App.Platform.PickOpenFileAsync();
+        if (path == null) return;
+        var confirm = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "从备份恢复？",
+            Content = "当前的身份、联系人、群组和聊天记录将被备份中的内容替换。",
+            PrimaryButtonText = "继续",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close,
+        };
+        if (await confirm.ShowAsync() != ContentDialogResult.Primary) return;
+        var pw = await AskPasswordAsync("输入备份密码", false);
+        if (pw == null) return;
+        await VM.RestoreAsync(path, pw);
+    }
+}
