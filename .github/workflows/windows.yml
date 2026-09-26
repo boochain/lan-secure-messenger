@@ -137,47 +137,10 @@ jobs:
           dumpbin /nologo /dependents dist\LanMessenger\LanMessenger.exe
           dumpbin /nologo /headers dist\LanMessenger\LanMessenger.exe | Select-String "subsystem|machine"
 
-      - name: UI smoke (launch app + second daemon peer, capture screenshots)
+      - name: UI smoke in light + dark theme (screenshots, contrast check, live theme switch)
         id: uismoke
-        continue-on-error: true
         shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $dir = "$pwd\ui-smoke"; New-Item -ItemType Directory -Force $dir | Out-Null
-          $env:LSM_UI_SMOKE = $dir
-          $app = Start-Process dist\LanMessenger\LanMessenger.exe -PassThru
-          $M = "dist\LanMessenger\lan-msg.exe"; $D = "dist\LanMessenger\lan-daemon.exe"
-          for ($i = 0; $i -lt 120 -and -not (Test-Path "$dir\ready.txt"); $i++) {
-            if ($app.HasExited) { throw "LanMessenger.exe exited early with code $($app.ExitCode)" }
-            Start-Sleep -Milliseconds 500
-          }
-          if (-not (Test-Path "$dir\ready.txt")) { throw "UI never reported ready" }
-          $FA = (Get-Content "$dir\ready.txt" -Raw).Trim()
-          Write-Host "UI daemon fingerprint: $FA"
-          $portA = (& $M --json status | ConvertFrom-Json).me.listen_port
-          $bobPipe = "\\.\pipe\lsm-ci-bob"
-          $bob = Start-Process $D -ArgumentList "run --data-dir `"$env:RUNNER_TEMP\bob`" --ipc $bobPipe --set listen_port=0 --set discovery_enabled=false --set auto_trust=true --set display_name=Bob-CI" -PassThru -NoNewWindow
-          Start-Sleep -Seconds 2
-          & $M --ipc $bobPipe add "127.0.0.1:$portA"
-          & $M --ipc $bobPipe wait-peer $FA --timeout 30
-          $FB = (& $M --ipc $bobPipe --json status | ConvertFrom-Json).me.fingerprint
-          & $M trust $FB
-          & $M --ipc $bobPipe send $FA "你好！这是来自 CI 第二个节点的消息 👋"
-          & $M send $FB "收到，界面渲染测试中。"
-          & $M --ipc $bobPipe send-file $FA "ui-winui\LanMessenger\Assets\app.png"
-          & $M --ipc $bobPipe group-create "CI 测试群" $FA
-          Start-Sleep -Seconds 4
-          New-Item "$dir\go" -ItemType File | Out-Null
-          Start-Sleep -Seconds 6
-          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
-          $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-          $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
-          $g = [System.Drawing.Graphics]::FromImage($bmp); $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
-          $bmp.Save("$dir\desktop.png"); $g.Dispose(); $bmp.Dispose()
-          if (-not $app.WaitForExit(120000)) { Stop-Process $app -Force; throw "UI smoke timed out" }
-          Stop-Process $bob -Force -ErrorAction SilentlyContinue
-          Get-Content "$dir\ui-smoke.txt"
-          if (-not (Select-String -Path "$dir\ui-smoke.txt" -Pattern "UI_SMOKE_OK" -Quiet)) { throw "UI smoke failed" }
+        run: ./scripts/ui_smoke_windows.ps1 -Dist dist\LanMessenger -Out ui-smoke
 
       - name: Collect UI diagnostics
         if: always()

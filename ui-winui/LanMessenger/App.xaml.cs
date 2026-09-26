@@ -18,6 +18,8 @@ public partial class App : Application
         // Chinese UI: make XAML pick zh-Hans resources and CJK font fallback even on en-US Windows.
         try { Microsoft.Windows.Globalization.ApplicationLanguages.PrimaryLanguageOverride = "zh-Hans-CN"; }
         catch (Exception e) { CrashLog.Write("language override", e); }
+        // Theme must be decided before any XAML loads (Application.RequestedTheme can only be set here).
+        ThemeService.LoadAndApplyToApplication(this);
         InitializeComponent();
         UnhandledException += (_, e) =>
         {

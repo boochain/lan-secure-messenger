@@ -29,7 +29,7 @@ public sealed partial class GroupsPage : Page
         var panel = new StackPanel { Spacing = 8, MinWidth = 360 };
         if (nameBox != null) panel.Children.Add(nameBox);
         if (peers.Count == 0)
-            panel.Children.Add(new TextBlock { Text = "没有可选的已信任联系人。请先在聊天页中「信任」对方或完成 PIN 配对。", TextWrapping = TextWrapping.Wrap, Opacity = 0.7 });
+            panel.Children.Add(new TextBlock { Text = "没有可选的已信任联系人。请先在聊天页中「信任」对方或完成 PIN 配对。", TextWrapping = TextWrapping.Wrap, Style = (Style)Application.Current.Resources["SecondaryBodyStyle"] });
         var list = new StackPanel { Spacing = 2 };
         foreach (var p in peers)
         {
@@ -47,7 +47,7 @@ public sealed partial class GroupsPage : Page
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary,
         };
-        if (await dlg.ShowAsync() != ContentDialogResult.Primary) return null;
+        if (await LanMessenger.Services.ThemeService.Prepare(dlg).ShowAsync() != ContentDialogResult.Primary) return null;
         return list.Children.OfType<CheckBox>().Where(c => c.IsChecked == true).Select(c => (string)c.Tag).ToList();
     }
 
@@ -87,7 +87,7 @@ public sealed partial class GroupsPage : Page
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close,
         };
-        if (await dlg.ShowAsync() == ContentDialogResult.Primary) await VM.LeaveGroupAsync(g.Id);
+        if (await LanMessenger.Services.ThemeService.Prepare(dlg).ShowAsync() == ContentDialogResult.Primary) await VM.LeaveGroupAsync(g.Id);
     }
 
     private async void RemoveMember_Click(object sender, RoutedEventArgs e)

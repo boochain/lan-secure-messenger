@@ -8,7 +8,23 @@ public sealed partial class SettingsPage : Page
 {
     public MainViewModel VM => App.VM;
 
-    public SettingsPage() { InitializeComponent(); }
+    private bool _loadingTheme;
+
+    public SettingsPage()
+    {
+        InitializeComponent();
+        _loadingTheme = true;
+        ThemeChoice.SelectedIndex = (int)LanMessenger.Services.ThemeService.Mode;
+        _loadingTheme = false;
+    }
+
+    private void ThemeChoice_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loadingTheme || ThemeChoice.SelectedIndex < 0) return;
+        var mode = (LanMessenger.Services.AppThemeMode)ThemeChoice.SelectedIndex;
+        if (mode == LanMessenger.Services.ThemeService.Mode) return;
+        LanMessenger.Services.ThemeService.SetMode(mode);
+    }
 
     private async Task<string?> AskPasswordAsync(string title, bool confirm)
     {
@@ -26,7 +42,7 @@ public sealed partial class SettingsPage : Page
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary,
         };
-        if (await dlg.ShowAsync() != ContentDialogResult.Primary) return null;
+        if (await LanMessenger.Services.ThemeService.Prepare(dlg).ShowAsync() != ContentDialogResult.Primary) return null;
         if (pw.Password.Length < 8) { VM.ShowStatus("密码至少 8 位", true); return null; }
         if (confirm && pw.Password != pw2.Password) { VM.ShowStatus("两次输入的密码不一致", true); return null; }
         return pw.Password;
@@ -54,7 +70,7 @@ public sealed partial class SettingsPage : Page
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close,
         };
-        if (await confirm.ShowAsync() != ContentDialogResult.Primary) return;
+        if (await LanMessenger.Services.ThemeService.Prepare(confirm).ShowAsync() != ContentDialogResult.Primary) return;
         var pw = await AskPasswordAsync("输入备份密码", false);
         if (pw == null) return;
         await VM.RestoreAsync(path, pw);

@@ -19,7 +19,7 @@
             <StackPanel>
                 <TextBlock Text="群组" Style="{StaticResource TitleTextBlockStyle}" />
                 <TextBlock Text="群消息使用群密钥加密；移除成员后会自动更换密钥（rekey）。只能邀请已信任的联系人。"
-                           Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.7" TextWrapping="Wrap" />
+                           Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" />
             </StackPanel>
             <Button Grid.Column="1" Style="{StaticResource AccentButtonStyle}" Click="Create_Click" VerticalAlignment="Center">
                 <StackPanel Orientation="Horizontal" Spacing="6">
@@ -28,7 +28,7 @@
                 </StackPanel>
             </Button>
         </Grid>
-        <TextBlock Grid.Row="1" Text="还没有群组。" Opacity="0.6" Visibility="{x:Bind local:B.Empty(VM.Groups.Count), Mode=OneWay}" />
+        <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Grid.Row="1" Text="还没有群组。" Visibility="{x:Bind local:B.Empty(VM.Groups.Count), Mode=OneWay}" />
         <ScrollViewer Grid.Row="1">
             <ItemsRepeater ItemsSource="{x:Bind VM.Groups}">
                 <ItemsRepeater.Layout>
@@ -50,9 +50,9 @@
                                 <StackPanel Grid.Row="0" Grid.Column="0">
                                     <StackPanel Orientation="Horizontal" Spacing="6">
                                         <TextBlock Text="{x:Bind Name, Mode=OneWay}" Style="{StaticResource SubtitleTextBlockStyle}" />
-                                        <FontIcon Glyph="&#xE74F;" FontSize="12" Opacity="0.6" Visibility="{x:Bind Muted, Mode=OneWay}" />
+                                        <FontIcon Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE74F;" FontSize="12" Visibility="{x:Bind Muted, Mode=OneWay}" />
                                     </StackPanel>
-                                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.7">
+                                    <TextBlock Style="{StaticResource SecondaryCaptionStyle}">
                                         <Run Text="{x:Bind MembersText, Mode=OneWay}" /><Run Text=" · " /><Run Text="{x:Bind EpochText, Mode=OneWay}" />
                                     </TextBlock>
                                 </StackPanel>
@@ -73,8 +73,8 @@
                                                     <ColumnDefinition Width="*" />
                                                     <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
-                                                <Ellipse Grid.Column="0" Width="8" Height="8" Fill="{StaticResource OnlineBrush}" Visibility="{x:Bind Online, Mode=OneWay}" />
-                                                <Ellipse Grid.Column="0" Width="8" Height="8" Fill="{StaticResource OfflineBrush}" Visibility="{x:Bind local:B.Not(Online), Mode=OneWay}" />
+                                                <Ellipse Grid.Column="0" Width="8" Height="8" Fill="{ThemeResource StatusOnlineBrush}" Visibility="{x:Bind Online, Mode=OneWay}" />
+                                                <Ellipse Grid.Column="0" Width="8" Height="8" Fill="{ThemeResource StatusOfflineBrush}" Visibility="{x:Bind local:B.Not(Online), Mode=OneWay}" />
                                                 <TextBlock Grid.Column="1" Text="{x:Bind Name, Mode=OneWay}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                                                 <HyperlinkButton Grid.Column="2" Content="移除" Padding="4,0" Click="RemoveMember_Click" Tag="{x:Bind Fingerprint}"
                                                                  Visibility="{x:Bind CanRemove, Mode=OneWay}" />

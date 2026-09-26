@@ -39,6 +39,10 @@ public sealed partial class ChatPage : Page
         }
     }
 
+    /// <summary>UI smoke: open / close the "更多" menu so the flyout (popup layer) is captured in both themes.</summary>
+    public void OpenMoreMenuForSmoke() => MoreButton.Flyout?.ShowAt(MoreButton);
+    public void CloseMoreMenuForSmoke() => MoreButton.Flyout?.Hide();
+
     private void ScrollToEnd()
     {
         DispatcherQueue.TryEnqueue(() =>
@@ -139,7 +143,7 @@ public sealed partial class ChatPage : Page
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close,
         };
-        if (await dlg.ShowAsync() == ContentDialogResult.Primary) await VM.ForgetPeerAsync(c.PeerFingerprint);
+        if (await LanMessenger.Services.ThemeService.Prepare(dlg).ShowAsync() == ContentDialogResult.Primary) await VM.ForgetPeerAsync(c.PeerFingerprint);
     }
 
     private async void Pin_Click(object sender, RoutedEventArgs e)
@@ -171,7 +175,7 @@ public sealed partial class ChatPage : Page
             PrimaryButtonText = "配对",
             CloseButtonText = "关闭",
         };
-        if (await dlg.ShowAsync() == ContentDialogResult.Primary && !string.IsNullOrWhiteSpace(pinBox.Text))
+        if (await LanMessenger.Services.ThemeService.Prepare(dlg).ShowAsync() == ContentDialogResult.Primary && !string.IsNullOrWhiteSpace(pinBox.Text))
             await VM.PinPairAsync(c.PeerFingerprint, pinBox.Text);
     }
 }

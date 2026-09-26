@@ -9,15 +9,73 @@
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
+
+            <!-- App-specific colours. Never use literal colours in pages: every brush here has a Light, Dark and
+                 HighContrast variant and must be referenced with {ThemeResource ...} so it follows live theme changes. -->
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="StatusOnlineBrush" Color="#0F7B0F" />
+                    <SolidColorBrush x:Key="StatusOfflineBrush" Color="#8A8A8A" />
+                    <SolidColorBrush x:Key="StatusWarnBrush" Color="#9D5D00" />
+                    <SolidColorBrush x:Key="StatusErrorTextBrush" Color="#C42B1C" />
+                    <SolidColorBrush x:Key="UnreadBadgeBackgroundBrush" Color="#C42B1C" />
+                    <SolidColorBrush x:Key="UnreadBadgeForegroundBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="WindowFallbackBackgroundBrush" Color="#F3F3F3" />
+                    <SolidColorBrush x:Key="MediaBubbleBorderBrush" Color="{ThemeResource SystemAccentColor}" />
+                    <Thickness x:Key="MediaBubbleBorderThickness">1</Thickness>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="StatusOnlineBrush" Color="#6CCB5F" />
+                    <SolidColorBrush x:Key="StatusOfflineBrush" Color="#8F8F8F" />
+                    <SolidColorBrush x:Key="StatusWarnBrush" Color="#FCE100" />
+                    <SolidColorBrush x:Key="StatusErrorTextBrush" Color="#FF99A4" />
+                    <SolidColorBrush x:Key="UnreadBadgeBackgroundBrush" Color="#C42B1C" />
+                    <SolidColorBrush x:Key="UnreadBadgeForegroundBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="WindowFallbackBackgroundBrush" Color="#202020" />
+                    <SolidColorBrush x:Key="MediaBubbleBorderBrush" Color="{ThemeResource SystemAccentColorLight2}" />
+                    <Thickness x:Key="MediaBubbleBorderThickness">1</Thickness>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="HighContrast">
+                    <SolidColorBrush x:Key="StatusOnlineBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="StatusOfflineBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
+                    <SolidColorBrush x:Key="StatusWarnBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    <SolidColorBrush x:Key="StatusErrorTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    <SolidColorBrush x:Key="UnreadBadgeBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="UnreadBadgeForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
+                    <SolidColorBrush x:Key="WindowFallbackBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="MediaBubbleBorderBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    <Thickness x:Key="MediaBubbleBorderThickness">2</Thickness>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+
             <!-- Han unification: on non-Chinese Windows the default fallback picks a Japanese font and renders
                  simplified characters (e.g. 组) with Japanese glyphs. Put a Simplified Chinese font right after Segoe. -->
             <FontFamily x:Key="ContentControlThemeFontFamily">Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI, Microsoft YaHei, SimSun</FontFamily>
             <FontFamily x:Key="CjkFontFamily">Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI, Microsoft YaHei, SimSun</FontFamily>
             <local:PathToImageConverter x:Key="PathToImage" />
-            <SolidColorBrush x:Key="OnlineBrush" Color="#22C55E" />
-            <SolidColorBrush x:Key="OfflineBrush" Color="#9CA3AF" />
-            <SolidColorBrush x:Key="WarnBrush" Color="#F59E0B" />
-            <SolidColorBrush x:Key="UnreadBrush" Color="#EF4444" />
+
+            <!-- Shared card style (settings, diagnostics, groups). -->
+            <Style x:Key="CardBorderStyle" TargetType="Border">
+                <Setter Property="CornerRadius" Value="8" />
+                <Setter Property="Padding" Value="16" />
+                <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+            </Style>
+            <!-- Secondary/tertiary text: use theme text brushes instead of Opacity so contrast is right in every theme
+                 (Opacity on text breaks High Contrast and gives muddy text on Mica). -->
+            <Style x:Key="SecondaryCaptionStyle" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Style>
+            <Style x:Key="TitleBarActiveTextStyle" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+            </Style>
+            <Style x:Key="TitleBarInactiveTextStyle" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Style>
+            <Style x:Key="SecondaryBodyStyle" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

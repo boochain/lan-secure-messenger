@@ -6,15 +6,6 @@
     xmlns:local="using:LanMessenger"
     xmlns:vm="using:LanMessenger.Core.ViewModels"
     Background="Transparent">
-    <Page.Resources>
-        <Style x:Key="Card" TargetType="Border">
-            <Setter Property="CornerRadius" Value="8" />
-            <Setter Property="Padding" Value="16" />
-            <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
-            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-        </Style>
-    </Page.Resources>
     <ScrollViewer Padding="16,4,16,16">
         <StackPanel Spacing="12" MaxWidth="960">
             <Grid>
@@ -30,15 +21,15 @@
                 </StackPanel>
             </Grid>
 
-            <Border Style="{StaticResource Card}">
+            <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="8">
                     <TextBlock Text="Windows 防火墙" Style="{StaticResource SubtitleTextBlockStyle}" />
                     <StackPanel Orientation="Horizontal" Spacing="8">
-                        <FontIcon Glyph="&#xE73E;" Foreground="{StaticResource OnlineBrush}" Visibility="{x:Bind VM.FirewallOk, Mode=OneWay}" />
-                        <FontIcon Glyph="&#xE7BA;" Foreground="{StaticResource WarnBrush}" Visibility="{x:Bind local:B.Not(VM.FirewallOk), Mode=OneWay}" />
+                        <FontIcon Glyph="&#xE73E;" Foreground="{ThemeResource StatusOnlineBrush}" Visibility="{x:Bind VM.FirewallOk, Mode=OneWay}" />
+                        <FontIcon Glyph="&#xE7BA;" Foreground="{ThemeResource StatusWarnBrush}" Visibility="{x:Bind local:B.Not(VM.FirewallOk), Mode=OneWay}" />
                         <TextBlock Text="{x:Bind VM.FirewallSummary, Mode=OneWay}" TextWrapping="Wrap" />
                     </StackPanel>
-                    <TextBlock Text="{x:Bind VM.FirewallAdvice, Mode=OneWay}" TextWrapping="Wrap" Opacity="0.8"
+                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind VM.FirewallAdvice, Mode=OneWay}" TextWrapping="Wrap"
                                Visibility="{x:Bind local:B.NotEmpty(VM.FirewallAdvice), Mode=OneWay}" />
                     <TextBlock TextWrapping="Wrap">
                         <Run Text="网络类型：" /><Run Text="{x:Bind VM.ProfilesText, Mode=OneWay}" />
@@ -50,19 +41,19 @@
                 </StackPanel>
             </Border>
 
-            <Border Style="{StaticResource Card}">
+            <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="8">
                     <TextBlock Text="发现与端口" Style="{StaticResource SubtitleTextBlockStyle}" />
                     <TextBlock Text="{x:Bind VM.PortsText, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
-                    <TextBlock Text="{x:Bind VM.DiscoveryText, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" Opacity="0.8" />
+                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind VM.DiscoveryText, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
                 </StackPanel>
             </Border>
 
-            <Border Style="{StaticResource Card}">
+            <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="8">
                     <TextBlock Text="网卡" Style="{StaticResource SubtitleTextBlockStyle}" />
                     <TextBlock Text="虚拟网卡（Hyper-V、VMware、VirtualBox、WSL、Docker、VPN 等）会被自动跳过；可在「设置」中手动指定。"
-                               Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.7" TextWrapping="Wrap" />
+                               Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" />
                     <ItemsRepeater ItemsSource="{x:Bind VM.Interfaces}">
                         <ItemsRepeater.Layout>
                             <StackLayout Spacing="6" />
@@ -75,11 +66,11 @@
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <Ellipse Grid.Column="0" Width="8" Height="8" Fill="{StaticResource OnlineBrush}" Visibility="{x:Bind Used}" />
-                                    <Ellipse Grid.Column="0" Width="8" Height="8" Fill="{StaticResource OfflineBrush}" Visibility="{x:Bind local:B.Not(Used)}" />
+                                    <Ellipse Grid.Column="0" Width="8" Height="8" Fill="{ThemeResource StatusOnlineBrush}" Visibility="{x:Bind Used}" />
+                                    <Ellipse Grid.Column="0" Width="8" Height="8" Fill="{ThemeResource StatusOfflineBrush}" Visibility="{x:Bind local:B.Not(Used)}" />
                                     <StackPanel Grid.Column="1">
                                         <TextBlock Text="{x:Bind Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
-                                        <TextBlock Text="{x:Bind Detail}" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.7" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                        <TextBlock Text="{x:Bind Detail}" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
                                     </StackPanel>
                                     <TextBlock Grid.Column="2" Text="{x:Bind UsedText}" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center" />
                                 </Grid>
@@ -89,10 +80,10 @@
                 </StackPanel>
             </Border>
 
-            <Border Style="{StaticResource Card}">
+            <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="8">
                     <TextBlock Text="联系人连接状态" Style="{StaticResource SubtitleTextBlockStyle}" />
-                    <TextBlock Text="暂无联系人" Opacity="0.6" Visibility="{x:Bind local:B.Empty(VM.PeerDiags.Count), Mode=OneWay}" />
+                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="暂无联系人" Visibility="{x:Bind local:B.Empty(VM.PeerDiags.Count), Mode=OneWay}" />
                     <ItemsRepeater ItemsSource="{x:Bind VM.PeerDiags}">
                         <ItemsRepeater.Layout>
                             <StackLayout Spacing="6" />
@@ -105,11 +96,11 @@
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <Ellipse Grid.Column="0" Width="8" Height="8" Fill="{StaticResource OnlineBrush}" Visibility="{x:Bind Connected}" />
-                                    <Ellipse Grid.Column="0" Width="8" Height="8" Fill="{StaticResource OfflineBrush}" Visibility="{x:Bind local:B.Not(Connected)}" />
+                                    <Ellipse Grid.Column="0" Width="8" Height="8" Fill="{ThemeResource StatusOnlineBrush}" Visibility="{x:Bind Connected}" />
+                                    <Ellipse Grid.Column="0" Width="8" Height="8" Fill="{ThemeResource StatusOfflineBrush}" Visibility="{x:Bind local:B.Not(Connected)}" />
                                     <StackPanel Grid.Column="1">
                                         <TextBlock Text="{x:Bind Title}" FontWeight="SemiBold" />
-                                        <TextBlock Text="{x:Bind Detail}" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.7" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                        <TextBlock Text="{x:Bind Detail}" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
                                     </StackPanel>
                                     <TextBlock Grid.Column="2" Text="{x:Bind StateText}" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center" />
                                 </Grid>
@@ -119,10 +110,10 @@
                 </StackPanel>
             </Border>
 
-            <Border Style="{StaticResource Card}">
+            <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="8">
                     <TextBlock Text="手动添加的地址" Style="{StaticResource SubtitleTextBlockStyle}" />
-                    <TextBlock Text="这些地址会被持续重连，适用于广播被路由器/防火墙拦截的网络。" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.7" />
+                    <TextBlock Text="这些地址会被持续重连，适用于广播被路由器/防火墙拦截的网络。" Style="{StaticResource SecondaryCaptionStyle}" />
                     <ItemsRepeater ItemsSource="{x:Bind VM.ManualPeers}">
                         <ItemsRepeater.ItemTemplate>
                             <DataTemplate x:DataType="x:String">

@@ -8,7 +8,7 @@
     DefaultButton="Primary"
     PrimaryButtonClick="Dialog_PrimaryButtonClick">
     <StackPanel Spacing="14" MaxWidth="480">
-        <TextBlock TextWrapping="Wrap" Opacity="0.8"
+        <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
                    Text="无需服务器和账号：同一局域网内打开本软件的电脑会自动互相发现，消息与文件全程端到端加密。" />
         <TextBox x:Name="NameBox" Header="你的显示名称（别人看到的名字）" MaxLength="40" />
         <StackPanel Spacing="4">

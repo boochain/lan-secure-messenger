@@ -27,14 +27,9 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
-        try
-        {
-            if (Microsoft.UI.Composition.SystemBackdrops.MicaController.IsSupported())
-                SystemBackdrop = new MicaBackdrop();
-            else
-                SystemBackdrop = new DesktopAcrylicBackdrop();
-        }
-        catch (Exception e) { CrashLog.Write("backdrop", e); }
+        ThemeService.Attach(this, RootGrid);
+        ApplyBackdrop();
+        ThemeService.Changed += ApplyBackdrop;
 
         try
         {
@@ -50,6 +45,8 @@ public sealed partial class MainWindow : Window
         Activated += (_, e) =>
         {
             _active = e.WindowActivationState != WindowActivationState.Deactivated;
+            // Inactive title: secondary text brush (theme-aware), never a fixed colour.
+            AppTitleText.Style = (Style)Application.Current.Resources[_active ? "TitleBarActiveTextStyle" : "TitleBarInactiveTextStyle"];
             if (_active) VM.OnWindowActivated();
         };
 
@@ -73,6 +70,41 @@ public sealed partial class MainWindow : Window
     }
 
     public bool IsActiveAndVisible => _active && _visible;
+    public Page? CurrentPage => ContentFrame.Content as Page;
+    public FrameworkElement Root => RootGrid;
+
+    /// <summary>True when Mica or desktop Acrylic is drawing the window background.</summary>
+    public bool BackdropActive { get; private set; }
+
+    private void ApplyBackdrop()
+    {
+        // High Contrast: no translucent materials, solid system window colour behind everything.
+        if (ThemeService.HighContrast || Environment.GetEnvironmentVariable("LSM_NO_BACKDROP") == "1")
+        {
+            SystemBackdrop = null;
+            BackdropActive = false;
+        }
+        else if (SystemBackdrop == null)
+        {
+            try
+            {
+                if (Microsoft.UI.Composition.SystemBackdrops.MicaController.IsSupported())
+                    SystemBackdrop = new MicaBackdrop();
+                else if (Microsoft.UI.Composition.SystemBackdrops.DesktopAcrylicController.IsSupported())
+                    SystemBackdrop = new DesktopAcrylicBackdrop();
+                BackdropActive = SystemBackdrop != null;
+            }
+            catch (Exception e)
+            {
+                CrashLog.Write("backdrop", e);
+                SystemBackdrop = null;
+                BackdropActive = false;
+            }
+        }
+        // MicaBackdrop/DesktopAcrylicBackdrop take their Light/Dark tint from this window's root ActualTheme, so they
+        // follow RequestedTheme and live changes; the fallback border covers every case without a backdrop.
+        FallbackBackground.Visibility = BackdropActive ? Visibility.Collapsed : Visibility.Visible;
+    }
 
     private void CreateTray()
     {
@@ -186,7 +218,7 @@ public sealed partial class MainWindow : Window
         if (_firstRunShown) return;
         _firstRunShown = true;
         if (Environment.GetEnvironmentVariable("LSM_UI_SMOKE") is { Length: > 0 }) return;
-        var dlg = new FirstRunDialog { XamlRoot = Content.XamlRoot };
+        var dlg = ThemeService.Prepare(new FirstRunDialog { XamlRoot = Content.XamlRoot });
         await dlg.ShowAsync();
     }
 
