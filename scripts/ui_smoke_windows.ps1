@@ -13,7 +13,7 @@ param(
 )
 $ErrorActionPreference = "Stop"
 $Out = (New-Item -ItemType Directory -Force $Out).FullName
-$App = (Resolve-Path (Join-Path $Dist "LanMessenger.exe")).Path
+$AppExe = (Resolve-Path (Join-Path $Dist "LanMessenger.exe")).Path  # (PowerShell names are case-insensitive: keep distinct from $proc)
 $M = (Resolve-Path (Join-Path $Dist "lan-msg.exe")).Path
 $D = (Resolve-Path (Join-Path $Dist "lan-daemon.exe")).Path
 $Img = (Resolve-Path $Image).Path
@@ -62,9 +62,9 @@ foreach ($theme in "light", "dark") {
   $env:LSM_UI_SMOKE_LIVE_FLIP = if ($theme -eq "dark") { "1" } else { $null }
   $env:LSM_NO_DIALOG = "1"
 
-  $app = Start-Process $App -PassThru
+  $proc = Start-Process $AppExe -PassThru
   for ($i = 0; $i -lt 120 -and -not (Test-Path "$dir\ready.txt"); $i++) {
-    if ($app.HasExited) { throw "[$theme] LanMessenger.exe exited early with code $($app.ExitCode)" }
+    if ($proc.HasExited) { throw "[$theme] LanMessenger.exe exited early with code $($proc.ExitCode)" }
     Start-Sleep -Milliseconds 500
   }
   if (-not (Test-Path "$dir\ready.txt")) { throw "[$theme] UI never reported ready" }
@@ -90,7 +90,7 @@ foreach ($theme in "light", "dark") {
   Save-Desktop (Join-Path $dir "desktop-$theme.png")
 
   $deadline = (Get-Date).AddSeconds(240)
-  while (-not $app.HasExited -and (Get-Date) -lt $deadline) {
+  while (-not $proc.HasExited -and (Get-Date) -lt $deadline) {
     if ((Test-Path "$dir\flip-request") -and -not (Test-Path "$dir\flipped")) {
       Write-Host "[$theme] app asked for a live theme flip"
       Set-WindowsTheme ($(if ($theme -eq "dark") { "light" } else { "dark" }))
@@ -98,7 +98,7 @@ foreach ($theme in "light", "dark") {
     }
     Start-Sleep -Milliseconds 500
   }
-  if (-not $app.HasExited) { Stop-Process $app -Force; $problems += "[$theme] UI smoke timed out" }
+  if (-not $proc.HasExited) { Stop-Process $proc -Force; $problems += "[$theme] UI smoke timed out" }
   Stop-Process $bob -Force -ErrorAction SilentlyContinue
   Start-Sleep -Seconds 2
 

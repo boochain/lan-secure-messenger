@@ -316,7 +316,12 @@ public static class UiSmoke
         if (fail > 0) Fail($"contrast {shot}: {fail} element(s) below {MinContrast}:1, worst {minWhat}");
     }
 
-    private static string Trim(string s) { s = s.Replace("\n", " ").Replace("\r", ""); return s.Length > 24 ? s[..24] + "…" : s; }
+    private static string Trim(string s)
+    {
+        if (IsGlyph(s)) return "glyph U+" + string.Join(",", s.Select(c => ((int)c).ToString("X4")));
+        s = s.Replace("\n", " ").Replace("\r", "");
+        return s.Length > 24 ? s[..24] + "…" : s;
+    }
     private static string Hex(Color c) => $"#{c.A:X2}{c.R:X2}{c.G:X2}{c.B:X2}";
 
     private static bool EffectivelyVisible(FrameworkElement fe, out double opacity)
@@ -335,12 +340,66 @@ public static class UiSmoke
         return true;
     }
 
+    private static bool IsGlyph(string? t) => !string.IsNullOrEmpty(t) && t.All(c => c >= '\uE000' && c <= '\uF8FF');
+
+    private static Point Center(FrameworkElement fe)
+    {
+        try { return fe.TransformToVisual(null).TransformPoint(new Point(fe.ActualWidth / 2, fe.ActualHeight / 2)); }
+        catch { return new Point(double.NaN, double.NaN); }
+    }
+
+    private static bool Contains(FrameworkElement fe, Point p)
+    {
+        if (double.IsNaN(p.X) || fe.ActualWidth < 1 || fe.ActualHeight < 1 || fe.Visibility != Visibility.Visible || fe.Opacity < 0.05) return false;
+        try
+        {
+            var b = fe.TransformToVisual(null).TransformBounds(new Rect(0, 0, fe.ActualWidth, fe.ActualHeight));
+            return p.X >= b.X && p.X <= b.X + b.Width && p.Y >= b.Y && p.Y <= b.Y + b.Height;
+        }
+        catch { return false; }
+    }
+
+    private static (Color c, double a)? Layer(Brush? b, double opacity = 1) => b switch
+    {
+        SolidColorBrush s => (s.Color, s.Color.A / 255.0 * s.Opacity * opacity),
+        AcrylicBrush ac => (ac.FallbackColor, ac.FallbackColor.A / 255.0 * opacity),
+        _ => null,
+    };
+
     private static Color CompositeBackground(FrameworkElement fe, Color baseColor)
     {
-        // Collect background layers from the element outward until an opaque one, then paint them back-to-front.
+        // Painter's algorithm, walking outward: for every ancestor panel first the siblings drawn *behind* the current
+        // branch (lower child index, covering the text's centre: e.g. the avatar Ellipse, a TextBox's border element,
+        // the coloured circle glyph under an InfoBar icon), then the ancestor's own background. Stop at the first opaque layer.
+        var glyph = fe is FontIcon || (fe is TextBlock tb0 && IsGlyph(tb0.Text));
+        var center = Center(fe);
         var layers = new List<(Color c, double a)>();
-        for (var d = VisualTreeHelper.GetParent(fe); d != null; d = VisualTreeHelper.GetParent(d))
+        bool opaque = false;
+        void Add((Color c, double a)? l)
         {
+            if (opaque || l is not { } v || v.a <= 0.004) return;
+            layers.Add(v);
+            if (v.a >= 0.995) opaque = true;
+        }
+        DependencyObject child = fe;
+        for (var d = VisualTreeHelper.GetParent(fe); d != null && !opaque; child = d, d = VisualTreeHelper.GetParent(d))
+        {
+            if (d is Panel panel && child is UIElement childEl)
+            {
+                int idx = panel.Children.IndexOf(childEl);
+                for (int i = idx - 1; i >= 0 && !opaque; i--)
+                {
+                    if (panel.Children[i] is not FrameworkElement sib || !Contains(sib, center)) continue;
+                    switch (sib)
+                    {
+                        case Microsoft.UI.Xaml.Shapes.Shape sh: Add(Layer(sh.Fill, sh.Opacity)); break;
+                        case Border sb: Add(Layer(sb.Background, sb.Opacity)); break;
+                        case Panel sp: Add(Layer(sp.Background, sp.Opacity)); break;
+                        case TextBlock st when glyph && IsGlyph(st.Text): Add(Layer(st.Foreground, st.Opacity)); break;
+                        case FontIcon sf when glyph: Add(Layer(sf.Foreground, sf.Opacity)); break;
+                    }
+                }
+            }
             Brush? b = d switch
             {
                 Border x => x.Background,
@@ -348,17 +407,7 @@ public static class UiSmoke
                 ContentPresenter x => x.Background,
                 _ => null,
             };
-            (Color c, double a)? layer = b switch
-            {
-                SolidColorBrush s => (s.Color, s.Color.A / 255.0 * s.Opacity),
-                AcrylicBrush ac => (ac.FallbackColor, ac.FallbackColor.A / 255.0),
-                _ => null,
-            };
-            if (layer is { } l && l.a > 0.004)
-            {
-                layers.Add(l);
-                if (l.a >= 0.995) break;
-            }
+            Add(Layer(b));
         }
         var res = baseColor;
         for (int i = layers.Count - 1; i >= 0; i--) res = Over(layers[i].c, layers[i].a, res);
