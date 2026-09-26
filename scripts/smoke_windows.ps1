@@ -27,14 +27,16 @@ function Start-Daemon($name, $pipe, [string[]]$extra) {
   return $p
 }
 function Cli($pipe, [string[]]$a) {
-  $out = & $M --ipc $pipe @a
-  if ($LASTEXITCODE -ne 0) { throw "lan-msg $($a -join ' ') failed ($LASTEXITCODE): $out" }
+  $errf = Join-Path $T "cli-stderr.txt"
+  $out = & $M --ipc $pipe @a 2>$errf
+  if ($LASTEXITCODE -ne 0) { throw "lan-msg $($a -join ' ') failed ($LASTEXITCODE): $($out -join ' ') $(Get-Content $errf -Raw -ErrorAction SilentlyContinue)" }
   return ($out -join "`n")
 }
 function Json($pipe, [string[]]$a) { return (Cli $pipe (@("--json") + $a)) | ConvertFrom-Json }
 function WaitPipe($pipe) {
-  for ($i = 0; $i -lt 100; $i++) { try { Json $pipe @("status") | Out-Null; return } catch { Start-Sleep -Milliseconds 200 } }
-  throw "daemon on $pipe did not come up"
+  $last = ""
+  for ($i = 0; $i -lt 100; $i++) { try { Json $pipe @("status") | Out-Null; return } catch { $last = "$_"; Start-Sleep -Milliseconds 200 } }
+  throw "daemon on $pipe did not come up; last error: $last"
 }
 function Ok($msg) { Write-Host "[ok] $msg" -ForegroundColor Green }
 
