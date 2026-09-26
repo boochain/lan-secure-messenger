@@ -191,7 +191,7 @@
                     <Button x:Name="MoreButton" ToolTipService.ToolTip="更多">
                         <FontIcon Glyph="&#xE712;" FontSize="14" />
                         <Button.Flyout>
-                            <MenuFlyout>
+                            <MenuFlyout Placement="BottomEdgeAlignedRight">
                                 <MenuFlyoutItem Text="取消信任" Command="{x:Bind VM.UntrustSelectedCommand}" />
                                 <MenuFlyoutItem Text="屏蔽" Command="{x:Bind VM.BlockSelectedCommand}" />
                                 <MenuFlyoutItem Text="复制对方指纹" Click="CopyPeerFp_Click" />

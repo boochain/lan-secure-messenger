@@ -42,6 +42,7 @@ public sealed partial class ChatPage : Page
     /// <summary>UI smoke: open / close the "更多" menu so the flyout (popup layer) is captured in both themes.</summary>
     public void OpenMoreMenuForSmoke() => MoreButton.Flyout?.ShowAt(MoreButton);
     public void CloseMoreMenuForSmoke() => MoreButton.Flyout?.Hide();
+    public void ScrollMessagesToTopForSmoke() { if (VM.Messages.Count > 0) MessageList.ScrollIntoView(VM.Messages[0], ScrollIntoViewAlignment.Leading); }
 
     private void ScrollToEnd()
     {

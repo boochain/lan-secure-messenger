@@ -46,7 +46,7 @@ function Save-Desktop([string]$path) {
   $bmp.Save($path); $g.Dispose(); $bmp.Dispose()
 }
 
-$shots = "page-chat", "page-chat-dm", "page-groups", "page-transfers", "page-settings", "page-settings-bottom",
+$shots = "page-chat", "page-chat-dm", "page-chat-dm-top", "page-groups", "page-transfers", "page-settings", "page-settings-bottom",
          "page-diag", "page-diag-bottom", "popup-menu", "first-run"
 $problems = @()
 
@@ -82,6 +82,7 @@ foreach ($theme in "light", "dark") {
   & $M trust $FB
   & $M --ipc $bobPipe send $FA "你好！这是来自 CI 第二个节点的消息 👋"
   & $M send $FB "收到，界面渲染测试中。"
+  & $M send-file $FB (Join-Path $Dist "README.txt")   # our own file message -> outgoing file card
   & $M --ipc $bobPipe send-file $FA $Img
   & $M --ipc $bobPipe group-create "CI 测试群" $FA
   Start-Sleep -Seconds 4

@@ -84,9 +84,12 @@ public static class UiSmoke
                         if (!App.VM.Messages.Any(m => m.IsImage) || !App.VM.Messages.Any(m => m.IsIncoming && m.IsText) || !App.VM.Messages.Any(m => m.IsOutgoing))
                             Fail("DM is missing the peer's text, the image preview or our reply");
 
-                        // Popup layer: the "更多" menu flyout.
+                        // Popup layer: the "更多" menu flyout; then the top of the conversation (peer's first message).
                         if (w.CurrentPage is ChatPage cp)
                         {
+                            cp.ScrollMessagesToTopForSmoke();
+                            await Task.Delay(1500);
+                            await ShotAsync(w, dir, "page-chat-dm-top", label, theme);
                             cp.OpenMoreMenuForSmoke();
                             await Task.Delay(1200);
                             await ShotAsync(w, dir, "popup-menu", label, theme);
