@@ -85,6 +85,7 @@ jobs:
         shell: pwsh
         env:
           LSM_DAEMON_BIN: ${{ github.workspace }}\target\release\lan-daemon.exe
+          LSM_EXPECT_FIREWALL_RULE: "1"
         run: dotnet test ui-winui/LanMessenger.Core.Tests/LanMessenger.Core.Tests.csproj -c Release --logger "console;verbosity=normal"
 
       - uses: actions/upload-artifact@v4

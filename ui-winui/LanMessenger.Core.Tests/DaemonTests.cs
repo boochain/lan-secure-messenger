@@ -213,7 +213,16 @@ public class DaemonTests
         // Diagnostics mapping.
         await vm.RefreshDiagnosticsAsync(false);
         await Until("diag", () => { lock (ui.Gate) return vm.PeerDiags.Any(p => p.Connected) && vm.DiagnosticsJson.Length > 10; });
-        Assert.Contains("非 Windows", vm.FirewallSummary);
+        if (!OperatingSystem.IsWindows())
+            Assert.Contains("非 Windows", vm.FirewallSummary);
+        else if (Environment.GetEnvironmentVariable("LSM_EXPECT_FIREWALL_RULE") == "1")
+        {
+            // CI creates the rule for this exact lan-daemon.exe in an earlier step.
+            Assert.StartsWith("已放行", vm.FirewallSummary);
+            Assert.True(vm.FirewallOk);
+        }
+        else
+            Assert.True(vm.FirewallSummary.StartsWith("已放行") || vm.FirewallSummary is "未配置放行规则" or "规则存在但路径不匹配", vm.FirewallSummary);
         // Group creation through the VM.
         var ok = await vm.CreateGroupAsync("C# 群", new[] { sb.Me.Fingerprint });
         Assert.True(ok);
