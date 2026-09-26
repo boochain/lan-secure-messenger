@@ -39,7 +39,10 @@ public sealed partial class MainWindow : Window
         try
         {
             AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico"));
-            AppWindow.Resize(new Windows.Graphics.SizeInt32(1100, 740));
+            // Fit small screens (e.g. 1024x768 / 125% scaling laptops): clamp to the work area and center.
+            var wa = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
+            int w = Math.Min(1100, Math.Max(640, wa.Width - 40)), h = Math.Min(740, Math.Max(480, wa.Height - 40));
+            AppWindow.MoveAndResize(new Windows.Graphics.RectInt32(wa.X + (wa.Width - w) / 2, wa.Y + (wa.Height - h) / 2, w, h));
             AppWindow.Closing += AppWindow_Closing;
         }
         catch (Exception e) { CrashLog.Write("appwindow", e); }

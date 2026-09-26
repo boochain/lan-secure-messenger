@@ -16,6 +16,7 @@ public static class UiSmoke
     public static async Task RunAsync(MainWindow w, string dir)
     {
         var log = new List<string>();
+        var ok = true;
         try
         {
             Directory.CreateDirectory(dir);
@@ -35,10 +36,30 @@ public static class UiSmoke
                 await Task.Delay(2500);
                 var file = Path.Combine(dir, $"page-{tag}.png");
                 await CaptureAsync((UIElement)w.Content, file);
-                log.Add($"{tag}: {new FileInfo(file).Length} bytes");
+                log.Add($"{tag}: {new FileInfo(file).Length} bytes, messages={App.VM.Messages.Count}");
+                if (tag == "chat")
+                {
+                    // Second chat capture: the DM with the peer (text both ways + image preview).
+                    var dm = App.VM.Conversations.FirstOrDefault(c => c.IsDm);
+                    if (dm != null)
+                    {
+                        App.VM.SelectedConversation = dm;
+                        await Task.Delay(3000);
+                        var f2 = Path.Combine(dir, "page-chat-dm.png");
+                        await CaptureAsync((UIElement)w.Content, f2);
+                        log.Add($"chat-dm: {new FileInfo(f2).Length} bytes, title={dm.Title}, messages={App.VM.Messages.Count}, " +
+                                $"images={App.VM.Messages.Count(m => m.IsImage)}, incoming={App.VM.Messages.Count(m => m.IsIncoming)}, outgoing={App.VM.Messages.Count(m => m.IsOutgoing)}");
+                        if (!App.VM.Messages.Any(m => m.IsImage) || !App.VM.Messages.Any(m => m.IsIncoming && m.IsText) || !App.VM.Messages.Any(m => m.IsOutgoing))
+                        { ok = false; log.Add("FAIL: DM is missing the peer's text, the image preview or our reply"); }
+                    }
+                    else { ok = false; log.Add("FAIL: no DM conversation with the peer"); }
+                }
             }
             log.Add($"peers={App.VM.Peers.Count} online={App.VM.OnlineCount} conversations={App.VM.Conversations.Count} messages={App.VM.Messages.Count}");
-            log.Add("UI_SMOKE_OK");
+            if (!App.VM.IsConnected) { ok = false; log.Add("FAIL: not connected to daemon"); }
+            if (App.VM.OnlineCount < 1) { ok = false; log.Add("FAIL: peer not online"); }
+            if (!App.VM.Groups.Any()) { ok = false; log.Add("FAIL: group from peer not shown"); }
+            log.Add(ok ? "UI_SMOKE_OK" : "UI_SMOKE_FAIL");
         }
         catch (Exception e)
         {

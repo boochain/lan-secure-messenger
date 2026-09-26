@@ -25,7 +25,9 @@ pub struct NetIf {
 }
 
 const VIRTUAL_MARKERS: &[&str] = &[
-    "vethernet", "hyper-v", "virtualbox", "vbox", "vmware", "vmnet", "wsl", "docker", "tap-", "tap ",
+    // Host-side Hyper-V switch ports are "vEthernet (...)" / "Hyper-V Virtual Ethernet Adapter". NOT "Microsoft
+    // Hyper-V Network Adapter": that is the synthetic NIC *inside* a Hyper-V/Azure guest and is its real LAN NIC.
+    "vethernet", "hyper-v virtual", "virtualbox", "vbox", "vmware", "vmnet", "wsl", "docker", "tap-", "tap ",
     "tap-windows", "wintun", "wireguard", "tailscale", "zerotier", "openvpn", "vpn", "npcap loopback",
     "loopback", "pseudo", "teredo", "isatap", "bluetooth", "virbr", "veth", "br-", "cni", "flannel",
     "utun", "tun", "wg", "zt", "anyconnect", "fortinet", "hamachi", "radmin",
@@ -98,6 +100,16 @@ pub fn list(include: &[String], exclude: &[String]) -> Vec<NetIf> {
             });
         }
     }
+    // Never end up with nothing: if every interface looked virtual, fall back to the default-route interface
+    // (e.g. a VM whose only NIC has a virtual-looking name). The user can still exclude it in settings.
+    if !out.iter().any(|i| i.used) {
+        for i in out.iter_mut() {
+            if i.is_default && i.up && !i.ip.is_loopback() && !i.ip.is_link_local() && !matches_any(&format!("{} | {} | {}", i.name, i.friendly_name, i.description), exclude) {
+                i.used = true;
+                i.reason = format!("默认路由网卡（原判定：{}），已启用", i.reason);
+            }
+        }
+    }
     out
 }
 
@@ -116,5 +128,8 @@ mod tests {
         assert!(classify("{GUID}", "vEthernet (Default Switch)", "", ip, true, &["Default Switch".into()], &[]).0);
         assert!(!classify("{GUID}", "WLAN", "", ip, true, &[], &["wlan".into()]).0);
         assert!(classify("enp3s0", "", "", ip, true, &[], &[]).0);
+        // Synthetic NIC inside a Hyper-V / Azure guest VM is a real LAN interface.
+        assert!(classify("{GUID}", "Ethernet 3", "Microsoft Hyper-V Network Adapter #3", ip, true, &[], &[]).0);
+        assert!(!classify("{GUID}", "Ethernet 5", "Hyper-V Virtual Ethernet Adapter #2", ip, true, &[], &[]).0);
     }
 }

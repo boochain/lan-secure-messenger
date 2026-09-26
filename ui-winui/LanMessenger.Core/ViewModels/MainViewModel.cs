@@ -244,6 +244,8 @@ public partial class MainViewModel : ObservableObject
 
     private void ApplyMe(Me me)
     {
+        // Keep the settings name box in sync unless the user is editing it (e.g. after first-run rename).
+        if (string.IsNullOrEmpty(EditDisplayName) || EditDisplayName == MyName) EditDisplayName = me.Name;
         MyName = me.Name;
         MyFingerprint = me.Fingerprint;
         Version = me.Version;
