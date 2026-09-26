@@ -1,99 +1,115 @@
-//! Encrypted identity + trust-store backup / restore.
+//! Encrypted backup / restore of identity, contacts, settings, groups and keys.
 //!
-//! Backup blob = ChaCha20-Poly1305 seal of JSON containing identity.json + peers.json
-//! (+ optional settings without secrets). Password → key via BLAKE3 keyed hash
-//! (not a full KDF; document: use a strong password; LAN MVP).
+//! v2 format: `LSMBAK02 | salt(16) | ChaCha20-Poly1305(JSON)`, key = Argon2id(password, salt).
+//! v1 (`LSMBAK01`, key = BLAKE3(password), no salt) is still accepted for import.
 
 use crate::config::ConfigPaths;
 use crate::crypto::{open_at_rest, seal_at_rest};
+use crate::util::atomic_write;
 use anyhow::{anyhow, Context, Result};
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
-const MAGIC: &[u8] = b"LSMBAK01";
+const MAGIC_V1: &[u8] = b"LSMBAK01";
+const MAGIC_V2: &[u8] = b"LSMBAK02";
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Default)]
+#[serde(default)]
 struct BackupPayload {
     version: u32,
     identity_json: String,
-    peers_json: String,
+    #[serde(alias = "peers_json")]
+    contacts_json: String,
     settings_json: Option<String>,
     history_key_hex: Option<String>,
     groups_key_hex: Option<String>,
+    groups_file_hex: Option<String>,
 }
 
-fn key_from_password(password: &str) -> [u8; 32] {
-    *blake3::hash(password.as_bytes()).as_bytes()
+fn kdf(password: &str, salt: &[u8]) -> Result<[u8; 32]> {
+    let mut out = [0u8; 32];
+    argon2::Argon2::default()
+        .hash_password_into(password.as_bytes(), salt, &mut out)
+        .map_err(|e| anyhow!("kdf: {e}"))?;
+    Ok(out)
+}
+
+fn read_opt(p: &Path) -> Option<Vec<u8>> {
+    fs::read(p).ok()
 }
 
 pub fn export_backup(paths: &ConfigPaths, password: &str, out: &Path) -> Result<()> {
-    anyhow::ensure!(!password.is_empty(), "password required");
-    let identity_json = fs::read_to_string(&paths.identity).context("read identity")?;
-    let peers_json = if paths.peers.exists() {
-        fs::read_to_string(&paths.peers)?
-    } else {
-        "{\"peers\":[]}".into()
-    };
-    let settings_json = if paths.settings.exists() {
-        Some(fs::read_to_string(&paths.settings)?)
-    } else {
-        None
-    };
-    let history_key_hex = if paths.history_key.exists() {
-        Some(hex::encode(fs::read(&paths.history_key)?))
-    } else {
-        None
-    };
-    let groups_key = paths.root.join("groups.key");
-    let groups_key_hex = if groups_key.exists() {
-        Some(hex::encode(fs::read(&groups_key)?))
-    } else {
-        None
-    };
+    anyhow::ensure!(password.chars().count() >= 6, "备份密码至少 6 个字符");
     let payload = BackupPayload {
-        version: 1,
-        identity_json,
-        peers_json,
-        settings_json,
-        history_key_hex,
-        groups_key_hex,
+        version: 2,
+        identity_json: fs::read_to_string(&paths.identity).context("read identity")?,
+        contacts_json: fs::read_to_string(&paths.contacts).unwrap_or_else(|_| "{}".into()),
+        settings_json: fs::read_to_string(&paths.settings).ok(),
+        history_key_hex: read_opt(&paths.history_key).map(hex::encode),
+        groups_key_hex: read_opt(&paths.root.join("groups.key")).map(hex::encode),
+        groups_file_hex: read_opt(&paths.groups).map(hex::encode),
     };
-    let plain = serde_json::to_vec(&payload)?;
-    let key = key_from_password(password);
-    let sealed = seal_at_rest(&key, &plain)?;
-    let mut out_bytes = MAGIC.to_vec();
-    out_bytes.extend_from_slice(&sealed);
-    if let Some(parent) = out.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(out, out_bytes)?;
-    Ok(())
+    let mut salt = [0u8; 16];
+    rand::thread_rng().fill_bytes(&mut salt);
+    let key = kdf(password, &salt)?;
+    let sealed = seal_at_rest(&key, &serde_json::to_vec(&payload)?)?;
+    let mut bytes = MAGIC_V2.to_vec();
+    bytes.extend_from_slice(&salt);
+    bytes.extend_from_slice(&sealed);
+    atomic_write(out, &bytes)
 }
 
 pub fn import_backup(paths: &ConfigPaths, password: &str, input: &Path) -> Result<()> {
-    anyhow::ensure!(!password.is_empty(), "password required");
     let data = fs::read(input).context("read backup")?;
-    anyhow::ensure!(data.len() > MAGIC.len() + 28, "backup too short");
-    anyhow::ensure!(&data[..MAGIC.len()] == MAGIC, "not a LAN messenger backup");
-    let key = key_from_password(password);
-    let plain = open_at_rest(&key, &data[MAGIC.len()..]).map_err(|_| anyhow!("wrong password or corrupt backup"))?;
-    let payload: BackupPayload = serde_json::from_slice(&plain)?;
+    anyhow::ensure!(data.len() > 8 + 28, "backup too short");
+    let plain = if &data[..8] == MAGIC_V2 {
+        anyhow::ensure!(data.len() > 8 + 16 + 28, "backup too short");
+        let key = kdf(password, &data[8..24])?;
+        open_at_rest(&key, &data[24..])
+    } else if &data[..8] == MAGIC_V1 {
+        let key = *blake3::hash(password.as_bytes()).as_bytes();
+        open_at_rest(&key, &data[8..])
+    } else {
+        anyhow::bail!("不是 LAN Secure Messenger 备份文件");
+    }
+    .map_err(|_| anyhow!("密码错误或备份文件已损坏"))?;
+    let p: BackupPayload = serde_json::from_slice(&plain)?;
     paths.ensure_dirs()?;
-    fs::write(&paths.identity, payload.identity_json)?;
-    fs::write(&paths.peers, payload.peers_json)?;
-    if let Some(s) = payload.settings_json {
-        fs::write(&paths.settings, s)?;
+    atomic_write(&paths.identity, p.identity_json.as_bytes())?;
+    if p.version >= 2 {
+        atomic_write(&paths.contacts, p.contacts_json.as_bytes())?;
+    } else {
+        atomic_write(&paths.legacy_peers, p.contacts_json.as_bytes())?;
+        let _ = fs::remove_file(&paths.contacts);
     }
-    if let Some(h) = payload.history_key_hex {
-        let bytes = hex::decode(h)?;
-        anyhow::ensure!(bytes.len() == 32, "bad history key in backup");
-        fs::write(&paths.history_key, bytes)?;
+    if let Some(s) = p.settings_json {
+        atomic_write(&paths.settings, s.as_bytes())?;
     }
-    if let Some(g) = payload.groups_key_hex {
-        let bytes = hex::decode(g)?;
-        anyhow::ensure!(bytes.len() == 32, "bad groups key in backup");
-        fs::write(paths.root.join("groups.key"), bytes)?;
+    for (hexv, dst) in [(p.history_key_hex, paths.history_key.clone()), (p.groups_key_hex, paths.root.join("groups.key")), (p.groups_file_hex, paths.groups.clone())] {
+        if let Some(h) = hexv {
+            atomic_write(&dst, &hex::decode(h)?)?;
+        }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn roundtrip() {
+        let d = tempfile::tempdir().unwrap();
+        let p = ConfigPaths::from_base(d.path().join("a"));
+        p.ensure_dirs().unwrap();
+        crate::identity::Identity::load_or_create(&p).unwrap();
+        fs::write(&p.contacts, "{\"contacts\":[]}").unwrap();
+        let f = d.path().join("b.lsmbak");
+        export_backup(&p, "secret123", &f).unwrap();
+        let q = ConfigPaths::from_base(d.path().join("b"));
+        assert!(import_backup(&q, "wrong-pass", &f).is_err());
+        import_backup(&q, "secret123", &f).unwrap();
+        assert_eq!(fs::read(&p.identity).unwrap(), fs::read(&q.identity).unwrap());
+    }
 }
