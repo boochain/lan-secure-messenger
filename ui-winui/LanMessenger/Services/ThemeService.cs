@@ -77,8 +77,10 @@ public static class ThemeService
         _root = root;
         root.RequestedTheme = RequestedFor(Mode);
         root.ActualThemeChanged += (_, _) => { UpdateChrome(); Changed?.Invoke(); };
-        _ui.ColorValuesChanged += (_, _) => root.DispatcherQueue.TryEnqueue(OnSystemThemeChanged);
-        _a11y.HighContrastChanged += (_, _) => root.DispatcherQueue.TryEnqueue(() => { UpdateChrome(); Changed?.Invoke(); });
+        // UISettings.ColorValuesChanged fires for Light/Dark and High Contrast switches. (AccessibilitySettings'
+        // HighContrastChanged needs a CoreWindow and throws 0x80070490 in unpackaged Win32 apps, so it is not used.)
+        try { _ui.ColorValuesChanged += (_, _) => root.DispatcherQueue.TryEnqueue(OnSystemThemeChanged); }
+        catch (Exception e) { CrashLog.Write("theme: ColorValuesChanged", e); }
         window.Activated += (_, _) => UpdateChrome();
         UpdateChrome();
     }
@@ -107,7 +109,10 @@ public static class ThemeService
         }
     }
 
-    public static bool HighContrast => _a11y.HighContrast;
+    public static bool HighContrast
+    {
+        get { try { return _a11y.HighContrast; } catch { return false; } }
+    }
 
     public static ElementTheme ActualTheme => _root?.ActualTheme ?? (SystemIsDark ? ElementTheme.Dark : ElementTheme.Light);
 

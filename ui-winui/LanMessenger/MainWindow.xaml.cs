@@ -27,7 +27,8 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
-        ThemeService.Attach(this, RootGrid);
+        try { ThemeService.Attach(this, RootGrid); }
+        catch (Exception e) { CrashLog.Write("theme attach", e); } // theming must never stop the app from starting
         ApplyBackdrop();
         ThemeService.Changed += ApplyBackdrop;
 
