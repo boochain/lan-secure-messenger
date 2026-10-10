@@ -99,7 +99,10 @@ static int run_cmd(char *line){
 
 static int read_line(char *b, size_t n){
 #ifdef _WIN32
-    if(is_console_in){ static wchar_t w[65536]; DWORD got=0; if(!ReadConsoleW(hin,w,65535,&got,NULL)||got==0) return 0; w[got]=0; WideCharToMultiByte(CP_UTF8,0,w,-1,b,(int)n,NULL,NULL); }
+    if(is_console_in){ /* XP/ReactOS CSRSS caps one ReadConsole at ~64 KB of buffer: read in 2K-char slices */
+        static wchar_t w[65536]; size_t wl=0; for(;;){ DWORD got=0; if(!ReadConsoleW(hin,w+wl,2048,&got,NULL)||got==0){ if(!wl) return 0; break; }
+            wl+=got; if(w[wl-1]==L'\n'||wl+2048>=65535) break; }
+        w[wl]=0; WideCharToMultiByte(CP_UTF8,0,w,-1,b,(int)n,NULL,NULL); }
     else { /* pipe/file: raw ReadFile, independent of CRT text-mode buffering limits */
         static char rb[65536]; static DWORD rlen, rpos; size_t o=0; int got_any=0;
         for(;;){ if(rpos>=rlen){ if(!ReadFile(hin,rb,sizeof rb,&rlen,NULL)||rlen==0){ rlen=rpos=0; if(!got_any) return 0; break; } rpos=0; }
