@@ -41,7 +41,7 @@ for th in a.themes.split(","):
         lm("add", "127.0.0.1:47330"); time.sleep(5)
         st = json.loads(lm("--json", "status")); gfp = [p for p in st["peers"]][0]["fingerprint"]; json.dump({"gfp": gfp}, open(f"{W}/ids.json", "w"))
     gfp = json.load(open(f"{W}/ids.json"))["gfp"]
-    shot(f"{th}-01-welcome")
+    x("mousemove", "5", "790"); time.sleep(0.5); shot(f"{th}-01-welcome")
     # select the contact (first row of the list)
     x("mousemove", "--window", wid, "150", "128"); x("click", "1"); time.sleep(1.5)
     if th == a.themes.split(",")[0]:
@@ -75,7 +75,7 @@ for th in a.themes.split(","):
     for _ in range(4): x("key", "Down"); time.sleep(0.05)
     x("key", "Return"); time.sleep(1.5); shot(f"{th}-07-pin"); x("key", "Return"); time.sleep(0.8)
     # drag-drop hint is only visible during a drag; tray shown top-right in stalonetray
-    subprocess.run(["import", "-window", "root", "-crop", "200x40+1080+0", f"{a.out}/{th}-08-tray-crop.png"], env=env)
+    subprocess.run(["import", "-window", "root", "-crop", "200x40+1080+0", "-scale", "300%", f"{a.out}/{th}-08-tray-crop.png"], env=env)
     gui.terminate(); gui.wait(5); time.sleep(1)
 print("history on v0.5 side:"); print(lm("history", json.load(open(f"{W}/ids.json"))["gfp"]))
 print("transfers on v0.5 side:"); print(lm("transfers"))

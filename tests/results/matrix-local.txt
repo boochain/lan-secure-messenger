@@ -1,0 +1,17 @@
+[PASS] rust<->rust discovery=ok msg A->B=ok file A->B=ok msg B->A=ok file B->A=ok
+[PASS] rust<->native discovery=ok msg A->B=ok file A->B=ok msg B->A=ok file B->A=ok
+[PASS] rust<->wine discovery=ok msg A->B=ok file A->B=ok msg B->A=ok file B->A=ok
+[PASS] rust<->linux discovery=ok msg A->B=ok file A->B=ok msg B->A=ok file B->A=ok
+[PASS] rust<->android add-by-IP (NAT)=ok msg A->B=ok file A->B=ok msg B->A=ok file B->A=ok
+[PASS] native<->native discovery=ok msg A->B=ok file A->B=ok msg B->A=ok file B->A=ok
+[PASS] native<->wine discovery=ok msg A->B=ok file A->B=ok msg B->A=ok file B->A=ok
+[PASS] native<->linux discovery=ok msg A->B=ok file A->B=ok msg B->A=ok file B->A=ok
+[PASS] native<->android add-by-IP (NAT)=ok msg A->B=ok file A->B=ok msg B->A=ok file B->A=ok
+[PASS] wine<->wine discovery=ok msg A->B=ok file A->B=ok msg B->A=ok file B->A=ok
+[PASS] wine<->linux discovery=ok msg A->B=ok file A->B=ok msg B->A=ok file B->A=ok
+[PASS] wine<->android add-by-IP (NAT)=ok msg A->B=ok file A->B=ok msg B->A=ok file B->A=ok
+[PASS] linux<->linux discovery=ok msg A->B=ok file A->B=ok msg B->A=ok file B->A=ok
+[PASS] linux<->android add-by-IP (NAT)=ok msg A->B=ok file A->B=ok msg B->A=ok file B->A=ok
+[SKIP] android<->android (needs two devices)
+
+MATRIX: 14 pass, 0 fail, 1 skip
