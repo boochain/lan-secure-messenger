@@ -25,7 +25,11 @@ typedef SOCKET sock_t;
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#if defined(__ANDROID__)
+#include <sys/ioctl.h> /* getifaddrs() only exists from API 24; minSdk is 21 */
+#else
 #include <ifaddrs.h>
+#endif
 #include <net/if.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -322,7 +326,13 @@ static int load_identity(lsm_core *c){ char p[600]; size_t n; uint8_t *d; path_j
     free(d);
     path_join(p,sizeof p,c->data_dir,"name.txt"); d=read_file(p,&n);
     if(d){ char t[256]; scpy(t,(char*)d,sizeof t); { char *e=strpbrk(t,"\r\n"); if(e) *e=0; } sanitize_name(t,c->name,sizeof c->name); free(d); }
-    else { sanitize_name(c->o.name?c->o.name:"XP",c->name,sizeof c->name); write_atomic(p,c->name,strlen(c->name)); }
+    else { { char hn[256]="XP"; /* default display name: the computer name, as on v0.5 */
+#ifdef _WIN32
+        wchar_t w[256]; DWORD wl=256; if(GetComputerNameW(w,&wl)) WideCharToMultiByte(CP_UTF8,0,w,-1,hn,sizeof hn,NULL,NULL);
+#else
+        if(gethostname(hn,sizeof hn)!=0||!hn[0]) strcpy(hn,"Linux"); hn[255]=0;
+#endif
+        sanitize_name(c->o.name?c->o.name:hn,c->name,sizeof c->name); } write_atomic(p,c->name,strlen(c->name)); }
     return 0; }
 
 /* ------------------------------------------------------------ links */
@@ -444,6 +454,13 @@ static void enum_ifaces(lsm_core *c){
     GetAdaptersInfo(NULL,&len); ai=(IP_ADAPTER_INFO*)malloc(len?len:sizeof(IP_ADAPTER_INFO));
     if(ai && GetAdaptersInfo(ai,&len)==NO_ERROR){ for(a=ai;a && n<32;a=a->Next){ IP_ADDR_STRING *s; for(s=&a->IpAddressList;s && n<32;s=s->Next){ uint32_t ip=inet_addr(s->IpAddress.String), m=inet_addr(s->IpMask.String); if(ip==0||ip==INADDR_NONE) continue; ips[n]=ip; masks[n]=m; n++; } } }
     free(ai);
+#elif defined(__ANDROID__)
+    { int fd=socket(AF_INET,SOCK_DGRAM,0); struct ifreq rq[32]; struct ifconf ic; int i, k;
+      if(fd>=0){ ic.ifc_len=sizeof rq; ic.ifc_req=rq; if(ioctl(fd,SIOCGIFCONF,&ic)==0){ k=ic.ifc_len/(int)sizeof(struct ifreq);
+          for(i=0;i<k && n<32;i++){ struct ifreq f=rq[i]; uint32_t ip; if(rq[i].ifr_addr.sa_family!=AF_INET) continue; ip=((struct sockaddr_in*)&rq[i].ifr_addr)->sin_addr.s_addr;
+              if(ioctl(fd,SIOCGIFFLAGS,&f)!=0 || (f.ifr_flags&IFF_LOOPBACK) || !(f.ifr_flags&IFF_UP)) continue; f=rq[i];
+              ips[n]=ip; masks[n]=ioctl(fd,SIOCGIFNETMASK,&f)==0?((struct sockaddr_in*)&f.ifr_addr)->sin_addr.s_addr:0; n++; } }
+        close(fd); } }
 #else
     struct ifaddrs *ia, *p;
     if(getifaddrs(&ia)==0){ for(p=ia;p && n<32;p=p->ifa_next){ if(!p->ifa_addr||p->ifa_addr->sa_family!=AF_INET||(p->ifa_flags&IFF_LOOPBACK)||!(p->ifa_flags&IFF_UP)) continue; ips[n]=((struct sockaddr_in*)p->ifa_addr)->sin_addr.s_addr; masks[n]=p->ifa_netmask?((struct sockaddr_in*)p->ifa_netmask)->sin_addr.s_addr:0; n++; } freeifaddrs(ia); }
