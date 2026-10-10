@@ -131,7 +131,11 @@ static void refresh_chat(void){
 
 static void tray_balloon(const char *title, const char *body){
     nid.uFlags=NIF_INFO; wcsncpy(nid.szInfoTitle,W(title),63); nid.szInfoTitle[63]=0; wcsncpy(nid.szInfo,W(body),255); nid.szInfo[255]=0; nid.dwInfoFlags=NIIF_INFO;
-    Shell_NotifyIconW(NIM_MODIFY,&nid); }
+    Shell_NotifyIconW(NIM_MODIFY,&nid); nid.uFlags=NIF_ICON|NIF_MESSAGE|NIF_TIP; nid.szInfo[0]=0; }
+/* XP: the shell may not be up yet at autostart, and explorer.exe restarts drop all icons
+ * (it then broadcasts "TaskbarCreated"). Keep retrying NIM_ADD until it succeeds. */
+static UINT WM_TASKBARCREATED; static int tray_added;
+static void tray_add(void){ nid.uFlags=NIF_ICON|NIF_MESSAGE|NIF_TIP; tray_added=Shell_NotifyIconW(NIM_ADD,&nid)?1:0; }
 
 static void poll_events(void){
     char e[4096]; int list_dirty=0, chat_dirty=0;
@@ -242,7 +246,7 @@ static LRESULT CALLBACK MainProc(HWND h, UINT m, WPARAM w, LPARAM l){
         return 0; }
     case WM_SIZE: if(w!=SIZE_MINIMIZED){ layout(LOWORD(l),HIWORD(l)); InvalidateRect(h,NULL,TRUE); } else ShowWindow(h,SW_HIDE); return 0;
     case WM_GETMINMAXINFO: ((MINMAXINFO*)l)->ptMinTrackSize.x=640; ((MINMAXINFO*)l)->ptMinTrackSize.y=420; return 0;
-    case WM_TIMER: poll_events(); return 0;
+    case WM_TIMER: if(!tray_added) tray_add(); poll_events(); return 0;
     /* system colours only: readable in any theme incl. high-contrast */
     case WM_CTLCOLORSTATIC: if((HWND)l==hChat){ SetTextColor((HDC)w,GetSysColor(COLOR_WINDOWTEXT)); SetBkColor((HDC)w,GetSysColor(COLOR_WINDOW)); return (LRESULT)GetSysColorBrush(COLOR_WINDOW); }
         SetTextColor((HDC)w,GetSysColor(COLOR_BTNTEXT)); SetBkColor((HDC)w,GetSysColor(COLOR_BTNFACE)); return (LRESULT)GetSysColorBrush(COLOR_BTNFACE);
@@ -259,6 +263,7 @@ static LRESULT CALLBACK MainProc(HWND h, UINT m, WPARAM w, LPARAM l){
     case WM_DESTROY: KillTimer(h,TIMER_POLL); Shell_NotifyIconW(NIM_DELETE,&nid); PostQuitMessage(0); return 0;
     case WM_SYSCOLORCHANGE: InvalidateRect(h,NULL,TRUE); return 0;
     }
+    if(WM_TASKBARCREATED && m==WM_TASKBARCREATED){ tray_add(); return 0; }
     return DefWindowProcW(h,m,w,l); }
 
 static int CALLBACK font_found(const LOGFONTW *lf, const TEXTMETRICW *tm, DWORD t, LPARAM l){ (void)lf; (void)tm; (void)t; (void)l; return 0; /* stop: exists */ }
@@ -283,7 +288,7 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE prev, LPWSTR cmd, int show){
      * (East Asian language support) prefer SimSun explicitly; wine/ReactOS test boxes: WenQuanYi. */
     { static const wchar_t *faces[]={L"Microsoft YaHei",L"SimSun",L"\x5b8b\x4f53",L"NSimSun",L"WenQuanYi Zen Hei",L"Droid Sans Fallback",NULL}; int i; HDC dc=GetDC(NULL);
       for(i=0;faces[i];i++){ LOGFONTW q; memset(&q,0,sizeof q); q.lfCharSet=DEFAULT_CHARSET; wcsncpy(q.lfFaceName,faces[i],31);
-        if(!EnumFontFamiliesExW(dc,&q,(FONTENUMPROCW)font_found,0,0)){ LOGFONTW lf2; GetObjectW(hFont,sizeof lf2,&lf2); wcsncpy(lf2.lfFaceName,faces[i],31); lf2.lfCharSet=DEFAULT_CHARSET; if(lf2.lfHeight>-14 && lf2.lfHeight<0) lf2.lfHeight=-14; hFont=CreateFontIndirectW(&lf2); lf2.lfWeight=FW_BOLD; hFontBold=CreateFontIndirectW(&lf2); break; } }
+        if(!EnumFontFamiliesExW(dc,&q,(FONTENUMPROCW)font_found,0,0)){ LOGFONTW lf2; GetObjectW(hFont,sizeof lf2,&lf2); if(hFontBold && hFontBold!=hFont) DeleteObject(hFontBold); DeleteObject(hFont); /* no GDI leak */ wcsncpy(lf2.lfFaceName,faces[i],31); lf2.lfCharSet=DEFAULT_CHARSET; if(lf2.lfHeight>-14 && lf2.lfHeight<0) lf2.lfHeight=-14; hFont=CreateFontIndirectW(&lf2); lf2.lfWeight=FW_BOLD; hFontBold=CreateFontIndirectW(&lf2); break; } }
       ReleaseDC(NULL,dc); }
     C=lsm_start(&o,err,sizeof err);
     if(!C){ MessageBoxW(NULL,W(err),L"启动失败",MB_ICONSTOP); return 1; }
@@ -293,7 +298,7 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE prev, LPWSTR cmd, int show){
     hMain=CreateWindowExW(0,L"LsmMain",L"局域网安全通讯 XP 版",WS_OVERLAPPEDWINDOW,CW_USEDEFAULT,CW_USEDEFAULT,900,600,NULL,build_menu(),hi,NULL);
     memset(&nid,0,sizeof nid); nid.cbSize=NOTIFYICONDATAW_V2_SIZE; nid.hWnd=hMain; nid.uID=1; nid.uFlags=NIF_ICON|NIF_MESSAGE|NIF_TIP; nid.uCallbackMessage=WM_TRAY; nid.hIcon=wc.hIcon?wc.hIcon:LoadIcon(NULL,IDI_APPLICATION);
     { HICON ic2=LoadIconW(hi,MAKEINTRESOURCEW(1)); if(ic2) nid.hIcon=ic2; }
-    wcscpy(nid.szTip,L"局域网安全通讯 XP 版"); Shell_NotifyIconW(NIM_ADD,&nid);
+    wcscpy(nid.szTip,L"局域网安全通讯 XP 版"); WM_TASKBARCREATED=RegisterWindowMessageW(L"TaskbarCreated"); tray_add();
     ShowWindow(hMain,show); UpdateWindow(hMain);
     refresh_list(); refresh_chat();
     while(GetMessageW(&msg,NULL,0,0)>0){ TranslateMessage(&msg); DispatchMessageW(&msg); }

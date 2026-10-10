@@ -22,6 +22,10 @@ jobs:
           printf '#include <winsock2.h>\n#include <ws2tcpip.h>\n#include <windows.h>\nint main(){struct in_addr a; inet_pton(AF_INET,"1.2.3.4",&a); return (int)GetTickCount64();}\n' > /tmp/neg.c
           i686-w64-mingw32-gcc -D_WIN32_WINNT=0x0600 /tmp/neg.c -o /tmp/neg.exe -lws2_32
           if python3 tools/xp_import_check.py /tmp/neg.exe; then echo "checker failed to flag Vista APIs"; exit 1; fi
+      - name: Regression tests (wine x86 + native)
+        run: |
+          python3 tests/regress.py build/x86/lanmsg-cli.exe
+          python3 tests/regress.py build/linux/lanmsg-cli
       - name: Build real v0.5 daemon (reference/v0.5 = v0.5.0-beta.2 source)
         working-directory: reference/v0.5
         run: cargo build --release -p lan-daemon -p lan-cli

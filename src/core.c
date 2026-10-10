@@ -122,7 +122,7 @@ static uint8_t r_u8(rd_t *r){ const uint8_t *q=r_take(r,1); return q?q[0]:0; }
 static uint16_t r_u16(rd_t *r){ const uint8_t *q=r_take(r,2); return q?(uint16_t)(q[0]|(q[1]<<8)):0; }
 static uint32_t r_u32(rd_t *r){ const uint8_t *q=r_take(r,4); uint32_t v=0; int i; if(q) for(i=3;i>=0;i--) v=(v<<8)|q[i]; return v; }
 static uint64_t r_u64(rd_t *r){ const uint8_t *q=r_take(r,8); uint64_t v=0; int i; if(q) for(i=7;i>=0;i--) v=(v<<8)|q[i]; return v; }
-static const uint8_t *r_bytes(rd_t *r, size_t *n){ uint64_t l=r_u64(r); if(r->err||l>(1u<<20)){ r->err=1; return NULL; } *n=(size_t)l; return r_take(r,(size_t)l); }
+static const uint8_t *r_bytes(rd_t *r, size_t *n){ uint64_t l; *n=0; l=r_u64(r); if(r->err||l>(1u<<20)){ r->err=1; return NULL; } *n=(size_t)l; return r_take(r,(size_t)l); }
 /* returns malloc'd NUL-terminated string */
 static char *r_str(rd_t *r){ size_t n; const uint8_t *q=r_bytes(r,&n); char *s; if(!q) return xstrdup(""); s=(char*)malloc(n+1); memcpy(s,q,n); s[n]=0; return s; }
 static void r_uuid(rd_t *r, uint8_t u[16]){ size_t n; const uint8_t *q=r_bytes(r,&n); if(!q||n!=16){ r->err=1; memset(u,0,16); return; } memcpy(u,q,16); }
@@ -377,6 +377,7 @@ static void on_frame(lsm_core *c, conn *k, rd_t *r);
 
 static void conn_close(lsm_core *c, conn *k, const char *why, int bye){
     if(k->state==9) return;
+    { char as[64]; addr_str(&k->addr,as,sizeof as); logf_(c,"link %s closed (state %d): %s",as,k->state,why); }
     if(bye && k->state==4){ buf_t b={0}; fr_simple(&b,15); send_frame(k,&b); b_free(&b); send(k->s,(const char*)k->out.p,(int)k->out.n,0); }
     if(k->state!=4 && k->dial_key[0]) dial_failed(c,k->dial_key,why);
     if(k->state==4){ conn *o; int still=0; for(o=c->conns;o;o=o->next) if(o!=k && o->state==4 && !strcmp(o->fp,k->fp)) still=1;
@@ -772,26 +773,27 @@ static void on_tick(lsm_core *c){
 static void reap(lsm_core *c){ conn **pp=&c->conns; while(*pp){ conn *k=*pp; if(k->state==9){ *pp=k->next; b_free(&k->in); b_free(&k->out); crypto_wipe(k,sizeof *k); free(k); } else pp=&k->next; } }
 
 static void loop_once(lsm_core *c){
-    fd_set rs, ws; struct timeval tv; conn *k; sock_t mx=0; int n;
-    FD_ZERO(&rs); FD_ZERO(&ws);
+    fd_set rs, ws, es; struct timeval tv; conn *k; sock_t mx=0; int n;
+    FD_ZERO(&rs); FD_ZERO(&ws); FD_ZERO(&es);
     mu_lock(&c->mu);
 #define ADD(s,set) do{ FD_SET(s,set); if((s)>mx) mx=(s); }while(0)
     if(c->lsock!=BADSOCK) ADD(c->lsock,&rs);
     if(c->usock!=BADSOCK) ADD(c->usock,&rs);
     if(c->ufallback!=BADSOCK) ADD(c->ufallback,&rs);
-    for(k=c->conns;k;k=k->next){ if(k->state==9) continue; if(k->state!=1) ADD(k->s,&rs); if(k->state==1||k->out.n) ADD(k->s,&ws); }
+    for(k=c->conns;k;k=k->next){ if(k->state==9) continue; if(k->state!=1) ADD(k->s,&rs); if(k->state==1||k->out.n) ADD(k->s,&ws); if(k->state==1) FD_SET(k->s,&es); }
     mu_unlock(&c->mu);
     tv.tv_sec=0; tv.tv_usec=50000;
 #ifdef _WIN32
     if(rs.fd_count==0 && ws.fd_count==0){ Sleep(50); n=0; } else
 #endif
-    n=select((int)mx+1,&rs,&ws,NULL,&tv);
+    n=select((int)mx+1,&rs,&ws,&es,&tv); /* Winsock reports a failed non-blocking connect ONLY in exceptfds */
     mu_lock(&c->mu);
     if(n>0){
         if(c->lsock!=BADSOCK && FD_ISSET(c->lsock,&rs)){ struct sockaddr_in a; socklen_t al=sizeof a; sock_t s=accept(c->lsock,(struct sockaddr*)&a,&al); if(s!=BADSOCK){ set_nonblock(s); conn_start(c,s,&a,0,NULL); } }
         { sock_t us[2]; int u; us[0]=c->usock; us[1]=c->ufallback;
           for(u=0;u<2;u++) if(us[u]!=BADSOCK && FD_ISSET(us[u],&rs)){ uint8_t b[2048]; struct sockaddr_in a; socklen_t al=sizeof a; int got=recvfrom(us[u],(char*)b,sizeof b,0,(struct sockaddr*)&a,&al); if(got>0) on_udp(c,b,(size_t)got,&a); } }
         for(k=c->conns;k;k=k->next){ if(k->state==9) continue;
+            if(k->state==1 && FD_ISSET(k->s,&es)){ conn_close(c,k,"connect failed",0); continue; }
             if(FD_ISSET(k->s,&ws)) conn_writable(c,k);
             if(k->state!=9 && k->state!=1 && FD_ISSET(k->s,&rs)) conn_readable(c,k); } }
     on_tick(c);
