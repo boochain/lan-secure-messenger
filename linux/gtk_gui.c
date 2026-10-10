@@ -115,7 +115,7 @@ static void refresh_chat(void){
         if(m[i].kind==K_FILE){ lsm_transfer *tr; int nt=lsm_transfers(C,&tr),j; char fs[200]="", line[800]; const char *path=NULL; static const char *TS[]={"等待接收","传输中","校验中","完成","失败","被拒收","已取消"};
             for(j=0;j<nt;j++) if(!strcmp(tr[j].msg_id,m[i].id)){ snprintf(fs,sizeof fs,"%s%s",TS[tr[j].state],tr[j].error[0]?" ":""); if(tr[j].error[0]) strncat(fs,err_zh(tr[j].error),sizeof fs-strlen(fs)-1);
                 if(tr[j].state==TS_ACTIVE && tr[j].size){ char p[32]; snprintf(p,sizeof p," %d%%",(int)(tr[j].transferred*100/tr[j].size)); strncat(fs,p,sizeof fs-strlen(fs)-1);} if(tr[j].state==TS_DONE||tr[j].out) path=tr[j].path; }
-            if(!path && m[i].file_path[0]) path=m[i].file_path;
+            if(!path && m[i].file_path[0]){ path=m[i].file_path; if(!fs[0] && !m[i].out && access(path,R_OK)==0) snprintf(fs,sizeof fs,"已保存"); }
             snprintf(line,sizeof line,"📄 %s  (%.1f KB)  %s",m[i].file_name,m[i].file_size/1024.0,fs);
             body=gtk_label_new(line); gtk_label_set_line_wrap(GTK_LABEL(body),TRUE); gtk_label_set_xalign(GTK_LABEL(body),0); gtk_box_pack_start(GTK_BOX(bub),body,FALSE,FALSE,0);
             if(path && is_image(m[i].file_name) && access(path,R_OK)==0){ GError *er=NULL; GdkPixbuf *pb=gdk_pixbuf_new_from_file_at_scale(path,260,200,TRUE,&er);
@@ -132,6 +132,13 @@ static void refresh_chat(void){
 /* ---------------------------------------------------------------- tray (AppIndicator via dlopen, GtkStatusIcon fallback) */
 typedef void *(*ai_new_t)(const char*,const char*,int); typedef void (*ai_set_status_t)(void*,int); typedef void (*ai_set_menu_t)(void*,GtkMenu*); typedef void (*ai_set_title_t)(void*,const char*);
 static const char *tray_kind="无";
+static char icon_path[1024];
+static void find_icon(void){ /* AppImage: $APPDIR/lan-messenger.png ; tarball: next to the binary ; system install: hicolor theme */
+    char exe[900]; ssize_t n=readlink("/proc/self/exe",exe,sizeof exe-1); const char *ad=getenv("APPDIR"); char *sl;
+    if(ad){ snprintf(icon_path,sizeof icon_path,"%s/lan-messenger.png",ad); if(access(icon_path,R_OK)==0) return; }
+    if(n>0){ exe[n]=0; sl=strrchr(exe,'/'); if(sl){ *sl=0; snprintf(icon_path,sizeof icon_path,"%s/lan-messenger.png",exe); if(access(icon_path,R_OK)==0) return;
+        snprintf(icon_path,sizeof icon_path,"%s/../share/icons/hicolor/256x256/apps/lan-messenger.png",exe); if(access(icon_path,R_OK)==0) return; } }
+    icon_path[0]=0; }
 static void show_main(void){ gtk_widget_show(win); gtk_window_present(GTK_WINDOW(win)); }
 static void quit_app(void){ g_application_quit(G_APPLICATION(app)); }
 static void tray_popup(GtkStatusIcon *si, guint b, guint t, gpointer menu){ gtk_menu_popup(GTK_MENU(menu),NULL,NULL,gtk_status_icon_position_menu,si,b,t); }
@@ -143,9 +150,9 @@ static void setup_tray(void){
     if(getenv("LSM_NO_TRAY")) return;
     for(i=0;libs[i]&&!h;i++) h=dlopen(libs[i],RTLD_LAZY);
     if(h){ ai_new_t n=(ai_new_t)dlsym(h,"app_indicator_new"); ai_set_status_t s=(ai_set_status_t)dlsym(h,"app_indicator_set_status"); ai_set_menu_t m=(ai_set_menu_t)dlsym(h,"app_indicator_set_menu"); ai_set_title_t ti=(ai_set_title_t)dlsym(h,"app_indicator_set_title");
-        if(n&&s&&m){ void *ind=n("lan-messenger","mail-message-new",0 /*APPLICATION_STATUS*/); s(ind,1 /*ACTIVE*/); m(ind,GTK_MENU(menu)); if(ti) ti(ind,"局域网安全通讯"); tray_kind="AppIndicator"; return; } }
+        if(n&&s&&m){ void *ind=n("lan-messenger",icon_path[0]?icon_path:"mail-message-new",0 /*APPLICATION_STATUS*/); /* absolute path accepted */ s(ind,1 /*ACTIVE*/); m(ind,GTK_MENU(menu)); if(ti) ti(ind,"局域网安全通讯"); tray_kind="AppIndicator"; return; } }
     G_GNUC_BEGIN_IGNORE_DEPRECATIONS
-    { GtkStatusIcon *si=gtk_status_icon_new_from_icon_name("mail-message-new"); gtk_status_icon_set_tooltip_text(si,"局域网安全通讯");
+    { GtkStatusIcon *si=icon_path[0]?gtk_status_icon_new_from_file(icon_path):gtk_status_icon_new_from_icon_name("mail-message-new"); gtk_status_icon_set_tooltip_text(si,"局域网安全通讯");
       g_signal_connect(si,"activate",G_CALLBACK(show_main),NULL); g_signal_connect(si,"popup-menu",G_CALLBACK(tray_popup),menu); tray_kind="GtkStatusIcon(XEmbed)"; }
     G_GNUC_END_IGNORE_DEPRECATIONS }
 
@@ -198,7 +205,8 @@ static void show_transfers(void){
         gtk_label_set_markup(GTK_LABEL(a),l); gtk_label_set_xalign(GTK_LABEL(a),0); gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(pb),t[i].size?(double)t[i].transferred/t[i].size:(t[i].state==TS_DONE?1:0));
         gtk_box_pack_start(GTK_BOX(v),a,FALSE,FALSE,0); gtk_box_pack_start(GTK_BOX(v),pb,FALSE,FALSE,0); gtk_widget_set_margin_start(v,10); gtk_widget_set_margin_end(v,10); gtk_widget_set_margin_top(v,8); gtk_widget_set_margin_bottom(v,8); gtk_list_box_insert(GTK_LIST_BOX(lb),v,-1); }
     lsm_unlock(C);
-    if(!n){ GtkWidget *e=gtk_label_new("暂无文件传输"); gtk_widget_set_margin_top(e,30); gtk_list_box_insert(GTK_LIST_BOX(lb),e,-1); }
+    if(!n){ GtkWidget *e=gtk_label_new("本次运行暂无文件传输（历史文件见聊天记录与接收文件夹）"); gtk_widget_set_margin_top(e,30); gtk_style_context_add_class(gtk_widget_get_style_context(e),"dim-label"); gtk_list_box_set_placeholder(GTK_LIST_BOX(lb),e); gtk_widget_show(e); }
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(lb),GTK_SELECTION_NONE);
     gtk_container_add(GTK_CONTAINER(sc),lb); gtk_box_pack_start(GTK_BOX(box),sc,TRUE,TRUE,0); gtk_window_set_default_size(GTK_WINDOW(d),560,380); gtk_widget_show_all(d);
     g_signal_connect(d,"response",G_CALLBACK(gtk_widget_destroy),NULL); }
 
@@ -207,7 +215,8 @@ static void act(GtkWidget *w, gpointer p){ int id=GPOINTER_TO_INT(p); char err[2
     switch(id){
     case A_ADDIP: { char *s=ask_text("按 IP 添加","输入对方 IP 地址（可带端口，如 192.168.1.20 或 192.168.1.20:41235）：",""); if(s){ if(lsm_add_addr(C,s,err)) msgbox(GTK_MESSAGE_WARNING,"%s",err); g_free(s);} break; }
     case A_TRUST: case A_UNTRUST: case A_BLOCK: { const char *fp=sel_peer(); if(fp){ lsm_set_trust(C,fp,id==A_TRUST?TRUST_TRUSTED:id==A_BLOCK?TRUST_BLOCKED:TRUST_UNKNOWN,err); list_dirty=chat_dirty=1; } break; }
-    case A_PINOFFER: { char pin[8]; lsm_pin_offer(C,pin); msgbox(GTK_MESSAGE_INFO,"请把下面的 PIN 告诉对方，并让对方在“输入 PIN 配对”中输入（5 分钟内有效）：\n\n%s",pin); break; }
+    case A_PINOFFER: { char pin[8], mk[256]; GtkWidget *d; lsm_pin_offer(C,pin); d=gtk_message_dialog_new(GTK_WINDOW(win),GTK_DIALOG_MODAL,GTK_MESSAGE_INFO,GTK_BUTTONS_OK,"请把下面的 PIN 告诉对方");
+        snprintf(mk,sizeof mk,"<span size='xx-large' weight='bold' font_family='monospace'>%s</span>\n\n让对方在“输入 PIN 配对”中输入（5 分钟内有效）。",pin); gtk_message_dialog_format_secondary_markup(GTK_MESSAGE_DIALOG(d),"%s",mk); gtk_window_set_title(GTK_WINDOW(d),"PIN 配对"); gtk_dialog_run(GTK_DIALOG(d)); gtk_widget_destroy(d); break; }
     case A_PINPAIR: { const char *fp=sel_peer(); char *s; if(fp && (s=ask_text("输入 PIN 配对","输入对方显示的 6 位 PIN：",""))){ if(lsm_pin_pair(C,fp,s,err)) msgbox(GTK_MESSAGE_WARNING,"%s",err); g_free(s);} break; }
     case A_GCREATE: { char sel[64][FP_LEN]; const char *fps[64]; char *nm=NULL, gid[40]; int n=pick_peers("创建群组","选择成员（可多选，按住 Ctrl；仅显示已信任联系人），并在下方输入群名：",1,1,sel,&nm,"新群组"), i;
         if(n>0){ for(i=0;i<n;i++) fps[i]=sel[i]; if(lsm_group_create(C,nm,fps,n,gid,err)) msgbox(GTK_MESSAGE_WARNING,"%s",err); else { snprintf(cur_conv,64,"group:%s",gid); list_dirty=chat_dirty=1; } } g_free(nm); break; }
@@ -264,7 +273,7 @@ static void activate(GtkApplication *a, gpointer p){
     memset(&o,0,sizeof o); o.data_dir=g_data; o.name=g_name; o.listen_port=g_port; o.discovery_port=g_dport; o.announce_targets=g_targets; o.no_discovery=g_nodisc;
     C=lsm_start(&o,err,sizeof err); if(!C){ GtkWidget *d=gtk_message_dialog_new(NULL,0,GTK_MESSAGE_ERROR,GTK_BUTTONS_OK,"启动失败：%s",err); gtk_dialog_run(GTK_DIALOG(d)); exit(1); }
     cp=gtk_css_provider_new(); gtk_css_provider_load_from_data(cp,CSS,-1,NULL); gtk_style_context_add_provider_for_screen(gdk_screen_get_default(),GTK_STYLE_PROVIDER(cp),GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-    win=gtk_application_window_new(a); gtk_window_set_default_size(GTK_WINDOW(win),980,640); gtk_window_set_title(GTK_WINDOW(win),"局域网安全通讯"); /* WM_NAME for taskbars / alt-tab (header bar title alone leaves it empty) */ gtk_window_set_icon_name(GTK_WINDOW(win),"mail-message-new");
+    win=gtk_application_window_new(a); gtk_window_set_default_size(GTK_WINDOW(win),980,640); gtk_window_set_title(GTK_WINDOW(win),"局域网安全通讯"); /* WM_NAME for taskbars / alt-tab (header bar title alone leaves it empty) */ find_icon(); if(icon_path[0]) gtk_window_set_icon_from_file(GTK_WINDOW(win),icon_path,NULL); else gtk_window_set_icon_name(GTK_WINDOW(win),"mail-message-new");
     hb=gtk_header_bar_new(); gtk_header_bar_set_show_close_button(GTK_HEADER_BAR(hb),TRUE);
     vb=gtk_box_new(GTK_ORIENTATION_VERTICAL,0); title_lbl=gtk_label_new(""); sub_lbl=gtk_label_new(""); gtk_style_context_add_class(gtk_widget_get_style_context(title_lbl),"title"); gtk_style_context_add_class(gtk_widget_get_style_context(sub_lbl),"subtitle");
     gtk_style_context_add_class(gtk_widget_get_style_context(sub_lbl),"dim-label"); gtk_label_set_ellipsize(GTK_LABEL(sub_lbl),PANGO_ELLIPSIZE_END);

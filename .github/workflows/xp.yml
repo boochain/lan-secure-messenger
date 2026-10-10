@@ -1,10 +1,44 @@
-name: xp-edition
+name: portable-c-edition (xp + linux)
 on:
   push:
   pull_request:
   workflow_dispatch:
 jobs:
+  linux-package:
+    runs-on: ubuntu-24.04
+    container: ubuntu:20.04   # oldest supported glibc (2.31) so the GUI runs on every newer distro
+    steps:
+      - name: Toolchain
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq && apt-get install -y -qq gcc make pkg-config libgtk-3-dev musl-tools curl file ca-certificates git
+      - uses: actions/checkout@v4
+      - name: Build GTK GUI + static CLI, AppImage + tarball
+        run: sh linux/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86_64
+          path: dist/linux/*
+
+  distro-launch:
+    needs: linux-package
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["ubuntu:20.04", "ubuntu:24.04", "debian:12", "fedora:40"]
+    container: ${{ matrix.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: linux-x86_64, path: dist/linux }
+      - name: Launch AppImage GUI under Xvfb + static CLI
+        run: |
+          ln -sfn "$GITHUB_WORKSPACE" /src
+          sh tests/distro_launch.sh
+
   build-check-interop:
+    needs: linux-package
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -33,6 +67,12 @@ jobs:
         run: sudo -E env "PATH=$PATH" python3 tests/interop.py --rust-bin reference/v0.5/target/release --exe build/x86/lanmsg-cli.exe --work /tmp/lsm-interop
       - name: Interop native (same core, Linux build)
         run: sudo -E env "PATH=$PATH" python3 tests/interop.py --native --rust-bin reference/v0.5/target/release --exe build/linux/lanmsg-cli --work /tmp/lsm-interop-native
+      - uses: actions/download-artifact@v4
+        with: { name: linux-x86_64, path: dist/linux }
+      - name: Cross-platform interop matrix (v0.5 Rust, C native, XP exe under wine, Linux edition CLI; Android slot)
+        run: |
+          mkdir -p /tmp/lx && tar -C /tmp/lx -xzf dist/linux/lan-messenger-*-linux-x86_64.tar.gz
+          sudo -E env "PATH=$PATH" python3 tests/matrix.py --rust-bin reference/v0.5/target/release --native-cli build/linux/lanmsg-cli --wine-exe build/x86/lanmsg-cli.exe --linux-cli $(ls -d /tmp/lx/*/bin)/lanmsg-cli --work /tmp/lsm-matrix
       - name: Batch-file encoding check (GBK, CRLF, no BOM) + package
         run: |
           python3 tools/package.py
@@ -45,3 +85,4 @@ jobs:
             dist/*.zip
             /tmp/lsm-interop/results.json
             /tmp/lsm-interop/*.log
+            /tmp/lsm-matrix/matrix.json

@@ -50,11 +50,16 @@ for th in a.themes.split(","):
         shot(f"{th}-03-menu"); x("key", "Escape"); time.sleep(0.5)
         x("key", "F10"); time.sleep(0.8); x("key", "Down", "Return"); time.sleep(1)
         lm("send", gfp, "李明你好，下午三点的评审会改到 302 会议室。"); time.sleep(1.5)
-        x("type", "--delay", "40", "OK, thanks!"); x("key", "Return"); time.sleep(1.5)
+        x("mousemove", "--window", wid, "560", "640"); x("click", "1"); time.sleep(0.5); x("type", "--delay", "40", "OK, thanks!"); x("key", "Return"); time.sleep(1.5)
         lm("send", gfp, "顺便把白板照片和季度报告发你，请查收 📎"); lm("send-file", gfp, f"{W}/会议白板.png"); lm("send-file", gfp, f"{W}/季度报告.txt"); time.sleep(6)
     else:
         x("key", "F10"); time.sleep(1); shot(f"{th}-03-menu"); x("key", "Escape"); time.sleep(0.5)
     x("mousemove", "--window", wid, "150", "128"); x("click", "1"); time.sleep(2)
+    if th == a.themes.split(",")[0]:
+        # GUI -> v0.5 file via the core (drag-drop path is the same lsm_send_file call), image preview on the sender side too
+        from PIL import Image as _I; _I.new("RGB", (300, 200), (30, 160, 90)).save(f"{W}/截图.png")
+        x("mousemove", "--window", wid, "1036", "645"); x("click", "1"); time.sleep(2); shot(f"{th}-09-file-chooser")
+        x("key", "ctrl+l"); time.sleep(0.5); x("type", "--delay", "20", f"{W}/截图.png"); time.sleep(0.5); x("key", "Return"); time.sleep(5)
     shot(f"{th}-02-chat")
     # add-by-IP dialog (header + button)
     x("mousemove", "--window", wid, "22", "20"); x("click", "1"); time.sleep(1.2); x("type", "192.168.1.20"); time.sleep(0.5); shot(f"{th}-04-add-by-ip"); x("key", "Escape"); time.sleep(0.8)

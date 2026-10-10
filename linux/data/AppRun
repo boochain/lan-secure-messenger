@@ -1,0 +1,5 @@
+#!/bin/sh
+# LanMessenger AppImage entry. "./LanMessenger.AppImage cli [args]" runs the console client.
+HERE="$(dirname "$(readlink -f "$0")")"; export APPDIR="${APPDIR:-$HERE}"
+if [ "${1:-}" = "cli" ]; then shift; exec "$HERE/usr/bin/lanmsg-cli" "$@"; fi
+exec "$HERE/usr/bin/lan-messenger-gtk" "$@"
