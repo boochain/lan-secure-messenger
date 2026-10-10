@@ -47,7 +47,7 @@ if exe.endswith(".exe"):
     subprocess.run(["wine", "cmd", "/c", "cli.exe --data dd --no-discovery < c.txt > out.txt"], cwd=d, env=dict(os.environ, WINEDEBUG="-all"), timeout=90)
     out = open(d + "/out.txt", "rb").read()
     lines = out.split(b"\r\n")
-    okk = out.startswith(b"OK add") and any(l.startswith(b"OK id") for l in lines) and any(l.startswith(b"EV ready") for l in lines) and b"OK bye" in out and b"\n" not in out.replace(b"\r\n", b"")
+    okk = any(l.startswith(b"OK add") for l in lines) and all(l[:2] in (b"OK", b"EV", b"ER", b"") for l in lines) and any(l.startswith(b"OK id") for l in lines) and any(l.startswith(b"EV ready") for l in lines) and b"OK bye" in out and b"\n" not in out.replace(b"\r\n", b"")
     check("redirected stdout: all lines, CRLF, first line intact", okk, repr(out[:60]))
 
 # 4. file messages keep name + size across restart (both directions). Before the fix history.dat

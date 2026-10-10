@@ -24,10 +24,13 @@ static void out_raw(const char *s){ EnterCriticalSection(&out_mu);
     LeaveCriticalSection(&out_mu); }
 static void sleep_ms(int ms){ Sleep(ms); }
 #else
-static void out_raw(const char *s){ fputs(s,stdout); fflush(stdout); }
+#include <pthread.h>
+static pthread_mutex_t out_mu=PTHREAD_MUTEX_INITIALIZER;
+static void out_raw(const char *s){ pthread_mutex_lock(&out_mu); fputs(s,stdout); fflush(stdout); pthread_mutex_unlock(&out_mu); }
 static void sleep_ms(int ms){ struct timespec t={ms/1000,(ms%1000)*1000000L}; nanosleep(&t,NULL); }
 #endif
-static void outf(const char *fmt, ...){ static char b[300000]; va_list ap; va_start(ap,fmt); vsnprintf(b,sizeof b,fmt,ap); va_end(ap); out_raw(b); }
+static void outf(const char *fmt, ...){ /* per-call buffer: the old static buffer was shared by the main and event threads, so concurrent lines got mixed */
+    enum { N=300000 }; char *b=(char*)malloc(N); va_list ap; if(!b) return; va_start(ap,fmt); vsnprintf(b,N,fmt,ap); va_end(ap); out_raw(b); free(b); }
 
 static void drain(void){ char e[4096]; while(lsm_poll_event(C,e,sizeof e)){ if(!strncmp(e,"log\t",4) && !getenv("LSM_VERBOSE")) continue; outf("EV %s\n",e); } }
 #ifdef _WIN32
