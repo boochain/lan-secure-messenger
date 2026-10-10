@@ -20,7 +20,7 @@ static lsm_core *C;
 static int is_console_out, is_console_in; static HANDLE hout, hin; static CRITICAL_SECTION out_mu;
 static void out_raw(const char *s){ EnterCriticalSection(&out_mu);
     if(is_console_out){ int n=MultiByteToWideChar(CP_UTF8,0,s,-1,NULL,0); wchar_t *w=(wchar_t*)malloc(n*sizeof(wchar_t)); DWORD wr; MultiByteToWideChar(CP_UTF8,0,s,-1,w,n); WriteConsoleW(hout,w,(DWORD)(n-1),&wr,NULL); free(w); }
-    else { fputs(s,stdout); fflush(stdout); }
+    else { DWORD wr; const char *q=s, *nl; while(*q){ nl=strchr(q,'\n'); if(!nl){ WriteFile(hout,q,(DWORD)strlen(q),&wr,NULL); break; } if(nl>q && nl[-1]=='\r') WriteFile(hout,q,(DWORD)(nl-q+1),&wr,NULL); else { WriteFile(hout,q,(DWORD)(nl-q),&wr,NULL); WriteFile(hout,"\r\n",2,&wr,NULL); } q=nl+1; } } /* raw handle write: no CRT FILE buffer (ReactOS msvcrt lost the first line when 2 threads printed) */
     LeaveCriticalSection(&out_mu); }
 static void sleep_ms(int ms){ Sleep(ms); }
 #else

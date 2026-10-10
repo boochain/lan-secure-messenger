@@ -974,6 +974,18 @@ int lsm_firewall_setup(const char *exe, char *report, size_t n){
       rc=(int)ec; }
     snprintf(report,n,"Windows %lu.%lu -> %s (exit %d)",v.dwMajorVersion,v.dwMinorVersion,cmd,rc); return rc;
 #else
-    snprintf(report,n,"firewall setup is Windows-only (%s)",exe); return 0;
+#if defined(__ANDROID__)
+    snprintf(report,n,"Android: no host firewall to configure (%s)",exe); return 0;
+#else
+    /* Linux: ufw (Debian/Ubuntu) or firewalld (Fedora/RHEL/openSUSE). Not root -> pkexec prompt.
+     * LSM_FIREWALL_DRYRUN=1 only reports the command (used by tests). */
+    { const char *tool=NULL; char cmd[600]; int rc; const char *pre=geteuid()==0?"":"pkexec ";
+      if(system("command -v ufw >/dev/null 2>&1")==0) tool="ufw"; else if(system("command -v firewall-cmd >/dev/null 2>&1")==0) tool="firewalld";
+      if(!tool){ snprintf(report,n,"no ufw or firewalld found; nothing to do (open TCP 41235 and UDP 41234 manually if you use another firewall)"); return 0; }
+      if(!strcmp(tool,"ufw")) snprintf(cmd,sizeof cmd,"%sufw allow 41235/tcp comment 'LAN Messenger' && %sufw allow 41234/udp comment 'LAN Messenger'",pre,pre);
+      else snprintf(cmd,sizeof cmd,"%sfirewall-cmd --permanent --add-port=41235/tcp --add-port=41234/udp && %sfirewall-cmd --reload",pre,pre);
+      if(getenv("LSM_FIREWALL_DRYRUN")){ snprintf(report,n,"%s -> %s (dry run)",tool,cmd); return 0; }
+      rc=system(cmd); snprintf(report,n,"%s -> %s (exit %d)",tool,cmd,rc); return rc?1:0; }
+#endif
 #endif
 }

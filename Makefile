@@ -28,6 +28,10 @@ build/x64/lanmsg-cli.exe: $(CORE) src/cli.c src/core.h
 build/linux/lanmsg-cli: $(CORE) src/cli.c src/core.h
 	mkdir -p build/linux && cc $(CFLAGS_COMMON) -g -o $@ src/cli.c $(CORE) -lpthread
 
+build/linux/lan-messenger-gtk: $(CORE) linux/gtk_gui.c src/core.h
+	mkdir -p build/linux && cc $(CFLAGS_COMMON) -Wno-deprecated-declarations -o $@ linux/gtk_gui.c $(CORE) $$(pkg-config --cflags --libs gtk+-3.0) -lpthread -ldl
+linux: build/linux/lanmsg-cli build/linux/lan-messenger-gtk
+
 clean:
 	rm -rf build dist
-.PHONY: all clean
+.PHONY: all clean linux

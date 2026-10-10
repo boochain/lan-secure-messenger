@@ -204,7 +204,7 @@ static void send_file_dlg(void){
     if(lsm_send_file(C,cur_conv,U(path,u8,sizeof u8),err)) msgbox(err,MB_ICONWARNING); refresh_chat(); }
 
 static WNDPROC oldInputProc;
-static LRESULT CALLBACK InputProc(HWND h, UINT m, WPARAM w, LPARAM l){ if(m==WM_KEYDOWN && w==VK_RETURN && !(GetKeyState(VK_SHIFT)&0x8000)){ send_current(); return 0; } if(m==WM_CHAR && w=='\r' && !(GetKeyState(VK_SHIFT)&0x8000)) return 0; return CallWindowProcW(oldInputProc,h,m,w,l); }
+static LRESULT CALLBACK InputProc(HWND h, UINT m, WPARAM w, LPARAM l){ if(m==WM_KEYDOWN && w==VK_TAB){ SetFocus(GetNextDlgTabItem(hMain,h,(GetKeyState(VK_SHIFT)&0x8000)?TRUE:FALSE)); return 0; } if(m==WM_CHAR && w=='\t') return 0; if(m==WM_KEYDOWN && w==VK_RETURN && !(GetKeyState(VK_SHIFT)&0x8000)){ send_current(); return 0; } if(m==WM_CHAR && w=='\r' && !(GetKeyState(VK_SHIFT)&0x8000)) return 0; return CallWindowProcW(oldInputProc,h,m,w,l); }
 
 static void layout(int W_, int H_){
     int sb=22, lw=W_/3<260?W_/3:260, ih=64, bw=96;
@@ -231,9 +231,9 @@ static LRESULT CALLBACK MainProc(HWND h, UINT m, WPARAM w, LPARAM l){
     switch(m){
     case WM_CREATE: {
         DWORD es=WS_EX_CLIENTEDGE;
-        hList=CreateWindowExW(es,L"LISTBOX",NULL,WS_CHILD|WS_VISIBLE|WS_VSCROLL|LBS_NOTIFY|LBS_NOINTEGRALHEIGHT,0,0,0,0,h,(HMENU)IDC_LIST,hInst,NULL);
+        hList=CreateWindowExW(es,L"LISTBOX",NULL,WS_CHILD|WS_VISIBLE|WS_VSCROLL|WS_TABSTOP|LBS_NOTIFY|LBS_NOINTEGRALHEIGHT,0,0,0,0,h,(HMENU)IDC_LIST,hInst,NULL);
         hTitle=CreateWindowW(L"STATIC",L"",WS_CHILD|WS_VISIBLE|SS_LEFTNOWORDWRAP,0,0,0,0,h,(HMENU)IDC_TITLE,hInst,NULL);
-        hChat=CreateWindowExW(es,L"EDIT",L"",WS_CHILD|WS_VISIBLE|WS_VSCROLL|ES_MULTILINE|ES_READONLY|ES_AUTOVSCROLL,0,0,0,0,h,(HMENU)IDC_CHAT,hInst,NULL);
+        hChat=CreateWindowExW(es,L"EDIT",L"",WS_CHILD|WS_VISIBLE|WS_VSCROLL|WS_TABSTOP|ES_MULTILINE|ES_READONLY|ES_AUTOVSCROLL,0,0,0,0,h,(HMENU)IDC_CHAT,hInst,NULL);
         hInput=CreateWindowExW(es,L"EDIT",L"",WS_CHILD|WS_VISIBLE|WS_VSCROLL|WS_TABSTOP|ES_MULTILINE|ES_AUTOVSCROLL|ES_WANTRETURN,0,0,0,0,h,(HMENU)IDC_INPUT,hInst,NULL);
         hSend=CreateWindowW(L"BUTTON",L"发送 (Enter)",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_PUSHBUTTON,0,0,0,0,h,(HMENU)IDC_SEND,hInst,NULL);
         hFile=CreateWindowW(L"BUTTON",L"发送文件...",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_PUSHBUTTON,0,0,0,0,h,(HMENU)IDC_FILE,hInst,NULL);
@@ -246,6 +246,7 @@ static LRESULT CALLBACK MainProc(HWND h, UINT m, WPARAM w, LPARAM l){
         return 0; }
     case WM_SIZE: if(w!=SIZE_MINIMIZED){ layout(LOWORD(l),HIWORD(l)); InvalidateRect(h,NULL,TRUE); } else ShowWindow(h,SW_HIDE); return 0;
     case WM_GETMINMAXINFO: ((MINMAXINFO*)l)->ptMinTrackSize.x=640; ((MINMAXINFO*)l)->ptMinTrackSize.y=420; return 0;
+    case WM_SETFOCUS: SetFocus(hList); return 0; /* keyboard users land in the contact list */
     case WM_TIMER: if(!tray_added) tray_add(); poll_events(); return 0;
     /* system colours only: readable in any theme incl. high-contrast */
     case WM_CTLCOLORSTATIC: if((HWND)l==hChat){ SetTextColor((HDC)w,GetSysColor(COLOR_WINDOWTEXT)); SetBkColor((HDC)w,GetSysColor(COLOR_WINDOW)); return (LRESULT)GetSysColorBrush(COLOR_WINDOW); }
@@ -269,7 +270,7 @@ static LRESULT CALLBACK MainProc(HWND h, UINT m, WPARAM w, LPARAM l){
 static int CALLBACK font_found(const LOGFONTW *lf, const TEXTMETRICW *tm, DWORD t, LPARAM l){ (void)lf; (void)tm; (void)t; (void)l; return 0; /* stop: exists */ }
 
 int WINAPI wWinMain(HINSTANCE hi, HINSTANCE prev, LPWSTR cmd, int show){
-    WNDCLASSEXW wc; MSG msg; lsm_opts o; char data[MAX_PATH*4], err[256]; INITCOMMONCONTROLSEX ic; wchar_t *sl, dw[MAX_PATH]; LOGFONTW lf; NONCLIENTMETRICSW ncm; HANDLE mtx;
+    int win_w=900, win_h=600; WNDCLASSEXW wc; MSG msg; lsm_opts o; char data[MAX_PATH*4], err[256]; INITCOMMONCONTROLSEX ic; wchar_t *sl, dw[MAX_PATH]; LOGFONTW lf; NONCLIENTMETRICSW ncm; HANDLE mtx;
     (void)prev; hInst=hi;
     mtx=CreateMutexW(NULL,TRUE,L"LanSecureMessengerXP_Single"); if(mtx && GetLastError()==ERROR_ALREADY_EXISTS && !wcsstr(cmd,L"--data")){ HWND o2=FindWindowW(L"LsmMain",NULL); if(o2){ ShowWindow(o2,SW_SHOW); ShowWindow(o2,SW_RESTORE); SetForegroundWindow(o2);} return 0; }
     ic.dwSize=sizeof ic; ic.dwICC=ICC_BAR_CLASSES|ICC_STANDARD_CLASSES; InitCommonControlsEx(&ic);
@@ -295,12 +296,13 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE prev, LPWSTR cmd, int show){
     memset(&wc,0,sizeof wc); wc.cbSize=sizeof wc; wc.lpfnWndProc=MainProc; wc.hInstance=hi; wc.hIcon=LoadIconW(hi,MAKEINTRESOURCEW(1)); wc.hIconSm=wc.hIcon; wc.hCursor=LoadCursor(NULL,IDC_ARROW); wc.hbrBackground=(HBRUSH)(COLOR_BTNFACE+1); wc.lpszClassName=L"LsmMain";
     RegisterClassExW(&wc);
     wc.lpfnWndProc=PromptProc; wc.lpszClassName=L"LsmPrompt"; wc.hIcon=NULL; wc.hIconSm=NULL; RegisterClassExW(&wc);
-    hMain=CreateWindowExW(0,L"LsmMain",L"局域网安全通讯 XP 版",WS_OVERLAPPEDWINDOW,CW_USEDEFAULT,CW_USEDEFAULT,900,600,NULL,build_menu(),hi,NULL);
+    { RECT wa; if(SystemParametersInfoW(SPI_GETWORKAREA,0,&wa,0)){ if(win_w>wa.right-wa.left) win_w=wa.right-wa.left; if(win_h>wa.bottom-wa.top) win_h=wa.bottom-wa.top; } } /* 800x600 XP screens */
+    hMain=CreateWindowExW(0,L"LsmMain",L"局域网安全通讯 XP 版",WS_OVERLAPPEDWINDOW,CW_USEDEFAULT,CW_USEDEFAULT,win_w,win_h,NULL,build_menu(),hi,NULL);
     memset(&nid,0,sizeof nid); nid.cbSize=NOTIFYICONDATAW_V2_SIZE; nid.hWnd=hMain; nid.uID=1; nid.uFlags=NIF_ICON|NIF_MESSAGE|NIF_TIP; nid.uCallbackMessage=WM_TRAY; nid.hIcon=wc.hIcon?wc.hIcon:LoadIcon(NULL,IDI_APPLICATION);
     { HICON ic2=LoadIconW(hi,MAKEINTRESOURCEW(1)); if(ic2) nid.hIcon=ic2; }
     wcscpy(nid.szTip,L"局域网安全通讯 XP 版"); WM_TASKBARCREATED=RegisterWindowMessageW(L"TaskbarCreated"); tray_add();
     ShowWindow(hMain,show); UpdateWindow(hMain);
     refresh_list(); refresh_chat();
-    while(GetMessageW(&msg,NULL,0,0)>0){ TranslateMessage(&msg); DispatchMessageW(&msg); }
+    while(GetMessageW(&msg,NULL,0,0)>0){ if(IsDialogMessageW(hMain,&msg)) continue; /* Tab / Shift+Tab / Alt+mnemonics between controls */ TranslateMessage(&msg); DispatchMessageW(&msg); }
     lsm_stop(C);
     return 0; }
