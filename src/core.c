@@ -622,7 +622,7 @@ static void on_file_frame(lsm_core *c, const char *fp, uint32_t v, rd_t *r){
     case 6: if(t && t->out && t->state==TS_OFFERED){ t->fp_handle=ufopen(t->path,"rb"); if(!t->fp_handle){ xfer_fail(c,t,TS_FAILED,"open failed"); send_tid_frame(c,fp,12,tid,"open failed"); break; } t->state=TS_ACTIVE; t->transferred=0; t->credit=0; t->last_credit_mono=mono_ms(); emit_xfer(c,t); } break;
     case 7: { char *rs=r_str(r); if(t && t->out && !xfer_finished(t)){ t->state=TS_REJECTED; scpy(t->error,rs,sizeof t->error); emit_xfer(c,t); mark_file_failed(c,t); } free(rs); break; }
     case 9: { uint64_t rec=r_u64(r); if(t && t->out){ if(rec>t->credit) t->credit=rec; t->last_credit_mono=mono_ms(); emit_xfer(c,t); } break; }
-    case 8: { uint64_t off=r_u64(r); size_t n; const uint8_t *d=r_bytes(r,&n);
+    case 8: { uint64_t off=r_u64(r); size_t n=0; const uint8_t *d=r_bytes(r,&n);
         if(!t || t->out || t->state!=TS_ACTIVE || !d) break;
         if(off!=t->transferred || t->transferred+n>t->size){ xfer_fail(c,t,TS_FAILED,"\xe6\x95\xb0\xe6\x8d\xae\xe5\x9d\x97\xe9\xa1\xba\xe5\xba\x8f\xe9\x94\x99\xe8\xaf\xaf"); file_complete(c,t,0,"\xe6\x95\xb0\xe6\x8d\xae\xe5\x9d\x97\xe9\xa1\xba\xe5\xba\x8f\xe9\x94\x99\xe8\xaf\xaf"); break; }
         if(fwrite(d,1,n,(FILE*)t->fp_handle)!=n){ xfer_fail(c,t,TS_FAILED,"write failed"); file_complete(c,t,0,"write failed (disk full?)"); break; }

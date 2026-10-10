@@ -1,0 +1,35 @@
+RustA=830A-0556-130B-65A2 RustC=8F87-9450-5093-F5D1 XP=A85F-9D09-EC20-AF27
+[PASS] discovery: XP <-> RustA online via UDP broadcast 0.9s
+[PASS] discovery: announces parsed both ways (names/fingerprints) XP saw RustA announce=True, RustA lists 'XP旧电脑'=True
+[PASS] discovery: XP <-> RustC online 
+[PASS] PIN pairing: XP offers, v0.5 enters PIN rust result={'ok': True}
+[PASS] PIN pairing: wrong PIN rejected by XP {'ok': False}
+[PASS] PIN pairing: v0.5 offers, XP enters PIN EV pin_result	830A-0556-130B-65A2	ok
+[PASS] PIN pairing: XP <-> RustC 
+[PASS] message XP -> v0.5 delivered (Ack receipt) 0ad507a4-1a48-4077-82d6-25e610f8b5ea
+[PASS] read receipt v0.5 -> XP (status read) 
+delivered 7cdb42c0-7cda-4111-9c72-05e9ab86938c
+[PASS] message v0.5 -> XP delivered (Ack receipt) 7cdb42c0-7cda-4111-9c72-05e9ab86938c
+[PASS] read receipt XP -> v0.5 (status read) 
+[PASS] long 27 KB UTF-8 message XP -> v0.5 intact 
+[PASS] file XP -> v0.5 (3 MB, chunks/credit window) sha256 match 891897a86d12f8b2
+[PASS] file v0.5 -> XP (5 MB) sha256 match d1765f9a0e2a7df2
+[PASS] file with Chinese name v0.5 -> XP 
+[PASS] group: v0.5 creates, XP accepts signed invite 07ef6c6e-b269-4a9b-84c6-61910b54e593
+[PASS] group text v0.5 -> XP (decrypt with group key) 
+[PASS] group text XP -> v0.5 members (RustA, RustC) + delivered 
+[PASS] group rekey from v0.5 creator applied by XP (epoch 1, member removed, new key works) 
+[PASS] group: XP creates, v0.5 peers verify XP's Ed25519 invite signature d5a407e1-794b-43c4-8486-5d9fae15717d
+[PASS] group text v0.5 -> XP in XP-created group 
+[PASS] group file XP -> both v0.5 members sha256 match 
+[PASS] group rekey signed by XP: RustC removed, RustA uses new key 
+[PASS] GroupLeave v0.5 -> XP creator 
+[PASS] reconnect after XP-side link kill; queued msg delivered exactly once count=1
+[PASS] reconnect after v0.5-side link kill (no Bye; XP heartbeat/redial); delivered once count=1
+[PASS] reconnect after kernel TCP kill (ss -K) recv error
+[PASS] Name frame XP -> v0.5 
+[PASS] add-by-IP: XP dials v0.5 (no discovery) before=False
+[PASS] add-by-IP: v0.5 dials XP (no discovery) before=False
+[PASS] message over add-by-IP link 
+
+RESULT: 31 passed, 0 failed, 0 skipped  (mode=native)
