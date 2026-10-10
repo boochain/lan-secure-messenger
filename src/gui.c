@@ -50,7 +50,7 @@ static wchar_t exe_dir[MAX_PATH];
 
 static wchar_t *W(const char *s){ static wchar_t buf[8][8192]; static int k; wchar_t *b=buf[k++&7]; MultiByteToWideChar(CP_UTF8,0,s?s:"",-1,b,8192); return b; }
 static char *U(const wchar_t *s, char *out, int n){ WideCharToMultiByte(CP_UTF8,0,s,-1,out,n,NULL,NULL); return out; }
-static void msgbox(const char *t, UINT f){ MessageBoxW(hMain,W(t),L"局域网安全通讯 XP",f); }
+static void msgbox(const char *t, UINT f){ HWND pf=GetFocus(); MessageBoxW(hMain,W(t),L"局域网安全通讯 XP",f); if(pf && IsWindow(pf)) SetFocus(pf); }
 
 /* ---------------------------------------------------------------- prompt dialogs (no .rc templates) */
 typedef struct { const wchar_t *label; wchar_t text[512]; int done, ok; HWND ed, lb; const char **items; int nitems; int sel[64]; int nsel; int multi; } prompt_t;
@@ -68,7 +68,7 @@ static LRESULT CALLBACK PromptProc(HWND h, UINT m, WPARAM w, LPARAM l){
     }
     return DefWindowProcW(h,m,w,l); }
 static int prompt(const wchar_t *title, const wchar_t *label, const wchar_t *init, prompt_t *p, int with_edit){
-    HWND h, st, ok, ca; MSG msg; RECT r; int H=with_edit?150:120, i, y=12;
+    HWND h, st, ok, ca, prev_focus=GetFocus(); MSG msg; RECT r; int H=with_edit?150:120, i, y=12;
     if(p->items) H+=180;
     p->done=p->ok=0; p->label=label; p->ed=p->lb=NULL;
     GetWindowRect(hMain,&r);
@@ -84,7 +84,7 @@ static int prompt(const wchar_t *title, const wchar_t *label, const wchar_t *ini
     SetWindowPos(h,NULL,0,0,420,y+70,SWP_NOMOVE|SWP_NOZORDER);
     EnableWindow(hMain,FALSE); ShowWindow(h,SW_SHOW); if(p->ed) SetFocus(p->ed); else if(p->lb) SetFocus(p->lb);
     while(!p->done && GetMessageW(&msg,NULL,0,0)){ if(!IsDialogMessageW(h,&msg)){ TranslateMessage(&msg); DispatchMessageW(&msg);} }
-    EnableWindow(hMain,TRUE); SetForegroundWindow(hMain);
+    EnableWindow(hMain,TRUE); SetForegroundWindow(hMain); if(prev_focus && IsWindow(prev_focus)) SetFocus(prev_focus); /* keyboard focus survives the dialog */
     return p->ok; }
 
 /* ---------------------------------------------------------------- views */
@@ -270,7 +270,7 @@ static LRESULT CALLBACK MainProc(HWND h, UINT m, WPARAM w, LPARAM l){
 static int CALLBACK font_found(const LOGFONTW *lf, const TEXTMETRICW *tm, DWORD t, LPARAM l){ (void)lf; (void)tm; (void)t; (void)l; return 0; /* stop: exists */ }
 
 int WINAPI wWinMain(HINSTANCE hi, HINSTANCE prev, LPWSTR cmd, int show){
-    int win_w=900, win_h=600; WNDCLASSEXW wc; MSG msg; lsm_opts o; char data[MAX_PATH*4], err[256]; INITCOMMONCONTROLSEX ic; wchar_t *sl, dw[MAX_PATH]; LOGFONTW lf; NONCLIENTMETRICSW ncm; HANDLE mtx;
+    int win_w=900, win_h=600, win_x=CW_USEDEFAULT, win_y=CW_USEDEFAULT; WNDCLASSEXW wc; MSG msg; lsm_opts o; char data[MAX_PATH*4], err[256]; INITCOMMONCONTROLSEX ic; wchar_t *sl, dw[MAX_PATH]; LOGFONTW lf; NONCLIENTMETRICSW ncm; HANDLE mtx;
     (void)prev; hInst=hi;
     mtx=CreateMutexW(NULL,TRUE,L"LanSecureMessengerXP_Single"); if(mtx && GetLastError()==ERROR_ALREADY_EXISTS && !wcsstr(cmd,L"--data")){ HWND o2=FindWindowW(L"LsmMain",NULL); if(o2){ ShowWindow(o2,SW_SHOW); ShowWindow(o2,SW_RESTORE); SetForegroundWindow(o2);} return 0; }
     ic.dwSize=sizeof ic; ic.dwICC=ICC_BAR_CLASSES|ICC_STANDARD_CLASSES; InitCommonControlsEx(&ic);
@@ -296,8 +296,9 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE prev, LPWSTR cmd, int show){
     memset(&wc,0,sizeof wc); wc.cbSize=sizeof wc; wc.lpfnWndProc=MainProc; wc.hInstance=hi; wc.hIcon=LoadIconW(hi,MAKEINTRESOURCEW(1)); wc.hIconSm=wc.hIcon; wc.hCursor=LoadCursor(NULL,IDC_ARROW); wc.hbrBackground=(HBRUSH)(COLOR_BTNFACE+1); wc.lpszClassName=L"LsmMain";
     RegisterClassExW(&wc);
     wc.lpfnWndProc=PromptProc; wc.lpszClassName=L"LsmPrompt"; wc.hIcon=NULL; wc.hIconSm=NULL; RegisterClassExW(&wc);
-    { RECT wa; if(SystemParametersInfoW(SPI_GETWORKAREA,0,&wa,0)){ if(win_w>wa.right-wa.left) win_w=wa.right-wa.left; if(win_h>wa.bottom-wa.top) win_h=wa.bottom-wa.top; } } /* 800x600 XP screens */
-    hMain=CreateWindowExW(0,L"LsmMain",L"局域网安全通讯 XP 版",WS_OVERLAPPEDWINDOW,CW_USEDEFAULT,CW_USEDEFAULT,win_w,win_h,NULL,build_menu(),hi,NULL);
+    { RECT wa; if(SystemParametersInfoW(SPI_GETWORKAREA,0,&wa,0)){ if(win_w>wa.right-wa.left) win_w=wa.right-wa.left; if(win_h>wa.bottom-wa.top) win_h=wa.bottom-wa.top;
+        win_x=wa.left+((wa.right-wa.left)-win_w)/2; win_y=wa.top+((wa.bottom-wa.top)-win_h)/2; } } /* 800x600 XP screens: fit and centre (CW_USEDEFAULT pushed it off-screen) */
+    hMain=CreateWindowExW(0,L"LsmMain",L"局域网安全通讯 XP 版",WS_OVERLAPPEDWINDOW,win_x,win_y,win_w,win_h,NULL,build_menu(),hi,NULL);
     memset(&nid,0,sizeof nid); nid.cbSize=NOTIFYICONDATAW_V2_SIZE; nid.hWnd=hMain; nid.uID=1; nid.uFlags=NIF_ICON|NIF_MESSAGE|NIF_TIP; nid.uCallbackMessage=WM_TRAY; nid.hIcon=wc.hIcon?wc.hIcon:LoadIcon(NULL,IDI_APPLICATION);
     { HICON ic2=LoadIconW(hi,MAKEINTRESOURCEW(1)); if(ic2) nid.hIcon=ic2; }
     wcscpy(nid.szTip,L"局域网安全通讯 XP 版"); WM_TASKBARCREATED=RegisterWindowMessageW(L"TaskbarCreated"); tray_add();

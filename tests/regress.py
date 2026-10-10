@@ -49,4 +49,39 @@ if exe.endswith(".exe"):
     lines = out.split(b"\r\n")
     okk = out.startswith(b"OK add") and any(l.startswith(b"OK id") for l in lines) and any(l.startswith(b"EV ready") for l in lines) and b"OK bye" in out and b"\n" not in out.replace(b"\r\n", b"")
     check("redirected stdout: all lines, CRLF, first line intact", okk, repr(out[:60]))
+
+# 4. file messages keep name + size across restart (both directions). Before the fix history.dat
+#    stored the file message before its name/size were set, so after a restart it showed "(0 KB)".
+class Node:
+    def __init__(n, tag, port):
+        n.d = f"/tmp/lsmreg-{tag}-{os.getpid()}"; n.lines = []
+        dd = n.d if not exe.endswith(".exe") else "Z:" + n.d.replace("/", "\\")
+        n.p = subprocess.Popen(cmd + ["--data", dd, "--name", tag, "--no-discovery", "--port", str(port), "--disco-port", str(port + 1)],
+                               stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=dict(os.environ, WINEDEBUG="-all"))
+        threading.Thread(target=lambda: [n.lines.append(l.decode("utf-8", "replace").rstrip("\r\n")) for l in n.p.stdout], daemon=True).start()
+        n.fp = n.cmd("id", 60)[-1].split()[2]
+    def cmd(n, line, t=30):
+        k = len(n.lines); n.p.stdin.write((line + "\n").encode()); n.p.stdin.flush(); end = time.time() + t
+        while time.time() < end:
+            new = n.lines[k:]
+            if any(l.startswith(("OK", "ERR")) for l in new): return new
+            time.sleep(0.1)
+        return n.lines[k:]
+    def has(n, pat, t):
+        end = time.time() + t
+        while time.time() < end:
+            if any(pat in l for l in n.lines): return True
+            time.sleep(0.2)
+        return False
+    def quit(n): n.cmd("quit", 20); n.p.wait(20)
+base = 47400 + os.getpid() % 200 * 4
+A = Node("RA", base); B = Node("RB", base + 2)
+B.cmd(f"add 127.0.0.1:{base}"); A.has("online", 10); B.has("online", 10); A.cmd(f"trust {B.fp}"); B.cmd(f"trust {A.fp}")
+src = f"/tmp/lsmreg-file-{os.getpid()}.bin"; open(src, "wb").write(os.urandom(70000)); name = os.path.basename(src)
+B.cmd(f"sendfile {A.fp} " + (src if not exe.endswith(".exe") else "Z:" + src.replace("/", "\\")))
+okrx = A.has("\tin\tdone\t", 30); A.quit(); B.quit()
+A = Node("RA", base); B = Node("RB", base + 2)
+la = [l for l in A.cmd(f"history {B.fp}") if "[file]" in l]; lb = [l for l in B.cmd(f"history {A.fp}") if "[file]" in l]
+check("file message name survives restart (receiver + sender)", okrx and any(name in l for l in la) and any(name in l for l in lb), (la[:1], lb[:1]))
+A.quit(); B.quit()
 sys.exit(1 if fails else 0)

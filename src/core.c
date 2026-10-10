@@ -302,7 +302,8 @@ static lsm_msg *msg_push(lsm_core *c){ lsm_msg *m; c->msgs=(lsm_msg*)realloc(c->
 static void load_history(lsm_core *c){ char p[600]; size_t n,off=0; uint8_t *d; path_join(p,sizeof p,c->data_dir,"history.dat"); d=read_file(p,&n); if(!d) return;
     while(off+4<=n){ size_t l=d[off]|(d[off+1]<<8)|(d[off+2]<<16)|((size_t)d[off+3]<<24), pn; char *pl, *f[16]; int k; off+=4; if(off+l>n) break;
         pl=(char*)open_rand(c->store_key,d+off,l,&pn); off+=l; if(!pl) continue; k=split_tabs(pl,f,16);
-        if(f[0][0]=='M' && k>=14){ lsm_msg *m; if(msg_get(c,f[1])){ free(pl); continue; } m=msg_push(c); scpy(m->id,f[1],40); scpy(m->conv,f[2],64); m->out=atoi(f[3]); scpy(m->sender_fp,f[4],FP_LEN); scpy(m->sender_name,f[5],200); m->kind=atoi(f[6]); m->body=xstrdup(f[7]); m->ts_ms=atoll(f[8]); m->status=atoi(f[9]); scpy(m->file_tid,f[10],40); scpy(m->file_name,f[11],260); m->file_size=strtoull(f[12],NULL,10); scpy(m->file_path,f[13],520); }
+        if(f[0][0]=='M' && k>=14){ lsm_msg *m=msg_get(c,f[1]); /* a later M record for the same id is an update (file fields arrive after the first record) */
+            if(m){ m->kind=atoi(f[6]); scpy(m->file_tid,f[10],40); scpy(m->file_name,f[11],260); m->file_size=strtoull(f[12],NULL,10); if(f[13][0]) scpy(m->file_path,f[13],520); free(pl); continue; } m=msg_push(c); scpy(m->id,f[1],40); scpy(m->conv,f[2],64); m->out=atoi(f[3]); scpy(m->sender_fp,f[4],FP_LEN); scpy(m->sender_name,f[5],200); m->kind=atoi(f[6]); m->body=xstrdup(f[7]); m->ts_ms=atoll(f[8]); m->status=atoi(f[9]); scpy(m->file_tid,f[10],40); scpy(m->file_name,f[11],260); m->file_size=strtoull(f[12],NULL,10); scpy(m->file_path,f[13],520); }
         else if(f[0][0]=='S' && k>=5){ lsm_msg *m=msg_get(c,f[1]); if(m){ m->status=atoi(f[2]); m->unread=atoi(f[3]); if(f[4][0]) scpy(m->file_path,f[4],520);} }
         free(pl); }
     free(d); }
@@ -898,7 +899,7 @@ int lsm_send_file(lsm_core *c, const char *conv, const char *path, char *err){
     else if(!strncmp(conv,"group:",6) && !lsm_uuid_parse(conv+6,gid) && (g=group_get(c,gid))){ for(i=0;i<g->nmembers && nt<64;i++) if(strcmp(g->members[i],c->fp)) targets[nt++]=g->members[i]; }
     else { E("bad conversation"); rc=-1; goto out; }
     uuid_new(mid); lsm_uuid_str(mid,ids);
-    m=add_message(c,ids,conv,1,c->fp,K_FILE,"",ts,ST_SENT); scpy(m->file_name,nm,260); m->file_size=size; scpy(m->file_path,path,520);
+    m=add_message(c,ids,conv,1,c->fp,K_FILE,"",ts,ST_SENT); scpy(m->file_name,nm,260); m->file_size=size; scpy(m->file_path,path,520); hist_rec_msg(c,m); /* persist name/size: the first record was written before they were set */
     for(i=0;i<nt;i++){ memset(&t,0,sizeof t); uuid_new(t.tid); scpy(t.msg_id,ids,40); scpy(t.conv,conv,64); scpy(t.peer_fp,targets[i],FP_LEN); t.out=1; scpy(t.name,nm,sizeof t.name); t.size=size; scpy(t.mime,mime_guess(nm),sizeof t.mime); memcpy(t.sha,sha,32);
         if(g){ t.has_group=1; memcpy(t.group_id,gid,16); } scpy(t.path,path,sizeof t.path); t.offer_ts=ts; t.state=TS_OFFERED;
         if(i==0){ char u[37]; lsm_uuid_str(t.tid,u); scpy(m->file_tid,u,40); }
