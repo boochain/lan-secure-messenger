@@ -150,7 +150,9 @@ static void setup_tray(void){
     if(getenv("LSM_NO_TRAY")) return;
     for(i=0;libs[i]&&!h;i++) h=dlopen(libs[i],RTLD_LAZY);
     if(h){ ai_new_t n=(ai_new_t)dlsym(h,"app_indicator_new"); ai_set_status_t s=(ai_set_status_t)dlsym(h,"app_indicator_set_status"); ai_set_menu_t m=(ai_set_menu_t)dlsym(h,"app_indicator_set_menu"); ai_set_title_t ti=(ai_set_title_t)dlsym(h,"app_indicator_set_title");
-        if(n&&s&&m){ void *ind=n("lan-messenger",icon_path[0]?icon_path:"mail-message-new",0 /*APPLICATION_STATUS*/); /* absolute path accepted */ s(ind,1 /*ACTIVE*/); m(ind,GTK_MENU(menu)); if(ti) ti(ind,"局域网安全通讯"); tray_kind="AppIndicator"; return; } }
+        if(n&&s&&m){ void *ind; typedef void *(*ai_newp_t)(const char*,const char*,int,const char*); ai_newp_t np=(ai_newp_t)dlsym(h,"app_indicator_new_with_path");
+            if(icon_path[0] && np){ char dir[1024]; char *sl; snprintf(dir,sizeof dir,"%s",icon_path); sl=strrchr(dir,'/'); if(sl) *sl=0; ind=np("lan-messenger","lan-messenger",0,dir); } /* icon by name from our dir: works for SNI and the XEmbed fallback */
+            else ind=n("lan-messenger","mail-message-new",0 /*APPLICATION_STATUS*/); s(ind,1 /*ACTIVE*/); m(ind,GTK_MENU(menu)); if(ti) ti(ind,"局域网安全通讯"); tray_kind="AppIndicator"; return; } }
     G_GNUC_BEGIN_IGNORE_DEPRECATIONS
     { GtkStatusIcon *si=icon_path[0]?gtk_status_icon_new_from_file(icon_path):gtk_status_icon_new_from_icon_name("mail-message-new"); gtk_status_icon_set_tooltip_text(si,"局域网安全通讯");
       g_signal_connect(si,"activate",G_CALLBACK(show_main),NULL); g_signal_connect(si,"popup-menu",G_CALLBACK(tray_popup),menu); tray_kind="GtkStatusIcon(XEmbed)"; }
