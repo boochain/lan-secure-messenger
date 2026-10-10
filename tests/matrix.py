@@ -8,7 +8,7 @@ Kinds:
   native  portable C core, Linux build of lanmsg-cli                      --native-cli PATH
   wine    XP edition x86 lanmsg-cli.exe under wine                         --wine-exe PATH
   linux   Linux edition CLI (same C core, packaged build)                  --linux-cli PATH
-  android slot: --android-cmd "<command that runs the Android CLI in netns>"  (skipped when absent)
+  android slot: --android-cmd "/data/local/tmp/lanmsg-cli" (Android build of the core on an adb device/emulator)  (skipped when absent)
 Usage: sudo python3 tests/matrix.py --rust-bin ... --native-cli ... --wine-exe ... [--kinds rust,native,wine]
 Writes results JSON to <work>/matrix.json and a table to stdout. Exit 1 on any failure.
 """
@@ -46,10 +46,11 @@ def net_down():
         sh(f"ip netns pids {ns} 2>/dev/null | xargs -r kill -9", False); sh(f"ip netns del {ns}", False)
 
 class Rust:
-    def __init__(s, tag, ns):
-        s.dir = f"{W}/{tag}"; s.sock = f"{W}/{tag}.sock"; os.makedirs(s.dir, exist_ok=True); s.dl = f"{s.dir}/dl"
-        cmd = ["ip", "netns", "exec", ns, f"{args.rust_bin}/lan-daemon", "--data-dir", s.dir, "--ipc", s.sock]
-        for x in [f'display_name="{tag}"', "announce_interval_secs=1", f'download_dir="{s.dl}"']: cmd += ["--set", x]
+    def __init__(s, tag, ns, port=0):
+        s.dir = f"{W}/{tag}"; s.sock = f"{W}/{tag}.sock"; os.makedirs(s.dir, exist_ok=True); s.dl = f"{s.dir}/dl"; s.port = port
+        cmd = (["ip", "netns", "exec", ns] if ns else []) + [f"{args.rust_bin}/lan-daemon", "--data-dir", s.dir, "--ipc", s.sock]
+        extra = [f"listen_port={port}", f"discovery_port={port + 1}", "discovery_enabled=false"] if port else []
+        for x in [f'display_name="{tag.split("/")[-1]}"', "announce_interval_secs=1", f'download_dir="{s.dl}"'] + extra: cmd += ["--set", x]
         s.p = subprocess.Popen(cmd, stdout=open(f"{W}/{tag}.log", "w"), stderr=subprocess.STDOUT, env=dict(os.environ, LSM_NO_DIALOG="1"))
         wait(lambda: os.path.exists(s.sock), 15); s.fp = wait(lambda: s.j("status")["me"]["fingerprint"], 15)
     def m(s, *a): return subprocess.run([f"{args.rust_bin}/lan-msg", "--ipc", s.sock] + list(a), capture_output=True, text=True, timeout=60).stdout
@@ -69,21 +70,25 @@ class Rust:
 
 class CCli:
     """native / wine / linux / android: all speak the same lanmsg-cli line protocol on stdin/stdout"""
-    def __init__(s, tag, ns, kind):
-        s.kind, s.lines, s.q = kind, [], queue.Queue(); env = dict(os.environ)
+    def __init__(s, tag, ns, kind, port=0):
+        s.kind, s.lines, s.q, s.port = kind, [], queue.Queue(), port; env = dict(os.environ)
+        pre = ["ip", "netns", "exec", ns] if ns else []
         if kind == "wine":
             s.pfx = f"{W}/{tag}-wpfx"; os.makedirs(os.path.dirname(s.pfx), exist_ok=True); base = os.environ.get("BASE_WINEPREFIX", "/root/.wine-lsm")
             if not os.path.exists(base):
                 sh(f"WINEPREFIX={base} WINEARCH=win32 WINEDEBUG=-all wineboot -i; WINEPREFIX={base} wineserver -w", False)
             shutil.copytree(base, s.pfx, symlinks=True)
             env.update(WINEPREFIX=s.pfx, WINEDEBUG="-all", WINEARCH="win32")
-            cmd = ["ip", "netns", "exec", ns, "wine", args.wine_exe, "--data", "C:\\lsm"]; s.dl = f"{s.pfx}/drive_c/lsm/downloads"
+            cmd = pre + ["wine", args.wine_exe, "--data", "C:\\lsm"]; s.dl = f"{s.pfx}/drive_c/lsm/downloads"
         elif kind == "android":
-            cmd = ["ip", "netns", "exec", ns, "sh", "-c", args.android_cmd + f" --data {W}/{tag}"]; s.dl = f"{W}/{tag}/downloads"
+            # the Android build of the same core, running on the emulator; host peers are reached at 10.0.2.2
+            s.dev = f"/data/local/tmp/mx/{tag}"; s.dl = s.dev + "/downloads"
+            cmd = [ADB, "shell", "-T", f"{args.android_cmd} --data {s.dev} --no-discovery --port 41235"]
         else:
             exe = args.native_cli if kind == "native" else args.linux_cli
-            cmd = ["ip", "netns", "exec", ns, exe, "--data", f"{W}/{tag}"]; s.dl = f"{W}/{tag}/downloads"
-        cmd += ["--name", tag, "--announce-ms", "1000"]
+            cmd = pre + [exe, "--data", f"{W}/{tag}"]; s.dl = f"{W}/{tag}/downloads"
+        cmd += ["--name", tag.split("/")[-1], "--announce-ms", "1000"]
+        if port: cmd += ["--port", str(port), "--disco-port", str(port + 1), "--no-discovery"]
         s.p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
         os.makedirs(os.path.dirname(f"{W}/{tag}"), exist_ok=True); s.log = open(f"{W}/{tag}.log", "w", encoding="utf-8")
         threading.Thread(target=s._rd, daemon=True).start()
@@ -108,8 +113,12 @@ class CCli:
     def sendfile(s, fp, path):
         if s.kind == "wine":
             shutil.copy(path, f"{s.pfx}/drive_c/{os.path.basename(path)}"); path = "C:\\" + os.path.basename(path)
+        elif s.kind == "android":
+            subprocess.run([ADB, "push", path, "/data/local/tmp/" + os.path.basename(path)], capture_output=True); path = "/data/local/tmp/" + os.path.basename(path)
         s.cmd(f"sendfile {fp} {path}")
-    def dlpath(s, name): return f"{s.dl}/{name}"
+    def dlpath(s, name):
+        if s.kind != "android": return f"{s.dl}/{name}"
+        local = f"{W}/pulled-{name}"; subprocess.run([ADB, "pull", f"{s.dl}/{name}", local], capture_output=True); return local
     def stop(s):
         try: s.cmd("quit", 15)
         except Exception: pass
@@ -119,17 +128,29 @@ class CCli:
 avail = {"rust": bool(args.rust_bin), "native": bool(args.native_cli), "wine": bool(args.wine_exe),
          "linux": bool(args.linux_cli), "android": bool(args.android_cmd)}
 kinds = [k for k in args.kinds.split(",") if k]
-def mk(kind, tag, ns): return Rust(tag, ns) if kind == "rust" else CCli(tag, ns, kind)
+ADB = os.environ.get("ADB", "adb")
+def mk(kind, tag, ns, port=0): return Rust(tag, ns, port) if kind == "rust" else CCli(tag, ns, kind, port)
 if os.path.exists(W): shutil.rmtree(W)
 os.makedirs(W); results = []
 for a, b in itertools.combinations_with_replacement(kinds, 2):
     pair = f"{a}<->{b}"
+    if a == b == "android":
+        results.append({"pair": pair, "status": "SKIP", "why": "needs two Android devices"}); print(f"[SKIP] {pair} (needs two devices)"); continue
     if not (avail[a] and avail[b]):
         results.append({"pair": pair, "status": "SKIP", "why": "implementation not provided"}); print(f"[SKIP] {pair}"); continue
     checks = {}; net_up(); A = B = None; t0 = time.time()
     try:
-        tg = f"{a}-{b}"; A = mk(a, f"{tg}/{a}A", "mxA"); B = mk(b, f"{tg}/{b}B", "mxB")
-        checks["discovery"] = bool(wait(lambda: A.online(B.fp) and B.online(A.fp), 40))
+        tg = f"{a}-{b}"
+        if "android" in (a, b):
+            # emulator NAT: no broadcast across it, so connect by IP (the host is 10.0.2.2 from the guest)
+            if a == "android" and b == "android": raise RuntimeError("android<->android needs two devices")
+            other = b if a == "android" else a; hp = 47600 + 4 * kinds.index(other)
+            A = mk("android", f"{tg}/androidA", None); B = mk(other, f"{tg}/{other}B", None, hp)
+            A.cmd(f"add 10.0.2.2:{hp}")
+            checks["add-by-IP (NAT)"] = bool(wait(lambda: A.online(B.fp) and B.online(A.fp), 40))
+        else:
+            A = mk(a, f"{tg}/{a}A", "mxA"); B = mk(b, f"{tg}/{b}B", "mxB")
+            checks["discovery"] = bool(wait(lambda: A.online(B.fp) and B.online(A.fp), 40))
         A.trust(B.fp); B.trust(A.fp)
         for X, Y, d in ((A, B, "A->B"), (B, A, "B->A")):
             t = f"矩阵消息 {d} {pair} ✓"; mid = X.send(Y.fp, t)

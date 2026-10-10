@@ -1,0 +1,1 @@
+<resources><style name="Theme.Lsm" parent="android:Theme.Material.NoActionBar"><item name="android:windowBackground">@android:color/background_dark</item></style></resources>
