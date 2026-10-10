@@ -1,0 +1,4 @@
+@echo off
+rem 局域网安全通讯 XP 版 - 启动图形界面
+cd /d "%~dp0"
+start "" "%~dp0LanMessenger.exe"

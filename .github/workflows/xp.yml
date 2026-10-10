@@ -1,0 +1,43 @@
+name: xp-edition
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  build-check-interop:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchains (mingw-w64, wine32, pefile)
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq mingw-w64 wine wine32:i386 python3-pefile zip
+      - name: Cross build (i686 XP + x64) and native test build
+        run: make all
+      - name: XP SP3 import check (per function) + PE subsystem 5.01
+        run: |
+          python3 tools/xp_import_check.py build/x86/LanMessenger.exe build/x86/lanmsg-cli.exe build/x64/LanMessenger.exe build/x64/lanmsg-cli.exe
+          # negative control: the checker must reject Vista+ APIs
+          printf '#include <winsock2.h>\n#include <ws2tcpip.h>\n#include <windows.h>\nint main(){struct in_addr a; inet_pton(AF_INET,"1.2.3.4",&a); return (int)GetTickCount64();}\n' > /tmp/neg.c
+          i686-w64-mingw32-gcc -D_WIN32_WINNT=0x0600 /tmp/neg.c -o /tmp/neg.exe -lws2_32
+          if python3 tools/xp_import_check.py /tmp/neg.exe; then echo "checker failed to flag Vista APIs"; exit 1; fi
+      - name: Build real v0.5 daemon (reference/v0.5 = v0.5.0-beta.2 source)
+        working-directory: reference/v0.5
+        run: cargo build --release -p lan-daemon -p lan-cli
+      - name: Interop under wine (x86 exe <-> v0.5 lan-daemon, netns bridge)
+        run: sudo -E env "PATH=$PATH" python3 tests/interop.py --rust-bin reference/v0.5/target/release --exe build/x86/lanmsg-cli.exe --work /tmp/lsm-interop
+      - name: Interop native (same core, Linux build)
+        run: sudo -E env "PATH=$PATH" python3 tests/interop.py --native --rust-bin reference/v0.5/target/release --exe build/linux/lanmsg-cli --work /tmp/lsm-interop-native
+      - name: Batch-file encoding check (GBK, CRLF, no BOM) + package
+        run: |
+          python3 tools/package.py
+          python3 tests/check_bat_encoding.py dist/LanMessenger-XP
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: LanMessenger-XP
+          path: |
+            dist/*.zip
+            /tmp/lsm-interop/results.json
+            /tmp/lsm-interop/*.log

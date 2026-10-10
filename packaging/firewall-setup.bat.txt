@@ -1,0 +1,17 @@
+@echo off
+rem 局域网安全通讯 XP 版 - 添加 Windows 防火墙例外（请以管理员身份运行）
+rem XP SP2/SP3 和 Server 2003 使用 netsh firewall；Vista 及以上使用 netsh advfirewall。
+cd /d "%~dp0"
+ver | find " 5." >nul
+if not errorlevel 1 goto xp
+echo [Vista+] netsh advfirewall
+netsh advfirewall firewall add rule name="LanMessenger XP" dir=in action=allow program="%~dp0LanMessenger.exe" enable=yes profile=private,domain
+netsh advfirewall firewall add rule name="LanMessenger XP CLI" dir=in action=allow program="%~dp0lanmsg-cli.exe" enable=yes profile=private,domain
+goto done
+:xp
+echo [XP/2003] netsh firewall
+netsh firewall add allowedprogram program="%~dp0LanMessenger.exe" name="LanMessenger XP" mode=ENABLE scope=SUBNET
+netsh firewall add allowedprogram program="%~dp0lanmsg-cli.exe" name="LanMessenger XP CLI" mode=ENABLE scope=SUBNET
+:done
+echo 完成。如失败，请右键“以管理员身份运行”或手动放行 UDP 41234 和 TCP 41235。
+pause
