@@ -20,17 +20,17 @@ def tap_text(t, timeout=90):
     raise RuntimeError("not found: " + t)
 import json
 IGN = {"_reasons": {"android-*-dialog/pin/about": "modal AlertDialog: the page behind the scrim is inactive (WCAG 1.4.3 exempts inactive UI); only the dialog window is audited"}}
-def dialog_rect():
-    adb("shell", "uiautomator", "dump", "/sdcard/ui.xml"); x = adb("shell", "cat", "/sdcard/ui.xml")
-    root = ET.fromstring(x[x.index("<?xml"):]); bs = []
-    for n in root.iter("node"):
-        b = list(map(int, re.findall(r"\d+", n.get("bounds")))); bs.append(b)
-    b = bs[0]  # the dump holds the focused window only: with a dialog up, its root node is the dialog
-    return [b[0], b[1], b[2] - b[0], b[3] - b[1]]
+def dialog_rect(png, th):
+    """the dialog card = bounding box of the palette card_bg fill (the page behind it is darkened by the scrim)"""
+    from PIL import Image; import numpy as np
+    card = (0xFB, 0xFB, 0xFB) if th == "light" else (0x2B, 0x2B, 0x2B)
+    m = (np.array(Image.open(png).convert("RGB")) == card).all(-1); ys, xs = np.nonzero(m)
+    i = 12  # inset past the 8 dp rounded corners (scrim shows in them)
+    return [int(xs.min()) + i, int(ys.min()) + i, int(xs.max() - xs.min()) - 2 * i, int(ys.max() - ys.min()) - 2 * i]
 def shot(n, modal=False):
     time.sleep(3); subprocess.run(f"{ADB} exec-out screencap -p > {OUT}/{n}.png", shell=True); print("shot", n, flush=True)
     if modal:
-        IGN[n + ".png"] = {"only": dialog_rect()}; json.dump(IGN, open(f"{OUT}/audit_ignore.json", "w"), ensure_ascii=False, indent=1)
+        IGN[n + ".png"] = {"only": dialog_rect(f"{OUT}/{n}.png", "dark" if "-dark-" in n else "light")}; json.dump(IGN, open(f"{OUT}/audit_ignore.json", "w"), ensure_ascii=False, indent=1)
 for k in ("window_animation_scale", "transition_animation_scale", "animator_duration_scale"): adb("shell", "settings", "put", "global", k, "0")
 for th in ("light", "dark"):
     adb("shell", "cmd", "uimode", "night", "yes" if th == "dark" else "no"); adb("shell", "am", "force-stop", PKG); time.sleep(3)

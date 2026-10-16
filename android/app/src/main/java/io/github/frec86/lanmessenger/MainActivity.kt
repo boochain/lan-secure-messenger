@@ -15,6 +15,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
@@ -149,7 +150,7 @@ fun App(pendingShare: MutableState<List<Uri>>, openConvExt: MutableState<String?
 @Composable
 fun TextDialog(title: String, label: String, init: String = "", digits: Boolean = false, onOk: (String) -> Unit, onDismiss: () -> Unit) {
     var t by remember { mutableStateOf(init) }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(title) },
+    LsmAlertDialog(onDismissRequest = onDismiss, title = { Text(title) },
         text = { Column { Text(label, style = MaterialTheme.typography.bodyMedium); Spacer(Modifier.height(8.dp))
             OutlinedTextField(t, { t = it }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = if (digits) androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number) else androidx.compose.foundation.text.KeyboardOptions.Default) } },
@@ -160,7 +161,7 @@ fun TextDialog(title: String, label: String, init: String = "", digits: Boolean 
 fun PickContacts(st: AppState, title: String, trustedOnly: Boolean, multi: Boolean, withName: Boolean, onOk: (List<String>, String) -> Unit, onDismiss: () -> Unit) {
     val list = st.contacts.filter { !trustedOnly || it.trust == 1 }
     val sel = remember { mutableStateListOf<String>() }; var name by remember { mutableStateOf("新群组") }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(title) }, text = {
+    LsmAlertDialog(onDismissRequest = onDismiss, title = { Text(title) }, text = {
         Column {
             if (list.isEmpty()) Text(if (trustedOnly) "没有已信任的联系人。请先信任对方（或使用 PIN 配对）。" else "没有联系人。")
             list.forEach { k -> Row(Modifier.fillMaxWidth().clickable { if (k.fp in sel) sel.remove(k.fp) else { if (!multi) sel.clear(); sel.add(k.fp) } }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -173,7 +174,7 @@ fun PickContacts(st: AppState, title: String, trustedOnly: Boolean, multi: Boole
 
 @Composable
 fun SharePicker(st: AppState, onPick: (String) -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(onDismissRequest = onDismiss, title = { Text("发送给…") }, text = {
+    LsmAlertDialog(onDismissRequest = onDismiss, title = { Text("发送给…") }, text = {
         Column { if (st.contacts.isEmpty() && st.groups.isEmpty()) Text("还没有联系人")
             st.contacts.forEach { k -> Text(k.name, Modifier.fillMaxWidth().clickable { onPick("dm:" + k.fp) }.padding(vertical = 10.dp)) }
             st.groups.forEach { g -> Text("# " + g.name, Modifier.fillMaxWidth().clickable { onPick("group:" + g.id) }.padding(vertical = 10.dp)) } } },
@@ -222,10 +223,10 @@ fun Home(st: AppState, open: (String) -> Unit) {
         "name" -> TextDialog("修改昵称", "新的显示名称：", st.me.name, onOk = { Native.setName(it); Repo.refresh() }, onDismiss = { dlg = "" })
         "group" -> PickContacts(st, "创建群组", true, true, true, { fps, n -> val r = Native.groupCreate(n, fps.joinToString(",")); if (r.startsWith("!")) Repo.toast.value = r.drop(1); Repo.refresh() }, { dlg = "" })
         "pin" -> { val pin = remember { Native.pinOffer() }
-            AlertDialog(onDismissRequest = { dlg = "" }, title = { Text("PIN 配对") }, text = { Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+            LsmAlertDialog(onDismissRequest = { dlg = "" }, title = { Text("PIN 配对") }, text = { Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                 Text(pin, style = MaterialTheme.typography.displayMedium, fontFamily = FontFamily.Monospace, letterSpacing = 6.sp)
                 Spacer(Modifier.height(8.dp)); Text("请让对方在“输入 PIN 配对”中输入（5 分钟内有效）。") } }, confirmButton = { TextButton({ dlg = "" }) { Text("好") } }) }
-        "about" -> AlertDialog(onDismissRequest = { dlg = "" }, title = { Text("关于") }, text = { Text("局域网安全通讯 Android 版 ${st.me.version}\n\n与 Windows v0.5、XP 版和 Linux 版完全互通（协议 v5）：Noise_XX_25519_ChaChaPoly_BLAKE2s 加密、自动发现、按 IP 添加、PIN 配对、群组、文件传输、送达/已读回执。\n\n本机端口 TCP ${st.me.port}") }, confirmButton = { TextButton({ dlg = "" }) { Text("好") } })
+        "about" -> LsmAlertDialog(onDismissRequest = { dlg = "" }, title = { Text("关于") }, text = { Text("局域网安全通讯 Android 版 ${st.me.version}\n\n与 Windows v0.5、XP 版和 Linux 版完全互通（协议 v5）：Noise_XX_25519_ChaChaPoly_BLAKE2s 加密、自动发现、按 IP 添加、PIN 配对、群组、文件传输、送达/已读回执。\n\n本机端口 TCP ${st.me.port}") }, confirmButton = { TextButton({ dlg = "" }) { Text("好") } })
     }
 }
 
@@ -324,4 +325,35 @@ fun decodeSampled(path: String, max: Int): android.graphics.Bitmap? {
     val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }; BitmapFactory.decodeFile(path, o)
     var s = 1; while (o.outWidth / s > max || o.outHeight / s > max) s *= 2
     return BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = s })
+}
+
+/** Modal dialog drawn entirely by us: palette card on our own scrim inside ONE full-screen dialog window
+ *  (platform dim disabled). The M3 AlertDialog used `surface` and the platform dim layer was composited over it
+ *  on the test emulator, giving a non-palette grey card (#D9D9D9 / #1D1D1D). */
+@Composable
+fun LsmAlertDialog(onDismissRequest: () -> Unit, confirmButton: @Composable () -> Unit, dismissButton: (@Composable () -> Unit)? = null,
+                   title: (@Composable () -> Unit)? = null, text: (@Composable () -> Unit)? = null) {
+    val p = LocalPalette.current
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismissRequest,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        val w = (androidx.compose.ui.platform.LocalView.current.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window
+        SideEffect { w?.setDimAmount(0f) }
+        Box(Modifier.fillMaxSize().background(Color(0x99000000)).clickable(indication = null,
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }) { onDismissRequest() },
+            contentAlignment = Alignment.Center) {
+            Surface(color = p.cardBg, contentColor = p.textPrimary, shape = RoundedCornerShape(8.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, p.divider),
+                modifier = Modifier.padding(horizontal = 32.dp).widthIn(max = 560.dp).fillMaxWidth()
+                    .clickable(indication = null, interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }) {}) {
+                Column(Modifier.padding(24.dp)) {
+                    if (title != null) { ProvideTextStyle(MaterialTheme.typography.titleLarge) { title() }; Spacer(Modifier.height(16.dp)) }
+                    if (text != null) { ProvideTextStyle(MaterialTheme.typography.bodyMedium) { CompositionLocalProvider(LocalContentColor provides p.textPrimary) { text() } } }
+                    Row(Modifier.fillMaxWidth().padding(top = 24.dp), horizontalArrangement = Arrangement.End) {
+                        if (dismissButton != null) { dismissButton(); Spacer(Modifier.width(8.dp)) }
+                        confirmButton()
+                    }
+                }
+            }
+        }
+    }
 }

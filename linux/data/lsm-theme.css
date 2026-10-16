@@ -80,6 +80,13 @@ placessidebar, placessidebar list, placessidebar row { background-color: #EEEEEE
 window.popup, window.popup decoration, .csd.popup decoration { border: 1px solid #E5E5E5; box-shadow: none; border-radius: 0; }
 .csd menu, .csd .menu, .csd .context-menu, menu, .menu, .context-menu { border: 1px solid #E5E5E5; box-shadow: none; }
 menu separator, .menu separator, .csd menu separator { background-color: #E5E5E5; min-height: 1px; margin: 4px 0; }
+paned > separator, paned.horizontal > separator, paned.vertical > separator { background-color: #E5E5E5; background-image: none; background-clip: content-box; }
+list row label.online, row label.online, label.online { color: #0F7B0F; }
+list row label.offline, row label.offline, label.offline { color: #5C5C5C; }
+popover, popover.menu, popover.background { border: 1px solid #E5E5E5; box-shadow: none; }
+popover separator, popover.menu separator { background-color: #E5E5E5; min-height: 1px; margin: 4px 0; }
+window.popup menu, .csd menu, menu { box-shadow: inset 0 0 0 1px #E5E5E5; border-radius: 0; }
+menu, .csd menu, window.popup menu { padding: 4px; margin: 0; }  /* GTK 3.24 skips the menu node border; the popup window's 1px border is only visible when items do not cover the edge */
 /*@dark*/
 window, dialog, messagedialog, .background, popover { background-color: #202020; color: #FFFFFF; }
 headerbar, headerbar:backdrop { background-color: #202020; color: #FFFFFF; border-color: #323232; }
@@ -130,3 +137,10 @@ placessidebar, placessidebar list, placessidebar row { background-color: #1C1C1C
 window.popup, window.popup decoration, .csd.popup decoration { border: 1px solid #323232; box-shadow: none; border-radius: 0; }
 .csd menu, .csd .menu, .csd .context-menu, menu, .menu, .context-menu { border: 1px solid #323232; box-shadow: none; }
 menu separator, .menu separator, .csd menu separator { background-color: #323232; min-height: 1px; margin: 4px 0; }
+paned > separator, paned.horizontal > separator, paned.vertical > separator { background-color: #323232; background-image: none; background-clip: content-box; }
+list row label.online, row label.online, label.online { color: #6CCB5F; }
+list row label.offline, row label.offline, label.offline { color: #CCCCCC; }
+popover, popover.menu, popover.background { border: 1px solid #323232; box-shadow: none; }
+popover separator, popover.menu separator { background-color: #323232; min-height: 1px; margin: 4px 0; }
+window.popup menu, .csd menu, menu { box-shadow: inset 0 0 0 1px #323232; border-radius: 0; }
+menu, .csd menu, window.popup menu { padding: 4px; margin: 0; }  /* GTK 3.24 skips the menu node border; the popup window's 1px border is only visible when items do not cover the edge */

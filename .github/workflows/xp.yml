@@ -98,7 +98,7 @@ jobs:
           sudo dpkg --add-architecture i386
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq mingw-w64 wine wine32:i386 libgtk-3-dev pkg-config musl-tools file \
-            xvfb openbox xdotool x11-utils stalonetray imagemagick fonts-noto-cjk language-pack-zh-hans \
+            xvfb dbus-x11 openbox xdotool x11-utils stalonetray imagemagick fonts-noto-cjk language-pack-zh-hans \
             tesseract-ocr tesseract-ocr-chi-sim python3-numpy python3-opencv python3-pil
           pip install --break-system-packages -q pytesseract
       - name: Checker self-test (must fail synthetic black-on-#202020 etc.)
