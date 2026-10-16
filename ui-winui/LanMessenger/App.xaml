@@ -12,30 +12,123 @@
 
             <!-- App-specific colours. Never use literal colours in pages: every brush here has a Light, Dark and
                  HighContrast variant and must be referenced with {ThemeResource ...} so it follows live theme changes. -->
+            <!-- Unified palette (design/palette.json, Fluent 2 values; identical hex on WinUI, XP, GTK and Android).
+                 Light/Dark override the framework brushes, and the accent is PINNED to the palette blue: in beta.2 the
+                 accent followed the Windows accent colour, so a dark OS accent gave black TextOnAccent text on a near-black
+                 accent fill (sent bubbles, 发送 button) in dark mode. HighContrast keeps the system colours. -->
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Light">
+                    <Color x:Key="SystemAccentColor">#005FB8</Color>
+                    <Color x:Key="SystemAccentColorLight1">#005FB8</Color>
+                    <Color x:Key="SystemAccentColorLight2">#005FB8</Color>
+                    <Color x:Key="SystemAccentColorLight3">#005FB8</Color>
+                    <Color x:Key="SystemAccentColorDark1">#005FB8</Color>
+                    <Color x:Key="SystemAccentColorDark2">#005FB8</Color>
+                    <Color x:Key="SystemAccentColorDark3">#005FB8</Color>
+                    <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#005FB8" />
+                    <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#005FB8" />
+                    <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#005FB8" />
+                    <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#005FB8" />
+                    <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="#005FB8" />
+                    <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="#005FB8" />
+                    <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="TextOnAccentFillColorSecondaryBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#1A1A1A" />
+                    <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="#5C5C5C" />
+                    <SolidColorBrush x:Key="TextFillColorTertiaryBrush" Color="#5C5C5C" />
+                    <SolidColorBrush x:Key="SolidBackgroundFillColorBaseBrush" Color="#F3F3F3" />
+                    <SolidColorBrush x:Key="SolidBackgroundFillColorSecondaryBrush" Color="#EEEEEE" />
+                    <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="#FBFBFB" />
+                    <SolidColorBrush x:Key="LayerFillColorDefaultBrush" Color="#F9F9F9" />
+                    <SolidColorBrush x:Key="ControlFillColorDefaultBrush" Color="#FDFDFD" />
+                    <SolidColorBrush x:Key="DividerStrokeColorDefaultBrush" Color="#E5E5E5" />
+                    <SolidColorBrush x:Key="CardStrokeColorDefaultBrush" Color="#E5E5E5" />
+                    <SolidColorBrush x:Key="SystemFillColorSuccessBrush" Color="#0F7B0F" />
+                    <SolidColorBrush x:Key="SystemFillColorCautionBrush" Color="#9D5D00" />
+                    <SolidColorBrush x:Key="SystemFillColorCriticalBrush" Color="#C42B1C" />
+                    <SolidColorBrush x:Key="LsmWindowBackgroundBrush" Color="#F3F3F3" />
+                    <SolidColorBrush x:Key="LsmSidebarBackgroundBrush" Color="#EEEEEE" />
+                    <SolidColorBrush x:Key="LsmCardBackgroundBrush" Color="#FBFBFB" />
+                    <SolidColorBrush x:Key="LsmChatBackgroundBrush" Color="#F9F9F9" />
+                    <SolidColorBrush x:Key="LsmBubbleInBackgroundBrush" Color="#FDFDFD" />
+                    <SolidColorBrush x:Key="LsmBubbleInForegroundBrush" Color="#1B1B1B" />
+                    <SolidColorBrush x:Key="LsmBubbleOutBackgroundBrush" Color="#005FB8" />
+                    <SolidColorBrush x:Key="LsmBubbleOutForegroundBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="LsmInputBackgroundBrush" Color="#FDFDFD" />
+                    <SolidColorBrush x:Key="LsmInputForegroundBrush" Color="#1B1B1B" />
+                    <SolidColorBrush x:Key="LsmDividerBrush" Color="#E5E5E5" />
                     <SolidColorBrush x:Key="StatusOnlineBrush" Color="#0F7B0F" />
-                    <SolidColorBrush x:Key="StatusOfflineBrush" Color="#8A8A8A" />
+                    <SolidColorBrush x:Key="StatusOfflineBrush" Color="#5C5C5C" />
                     <SolidColorBrush x:Key="StatusWarnBrush" Color="#9D5D00" />
                     <SolidColorBrush x:Key="StatusErrorTextBrush" Color="#C42B1C" />
                     <SolidColorBrush x:Key="UnreadBadgeBackgroundBrush" Color="#C42B1C" />
                     <SolidColorBrush x:Key="UnreadBadgeForegroundBrush" Color="#FFFFFF" />
                     <SolidColorBrush x:Key="WindowFallbackBackgroundBrush" Color="#F3F3F3" />
-                    <SolidColorBrush x:Key="MediaBubbleBorderBrush" Color="{ThemeResource SystemAccentColor}" />
+                    <SolidColorBrush x:Key="MediaBubbleBorderBrush" Color="#E5E5E5" />
                     <Thickness x:Key="MediaBubbleBorderThickness">1</Thickness>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
+                    <Color x:Key="SystemAccentColor">#60CDFF</Color>
+                    <Color x:Key="SystemAccentColorLight1">#60CDFF</Color>
+                    <Color x:Key="SystemAccentColorLight2">#60CDFF</Color>
+                    <Color x:Key="SystemAccentColorLight3">#60CDFF</Color>
+                    <Color x:Key="SystemAccentColorDark1">#60CDFF</Color>
+                    <Color x:Key="SystemAccentColorDark2">#60CDFF</Color>
+                    <Color x:Key="SystemAccentColorDark3">#60CDFF</Color>
+                    <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#60CDFF" />
+                    <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#60CDFF" />
+                    <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#60CDFF" />
+                    <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#60CDFF" />
+                    <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="#60CDFF" />
+                    <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="#60CDFF" />
+                    <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush" Color="#000000" />
+                    <SolidColorBrush x:Key="TextOnAccentFillColorSecondaryBrush" Color="#000000" />
+                    <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="#CCCCCC" />
+                    <SolidColorBrush x:Key="TextFillColorTertiaryBrush" Color="#CCCCCC" />
+                    <SolidColorBrush x:Key="SolidBackgroundFillColorBaseBrush" Color="#202020" />
+                    <SolidColorBrush x:Key="SolidBackgroundFillColorSecondaryBrush" Color="#1C1C1C" />
+                    <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="#2B2B2B" />
+                    <SolidColorBrush x:Key="LayerFillColorDefaultBrush" Color="#282828" />
+                    <SolidColorBrush x:Key="ControlFillColorDefaultBrush" Color="#353535" />
+                    <SolidColorBrush x:Key="DividerStrokeColorDefaultBrush" Color="#323232" />
+                    <SolidColorBrush x:Key="CardStrokeColorDefaultBrush" Color="#323232" />
+                    <SolidColorBrush x:Key="SystemFillColorSuccessBrush" Color="#6CCB5F" />
+                    <SolidColorBrush x:Key="SystemFillColorCautionBrush" Color="#FCE100" />
+                    <SolidColorBrush x:Key="SystemFillColorCriticalBrush" Color="#FF99A4" />
+                    <SolidColorBrush x:Key="LsmWindowBackgroundBrush" Color="#202020" />
+                    <SolidColorBrush x:Key="LsmSidebarBackgroundBrush" Color="#1C1C1C" />
+                    <SolidColorBrush x:Key="LsmCardBackgroundBrush" Color="#2B2B2B" />
+                    <SolidColorBrush x:Key="LsmChatBackgroundBrush" Color="#282828" />
+                    <SolidColorBrush x:Key="LsmBubbleInBackgroundBrush" Color="#333333" />
+                    <SolidColorBrush x:Key="LsmBubbleInForegroundBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="LsmBubbleOutBackgroundBrush" Color="#60CDFF" />
+                    <SolidColorBrush x:Key="LsmBubbleOutForegroundBrush" Color="#000000" />
+                    <SolidColorBrush x:Key="LsmInputBackgroundBrush" Color="#353535" />
+                    <SolidColorBrush x:Key="LsmInputForegroundBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="LsmDividerBrush" Color="#323232" />
                     <SolidColorBrush x:Key="StatusOnlineBrush" Color="#6CCB5F" />
-                    <SolidColorBrush x:Key="StatusOfflineBrush" Color="#8F8F8F" />
+                    <SolidColorBrush x:Key="StatusOfflineBrush" Color="#CCCCCC" />
                     <SolidColorBrush x:Key="StatusWarnBrush" Color="#FCE100" />
                     <SolidColorBrush x:Key="StatusErrorTextBrush" Color="#FF99A4" />
-                    <SolidColorBrush x:Key="UnreadBadgeBackgroundBrush" Color="#C42B1C" />
-                    <SolidColorBrush x:Key="UnreadBadgeForegroundBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="UnreadBadgeBackgroundBrush" Color="#FF99A4" />
+                    <SolidColorBrush x:Key="UnreadBadgeForegroundBrush" Color="#000000" />
                     <SolidColorBrush x:Key="WindowFallbackBackgroundBrush" Color="#202020" />
-                    <SolidColorBrush x:Key="MediaBubbleBorderBrush" Color="{ThemeResource SystemAccentColorLight2}" />
+                    <SolidColorBrush x:Key="MediaBubbleBorderBrush" Color="#323232" />
                     <Thickness x:Key="MediaBubbleBorderThickness">1</Thickness>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="HighContrast">
+                    <SolidColorBrush x:Key="LsmWindowBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="LsmSidebarBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="LsmCardBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="LsmChatBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="LsmBubbleInBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="LsmBubbleInForegroundBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    <SolidColorBrush x:Key="LsmBubbleOutBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="LsmBubbleOutForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
+                    <SolidColorBrush x:Key="LsmInputBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="LsmInputForegroundBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    <SolidColorBrush x:Key="LsmDividerBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
                     <SolidColorBrush x:Key="StatusOnlineBrush" Color="{ThemeResource SystemColorHighlightColor}" />
                     <SolidColorBrush x:Key="StatusOfflineBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
                     <SolidColorBrush x:Key="StatusWarnBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
@@ -50,8 +143,8 @@
 
             <!-- Han unification: on non-Chinese Windows the default fallback picks a Japanese font and renders
                  simplified characters (e.g. 组) with Japanese glyphs. Put a Simplified Chinese font right after Segoe. -->
-            <FontFamily x:Key="ContentControlThemeFontFamily">Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI, Microsoft YaHei, SimSun</FontFamily>
-            <FontFamily x:Key="CjkFontFamily">Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI, Microsoft YaHei, SimSun</FontFamily>
+            <FontFamily x:Key="ContentControlThemeFontFamily">Segoe UI Variable Text, Microsoft YaHei UI, Microsoft YaHei</FontFamily>
+            <FontFamily x:Key="CjkFontFamily">Segoe UI Variable Text, Microsoft YaHei UI, Microsoft YaHei</FontFamily>
             <local:PathToImageConverter x:Key="PathToImage" />
 
             <!-- Shared card style (settings, diagnostics, groups). -->

@@ -11,10 +11,10 @@
             <StackPanel HorizontalAlignment="Left" MaxWidth="560" Margin="0,4,80,4">
                 <TextBlock Text="{x:Bind SenderName, Mode=OneWay}" Visibility="{x:Bind ShowSender, Mode=OneWay}"
                            Style="{StaticResource SecondaryCaptionStyle}" Margin="4,0,0,2" />
-                <Border CornerRadius="10" Padding="12,8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                <Border CornerRadius="8" Padding="12,8" Background="{ThemeResource LsmBubbleInBackgroundBrush}"
+                        BorderBrush="{ThemeResource LsmDividerBrush}" BorderThickness="1">
                     <StackPanel Spacing="6">
-                        <TextBlock Text="{x:Bind Body, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                        <TextBlock Text="{x:Bind Body, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" Foreground="{ThemeResource LsmBubbleInForegroundBrush}"
                                    Visibility="{x:Bind IsText, Mode=OneWay}" />
                         <Image Source="{x:Bind FilePath, Mode=OneWay, Converter={StaticResource PathToImage}}" MaxHeight="260" MaxWidth="420"
                                Stretch="Uniform" HorizontalAlignment="Left" Visibility="{x:Bind IsImage, Mode=OneWay}" Tapped="Image_Tapped" />
@@ -36,10 +36,10 @@
         <DataTemplate x:Key="OutgoingTemplate" x:DataType="vm:MessageItem">
             <StackPanel HorizontalAlignment="Right" MaxWidth="560" Margin="80,4,0,4">
                 <!-- Text: accent bubble with the matching on-accent text brush (dark text on light accent in Dark theme). -->
-                <Border CornerRadius="10" Padding="12,8" Background="{ThemeResource AccentFillColorDefaultBrush}"
+                <Border CornerRadius="8" Padding="12,8" Background="{ThemeResource LsmBubbleOutBackgroundBrush}"
                         Visibility="{x:Bind IsText, Mode=OneWay}">
                     <TextBlock Text="{x:Bind Body, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True"
-                               Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                               Foreground="{ThemeResource LsmBubbleOutForegroundBrush}" />
                 </Border>
                 <!-- Files/images: neutral card with an accent outline, so the normal buttons and text keep their theme contrast
                      (standard buttons on a light-blue accent fill are unreadable in Dark theme). -->
@@ -127,7 +127,7 @@
                             <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                 <StackPanel Orientation="Horizontal" Spacing="4">
                                     <TextBlock Text="{x:Bind Title, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                    <FontIcon Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE74F;" FontSize="11" Visibility="{x:Bind Muted, Mode=OneWay}" />
+                                    <FontIcon Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE74F;" FontSize="12" Visibility="{x:Bind Muted, Mode=OneWay}" />
                                 </StackPanel>
                                 <TextBlock Text="{x:Bind LastBody, Mode=OneWay}" Style="{StaticResource SecondaryCaptionStyle}"
                                            TextTrimming="CharacterEllipsis" MaxLines="1" />
@@ -136,7 +136,7 @@
                                 <TextBlock Text="{x:Bind TimeText, Mode=OneWay}" Style="{StaticResource SecondaryCaptionStyle}" />
                                 <Border Background="{ThemeResource UnreadBadgeBackgroundBrush}" CornerRadius="9" MinWidth="18" Height="18" Padding="5,0"
                                         HorizontalAlignment="Right" Visibility="{x:Bind HasUnread, Mode=OneWay}">
-                                    <TextBlock Text="{x:Bind UnreadText, Mode=OneWay}" FontSize="11" Foreground="{ThemeResource UnreadBadgeForegroundBrush}"
+                                    <TextBlock Text="{x:Bind UnreadText, Mode=OneWay}" FontSize="12" Foreground="{ThemeResource UnreadBadgeForegroundBrush}"
                                                HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
                             </StackPanel>

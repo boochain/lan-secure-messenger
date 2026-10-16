@@ -193,3 +193,28 @@ jobs:
           - 诊断页：防火墙规则、网络类型（公用/专用）、网卡、每个联系人的连接状态
           "@
           gh release create $tag $env:ZIP --prerelease --title "LAN Secure Messenger $tag" --notes $notes --target ${{ github.sha }}
+
+  ui-audit:
+    name: Screenshot colour audit (OCR contrast, APCA, stroke scan, dE2000, palette)
+    runs-on: ubuntu-24.04
+    needs: winui
+    if: always() && needs.winui.result != 'skipped'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: ui-smoke-screenshots, path: ui-smoke }
+      - name: Install tesseract (chi_sim+eng) + Python deps
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tesseract-ocr tesseract-ocr-chi-sim fonts-noto-cjk python3-numpy python3-opencv python3-pil
+          pip install --break-system-packages -q pytesseract
+      - name: Checker self-test (must fail synthetic black-on-#202020 etc.)
+        run: python3 tools/ui_color_audit.py --self-test --out ui-audit/self-test
+      - name: Audit every app screenshot (desktop-*.png is the whole runner desktop, not app UI)
+        run: |
+          find ui-smoke -name '*.png' ! -name 'desktop*' | sort > shots.txt; cat shots.txt
+          test -s shots.txt
+          python3 tools/ui_color_audit.py --ignore-file tools/ui_audit_ignore.json --out ui-audit $(cat shots.txt)
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: ui-audit, path: ui-audit }
