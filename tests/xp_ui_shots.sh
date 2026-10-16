@@ -12,7 +12,7 @@ Xvfb :78 -screen 0 1100x760x24 -nolisten tcp >/dev/null 2>&1 & XV=$!
 sleep 2; (openbox --config-file "$ROOT/tests/openbox-nodecor.xml" >/dev/null 2>&1 &); sleep 1
 [ -d "$WINEPREFIX" ] || wineboot -i >/dev/null 2>&1
 # wine test box only: no SimSun/YaHei here, map UI faces to Noto Sans CJK SC (the app itself prefers YaHei UI / SimSun)
-for f in Tahoma 'MS Shell Dlg' 'MS Shell Dlg 2' 'Segoe UI'; do wine reg add 'HKCU\Software\Wine\Fonts\Replacements' /v "$f" /d 'Noto Sans CJK SC' /f >/dev/null 2>&1; done
+for f in Tahoma 'MS Shell Dlg' 'MS Shell Dlg 2' 'Segoe UI' 'MS Sans Serif' 'Microsoft Sans Serif' SimSun 'Microsoft YaHei' 'Microsoft YaHei UI'; do wine reg add 'HKCU\Software\Wine\Fonts\Replacements' /v "$f" /d 'Noto Sans CJK SC' /f >/dev/null 2>&1; done
 "$RB/lan-daemon" --data-dir "$T/r" --ipc "$T/r.sock" --set 'display_name="王工（v0.5）"' --set listen_port=0 --set discovery_port=47011 \
   --set announce_interval_secs=1 --set multicast_enabled=false --set auto_trust=true --set "download_dir=\"$T/dl\"" >"$T/r.log" 2>&1 & RD=$!
 sleep 1; M="$RB/lan-msg --ipc $T/r.sock"
@@ -28,14 +28,14 @@ for TH in light dark; do
   shot "xp-$TH-01-welcome-empty"
   for i in $(seq 40); do $M peers 2>/dev/null | grep -q "XP" && break; sleep 0.5; done
   FX=$($M --json status | python3 -c 'import json,sys;d=json.load(sys.stdin);print([p["fingerprint"] for p in d["peers"] if "XP" in p["name"]][0])')
-  CL 80 20; sleep 1
+  CL 80 45; sleep 1
   if [ $TH = light ]; then menu c; xdotool key t; sleep 1
     $M send "$FX" "你好！这是来自 v0.5 的消息。下午三点评审会改到 302 会议室。" >/dev/null
     $M send "$FX" "Hello from v0.5 — 中文/English mixed text 测试" >/dev/null
     head -c 200000 /dev/urandom > "$T/示例文件.bin"; $M send-file "$FX" "$T/示例文件.bin" >/dev/null; sleep 3
-    CL 80 20; sleep 1; xdotool type --delay 30 "OK, 收到 thanks"; xdotool key Return; sleep 2
+    CL 80 45; sleep 1; xdotool type --delay 30 "OK, 收到 thanks"; xdotool key Return; sleep 2
   fi
-  CL 80 20; sleep 1.5; shot "xp-$TH-02-chat"
+  CL 80 45; sleep 1.5; shot "xp-$TH-02-chat"
   menu f; shot "xp-$TH-03-menu-file"; xdotool key Escape Escape; sleep 0.5
   menu c; shot "xp-$TH-04-menu-contacts"; xdotool key Escape Escape; sleep 0.5
   menu g; shot "xp-$TH-05-menu-groups"; xdotool key Escape Escape; sleep 0.5

@@ -30,6 +30,8 @@ scrolledwindow.frame { border-width: 1px; border-style: solid; }
 headerbar .title { font-size: 14px; font-weight: 600; }
 headerbar .subtitle { font-size: 12px; }
 scrolledwindow undershoot, scrolledwindow overshoot { background: none; border: none; box-shadow: none; }
+messagedialog .dialog-vbox, messagedialog > box { min-width: 320px; }
+messagedialog .dialog-vbox > box { margin: 16px 20px 8px 20px; }
 /*@light*/
 window, dialog, messagedialog, .background, popover { background-color: #F3F3F3; color: #1A1A1A; }
 headerbar, headerbar:backdrop { background-color: #F3F3F3; color: #1A1A1A; border-color: #E5E5E5; }

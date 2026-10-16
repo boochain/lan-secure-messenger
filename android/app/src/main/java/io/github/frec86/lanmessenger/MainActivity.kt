@@ -335,10 +335,10 @@ fun LsmAlertDialog(onDismissRequest: () -> Unit, confirmButton: @Composable () -
                    title: (@Composable () -> Unit)? = null, text: (@Composable () -> Unit)? = null) {
     val p = LocalPalette.current
     androidx.compose.ui.window.Dialog(onDismissRequest = onDismissRequest,
-        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
         val w = (androidx.compose.ui.platform.LocalView.current.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window
         SideEffect { w?.setDimAmount(0f) }
-        Box(Modifier.fillMaxSize().background(Color(0x99000000)).clickable(indication = null,
+        Box(Modifier.fillMaxSize().background(Color(0x99000000)).imePadding().clickable(indication = null,
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }) { onDismissRequest() },
             contentAlignment = Alignment.Center) {
             Surface(color = p.cardBg, contentColor = p.textPrimary, shape = RoundedCornerShape(8.dp),

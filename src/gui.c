@@ -404,7 +404,7 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE prev, LPWSTR cmd, int show){
     if(!C){ MessageBoxW(NULL,W(err),L"启动失败",MB_ICONSTOP); return 1; }
     memset(&wc,0,sizeof wc); wc.cbSize=sizeof wc; wc.lpfnWndProc=MainProc; wc.hInstance=hi; wc.hIcon=LoadIconW(hi,MAKEINTRESOURCEW(1)); wc.hIconSm=wc.hIcon; wc.hCursor=LoadCursor(NULL,IDC_ARROW); wc.hbrBackground=NULL; /* WM_ERASEBKGND paints window_bg */ wc.lpszClassName=L"LsmMain";
     RegisterClassExW(&wc);
-    wc.lpfnWndProc=PromptProc; wc.lpszClassName=L"LsmPrompt"; wc.hIcon=NULL; wc.hIconSm=NULL; RegisterClassExW(&wc);
+    wc.lpfnWndProc=PromptProc; wc.lpszClassName=L"LsmPrompt"; wc.style|=0x00020000 /* CS_DROPSHADOW (XP+): lifts the borderless dialog off a same-colour page */; wc.hIcon=NULL; wc.hIconSm=NULL; RegisterClassExW(&wc);
     { RECT wa; if(SystemParametersInfoW(SPI_GETWORKAREA,0,&wa,0)){ if(win_w>wa.right-wa.left) win_w=wa.right-wa.left; if(win_h>wa.bottom-wa.top) win_h=wa.bottom-wa.top;
         win_x=wa.left+((wa.right-wa.left)-win_w)/2; win_y=wa.top+((wa.bottom-wa.top)-win_h)/2; } } /* 800x600 XP screens: fit and centre (CW_USEDEFAULT pushed it off-screen) */
     hMenuTree=build_menu(); /* not attached: the system menu bar ignores the app theme (wine/XP paint it with COLOR_MENU) */
