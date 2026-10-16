@@ -156,6 +156,10 @@ jobs:
         run: |
           (cd reference/v0.5 && cargo build --release -p lan-daemon -p lan-cli)
           sudo apt-get update -qq && sudo apt-get install -y -qq make && make build/linux/lanmsg-cli
+      - name: Screenshot + audit deps (Pillow, numpy, OpenCV, tesseract chi_sim)
+        run: |
+          sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tesseract-ocr tesseract-ocr-chi-sim python3-numpy python3-opencv python3-pil
+          pip install --break-system-packages -q pytesseract
       - name: Matrix on emulator (Android <-> v0.5 Rust, Android <-> C native) + APK install/launch
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -170,8 +174,6 @@ jobs:
             sudo -E env "PATH=$PATH" ADB=$(which adb) python3 tests/matrix.py --rust-bin reference/v0.5/target/release --native-cli build/linux/lanmsg-cli --android-cmd /data/local/tmp/lanmsg-cli --kinds rust,native,android --work /tmp/lsm-matrix-android
       - name: Audit Android screenshots (light + dark)
         run: |
-          sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tesseract-ocr tesseract-ocr-chi-sim python3-numpy python3-opencv python3-pil
-          pip install --break-system-packages -q pytesseract
           python3 tools/ui_color_audit.py --self-test --out ui-audit/self-test
           python3 tools/ui_color_audit.py --ignore-file shots/android/audit_ignore.json --out ui-audit/android shots/android/*.png
       - uses: actions/upload-artifact@v4

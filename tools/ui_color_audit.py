@@ -225,7 +225,10 @@ def audit(path, pal, theme="auto", out=None, ignore=(), strict_cvd=False, ocr=Tr
     tok = pal[theme]; toklab = rgb_to_lab(np.stack(list(tok.values())))
     res = dict(file=path, theme=theme, size=[W, H], text=[], text_fail=[], strokes=[], indistinct=[], cvd=[], stray=[])
     # (a)
-    boxes = ocr_boxes(img) if ocr else []
+    boxes = []
+    if ocr:  # OCR only the audited area: a dimmed full-page grab around a modal confuses tesseract's layout pass
+        ys, xs = np.nonzero(mask); bx0, by0, bx1, by1 = (int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1) if len(xs) else (0, 0, W, H)
+        boxes = [(x + bx0, y + by0, w, h, t, c) for (x, y, w, h, t, c) in ocr_boxes(img.crop((bx0, by0, bx1, by1)))]
     passing = []
     for b in boxes:
         if not mask[min(H - 1, b[1] + b[3] // 2), min(W - 1, b[0] + b[2] // 2)]: continue
@@ -262,7 +265,8 @@ def audit(path, pal, theme="auto", out=None, ignore=(), strict_cvd=False, ocr=Tr
             sel = np.zeros((H, W), bool); sm = np.zeros(len(q), bool); sm[np.nonzero(fill)[0][inv == vi]] = True; sel[mask] = sm; ys, xs = np.nonzero(sel)
             res["stray"].append(dict(color=tohex(col), frac=round(float(cnt[vi]) / len(q), 4), nearest=list(tok)[int(d.argmin())], de=round(float(d.min()), 2),
                                      box=[int(xs.min()), int(ys.min()), int(xs.max() - xs.min() + 1), int(ys.max() - ys.min() + 1)]))
-    res["fail"] = bool(res["text_fail"] or res["strokes"] or res["indistinct"] or res["stray"] or (strict_cvd and res["cvd"]))
+    res["no_text"] = bool(ocr and not res["text"] and W * H >= 10000)  # a real app screen always has text: blank/black/mis-cropped grabs must not pass
+    res["fail"] = bool(res["no_text"] or res["text_fail"] or res["strokes"] or res["indistinct"] or res["stray"] or (strict_cvd and res["cvd"]))
     if out:
         os.makedirs(out, exist_ok=True); name = os.path.splitext(os.path.basename(path))[0]
         an = img.copy(); dr = ImageDraw.Draw(an)
@@ -278,7 +282,7 @@ def audit(path, pal, theme="auto", out=None, ignore=(), strict_cvd=False, ocr=Tr
 def summary(r):
     return (f"{'FAIL' if r['fail'] else 'PASS'} {os.path.basename(r['file'])} [{r['theme']}] text={len(r['text'])} "
             f"text_fail={len(r['text_fail'])} strokes={len(r['strokes'])} indistinct={len(r['indistinct'])} stray={len(r['stray'])} cvd_warn={len(r['cvd'])}"
-            + (f" min_wcag={min(t['wcag'] for t in r['text']):.2f}" if r['text'] else ""))
+            + (f" min_wcag={min(t['wcag'] for t in r['text']):.2f}" if r['text'] else "")) + (" NO_TEXT(blank or mis-cropped grab)" if r.get('no_text') else "")
 
 # ------------------------------------------------------------------ self test
 def self_test(pal, out):
@@ -305,6 +309,9 @@ def self_test(pal, out):
     def badge(d): d.rectangle([20, 140, 300, 190], fill="#8E44AD")
     r = audit(mk("synthetic-stray-colour", "#202020", "#FFFFFF", badge), pal, out=out)
     good = bool(r["stray"]); print(("ok  " if good else "BAD ") + summary(r) + " (expect stray)"); ok &= good
+    # (e) a blank grab (black window / mis-cropped tray icon) must not pass silently
+    from PIL import Image as _I; bp = os.path.join(out, "synthetic-blank-grab.png"); _I.new("RGB", (480, 240), (0, 0, 0)).save(bp)
+    r = audit(bp, pal, out=out); good = bool(r["no_text"] and r["fail"]); print(("ok  " if good else "BAD ") + summary(r) + " (expect NO_TEXT)"); ok &= good
     # unit checks of the maths against published values
     t = [abs(wcag(hx("#000000"), hx("#FFFFFF")) - 21) < 1e-6, abs(wcag(hx("#000000"), hx("#202020")) - 1.29) < 0.01,
          abs(apca(hx("#000000"), hx("#FFFFFF")) - 106.04) < 0.1, abs(apca(hx("#FFFFFF"), hx("#000000")) + 107.88) < 0.1,

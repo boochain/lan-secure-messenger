@@ -41,7 +41,10 @@ for th in a.themes.split(","):
     tenv = dict(env, LSM_THEME=th, LSM_INSTANCE=th)
     gui = bg([a.gui, "--data", f"{W}/gui", "--name", "李明的笔记本", "--port", "47330", "--disco-port", "47331", "--no-discovery"], env=tenv)
     time.sleep(4)
-    wid = x("search", "--onlyvisible", "--classname", "lan-messenger-gtk").split("\n")[-1]
+    def area(w):
+        g = dict(l.split("=", 1) for l in x("getwindowgeometry", "--shell", w).splitlines() if "=" in l); return int(g.get("WIDTH", 0)) * int(g.get("HEIGHT", 0))
+    # the main window = the LARGEST visible window of our class (the tray icon in stalonetray shares the class and is 24 px wide)
+    wid = max([w for w in x("search", "--onlyvisible", "--classname", "lan-messenger-gtk").split("\n") if w], key=area)
     x("windowmove", wid, "60", "40"); x("windowsize", wid, "1100", "700"); x("windowactivate", wid); time.sleep(1); CUR["wid"] = wid
     gfp = None
     if th == a.themes.split(",")[0]:
