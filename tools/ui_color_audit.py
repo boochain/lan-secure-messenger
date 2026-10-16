@@ -118,6 +118,7 @@ def _ocr_boxes(img, cfg):
             if not t or float(d["conf"][i]) < 55 or not any(ch.isalnum() for ch in t): continue
             x, y, w, h = (d[k][i] // 2 for k in ("left", "top", "width", "height"))
             if w < 4 or h < 6 or h > 120: continue
+            if len(t) == 1 and w < 10 and h < 10: continue  # a lone sub-10px "glyph" is an icon/status dot (8px Ellipse read as "e"), not text; non-text is judged by (b)/(c)
             boxes.append((x, y, w, h, t, float(d["conf"][i])))
     # de-duplicate (normal + inverted runs)
     out = []
