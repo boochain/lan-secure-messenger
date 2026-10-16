@@ -87,6 +87,40 @@ jobs:
             /tmp/lsm-interop/*.log
             /tmp/lsm-matrix/matrix.json
 
+
+  ui-audit:
+    name: Screenshot colour audit, Linux GTK + XP Win32 (light + dark)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchains + X/wine + tesseract (chi_sim+eng) + Python deps
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq mingw-w64 wine wine32:i386 libgtk-3-dev pkg-config musl-tools file \
+            xvfb openbox xdotool x11-utils stalonetray imagemagick fonts-noto-cjk language-pack-zh-hans \
+            tesseract-ocr tesseract-ocr-chi-sim python3-numpy python3-opencv python3-pil
+          pip install --break-system-packages -q pytesseract
+      - name: Checker self-test (must fail synthetic black-on-#202020 etc.)
+        run: python3 tools/ui_color_audit.py --self-test --out ui-audit/self-test
+      - name: Build GTK GUI, XP exe, v0.5 daemon
+        run: |
+          sh linux/build.sh || test -x build/linux-rel/lan-messenger-gtk
+          make build/x86/LanMessenger.exe
+          (cd reference/v0.5 && cargo build --release -p lan-daemon -p lan-cli)
+      - name: Linux GTK screenshots (every screen, light + dark)
+        run: python3 tests/linux_gui_shots.py --rust-bin reference/v0.5/target/release --gui build/linux-rel/lan-messenger-gtk --out shots/linux
+      - name: XP Win32 screenshots under wine (every screen, light + dark)
+        run: bash tests/xp_ui_shots.sh reference/v0.5/target/release shots/xp
+      - name: Audit (fails the job on any violation)
+        run: |
+          ls shots/linux/*.png shots/xp/*.png
+          python3 tools/ui_color_audit.py --content /tmp/lsm-gui/截图.png --content /tmp/lsm-gui/会议白板.png --out ui-audit/linux shots/linux/*.png
+          python3 tools/ui_color_audit.py --out ui-audit/xp shots/xp/*.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: ui-audit-linux-xp, path: "ui-audit\nshots" }
+
   android:
     runs-on: ubuntu-24.04
     steps:
@@ -132,4 +166,18 @@ jobs:
           script: |
             adb install -r art/android/app/build/outputs/apk/release/app-release.apk && adb shell am start -W -n io.github.frec86.lanmessenger/.MainActivity && sleep 8 && adb shell pidof io.github.frec86.lanmessenger
             adb push art/build/android/lanmsg-cli-x86_64 /data/local/tmp/lanmsg-cli && adb shell chmod 755 /data/local/tmp/lanmsg-cli
+            python3 tests/android_theme_shots.py --out shots/android
             sudo -E env "PATH=$PATH" ADB=$(which adb) python3 tests/matrix.py --rust-bin reference/v0.5/target/release --native-cli build/linux/lanmsg-cli --android-cmd /data/local/tmp/lanmsg-cli --kinds rust,native,android --work /tmp/lsm-matrix-android
+      - name: Audit Android screenshots (light + dark)
+        run: |
+          sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tesseract-ocr tesseract-ocr-chi-sim python3-numpy python3-opencv python3-pil
+          pip install --break-system-packages -q pytesseract
+          python3 tools/ui_color_audit.py --self-test --out ui-audit/self-test
+          python3 tools/ui_color_audit.py --ignore-file shots/android/audit_ignore.json --out ui-audit/android shots/android/*.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-audit-android
+          path: |
+            ui-audit
+            shots

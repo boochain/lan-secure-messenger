@@ -71,6 +71,15 @@ treeview header button { background-color: #FBFBFB; color: #1A1A1A; border-color
 menu, .menu, .context-menu, popover { border-color: #E5E5E5; }
 decoration, window.solid-csd decoration, window.csd decoration { background-color: #F3F3F3; border-color: #F3F3F3; }
 menu, .menu, .context-menu, window.popup menu { border: 1px solid #E5E5E5; }
+progressbar trough { background-color: #E5E5E5; border: none; min-height: 4px; }
+progressbar progress { background-color: #005FB8; border: none; min-height: 4px; }
+scrolledwindow viewport, scrolledwindow list, scrolledwindow list row { background-color: #FBFBFB; color: #1A1A1A; }
+dialog scrolledwindow, filechooser scrolledwindow, filechooser placessidebar { border: 1px solid #E5E5E5; }
+dialog .dialog-action-area, dialog buttonbox, filechooser actionbar, dialog > box > box:last-child { border-top: 1px solid #E5E5E5; }
+placessidebar, placessidebar list, placessidebar row { background-color: #EEEEEE; color: #1A1A1A; }
+window.popup, window.popup decoration, .csd.popup decoration { border: 1px solid #E5E5E5; box-shadow: none; border-radius: 0; }
+.csd menu, .csd .menu, .csd .context-menu, menu, .menu, .context-menu { border: 1px solid #E5E5E5; box-shadow: none; }
+menu separator, .menu separator, .csd menu separator { background-color: #E5E5E5; min-height: 1px; margin: 4px 0; }
 /*@dark*/
 window, dialog, messagedialog, .background, popover { background-color: #202020; color: #FFFFFF; }
 headerbar, headerbar:backdrop { background-color: #202020; color: #FFFFFF; border-color: #323232; }
@@ -112,3 +121,12 @@ treeview header button { background-color: #2B2B2B; color: #FFFFFF; border-color
 menu, .menu, .context-menu, popover { border-color: #323232; }
 decoration, window.solid-csd decoration, window.csd decoration { background-color: #202020; border-color: #202020; }
 menu, .menu, .context-menu, window.popup menu { border: 1px solid #323232; }
+progressbar trough { background-color: #323232; border: none; min-height: 4px; }
+progressbar progress { background-color: #60CDFF; border: none; min-height: 4px; }
+scrolledwindow viewport, scrolledwindow list, scrolledwindow list row { background-color: #2B2B2B; color: #FFFFFF; }
+dialog scrolledwindow, filechooser scrolledwindow, filechooser placessidebar { border: 1px solid #323232; }
+dialog .dialog-action-area, dialog buttonbox, filechooser actionbar, dialog > box > box:last-child { border-top: 1px solid #323232; }
+placessidebar, placessidebar list, placessidebar row { background-color: #1C1C1C; color: #FFFFFF; }
+window.popup, window.popup decoration, .csd.popup decoration { border: 1px solid #323232; box-shadow: none; border-radius: 0; }
+.csd menu, .csd .menu, .csd .context-menu, menu, .menu, .context-menu { border: 1px solid #323232; box-shadow: none; }
+menu separator, .menu separator, .csd menu separator { background-color: #323232; min-height: 1px; margin: 4px 0; }
