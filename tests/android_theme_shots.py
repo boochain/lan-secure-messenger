@@ -43,6 +43,7 @@ for th in ("light", "dark"):
     tap_text("按 IP 添加"); shot(f"android-{th}-02-add-ip-dialog", True)
     r = find(lambda n: n.get("class") == "android.widget.EditText"); tap(*r); time.sleep(1); adb("shell", "input", "text", "bad"); time.sleep(1)
     tap_text("确定"); time.sleep(1); shot(f"android-{th}-03-error"); time.sleep(4)
+    for _ in range(2): adb("shell", "input", "keyevent", "111"); time.sleep(1)  # ESC: close the IME and the still-open add-IP dialog (invalid input keeps it open)
     tap_text("菜单"); shot(f"android-{th}-04-menu")
     tap_text("生成 PIN（让对方输入）"); shot(f"android-{th}-05-pin", True); tap_text("好")
     tap_text("菜单"); tap_text("关于"); shot(f"android-{th}-06-about", True); tap_text("好")
