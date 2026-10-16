@@ -159,7 +159,8 @@ jobs:
       - name: Screenshot + audit deps (Pillow, numpy, OpenCV, tesseract chi_sim)
         run: |
           sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tesseract-ocr tesseract-ocr-chi-sim python3-numpy python3-opencv python3-pil
-          pip install --break-system-packages -q pytesseract
+          python3 -m pip install --break-system-packages -q pytesseract pillow numpy opencv-python-headless
+          python3 -c "import PIL, numpy, cv2, pytesseract; print('audit deps ok')"
       - name: Matrix on emulator (Android <-> v0.5 Rust, Android <-> C native) + APK install/launch
         uses: reactivecircus/android-emulator-runner@v2
         with:
