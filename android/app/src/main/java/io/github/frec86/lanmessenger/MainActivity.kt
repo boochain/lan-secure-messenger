@@ -30,6 +30,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -69,13 +70,47 @@ class MainActivity : ComponentActivity() {
 /* ---------------------------------------------------------------- theme: Material You on 12+, readable fallbacks below */
 @Composable
 fun AppTheme(content: @Composable () -> Unit) {
-    val dark = isSystemInDarkTheme(); val ctx = LocalContext.current
-    val scheme = when {
-        Build.VERSION.SDK_INT >= 31 -> if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
-        dark -> darkColorScheme()
-        else -> lightColorScheme()
+    // Unified palette (design/palette.json, Fluent 2 hex, identical on all platforms). No dynamic colour: the
+    // wallpaper-derived scheme (API 31+) and the stock purple M3 defaults are what made colours drift per device.
+    val dark = isSystemInDarkTheme(); val p = if (dark) Palette.Dark else Palette.Light
+    CompositionLocalProvider(LocalPalette provides p) {
+        MaterialTheme(colorScheme = p.scheme(dark), typography = FluentTypography, content = content)
     }
-    MaterialTheme(colorScheme = scheme, content = content)
+}
+
+/** Every text/background pair used by the UI. Pairs come from the same row, never mixed. */
+data class Pal(val windowBg: Color, val sidebarBg: Color, val cardBg: Color, val chatBg: Color, val bubbleInBg: Color, val bubbleInFg: Color,
+               val bubbleOutBg: Color, val bubbleOutFg: Color, val textPrimary: Color, val textSecondary: Color, val accent: Color, val buttonFg: Color,
+               val inputBg: Color, val inputFg: Color, val divider: Color, val online: Color, val warning: Color, val error: Color, val badgeBg: Color, val badgeFg: Color) {
+    fun scheme(dark: Boolean): ColorScheme = (if (dark) darkColorScheme() else lightColorScheme()).copy(
+        primary = accent, onPrimary = buttonFg, primaryContainer = accent, onPrimaryContainer = buttonFg,
+        secondary = accent, onSecondary = buttonFg, secondaryContainer = cardBg, onSecondaryContainer = textPrimary,
+        tertiary = accent, onTertiary = buttonFg, tertiaryContainer = cardBg, onTertiaryContainer = textPrimary,
+        background = windowBg, onBackground = textPrimary, surface = windowBg, onSurface = textPrimary,
+        surfaceVariant = bubbleInBg, onSurfaceVariant = textSecondary, surfaceTint = Color.Transparent,
+        surfaceContainerLowest = chatBg, surfaceContainerLow = sidebarBg, surfaceContainer = cardBg, surfaceContainerHigh = bubbleInBg, surfaceContainerHighest = inputBg,
+        surfaceBright = cardBg, surfaceDim = sidebarBg, inverseSurface = textPrimary, inverseOnSurface = windowBg, inversePrimary = accent,
+        error = error, onError = badgeFg, errorContainer = badgeBg, onErrorContainer = badgeFg, outline = textSecondary, outlineVariant = divider, scrim = Color.Black)
+    companion object {
+        private fun c(v: Long) = Color(0xFF000000 or v)
+        val Light = Pal(c(0xF3F3F3), c(0xEEEEEE), c(0xFBFBFB), c(0xF9F9F9), c(0xFDFDFD), c(0x1B1B1B), c(0x005FB8), c(0xFFFFFF), c(0x1A1A1A), c(0x5C5C5C), c(0x005FB8), c(0xFFFFFF),
+                        c(0xFDFDFD), c(0x1B1B1B), c(0xE5E5E5), c(0x0F7B0F), c(0x9D5D00), c(0xC42B1C), c(0xC42B1C), c(0xFFFFFF))
+        val Dark = Pal(c(0x202020), c(0x1C1C1C), c(0x2B2B2B), c(0x282828), c(0x333333), c(0xFFFFFF), c(0x60CDFF), c(0x000000), c(0xFFFFFF), c(0xCCCCCC), c(0x60CDFF), c(0x000000),
+                       c(0x353535), c(0xFFFFFF), c(0x323232), c(0x6CCB5F), c(0xFCE100), c(0xFF99A4), c(0xFF99A4), c(0x000000))
+    }
+}
+val Palette = Pal
+val LocalPalette = staticCompositionLocalOf { Pal.Light }
+
+/** Fluent type ramp (px -> sp): caption 12/16, body 14/20, body-strong 14/20 600, subtitle 20/28 600, title 28/36 600. */
+val FluentTypography: Typography = run {
+    fun t(size: Int, lh: Int, w: FontWeight) = androidx.compose.ui.text.TextStyle(fontSize = size.sp, lineHeight = lh.sp, fontWeight = w, letterSpacing = 0.sp)
+    val r = FontWeight.Normal; val s = FontWeight.SemiBold
+    Typography(displayLarge = t(68, 92, s), displayMedium = t(40, 52, s), displaySmall = t(28, 36, s),
+        headlineLarge = t(28, 36, s), headlineMedium = t(28, 36, s), headlineSmall = t(20, 28, s),
+        titleLarge = t(20, 28, s), titleMedium = t(14, 20, s), titleSmall = t(14, 20, s),
+        bodyLarge = t(14, 20, r), bodyMedium = t(14, 20, r), bodySmall = t(12, 16, r),
+        labelLarge = t(14, 20, s), labelMedium = t(12, 16, r), labelSmall = t(12, 16, r))
 }
 
 /** Copy a SAF / share Uri into app cache so the core can read it by path (it streams in chunks). */
@@ -188,7 +223,7 @@ fun Home(st: AppState, open: (String) -> Unit) {
         "group" -> PickContacts(st, "创建群组", true, true, true, { fps, n -> val r = Native.groupCreate(n, fps.joinToString(",")); if (r.startsWith("!")) Repo.toast.value = r.drop(1); Repo.refresh() }, { dlg = "" })
         "pin" -> { val pin = remember { Native.pinOffer() }
             AlertDialog(onDismissRequest = { dlg = "" }, title = { Text("PIN 配对") }, text = { Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                Text(pin, fontSize = 44.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, letterSpacing = 6.sp)
+                Text(pin, style = MaterialTheme.typography.displayMedium, fontFamily = FontFamily.Monospace, letterSpacing = 6.sp)
                 Spacer(Modifier.height(8.dp)); Text("请让对方在“输入 PIN 配对”中输入（5 分钟内有效）。") } }, confirmButton = { TextButton({ dlg = "" }) { Text("好") } }) }
         "about" -> AlertDialog(onDismissRequest = { dlg = "" }, title = { Text("关于") }, text = { Text("局域网安全通讯 Android 版 ${st.me.version}\n\n与 Windows v0.5、XP 版和 Linux 版完全互通（协议 v5）：Noise_XX_25519_ChaChaPoly_BLAKE2s 加密、自动发现、按 IP 添加、PIN 配对、群组、文件传输、送达/已读回执。\n\n本机端口 TCP ${st.me.port}") }, confirmButton = { TextButton({ dlg = "" }) { Text("好") } })
     }
@@ -201,7 +236,7 @@ fun Avatar(name: String, online: Boolean, group: Boolean = false) {
     Box(Modifier.size(40.dp).clip(CircleShape).let { it }, contentAlignment = Alignment.Center) {
         Surface(color = if (group) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.primaryContainer, shape = CircleShape, modifier = Modifier.fillMaxSize()) {}
         Text(name.take(1), color = if (group) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onPrimaryContainer, fontWeight = FontWeight.Bold)
-        if (!group) Box(Modifier.align(Alignment.BottomEnd).size(12.dp).clip(CircleShape)) { Surface(color = if (online) androidx.compose.ui.graphics.Color(0xFF2E9D48) else MaterialTheme.colorScheme.outline, modifier = Modifier.fillMaxSize()) {} }
+        if (!group) Box(Modifier.align(Alignment.BottomEnd).size(12.dp).clip(CircleShape)) { Surface(color = if (online) LocalPalette.current.online else MaterialTheme.colorScheme.outline, modifier = Modifier.fillMaxSize()) {} }
     }
 }
 
@@ -267,7 +302,8 @@ fun Bubble(m: Msg, t: Transfer?, onSave: (String) -> Unit) {
     val cs = MaterialTheme.colorScheme
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalAlignment = if (m.out) Alignment.End else Alignment.Start) {
         Text((if (m.out) "我" else m.sender) + " · " + fmt.format(Date(m.ts)) + (if (m.out) " · " + statusZh(m.status) else ""), style = MaterialTheme.typography.labelSmall, color = cs.onSurfaceVariant)
-        Surface(color = if (m.out) cs.primary else cs.surfaceVariant, contentColor = if (m.out) cs.onPrimary else cs.onSurfaceVariant, shape = RoundedCornerShape(14.dp), modifier = Modifier.padding(top = 2.dp).widthIn(max = 300.dp)) {
+        val pl = LocalPalette.current
+        Surface(color = if (m.out) pl.bubbleOutBg else pl.bubbleInBg, contentColor = if (m.out) pl.bubbleOutFg else pl.bubbleInFg, shape = RoundedCornerShape(8.dp), border = if (m.out) null else androidx.compose.foundation.BorderStroke(1.dp, pl.divider), modifier = Modifier.padding(top = 2.dp).widthIn(max = 300.dp)) {
             Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                 if (m.kind == 1) {
                     val path = if (t != null && (t.state == "done" || t.out)) t.path else m.path

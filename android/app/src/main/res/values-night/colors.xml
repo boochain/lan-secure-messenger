@@ -1,0 +1,5 @@
+<resources>
+    <color name="lsm_window_bg">#202020</color>
+    <color name="lsm_text_primary">#FFFFFF</color>
+    <color name="lsm_accent">#60CDFF</color>
+</resources>

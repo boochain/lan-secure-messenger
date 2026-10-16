@@ -9,13 +9,20 @@ DISP = ":57"; env = dict(os.environ, DISPLAY=DISP, NO_AT_BRIDGE="1", LANG="zh_CN
 procs = []
 def bg(cmd, **kw): p = subprocess.Popen(cmd, env=kw.pop("env", env), stdout=subprocess.DEVNULL, stderr=open(f"{W}/{os.path.basename(cmd[0])}.err", "a"), **kw); procs.append(p); return p
 def x(*c): return subprocess.run(["xdotool"] + list(c), env=env, capture_output=True, text=True).stdout.strip()
-def shot(name): subprocess.run(["import", "-window", "root", f"{a.out}/{name}.png"], env=env); print("shot", name, flush=True)
+CUR = {}
+def shot(name):  # root grab cropped to the main window (dialogs/menus/tooltips sit on top of it); no desktop pixels
+    g = {}
+    if CUR.get("wid"):
+        for l in x("getwindowgeometry", "--shell", CUR["wid"]).splitlines():
+            k, _, v = l.partition("="); g[k] = int(v) if v.isdigit() else v
+    crop = ["-crop", f'{g["WIDTH"]}x{g["HEIGHT"]}+{g["X"]}+{g["Y"]}', "+repage"] if g else []
+    subprocess.run(["import", "-window", "root"] + crop + [f"{a.out}/{name}.png"], env=env); print("shot", name, flush=True)
 def lm(*c): return subprocess.run([f"{a.rust_bin}/lan-msg", "--ipc", f"{W}/r.sock"] + list(c), capture_output=True, text=True, timeout=30).stdout
 bg(["Xvfb", DISP, "-screen", "0", "1280x800x24", "-nolisten", "tcp"]); time.sleep(2)
 dbus = subprocess.run(["dbus-launch", "--sh-syntax"], env=env, capture_output=True, text=True).stdout
 for line in dbus.splitlines():
     if line.startswith("DBUS_SESSION_BUS_ADDRESS="): env["DBUS_SESSION_BUS_ADDRESS"] = line.split("=", 1)[1].strip("';")
-bg(["openbox"]); time.sleep(1)
+bg(["openbox", "--config-file", os.path.join(os.path.dirname(os.path.abspath(__file__)), "openbox-nodecor.xml")]); time.sleep(1)
 bg(["stalonetray", "--geometry", "6x1-0+0", "--icon-size", "24", "--kludges", "force_icons_size", "-bg", "#3c3c3c"]); time.sleep(1)
 # real v0.5 daemon (Rust) as the peer
 rd = bg([f"{a.rust_bin}/lan-daemon", "--data-dir", f"{W}/r", "--ipc", f"{W}/r.sock", "--set", 'display_name="王工（Windows v0.5）"', "--set", "listen_port=47320",
@@ -35,7 +42,7 @@ for th in a.themes.split(","):
     gui = bg([a.gui, "--data", f"{W}/gui", "--name", "李明的笔记本", "--port", "47330", "--disco-port", "47331", "--no-discovery"], env=tenv)
     time.sleep(4)
     wid = x("search", "--onlyvisible", "--classname", "lan-messenger-gtk").split("\n")[-1]
-    x("windowmove", wid, "60", "40"); x("windowsize", wid, "1100", "700"); x("windowactivate", wid); time.sleep(1)
+    x("windowmove", wid, "60", "40"); x("windowsize", wid, "1100", "700"); x("windowactivate", wid); time.sleep(1); CUR["wid"] = wid
     gfp = None
     if th == a.themes.split(",")[0]:
         lm("add", "127.0.0.1:47330"); time.sleep(5)
@@ -55,7 +62,7 @@ for th in a.themes.split(","):
     else:
         x("key", "F10"); time.sleep(1); shot(f"{th}-03-menu"); x("key", "Escape"); time.sleep(0.5)
     x("mousemove", "--window", wid, "150", "128"); x("click", "1"); time.sleep(2)
-    if th == a.themes.split(",")[0]:
+    if True:
         # GUI -> v0.5 file via the core (drag-drop path is the same lsm_send_file call), image preview on the sender side too
         from PIL import Image as _I; _I.new("RGB", (300, 200), (30, 160, 90)).save(f"{W}/截图.png")
         x("mousemove", "--window", wid, "1036", "645"); x("click", "1"); time.sleep(2); shot(f"{th}-09-file-chooser")
@@ -63,6 +70,10 @@ for th in a.themes.split(","):
     shot(f"{th}-02-chat")
     # add-by-IP dialog (header + button)
     x("mousemove", "--window", wid, "22", "20"); x("click", "1"); time.sleep(1.2); x("type", "192.168.1.20"); time.sleep(0.5); shot(f"{th}-04-add-by-ip"); x("key", "Escape"); time.sleep(0.8)
+    # error state: invalid address -> error dialog
+    x("mousemove", "--window", wid, "22", "20"); x("click", "1"); time.sleep(1.2); x("type", "bad address"); x("key", "Return"); time.sleep(1.5); shot(f"{th}-10-error"); x("key", "Return"); time.sleep(0.5); x("key", "Escape"); time.sleep(0.8)
+    # tooltip on the header-bar + button
+    x("mousemove", "--window", wid, "20", "18"); time.sleep(0.3); x("mousemove", "--window", wid, "22", "20"); time.sleep(2.5); shot(f"{th}-11-tooltip"); x("mousemove", "--window", wid, "500", "400"); time.sleep(0.5)
     # transfers dialog: menu, last-but-6 entry -> use keyboard: F10 then Up x6
     def menu_up(n):
         x("key", "F10"); time.sleep(0.8)

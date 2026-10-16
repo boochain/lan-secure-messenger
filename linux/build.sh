@@ -10,7 +10,8 @@ cd "$(dirname "$0")/.."
 OUT=build/linux-rel; DIST=dist/linux; rm -rf "$OUT" "$DIST"; mkdir -p "$OUT" "$DIST"
 CORE="src/core.c src/xcrypto.c src/third_party/monocypher.c src/third_party/monocypher-ed25519.c"
 CF="-O2 -std=gnu99 -Isrc -Wall -Wno-unused-function -Wno-misleading-indentation -Wno-stringop-truncation -Wno-format-truncation -Wno-deprecated-declarations -DLSM_APP_VERSION=\"$VER\" -D_FORTIFY_SOURCE=2 -fstack-protector-strong"
-cc $CF -o $OUT/lan-messenger-gtk linux/gtk_gui.c $CORE $(pkg-config --cflags --libs gtk+-3.0) -lpthread -ldl -Wl,-z,relro,-z,now
+sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/^/"/' -e 's/$/\\n"/' linux/data/lsm-theme.css | { echo "static const char LSM_THEME_CSS[] ="; cat; echo ";"; } > $OUT/lsm_theme_css.h
+cc $CF -I$OUT -o $OUT/lan-messenger-gtk linux/gtk_gui.c $CORE $(pkg-config --cflags --libs gtk+-3.0) -lpthread -ldl -Wl,-z,relro,-z,now
 # CLI: fully static with musl when available (runs on any Linux incl. Alpine / NAS boxes), else glibc dynamic
 if command -v musl-gcc >/dev/null 2>&1; then musl-gcc $CF -static -o $OUT/lanmsg-cli src/cli.c $CORE -lpthread; else cc $CF -o $OUT/lanmsg-cli src/cli.c $CORE -lpthread; fi
 strip $OUT/lan-messenger-gtk $OUT/lanmsg-cli

@@ -1,1 +1,11 @@
-<resources><style name="Theme.Lsm" parent="android:Theme.Material.NoActionBar"><item name="android:windowBackground">@android:color/background_dark</item></style></resources>
+<resources>
+    <style name="Theme.Lsm" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/lsm_window_bg</item>
+        <item name="android:colorBackground">@color/lsm_window_bg</item>
+        <item name="android:textColorPrimary">@color/lsm_text_primary</item>
+        <item name="android:colorAccent">@color/lsm_accent</item>
+        <item name="android:statusBarColor">@color/lsm_window_bg</item>
+        <item name="android:navigationBarColor">@color/lsm_window_bg</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>
