@@ -101,12 +101,18 @@ def kmeans2(lab, iters=12):
     return lab_, c
 
 def ocr_boxes(img):
+    out = _ocr_boxes(img, "--psm 11")
+    # tesseract 5.3 (Ubuntu 24.04 CI) can return nothing for a whole crop in sparse mode where 5.5 does not:
+    # fall back to automatic page segmentation before concluding there is no text
+    return out or _ocr_boxes(img, "--psm 3")
+
+def _ocr_boxes(img, cfg):
     import pytesseract
     up = img.resize((img.width * 2, img.height * 2), Image.LANCZOS)
     boxes = []
     for inv in (False, True):  # tesseract prefers dark-on-light; run on the inverted image too
         src = Image.fromarray(255 - np.asarray(up)) if inv else up
-        d = pytesseract.image_to_data(src, lang="chi_sim+eng", config="--psm 11", output_type=pytesseract.Output.DICT)
+        d = pytesseract.image_to_data(src, lang="chi_sim+eng", config=cfg, output_type=pytesseract.Output.DICT)
         for i, t in enumerate(d["text"]):
             t = t.strip()
             if not t or float(d["conf"][i]) < 55 or not any(ch.isalnum() for ch in t): continue
