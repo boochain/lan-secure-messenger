@@ -251,12 +251,15 @@ def audit(path, pal, theme="auto", out=None, ignore=(), strict_cvd=False, ocr=Tr
                 d = float(de2000(rgb_to_lab(simulate(on_screen[ks[i]], kind)), rgb_to_lab(simulate(on_screen[ks[j]], kind))))
                 if d < 10: res["cvd"].append(dict(pair=[ks[i], ks[j]], sim=kind, de=round(d, 2)))
     # (d)
-    key = (q.astype(np.int32) // 4); kk = (key[:, 0] << 12) | (key[:, 1] << 6) | key[:, 2]
+    # palette conformance applies to FILLS (flat regions >= 8 px thick). Glyph anti-aliasing is judged by (a)/(b),
+    # and 1-2 px OS window borders / hairlines are not fills.
+    fill = labels[mask] > 0; qf = q[fill]
+    key = (qf.astype(np.int32) // 4); kk = (key[:, 0] << 12) | (key[:, 1] << 6) | key[:, 2]
     vals, inv, cnt = np.unique(kk, return_inverse=True, return_counts=True)
     for vi in np.where(cnt >= 0.004 * len(q))[0]:
-        col = q[inv == vi].mean(0); d = de2000(rgb_to_lab(col)[None].repeat(len(toklab), 0), toklab)
+        col = qf[inv == vi].mean(0); d = de2000(rgb_to_lab(col)[None].repeat(len(toklab), 0), toklab)
         if d.min() > 2.0:
-            sel = np.zeros((H, W), bool); sel[mask] = (inv == vi); ys, xs = np.nonzero(sel)
+            sel = np.zeros((H, W), bool); sm = np.zeros(len(q), bool); sm[np.nonzero(fill)[0][inv == vi]] = True; sel[mask] = sm; ys, xs = np.nonzero(sel)
             res["stray"].append(dict(color=tohex(col), frac=round(float(cnt[vi]) / len(q), 4), nearest=list(tok)[int(d.argmin())], de=round(float(d.min()), 2),
                                      box=[int(xs.min()), int(ys.min()), int(xs.max() - xs.min() + 1), int(ys.max() - ys.min() + 1)]))
     res["fail"] = bool(res["text_fail"] or res["strokes"] or res["indistinct"] or res["stray"] or (strict_cvd and res["cvd"]))

@@ -25,7 +25,7 @@
                                 <TextBlock Text="{x:Bind FileSizeText, Mode=OneWay}" Style="{StaticResource SecondaryCaptionStyle}" />
                             </StackPanel>
                             <Button Content="打开" Click="OpenFile_Click" Visibility="{x:Bind HasFilePath, Mode=OneWay}" />
-                            <Button Content="所在文件夹" Click="RevealFile_Click" Visibility="{x:Bind HasFilePath, Mode=OneWay}" />
+                            <Button Content="所在文件夹" Background="{ThemeResource LsmWindowBackgroundBrush}" BorderBrush="{ThemeResource LsmDividerBrush}" Click="RevealFile_Click" Visibility="{x:Bind HasFilePath, Mode=OneWay}" />
                         </StackPanel>
                     </StackPanel>
                 </Border>

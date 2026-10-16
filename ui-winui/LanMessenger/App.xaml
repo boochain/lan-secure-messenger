@@ -18,6 +18,28 @@
                  accent fill (sent bubbles, 发送 button) in dark mode. HighContrast keeps the system colours. -->
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="AccentButtonBackground" Color="#005FB8" />
+                    <SolidColorBrush x:Key="AccentButtonBackgroundPointerOver" Color="#005FB8" />
+                    <SolidColorBrush x:Key="AccentButtonBackgroundPressed" Color="#005FB8" />
+                    <SolidColorBrush x:Key="AccentButtonForeground" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="AccentButtonForegroundPointerOver" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="AccentButtonForegroundPressed" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="InfoBarInformationalSeverityBackgroundBrush" Color="#FBFBFB" />
+                    <SolidColorBrush x:Key="InfoBarWarningSeverityBackgroundBrush" Color="#FBFBFB" />
+                    <SolidColorBrush x:Key="InfoBarErrorSeverityBackgroundBrush" Color="#FBFBFB" />
+                    <SolidColorBrush x:Key="InfoBarSuccessSeverityBackgroundBrush" Color="#FBFBFB" />
+                    <SolidColorBrush x:Key="NavigationViewItemBackgroundPointerOver" Color="#E5E5E5" />
+                    <SolidColorBrush x:Key="NavigationViewItemBackgroundPressed" Color="#E5E5E5" />
+                    <SolidColorBrush x:Key="ControlFillColorSecondaryBrush" Color="#FDFDFD" />
+                    <SolidColorBrush x:Key="ControlFillColorTertiaryBrush" Color="#FDFDFD" />
+                    <SolidColorBrush x:Key="ControlFillColorInputActiveBrush" Color="#FDFDFD" />
+                    <SolidColorBrush x:Key="TextControlBackground" Color="#FDFDFD" />
+                    <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="#FDFDFD" />
+                    <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="#FDFDFD" />
+                    <SolidColorBrush x:Key="ButtonBackground" Color="#FDFDFD" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#FDFDFD" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#FDFDFD" />
+                    <SolidColorBrush x:Key="ControlStrongStrokeColorDefaultBrush" Color="#5C5C5C" />
                     <SolidColorBrush x:Key="SystemFillColorCautionBackgroundBrush" Color="#FBFBFB" />
                     <SolidColorBrush x:Key="SystemFillColorCriticalBackgroundBrush" Color="#FBFBFB" />
                     <SolidColorBrush x:Key="SystemFillColorSuccessBackgroundBrush" Color="#FBFBFB" />
@@ -80,6 +102,28 @@
                     <Thickness x:Key="MediaBubbleBorderThickness">1</Thickness>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="AccentButtonBackground" Color="#60CDFF" />
+                    <SolidColorBrush x:Key="AccentButtonBackgroundPointerOver" Color="#60CDFF" />
+                    <SolidColorBrush x:Key="AccentButtonBackgroundPressed" Color="#60CDFF" />
+                    <SolidColorBrush x:Key="AccentButtonForeground" Color="#000000" />
+                    <SolidColorBrush x:Key="AccentButtonForegroundPointerOver" Color="#000000" />
+                    <SolidColorBrush x:Key="AccentButtonForegroundPressed" Color="#000000" />
+                    <SolidColorBrush x:Key="InfoBarInformationalSeverityBackgroundBrush" Color="#2B2B2B" />
+                    <SolidColorBrush x:Key="InfoBarWarningSeverityBackgroundBrush" Color="#2B2B2B" />
+                    <SolidColorBrush x:Key="InfoBarErrorSeverityBackgroundBrush" Color="#2B2B2B" />
+                    <SolidColorBrush x:Key="InfoBarSuccessSeverityBackgroundBrush" Color="#2B2B2B" />
+                    <SolidColorBrush x:Key="NavigationViewItemBackgroundPointerOver" Color="#323232" />
+                    <SolidColorBrush x:Key="NavigationViewItemBackgroundPressed" Color="#323232" />
+                    <SolidColorBrush x:Key="ControlFillColorSecondaryBrush" Color="#353535" />
+                    <SolidColorBrush x:Key="ControlFillColorTertiaryBrush" Color="#353535" />
+                    <SolidColorBrush x:Key="ControlFillColorInputActiveBrush" Color="#353535" />
+                    <SolidColorBrush x:Key="TextControlBackground" Color="#353535" />
+                    <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="#353535" />
+                    <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="#353535" />
+                    <SolidColorBrush x:Key="ButtonBackground" Color="#353535" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#353535" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#353535" />
+                    <SolidColorBrush x:Key="ControlStrongStrokeColorDefaultBrush" Color="#CCCCCC" />
                     <SolidColorBrush x:Key="SystemFillColorCautionBackgroundBrush" Color="#2B2B2B" />
                     <SolidColorBrush x:Key="SystemFillColorCriticalBackgroundBrush" Color="#2B2B2B" />
                     <SolidColorBrush x:Key="SystemFillColorSuccessBackgroundBrush" Color="#2B2B2B" />
