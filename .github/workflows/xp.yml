@@ -169,7 +169,8 @@ jobs:
           target: default
           disable-animations: true
           script: |
-            adb install -r art/android/app/build/outputs/apk/release/app-release.apk && adb shell am start -W -n io.github.frec86.lanmessenger/.MainActivity && sleep 8 && adb shell pidof io.github.frec86.lanmessenger
+            for i in 1 2 3 4 5 6; do adb wait-for-device; adb shell pm path android >/dev/null 2>&1 && adb install -r art/android/app/build/outputs/apk/release/app-release.apk && break; echo "install retry $i (package service not ready)"; sleep 10; done
+            adb shell pm path io.github.frec86.lanmessenger && adb shell am start -W -n io.github.frec86.lanmessenger/.MainActivity && sleep 8 && adb shell pidof io.github.frec86.lanmessenger
             adb push art/build/android/lanmsg-cli-x86_64 /data/local/tmp/lanmsg-cli && adb shell chmod 755 /data/local/tmp/lanmsg-cli
             python3 tests/android_theme_shots.py --out shots/android
             sudo -E env "PATH=$PATH" ADB=$(which adb) python3 tests/matrix.py --rust-bin reference/v0.5/target/release --native-cli build/linux/lanmsg-cli --android-cmd /data/local/tmp/lanmsg-cli --kinds rust,native,android --work /tmp/lsm-matrix-android
