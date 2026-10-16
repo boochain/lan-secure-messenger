@@ -1,1 +1,7 @@
-{}
+{
+ "_reasons": {
+  "first-run-*": "ContentDialog is modal: the page behind the smoke scrim is inactive (WCAG 1.4.3 exempts inactive UI); only the dialog rectangle is audited"
+ },
+ "first-run-light.png": {"only": [223, 34, 524, 604]},
+ "first-run-dark.png": {"only": [223, 34, 524, 604]}
+}

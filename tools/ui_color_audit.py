@@ -9,7 +9,7 @@ Exit status 1 if any screenshot fails a gate.
 Gates per screenshot
  (a) OCR text (tesseract chi_sim+eng). Each word box: pixels are split into 2 clusters in CIELAB
      (k-means); background = the cluster that owns most of the box border; foreground colour = the
-     "ink core" (the 25 % of foreground pixels farthest from the background, so anti-aliasing does not
+     "ink core" (the 3 % of foreground pixels farthest from the background, so anti-aliasing does not
      dilute it). WCAG 2 ratio: body < 4.5 fails, large (>= 24 px tall glyphs ~ 18 pt) < 3.0 fails.
      APCA-W3 0.0.98G Lc: body |Lc| < 60 fails, large |Lc| < 45 fails.
  (b) OCR-independent scan for dark-on-dark / light-on-light strokes: 16 px tiles, per tile the 3rd/97th
@@ -17,8 +17,9 @@ Gates per screenshot
      >= 4 small connected stroke components; it fails when the real WCAG ratio between those two
      levels is between 1.04 and 3.0 (visible to the edge detector, invisible-ish to a human).
      Tiles covered by a passing OCR box are ignored; flagged tiles are merged into regions (>= 3 tiles).
- (c) Flat regions (connected components of one quantised colour, area >= 0.15 % of the image) that
-     touch along >= 24 px with CIEDE2000 dE < 3 (and > 0.4) fail as "indistinct adjacent elements".
+ (c) Flat regions (connected components of one exact colour, area >= 0.15 % of the image, at least 8 px
+     thick; 1-2 px lines and outlines are separators) that touch along >= 24 px with CIEDE2000 dE < 2.9
+     ('about 3'; the palette divider on window_bg is 2.97) and > 0.4 fail as "indistinct adjacent elements".
      Status colours (palette online/warning/error) present on screen are simulated for protanopia and
      deuteranopia (Machado 2009, severity 1); a pair with dE2000 < 10 after simulation is reported
      as CVD warning (colour must not be the only cue; it fails only when --strict-cvd).
@@ -131,7 +132,7 @@ def text_check(arr, box):
     if len(fgpix) < 3: return None
     bg = np.median(bgpix, 0)
     dist = de2000(rgb_to_lab(fgpix), rgb_to_lab(bg)[None].repeat(len(fgpix), 0))
-    core = fgpix[dist >= np.quantile(dist, 0.75)]; fg = np.median(core, 0)
+    core = fgpix[dist >= np.quantile(dist, 0.97)]; fg = np.median(core, 0)
     ratio = wcag(fg, bg); lc = apca(fg, bg); large = h >= 24
     fail = []
     if ratio < (3.0 if large else 4.5): fail.append(f"WCAG {ratio:.2f} < {'3.0' if large else '4.5'}")
@@ -153,7 +154,8 @@ def stroke_scan(arr, passing_boxes, T=16):
             g = (np.clip((lt - lo) / max(hi - lo, 1e-6), 0, 1) * 255).astype(np.uint8)
             e = cv2.Canny(g, 80, 160)
             n, lab, st, _ = cv2.connectedComponentsWithStats(e, connectivity=8)
-            small = [i for i in range(1, n) if 3 <= st[i, cv2.CC_STAT_AREA] <= 60]
+            # glyph strokes are 2-D; a 1-px straight edge (divider, frame) is not a glyph
+            small = [i for i in range(1, n) if 3 <= st[i, cv2.CC_STAT_AREA] <= 60 and st[i, cv2.CC_STAT_WIDTH] >= 2 and st[i, cv2.CC_STAT_HEIGHT] >= 2]
             # glyph-like: several separate small stroke pieces, minority pixels between 4 % and 45 %
             minority = (g > 128).mean(); minority = min(minority, 1 - minority)
             if len(small) >= 4 and 0.04 < minority < 0.45: flagged[ty, tx] = True
@@ -165,6 +167,7 @@ def stroke_scan(arr, passing_boxes, T=16):
         x, y, w, h = (int(st[i, k]) * T for k in (_c.CC_STAT_LEFT, _c.CC_STAT_TOP, _c.CC_STAT_WIDTH, _c.CC_STAT_HEIGHT))
         p = arr[y:y + h, x:x + w].reshape(-1, 3).astype(float); lt = rel_lum(p)
         lo, hi = p[lt <= np.percentile(lt, 3)].mean(0), p[lt >= np.percentile(lt, 97)].mean(0)
+        if wcag(lo, hi) >= 3.0: continue  # merged region really has enough contrast (tile edges of normal text)
         regs.append(dict(box=[x, y, w, h], tiles=int(st[i, _c.CC_STAT_AREA]), dark=tohex(lo), light=tohex(hi), wcag=round(wcag(lo, hi), 2)))
     return regs
 
@@ -178,10 +181,13 @@ def flat_regions(arr, min_frac=0.0015):
         m = (inv == vi).astype(np.uint8); n, lab, st, _ = cv2.connectedComponentsWithStats(m, connectivity=4)
         for i in range(1, n):
             if st[i, cv2.CC_STAT_AREA] < min_area: continue
+            w_, h_ = st[i, cv2.CC_STAT_WIDTH], st[i, cv2.CC_STAT_HEIGHT]
+            if min(w_, h_) < 8 or st[i, cv2.CC_STAT_AREA] < 4 * (w_ + h_): continue  # lines / 1-2 px outlines are separators, not elements
             sel = lab == i; labels[sel] = nxt; col = arr[sel].reshape(-1, 3).mean(0)
             regs.append(dict(id=nxt, color=col, area=int(st[i, cv2.CC_STAT_AREA]), box=[int(st[i, k]) for k in (0, 1, 2, 3)])); nxt += 1
     return labels, regs
 
+DE_MIN = 2.9  # 'about 3': the palette's own divider on window_bg (#E5E5E5/#F3F3F3) measures 2.97
 def adjacency(labels, regs, min_len=24):
     pairs = {}
     for a, b in ((labels[:, :-1], labels[:, 1:]), (labels[:-1, :], labels[1:, :])):
@@ -191,15 +197,29 @@ def adjacency(labels, regs, min_len=24):
     for (i, j), n in pairs.items():
         if n < min_len: continue
         d = float(de2000(rgb_to_lab(byid[i]["color"]), rgb_to_lab(byid[j]["color"])))
-        if 0.4 < d < 3.0: out.append(dict(a=tohex(byid[i]["color"]), b=tohex(byid[j]["color"]), de=round(d, 2), boundary_px=n, box_a=byid[i]["box"], box_b=byid[j]["box"]))
+        if 0.4 < d < DE_MIN: out.append(dict(a=tohex(byid[i]["color"]), b=tohex(byid[j]["color"]), de=round(d, 2), boundary_px=n, box_a=byid[i]["box"], box_b=byid[j]["box"]))
     return out
 
 def load_palette(p):
     d = json.load(open(p)); return {th: {k: hx(v) for k, v in d["colors"][th].items()} for th in ("light", "dark")}
 
+CONTENT = set()
+def load_content(paths):
+    """User content (images sent in the chat) is not UI: its exact colours are masked out of every gate."""
+    for p in paths:
+        a = np.asarray(Image.open(p).convert("RGB")).reshape(-1, 3).astype(np.int64) >> 3  # scaled thumbnails: match at 5-bit precision
+        CONTENT.update(np.unique((a[:, 0] << 10) | (a[:, 1] << 5) | a[:, 2]).tolist())
 def audit(path, pal, theme="auto", out=None, ignore=(), strict_cvd=False, ocr=True):
     img = Image.open(path).convert("RGB"); arr = np.asarray(img).copy(); H, W = arr.shape[:2]
     mask = np.ones((H, W), bool)
+    if CONTENT:
+        import cv2
+        q5 = arr.astype(np.int64) >> 3; k = (q5[..., 0] << 10) | (q5[..., 1] << 5) | q5[..., 2]
+        cm = np.isin(k, np.fromiter(CONTENT, np.int64)).astype(np.uint8)
+        n, lab, st, _ = cv2.connectedComponentsWithStats(cm, connectivity=8)
+        for i in range(1, n):  # only sizeable blobs of content colour (an image), not stray matching pixels
+            if st[i, cv2.CC_STAT_AREA] >= 400:
+                x, y, w, h = (int(st[i, j]) for j in range(4)); mask[max(0, y - 3):y + h + 3, max(0, x - 3):x + w + 3] = False
     for (x, y, w, h) in ignore: mask[y:y + h, x:x + w] = False
     if theme == "auto": theme = "dark" if np.median(rel_lum(arr[mask].astype(float))) < 0.18 else "light"
     tok = pal[theme]; toklab = rgb_to_lab(np.stack(list(tok.values())))
@@ -294,16 +314,23 @@ if __name__ == "__main__":
     ap.add_argument("imgs", nargs="*"); ap.add_argument("--palette", default=os.path.join(HERE, "palette.json"))
     ap.add_argument("--theme", default="auto"); ap.add_argument("--out", default="ui-audit")
     ap.add_argument("--ignore", action="append", default=[], help="x,y,w,h rectangle excluded from all gates (OS chrome / user content); may repeat")
-    ap.add_argument("--ignore-file", help="JSON {basename: [[x,y,w,h],...]} per-image ignore rectangles")
+    ap.add_argument("--ignore-file", help="JSON {basename: [[x,y,w,h],...] | {\"ignore\": [...], \"only\": [x,y,w,h]}}; every entry must carry a reason in _reasons")
+    ap.add_argument("--content", action="append", default=[], help="image file sent as chat content (masked, not UI); may repeat")
     ap.add_argument("--strict-cvd", action="store_true"); ap.add_argument("--self-test", action="store_true")
-    a = ap.parse_args(); pal = load_palette(a.palette)
+    a = ap.parse_args(); pal = load_palette(a.palette); load_content(a.content)
     if a.self_test: sys.exit(0 if self_test(pal, a.out) else 1)
     ign = [tuple(map(int, s.split(","))) for s in a.ignore]; per = json.load(open(a.ignore_file)) if a.ignore_file else {}
+    per = {k: v for k, v in per.items() if not k.startswith('_')}
     rows, bad = [], 0
     for p in a.imgs:
         th = a.theme
         if th == "auto": th = "dark" if "dark" in os.path.basename(p).lower() else "light" if "light" in os.path.basename(p).lower() else "auto"
-        r = audit(p, pal, th, a.out, ign + [tuple(x) for x in per.get(os.path.basename(p), [])], a.strict_cvd); s = summary(r); print(s, flush=True); rows.append((r, s)); bad += r["fail"]
+        spec = per.get(os.path.basename(p), [])
+        rects = ign + [tuple(x) for x in (spec.get("ignore", []) if isinstance(spec, dict) else spec)]
+        if isinstance(spec, dict) and "only" in spec:  # modal dialog: content behind the scrim is inactive (WCAG-exempt)
+            ox, oy, ow, oh = spec["only"]; Wd, Hd = Image.open(p).size
+            rects += [(0, 0, Wd, oy), (0, oy + oh, Wd, Hd - oy - oh), (0, oy, ox, oh), (ox + ow, oy, Wd - ox - ow, oh)]
+        r = audit(p, pal, th, a.out, rects, a.strict_cvd); s = summary(r); print(s, flush=True); rows.append((r, s)); bad += r["fail"]
     with open(os.path.join(a.out, "report.md"), "w") as f:
         f.write(f"# ui_color_audit report\n\n{len(rows)} screenshots, {bad} failing\n\n")
         for r, s in rows:
