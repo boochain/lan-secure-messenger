@@ -79,7 +79,12 @@ A = Node("RA", base); B = Node("RB", base + 2)
 B.cmd(f"add 127.0.0.1:{base}"); A.has("online", 10); B.has("online", 10); A.cmd(f"trust {B.fp}"); B.cmd(f"trust {A.fp}")
 src = f"/tmp/lsmreg-file-{os.getpid()}.bin"; open(src, "wb").write(os.urandom(70000)); name = os.path.basename(src)
 B.cmd(f"sendfile {A.fp} " + (src if not exe.endswith(".exe") else "Z:" + src.replace("/", "\\")))
-okrx = A.has("\tin\tdone\t", 30); A.quit(); B.quit()
+okrx = A.has("\tin\tdone\t", 30)
+# the 'done' event can precede the receiver's message record by a moment; wait until it is in history before restarting
+for _ in range(50):
+    if any(name in l for l in A.cmd(f"history {B.fp}") if "[file]" in l): break
+    time.sleep(0.2)
+A.quit(); B.quit()
 A = Node("RA", base); B = Node("RB", base + 2)
 la = [l for l in A.cmd(f"history {B.fp}") if "[file]" in l]; lb = [l for l in B.cmd(f"history {A.fp}") if "[file]" in l]
 check("file message name survives restart (receiver + sender)", okrx and any(name in l for l in la) and any(name in l for l in lb), (la[:1], lb[:1]))
