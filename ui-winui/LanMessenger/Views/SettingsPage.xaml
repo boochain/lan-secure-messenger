@@ -5,8 +5,8 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:LanMessenger"
     Background="Transparent">
-    <ScrollViewer Padding="16,4,16,16">
-        <StackPanel Spacing="12" MaxWidth="860" HorizontalAlignment="Stretch">
+    <ScrollViewer><!-- padding lives on the content: ScrollViewer.Padding clipped cards 16px above the edge with no border (audit: indistinct card/page) -->
+        <StackPanel Spacing="12" MaxWidth="860" HorizontalAlignment="Stretch" Margin="16,4,16,16">
             <TextBlock Text="设置" Style="{StaticResource TitleTextBlockStyle}" />
 
             <Border Style="{StaticResource CardBorderStyle}">

@@ -6,8 +6,8 @@
     xmlns:local="using:LanMessenger"
     xmlns:vm="using:LanMessenger.Core.ViewModels"
     Background="Transparent">
-    <ScrollViewer Padding="16,4,16,16">
-        <StackPanel Spacing="12" MaxWidth="960">
+    <ScrollViewer><!-- padding lives on the content: ScrollViewer.Padding clipped cards 16px above the edge with no border (audit: indistinct card/page) -->
+        <StackPanel Spacing="12" MaxWidth="960" Margin="16,4,16,16">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />

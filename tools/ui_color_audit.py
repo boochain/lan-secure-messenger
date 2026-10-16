@@ -215,6 +215,18 @@ def load_content(paths):
     for p in paths:
         a = np.asarray(Image.open(p).convert("RGB")).reshape(-1, 3).astype(np.int64) >> 3  # scaled thumbnails: match at 5-bit precision
         CONTENT.update(np.unique((a[:, 0] << 10) | (a[:, 1] << 5) | a[:, 2]).tolist())
+
+def drop_ui_colours_from_content(pal):
+    """Never treat a UI token colour as 'content': the app icon contains white, which used to mask a whole white
+    dialog out of every gate (first-run-light was audited as blank). Any 5-bit bucket within dE 3 of a palette token
+    in either theme is removed."""
+    if not CONTENT: return
+    toks = np.stack([v for th in pal.values() for v in th.values()]); tl = rgb_to_lab(toks)
+    keep = set()
+    for k in CONTENT:
+        c = np.array([(k >> 10) & 31, (k >> 5) & 31, k & 31], float) * 8 + 4
+        if de2000(rgb_to_lab(c)[None].repeat(len(tl), 0), tl).min() > 3: keep.add(k)
+    CONTENT.intersection_update(keep)
 def audit(path, pal, theme="auto", out=None, ignore=(), strict_cvd=False, ocr=True):
     img = Image.open(path).convert("RGB"); arr = np.asarray(img).copy(); H, W = arr.shape[:2]
     mask = np.ones((H, W), bool)
@@ -271,7 +283,8 @@ def audit(path, pal, theme="auto", out=None, ignore=(), strict_cvd=False, ocr=Tr
             sel = np.zeros((H, W), bool); sm = np.zeros(len(q), bool); sm[np.nonzero(fill)[0][inv == vi]] = True; sel[mask] = sm; ys, xs = np.nonzero(sel)
             res["stray"].append(dict(color=tohex(col), frac=round(float(cnt[vi]) / len(q), 4), nearest=list(tok)[int(d.argmin())], de=round(float(d.min()), 2),
                                      box=[int(xs.min()), int(ys.min()), int(xs.max() - xs.min() + 1), int(ys.max() - ys.min() + 1)]))
-    res["no_text"] = bool(ocr and not res["text"] and W * H >= 10000)  # a real app screen always has text: blank/black/mis-cropped grabs must not pass
+    res["ocr_words"] = len(boxes)
+    res["no_text"] = bool(ocr and not boxes and W * H >= 10000)  # a real app screen always has text: blank/black/mis-cropped grabs must not pass
     res["fail"] = bool(res["no_text"] or res["text_fail"] or res["strokes"] or res["indistinct"] or res["stray"] or (strict_cvd and res["cvd"]))
     if out:
         os.makedirs(out, exist_ok=True); name = os.path.splitext(os.path.basename(path))[0]
@@ -288,7 +301,7 @@ def audit(path, pal, theme="auto", out=None, ignore=(), strict_cvd=False, ocr=Tr
 def summary(r):
     return (f"{'FAIL' if r['fail'] else 'PASS'} {os.path.basename(r['file'])} [{r['theme']}] text={len(r['text'])} "
             f"text_fail={len(r['text_fail'])} strokes={len(r['strokes'])} indistinct={len(r['indistinct'])} stray={len(r['stray'])} cvd_warn={len(r['cvd'])}"
-            + (f" min_wcag={min(t['wcag'] for t in r['text']):.2f}" if r['text'] else "")) + (" NO_TEXT(blank or mis-cropped grab)" if r.get('no_text') else "")
+            + (f" min_wcag={min(t['wcag'] for t in r['text']):.2f}" if r['text'] else "")) + (" NO_TEXT(blank or mis-cropped grab)" if r.get('no_text') else "") + (f" ocr_words={r.get('ocr_words')}" if not r['text'] else "")
 
 # ------------------------------------------------------------------ self test
 def self_test(pal, out):
@@ -333,7 +346,7 @@ if __name__ == "__main__":
     ap.add_argument("--ignore-file", help="JSON {basename: [[x,y,w,h],...] | {\"ignore\": [...], \"only\": [x,y,w,h]}}; every entry must carry a reason in _reasons")
     ap.add_argument("--content", action="append", default=[], help="image file sent as chat content (masked, not UI); may repeat")
     ap.add_argument("--strict-cvd", action="store_true"); ap.add_argument("--self-test", action="store_true")
-    a = ap.parse_args(); pal = load_palette(a.palette); load_content(a.content)
+    a = ap.parse_args(); pal = load_palette(a.palette); load_content(a.content); drop_ui_colours_from_content(pal)
     if a.self_test: sys.exit(0 if self_test(pal, a.out) else 1)
     ign = [tuple(map(int, s.split(","))) for s in a.ignore]; per = json.load(open(a.ignore_file)) if a.ignore_file else {}
     per = {k: v for k, v in per.items() if not k.startswith('_')}
