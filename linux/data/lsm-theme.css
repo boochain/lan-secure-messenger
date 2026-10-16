@@ -23,7 +23,7 @@ button { border-radius: 4px; padding: 4px 12px; background-image: none; box-shad
 headerbar { background-image: none; box-shadow: none; border-top: none; border-left: none; border-right: none; border-bottom-width: 1px; border-bottom-style: solid; }
 decoration, window.csd decoration, window.solid-csd decoration { box-shadow: none; border: none; margin: 0; border-radius: 0; }
 window.solid-csd, window.csd { margin: 0; padding: 0; border: none; box-shadow: none; }
-menu, .menu, .context-menu { border-width: 1px; border-style: solid; }
+decoration { padding: 0; }
 window.csd, window.csd headerbar, headerbar.titlebar { border-radius: 0; }
 paned > separator { min-width: 1px; min-height: 1px; }
 scrolledwindow.frame { border-width: 1px; border-style: solid; }
@@ -69,6 +69,8 @@ treeview, treeview.view, iconview, .view:not(textview):not(text) { background-co
 treeview:selected, .view:selected, iconview:selected, row:selected, *:selected { background-color: #005FB8; color: #FFFFFF; }
 treeview header button { background-color: #FBFBFB; color: #1A1A1A; border-color: #E5E5E5; }
 menu, .menu, .context-menu, popover { border-color: #E5E5E5; }
+decoration, window.solid-csd decoration, window.csd decoration { background-color: #F3F3F3; border-color: #F3F3F3; }
+menu, .menu, .context-menu, window.popup menu { border: 1px solid #E5E5E5; }
 /*@dark*/
 window, dialog, messagedialog, .background, popover { background-color: #202020; color: #FFFFFF; }
 headerbar, headerbar:backdrop { background-color: #202020; color: #FFFFFF; border-color: #323232; }
@@ -108,3 +110,5 @@ treeview, treeview.view, iconview, .view:not(textview):not(text) { background-co
 treeview:selected, .view:selected, iconview:selected, row:selected, *:selected { background-color: #60CDFF; color: #000000; }
 treeview header button { background-color: #2B2B2B; color: #FFFFFF; border-color: #323232; }
 menu, .menu, .context-menu, popover { border-color: #323232; }
+decoration, window.solid-csd decoration, window.csd decoration { background-color: #202020; border-color: #202020; }
+menu, .menu, .context-menu, window.popup menu { border: 1px solid #323232; }
