@@ -201,7 +201,8 @@ public class DaemonTests
         lock (ui.Gate) vm.SelectPeer(sb.Me.Fingerprint);
         Assert.True(vm.SelectedIsDm);
         Assert.Equal("在线 · 已验证身份 · 局域网直连", vm.SelectedSubtitle);   // no fingerprint / latency piled into the header
-        Assert.Contains(sb.Me.Fingerprint, vm.SelectedDetailsText);
+        Assert.Contains(MainViewModel.FormatFingerprint(sb.Me.Fingerprint), vm.SelectedDetailsText);   // grouped for reading aloud
+        Assert.Contains("身份：已验证身份", vm.SelectedDetailsText);
         vm.ComposeText = "hello from the view model";
         await vm.SendCommand.ExecuteAsync(null);
         Assert.Equal("", vm.ComposeText);

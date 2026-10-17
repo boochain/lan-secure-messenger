@@ -517,7 +517,7 @@ public partial class MainViewModel : ObservableObject
             SelectedDetailsText = string.Join("\n", new[]
             {
                 $"状态：{(p?.StateText is { Length: > 0 } st ? st : SelectedStatus)}",
-                $"身份：{(p?.TrustText ?? "未验证")}",
+                $"身份：{(p?.Trust switch { Trust.Trusted => "已验证身份", Trust.Blocked => "已屏蔽", _ => "未验证" })}",
                 $"连接：{(c.ViaServer ? "经服务器中转" : "局域网直连")}",
                 $"地址：{(p?.Addr is { Length: > 0 } a ? a : "—")}",
                 $"指纹：{FormatFingerprint(c.PeerFingerprint)}",
