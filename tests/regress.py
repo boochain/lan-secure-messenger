@@ -89,5 +89,15 @@ A.quit(); B.quit()
 A = Node("RA", base); B = Node("RB", base + 2)
 la = [l for l in A.cmd(f"history {B.fp}") if "[file]" in l]; lb = [l for l in B.cmd(f"history {A.fp}") if "[file]" in l]
 check("file message name survives restart (receiver + sender)", okrx and any(name in l for l in la) and any(name in l for l in lb), (la[:1], lb[:1]))
+# 5. delete on this device only: gone locally (also after restart, via a tombstone record), the peer keeps it
+mid = next(l.split()[2] for l in B.cmd(f"send {A.fp} 删除测试 delete-me") if l.startswith("OK"))
+A.has("delete-me", 20)
+ha = [l for l in A.cmd(f"history {B.fp}") if "delete-me" in l]
+did = ha[0].split()[1] if ha else ""
+okd = bool(did) and any(l.startswith("OK delete") for l in A.cmd(f"delete {did}")) and any(l.startswith("ERR") for l in A.cmd(f"delete {did}"))
+A.quit(); A = Node("RA", base)
+gone = not any("delete-me" in l for l in A.cmd(f"history {B.fp}"))
+kept = any("delete-me" in l for l in B.cmd(f"history {A.fp}"))
+check("delete message (this device only) survives restart, peer keeps it", okd and gone and kept, (mid, did, okd, gone, kept))
 A.quit(); B.quit()
 sys.exit(1 if fails else 0)

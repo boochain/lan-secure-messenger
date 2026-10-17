@@ -204,6 +204,7 @@ struct lsm_core {
     lsm_transfer *xfers; int nxfers;
     outgoing *outbox; int noutbox;
     uint8_t (*seen)[16]; int nseen, seen_pos;
+    char (*tomb)[40]; int ntomb;   /* ids deleted on this device: a resend must not resurrect them */
     char pin[8]; int64_t pin_time; int pin_tries; char pin_wait[8][FP_LEN];
     char **events; int ev_head, ev_tail, ev_cap;
     int64_t last_announce;
@@ -312,16 +313,24 @@ static void hist_rec_msg(lsm_core *c, lsm_msg *m){ buf_t b={0};
     hist_append(c,&b); b_free(&b); }
 static void hist_rec_upd(lsm_core *c, lsm_msg *m){ buf_t b={0}; bfmt(&b,"S\t%s\t%d\t%d\t",m->id,m->status,m->unread); esc_put(&b,m->file_path); hist_append(c,&b); b_free(&b); }
 static lsm_msg *msg_push(lsm_core *c){ lsm_msg *m; c->msgs=(lsm_msg*)realloc(c->msgs,sizeof(lsm_msg)*(c->nmsgs+1)); m=&c->msgs[c->nmsgs++]; memset(m,0,sizeof *m); return m; }
+static void tomb_add(lsm_core *c, const char *id); static int msg_unlink(lsm_core *c, const char *id);
 static void load_history(lsm_core *c){ char p[600]; size_t n,off=0; uint8_t *d; path_join(p,sizeof p,c->data_dir,"history.dat"); d=read_file(p,&n); if(!d) return;
     while(off+4<=n){ size_t l=d[off]|(d[off+1]<<8)|(d[off+2]<<16)|((size_t)d[off+3]<<24), pn; char *pl, *f[16]; int k; off+=4; if(off+l>n) break;
         pl=(char*)open_rand(c->store_key,d+off,l,&pn); off+=l; if(!pl) continue; k=split_tabs(pl,f,16);
         if(f[0][0]=='M' && k>=14){ lsm_msg *m=msg_get(c,f[1]); /* a later M record for the same id is an update (file fields arrive after the first record) */
             if(m){ m->kind=atoi(f[6]); scpy(m->file_tid,f[10],40); scpy(m->file_name,f[11],260); m->file_size=strtoull(f[12],NULL,10); if(f[13][0]) scpy(m->file_path,f[13],520); free(pl); continue; } m=msg_push(c); scpy(m->id,f[1],40); scpy(m->conv,f[2],64); m->out=atoi(f[3]); scpy(m->sender_fp,f[4],FP_LEN); scpy(m->sender_name,f[5],200); m->kind=atoi(f[6]); m->body=xstrdup(f[7]); m->ts_ms=atoll(f[8]); m->status=atoi(f[9]); scpy(m->file_tid,f[10],40); scpy(m->file_name,f[11],260); m->file_size=strtoull(f[12],NULL,10); scpy(m->file_path,f[13],520); }
+        else if(f[0][0]=='D' && k>=2){ tomb_add(c,f[1]); msg_unlink(c,f[1]); }
         else if(f[0][0]=='S' && k>=5){ lsm_msg *m=msg_get(c,f[1]); if(m){ m->status=atoi(f[2]); m->unread=atoi(f[3]); if(f[4][0]) scpy(m->file_path,f[4],520);} }
         free(pl); }
     free(d); }
 
-static int seen_has(lsm_core *c, const uint8_t id[16]){ int i; char s[37]; for(i=0;i<c->nseen;i++) if(!memcmp(c->seen[i],id,16)) return 1; lsm_uuid_str(id,s); return msg_get(c,s)!=NULL; }
+static int tomb_has(lsm_core *c, const char *id){ int i; for(i=c->ntomb-1;i>=0;i--) if(!strcmp(c->tomb[i],id)) return 1; return 0; }
+static void tomb_add(lsm_core *c, const char *id){ if(tomb_has(c,id)) return;
+    if(c->ntomb>=20000){ memmove(c->tomb,c->tomb+1,sizeof(c->tomb[0])*(c->ntomb-1)); c->ntomb--; }
+    c->tomb=(char(*)[40])realloc(c->tomb,sizeof(c->tomb[0])*(c->ntomb+1)); scpy(c->tomb[c->ntomb++],id,40); }
+static int msg_unlink(lsm_core *c, const char *id){ int i; for(i=c->nmsgs-1;i>=0;i--) if(!strcmp(c->msgs[i].id,id)){ free(c->msgs[i].body);
+        memmove(&c->msgs[i],&c->msgs[i+1],sizeof(lsm_msg)*(c->nmsgs-i-1)); c->nmsgs--; return 1; } return 0; }
+static int seen_has(lsm_core *c, const uint8_t id[16]){ int i; char s[37]; for(i=0;i<c->nseen;i++) if(!memcmp(c->seen[i],id,16)) return 1; lsm_uuid_str(id,s); return tomb_has(c,s) || msg_get(c,s)!=NULL; }
 static void seen_add(lsm_core *c, const uint8_t id[16]){ if(c->nseen<20000){ memcpy(c->seen[c->nseen++],id,16); } else { memcpy(c->seen[c->seen_pos],id,16); c->seen_pos=(c->seen_pos+1)%20000; } }
 
 static int load_identity(lsm_core *c){ char p[600]; size_t n; uint8_t *d; path_join(p,sizeof p,c->data_dir,"identity.txt"); d=read_file(p,&n);
@@ -638,6 +647,7 @@ static void on_file_frame(lsm_core *c, const char *fp, uint32_t v, rd_t *r){
         if(r->err || t){ free(name); free(mime); return; }
         sanitize_filename(name,nm,sizeof nm); free(name);
         if(hasg){ g=group_get(c,gid); if(!g||!group_is_member(g,fp)){ send_tid_frame(c,fp,7,tid,"\xe4\xb8\x8d\xe6\x98\xaf\xe7\xbe\xa4\xe6\x88\x90\xe5\x91\x98"); free(mime); return; } conv_group(gid,conv); } else conv_dm(fp,conv);
+        lsm_uuid_str(mid,ms); if(tomb_has(c,ms)){ send_tid_frame(c,fp,7,tid,"\xe5\xaf\xb9\xe6\x96\xb9\xe5\xb7\xb2\xe5\x88\xa0\xe9\x99\xa4\xe8\xbf\x99\xe6\x9d\xa1\xe6\xb6\x88\xe6\x81\xaf"); free(mime); return; } /* 对方已删除这条消息 */
         memset(&nt,0,sizeof nt); memcpy(nt.tid,tid,16); lsm_uuid_str(mid,ms); scpy(nt.msg_id,ms,40); scpy(nt.conv,conv,64); scpy(nt.peer_fp,fp,FP_LEN); scpy(nt.name,nm,sizeof nt.name); nt.size=size; scpy(nt.mime,mime,sizeof nt.mime); free(mime);
         memcpy(nt.sha,sha,32); nt.has_group=hasg; if(hasg) memcpy(nt.group_id,gid,16); nt.offer_ts=ts; nt.state=TS_OFFERED;
         c->xfers=(lsm_transfer*)realloc(c->xfers,sizeof(lsm_transfer)*(c->nxfers+1)); c->xfers[c->nxfers++]=nt; t=&c->xfers[c->nxfers-1];
@@ -976,6 +986,10 @@ int lsm_group_leave(lsm_core *c, const char *gids, char *err){ uint8_t gid[16], 
     mu_lock(&c->mu); if(lsm_uuid_parse(gids,gid)||!(g=group_get(c,gid))){ E("\xe7\xbe\xa4\xe7\xbb\x84\xe4\xb8\x8d\xe5\xad\x98\xe5\x9c\xa8"); mu_unlock(&c->mu); return -1; }
     b_u32(&p,4); b_uuid(&p,gid); for(i=0;i<g->nmembers;i++) if(strcmp(g->members[i],c->fp)){ uuid_new(id); send_reliable(c,g->members[i],&p,id,NULL); }
     b_free(&p); group_delete(c,gid); save_groups(c); emit(c,"group_removed\t%s",gids); mu_unlock(&c->mu); return 0; }
+/* delete one message on this device only (the peer keeps its copy); leaves a synced tombstone record */
+int lsm_delete_message(lsm_core *c, const char *id){ char conv[64]; lsm_msg *m; buf_t b={0}; mu_lock(&c->mu); m=msg_get(c,id);
+    if(!m){ mu_unlock(&c->mu); return -1; } scpy(conv,m->conv,64); msg_unlink(c,id); tomb_add(c,id);
+    bfmt(&b,"D\t%s",id); hist_append(c,&b); b_free(&b); emit(c,"msg_delete\t%s\t%s",id,conv); mu_unlock(&c->mu); return 0; }
 int lsm_mark_read(lsm_core *c, const char *conv){ int i, n=0; buf_t p={0}, f={0}; uint8_t id[16];
     mu_lock(&c->mu);
     /* group the unread incoming ids by sender, one Read receipt per sender */

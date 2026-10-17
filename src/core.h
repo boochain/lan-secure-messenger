@@ -121,6 +121,7 @@ int lsm_group_invite(lsm_core *c, const char *gid, const char **fps, int n, char
 int lsm_group_remove(lsm_core *c, const char *gid, const char *fp, char *err);
 int lsm_group_leave(lsm_core *c, const char *gid, char *err);
 int lsm_mark_read(lsm_core *c, const char *conv);
+int lsm_delete_message(lsm_core *c, const char *id);   /* this device only; tombstoned; emits "msg_delete\t<id>\t<conv>" */
 int lsm_set_name(lsm_core *c, const char *name);
 int lsm_transfer_cancel(lsm_core *c, const char *tid, char *err);
 int lsm_drop_links(lsm_core *c); /* test hook: abort all TCP links without Bye */
