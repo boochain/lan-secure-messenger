@@ -631,7 +631,8 @@ impl Engine {
                 }
                 t.credit = None;
                 let (msg, group) = (t.msg_id.clone(), t.group_id);
-                self.emit_transfer(tid, true);
+                // persist first, then announce (parity with the C core): the message status reaches history
+                // (forced, synced write) before the transfer's terminal event goes out
                 if ok {
                     let all_done = self.transfers.values().filter(|x| x.msg_id == msg && x.direction == Direction::Out).all(|x| x.state == TransferState::Done);
                     if all_done || group.is_none() {
@@ -640,6 +641,8 @@ impl Engine {
                 } else {
                     self.mark_file_msg_failed(tid);
                 }
+                let _ = self.history.flush(true);
+                self.emit_transfer(tid, true);
             }
             Frame::FileCancel { tid, reason } => {
                 if let Some(t) = self.transfers.get_mut(&tid).filter(|t| t.peer_fp == fp) {
@@ -726,6 +729,8 @@ impl Engine {
                         }
                     }
                 }
+                // the received file's path is in history (forced write) before 'done' is reported
+                let _ = self.history.flush(true);
                 self.emit_transfer(tid, true);
             }
         }
