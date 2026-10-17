@@ -103,3 +103,4 @@ $o = Deploy install -Port 19831 -Password 'x12345678' -DryRun
 Check 'dry-run creates nothing' { $o -match '\[dry-run\]' -and -not (Test-Path "$env:RELAY_HOME\bin\relay-server.exe") }
 "== deploy.ps1 test: $script:pass passed, $script:fail failed"
 if ($script:fail) { Get-ChildItem $T -Filter *.log | ForEach-Object { "--- $_"; Get-Content $_.FullName }; exit 1 }
+exit 0
