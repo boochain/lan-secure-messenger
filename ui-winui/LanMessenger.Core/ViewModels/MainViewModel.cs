@@ -818,7 +818,7 @@ public partial class MainViewModel : ObservableObject
         {
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
             http.DefaultRequestHeaders.UserAgent.ParseAdd("LanMessenger/" + Version);
-            var json = await http.GetStringAsync("https://api.github.com/repos/FREC86/lan-secure-messenger/releases?per_page=10");
+            var json = await http.GetStringAsync("https://api.github.com/repos/boochain/lan-secure-messenger/releases?per_page=10");
             using var doc = JsonDocument.Parse(json);
             string? best = null; string? url = null;
             foreach (var r in doc.RootElement.EnumerateArray())

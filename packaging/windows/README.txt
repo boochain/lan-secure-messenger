@@ -30,4 +30,4 @@ LAN Secure Messenger / 局域网安全通讯  v0.5.0-beta.2
   反馈问题时请附上 logs 文件夹里的最新日志，或「诊断」页的“复制诊断信息”。
 
 端口：TCP 41235（加密连接）、UDP 41234（发现广播）。
-项目主页：https://github.com/FREC86/lan-secure-messenger
+项目主页：https://github.com/boochain/lan-secure-messenger

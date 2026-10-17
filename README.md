@@ -8,7 +8,7 @@
 
 ## 下载即用（Windows 10 1809+ / 11，x64）
 
-1. 到 [Releases](https://github.com/FREC86/lan-secure-messenger/releases) 下载 `LanMessenger-<版本>-win-x64.zip`
+1. 到 [Releases](https://github.com/boochain/lan-secure-messenger/releases) 下载 `LanMessenger-<版本>-win-x64.zip`
 2. **解压整个文件夹**，双击 `LanMessenger.exe`（或 `启动.bat`）。自带 .NET 8 与 Windows App SDK，无需安装任何运行库
 3. 首次运行：填写显示名称 → 点击「一键配置防火墙」（弹出一次 UAC 管理员确认）
 4. 其他电脑同样打开即可互相看到；看不到时在左上角输入对方 IP 直接添加，或查看「诊断」页
