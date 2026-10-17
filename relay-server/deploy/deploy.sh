@@ -25,9 +25,9 @@ UNIT="${RELAY_SYSTEMD_DIR:-/etc/systemd/system}/$SVC.service"
 INITD="/etc/init.d/$SVC"
 CRON_MARK="# lsm-relay-autostart"
 # 旧版本残留位置 (legacy locations from older/hand installs)
-LEGACY_BINS="/usr/local/bin/relay-server /usr/local/bin/lsm-relay /usr/bin/lsm-relay-server $HOME/relay-server"
+LEGACY_BINS="${RELAY_LEGACY_BINS:-/usr/local/bin/relay-server /usr/local/bin/lsm-relay /usr/bin/lsm-relay-server $HOME/relay-server}"
 LEGACY_UNITS="relay-server.service lsm-relay-server.service"
-LEGACY_PIDS="/run/lsm-relay.pid /var/run/lsm-relay.pid /tmp/lsm-relay.pid /run/relay-server.pid"
+LEGACY_PIDS="${RELAY_LEGACY_PIDS:-/run/lsm-relay.pid /var/run/lsm-relay.pid /tmp/lsm-relay.pid /run/relay-server.pid}"
 LEGACY_CONFS="/etc/relay-server/config.toml /etc/lsm-relay/config.toml"
 
 PORT=""; PASS=""; BIND=""; GEN_PASS=0; OPEN_FW=0; YES=0; DRY=0; NO_START=0; INTERACTIVE=0
@@ -228,13 +228,16 @@ firewall_remove_ours() { # 只删除本脚本创建的规则 (only rules we crea
 # ---------------- 进程 (processes) ----------------
 read_pid() { [ -f "$1" ] && tr -dc 0-9 < "$1"; }
 pid_alive() { [ -n "$1" ] && kill -0 "$1" 2>/dev/null; }
-our_pids() { # 运行中的 relay-server 进程 (ours and legacy)
-  local p
-  for p in $(pgrep -x relay-server 2>/dev/null) $(pgrep -f '/(lsm-relay|lsm-relay-server|relay-server)( |$)' 2>/dev/null); do
+our_pids() { # 运行中的 relay-server 进程 (ours and legacy), matched on the executable name only
+  local p a0 a1
+  for p in $(pgrep -f 'relay-server|lsm-relay' 2>/dev/null); do
     [ "$p" = "$$" ] && continue
-    tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null | grep -Eq '(relay-server|lsm-relay)' || continue
-    tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null | grep -q 'deploy.sh' && continue
-    echo "$p"
+    [ -r "/proc/$p/cmdline" ] || continue
+    a0="$(tr '\0' '\n' < "/proc/$p/cmdline" 2>/dev/null | sed -n 1p)"; a1="$(tr '\0' '\n' < "/proc/$p/cmdline" 2>/dev/null | sed -n 2p)"
+    case "$(basename -- "$a0" 2>/dev/null)" in
+      relay-server|lsm-relay|lsm-relay-server) echo "$p" ;;
+      bash|sh|dash) case "$(basename -- "$a1" 2>/dev/null)" in relay-server|lsm-relay|lsm-relay-server) echo "$p" ;; esac ;;
+    esac
   done | sort -u
 }
 svc_active() { has_systemd && systemctl is-active --quiet "$SVC" 2>/dev/null; }
