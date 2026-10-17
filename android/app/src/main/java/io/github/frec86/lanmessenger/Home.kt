@@ -143,16 +143,18 @@ fun ConvRow(c: Conv, click: () -> Unit) {
         Avatar(c.name, c.key, 48.dp, c.online, p.window)
         Spacer(Modifier.width(16.dp))
         Column(Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+              Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                 if (c.group) { Ic(R.drawable.ms_groups, "群组", p.fg2, 18.dp); Spacer(Modifier.width(6.dp)) }
                 Text(c.name, fontSize = 16.sp, lineHeight = 24.sp, letterSpacing = .15.sp, fontWeight = if (unread) FontWeight.Bold else FontWeight.Normal, color = p.fg,
                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
                 if (c.trusted) Ic(R.drawable.ms_trusted, "已验证身份", p.online, 16.dp, Modifier.padding(start = 4.dp))
                 if (c.via) Ic(R.drawable.ms_via_server, "经服务器中转", p.fg2, 16.dp, Modifier.padding(start = 4.dp))
-                Spacer(Modifier.weight(1f).widthIn(min = 8.dp))
+              }
+                Spacer(Modifier.width(8.dp))
                 if (m != null) Text(listTime(m.ts), fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = .4.sp, color = if (unread) p.accent else p.fg2, fontWeight = if (unread) FontWeight.Bold else FontWeight.Normal)
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 val pv = if (unread) p.fg else p.fg2
                 if (m != null && m.out) { Ticks(m.status, p.fg2, p.read); Spacer(Modifier.width(4.dp)) }
                 val from = if (c.group && m != null) (if (m.out) "我" else m.sender) + ": " else ""

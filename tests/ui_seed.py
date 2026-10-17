@@ -3,7 +3,7 @@
 (design/redesign/data.py) against the app under test, so every platform's CI screenshots show the same
 contacts, group, unread count, text exchange, image and file as the approved mockups.
 
-The app side is driven through an `app` adapter with: trust(name), send_text(name, text), send_image(name, path),
+The app side is driven through an `app` adapter with: trust(name), send_text(name, text),
 open_chat(name), back(). Peers are any command that speaks the lanmsg-cli line protocol (native, wine, android)."""
 import os, queue, re, subprocess, threading, time
 
@@ -68,10 +68,9 @@ def seed(mk, app_addr, app, pdf, photo, say=print):
     P["Alice Chen"].cmd(f"send {fp} Can you send me the latest build?"); time.sleep(1.2)
     w.cmd(f"send {fp} 早上好！下午三点的评审会改到 302 会议室了。"); time.sleep(.6)
     w.cmd(f"send {fp} Slides are in the shared folder — please take a look before the meeting."); time.sleep(1.5)
-    app.send_text("王工", "收到 👍 我先把新版界面截图发给你。")
-    app.send_image("王工", photo)
-    wait(lambda: any(t.startswith("XFER") and "\tdone\t" in t for t in w.cmd("transfers")), 60)
+    app.send_text("王工", "收到 👍 新版界面截图发我看看？")
     w.cmd(f"read {fp}"); time.sleep(1)
+    w.cmd(f"sendfile {fp} {photo}"); time.sleep(4)
     w.cmd(f"sendfile {fp} {pdf}"); time.sleep(4)
     w.cmd(f"send {fp} 这是最新的数据，第 4 页有改动。"); time.sleep(1.5)
     app.send_text("王工", "OK, see you at 3 pm. 会议室我来订。")

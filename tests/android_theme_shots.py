@@ -23,18 +23,19 @@ IGN = {"_reasons": {"android-*-dialog/pin/about": "modal AlertDialog: the page b
 def dialog_rect(png, th):
     """the dialog card = bounding box of the palette card_bg fill (the page behind it is darkened by the scrim)"""
     from PIL import Image; import numpy as np
-    card = (0xFB, 0xFB, 0xFB) if th == "light" else (0x2B, 0x2B, 0x2B)
+    card = (0xED, 0xED, 0xF4) if th == "light" else (0x28, 0x2A, 0x2F)  # M3 dialog = surfaceContainerHigh
     import cv2
     m = (np.array(Image.open(png).convert("RGB")) == card).all(-1).astype(np.uint8)
     n, lab, st, _ = cv2.connectedComponentsWithStats(m, connectivity=4)
     k = 1 + int(np.argmax(st[1:, cv2.CC_STAT_AREA]))  # the dialog card is the largest card_bg blob
     x0, y0, w0, h0 = (int(st[k, j]) for j in range(4)); xs = np.array([x0, x0 + w0 - 1]); ys = np.array([y0, y0 + h0 - 1])
-    i = 16  # inset past the 8 dp rounded corners (scrim shows in them)
+    i = 2 * 28  # inset past the 28 dp rounded corners (scrim shows in them)
     return [int(xs.min()) + i, int(ys.min()) + i, int(xs.max() - xs.min()) - 2 * i, int(ys.max() - ys.min()) - 2 * i]
 def shot(n, modal=False):
     time.sleep(3); subprocess.run(f"{ADB} exec-out screencap -p > {OUT}/{n}.png", shell=True); print("shot", n, flush=True)
     if modal:
         IGN[n + ".png"] = {"only": dialog_rect(f"{OUT}/{n}.png", "dark" if "-dark-" in n else "light")}; json.dump(IGN, open(f"{OUT}/audit_ignore.json", "w"), ensure_ascii=False, indent=1)
+adb("shell", "cmd", "overlay", "enable", "com.android.internal.systemui.navbar.gestural")
 for k in ("window_animation_scale", "transition_animation_scale", "animator_duration_scale"): adb("shell", "settings", "put", "global", k, "0")
 for th in ("light", "dark"):
     adb("shell", "cmd", "uimode", "night", "yes" if th == "dark" else "no"); adb("shell", "am", "force-stop", PKG); time.sleep(3)

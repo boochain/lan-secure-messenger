@@ -207,15 +207,24 @@ fun MessageRow(r: ChatRow.Bubble, t: Transfer?, maxW: androidx.compose.ui.unit.D
     }
 }
 
+/** Text + time/ticks, Telegram-style: the meta sits on the last line when it fits, otherwise on its own line below. */
 @Composable
 fun TextBubble(m: Msg, sender: String?) {
-    val sp = if (m.out) "\u2003\u2003\u2003\u2003" else "\u2003\u2003\u2003" // invisible room for the time (+ ticks) at the end of the last line
-    Box(Modifier.padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 7.dp)) {
-        Column {
-            if (sender != null) Text(sender, fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium, color = avatarColorFor(sender))
-            Text(buildAnnotatedString { append(m.body); withStyle(SpanStyle(color = Color.Transparent)) { append(sp) } }, fontSize = 16.sp, lineHeight = 22.sp)
+    val holder = remember { arrayOfNulls<androidx.compose.ui.text.TextLayoutResult>(1) }
+    Column(Modifier.padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 7.dp)) {
+        if (sender != null) Text(sender, fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium, color = avatarColorFor(sender), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        androidx.compose.ui.layout.Layout({
+            Text(m.body, fontSize = 16.sp, lineHeight = 22.sp, onTextLayout = { holder[0] = it })
+            Meta(m)
+        }) { ms, c ->
+            val text = ms[0].measure(c.copy(minWidth = 0)); val meta = ms[1].measure(c.copy(minWidth = 0))
+            val tl = holder[0]; val gap = 8.dp.roundToPx()
+            val lastW = if (tl == null || tl.lineCount == 0) text.width else kotlin.math.ceil(tl.getLineRight(tl.lineCount - 1) - tl.getLineLeft(tl.lineCount - 1)).toInt()
+            val inline = lastW + gap + meta.width <= c.maxWidth
+            val w = maxOf(text.width, if (inline) lastW + gap + meta.width else meta.width).coerceAtMost(c.maxWidth)
+            val my = if (inline) text.height - meta.height + 1.dp.roundToPx() else text.height
+            layout(w, maxOf(text.height, my + meta.height)) { text.place(0, 0); meta.place(w - meta.width, my) }
         }
-        Box(Modifier.align(Alignment.BottomEnd).offset(y = 1.dp)) { Meta(m) }
     }
 }
 @Composable fun avatarColorFor(sender: String) = if (isDark()) LocalPalette.current.accent else avatarColor(sender)

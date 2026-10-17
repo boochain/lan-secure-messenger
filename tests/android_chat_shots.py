@@ -32,14 +32,9 @@ class App:
     def send_text(s, name, text):
         sh("am start -W -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT " + shlex.quote(text) + f" -n {PKG}/.MainActivity")
         time.sleep(3); tap_text(name); time.sleep(1); back()
-    def send_image(s, name, path):
-        dst = "/sdcard/Download/ui-photo.jpg"; adb("push", path, dst)
-        sh(f"am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file://{dst}"); time.sleep(3)
-        q = sh("content query --uri content://media/external/images/media --projection _id --where \"_display_name='ui-photo.jpg'\"")
-        mid = re.findall(r"_id=(\d+)", q)[-1]
-        sh(f"am start -W -a android.intent.action.SEND -t image/jpeg --eu android.intent.extra.STREAM content://media/external/images/media/{mid} --grant-read-uri-permission -n {PKG}/.MainActivity")
-        time.sleep(3); tap_text(name); time.sleep(3); back()
 
+sh("svc power stayon true; input keyevent 224; wm dismiss-keyguard; settings put system screen_off_timeout 1800000")  # keep the screen on
+sh("cmd overlay enable com.android.internal.systemui.navbar.gestural")  # gesture navigation, as on current phones (and in the mockup)
 for k in ("window_animation_scale", "transition_animation_scale", "animator_duration_scale"): sh(f"settings put global {k} 0")
 sh(f"pm clear {PKG}"); sh("cmd uimode night no"); sh(f"pm grant {PKG} android.permission.POST_NOTIFICATIONS")
 sh(f"am start -W -n {PKG}/.MainActivity"); time.sleep(10)
@@ -51,7 +46,8 @@ def mk(name, i):
     port = 42000 + 4 * i; tag = f"p{i}"
     p = ui_seed.Peer(name, [ADB, "shell", "-T", f"{args.cli} --data /data/local/tmp/seed/{tag} --name {shlex.quote(name)} --no-discovery --port {port} --disco-port {port + 1} --announce-ms 1000"], args.out)
     p.port = port; return p
-P = ui_seed.seed(mk, "127.0.0.1:41235", App(), pdf, os.path.join(HERE, "assets", "ui-photo.jpg"))
+photo = "/data/local/tmp/界面截图.jpg"; adb("push", os.path.join(HERE, "assets", "ui-photo.jpg"), photo)
+P = ui_seed.seed(mk, "127.0.0.1:41235", App(), pdf, photo)
 for th in ("light", "dark"):
     sh("cmd uimode night " + ("yes" if th == "dark" else "no")); time.sleep(6)
     shot(f"android-{th}-10-list")
