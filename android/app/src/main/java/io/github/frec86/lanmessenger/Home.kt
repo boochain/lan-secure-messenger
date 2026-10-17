@@ -85,6 +85,7 @@ fun Home(st: AppState, open: (String) -> Unit) {
                 else -> Settings(st) { dlg = it }
             }
         }
+        HorizontalDivider(thickness = 1.dp, color = p.divider)   // mockup: navbar border-top 1px divider
         NavigationBar(containerColor = p.navBar, tonalElevation = 0.dp) {
             val items = listOf(Triple("聊天", R.drawable.ms_chats, R.drawable.ms_chats_fill), Triple("群组", R.drawable.ms_groups, R.drawable.ms_groups_fill),
                 Triple("传输", R.drawable.ms_transfers, R.drawable.ms_transfers_fill), Triple("设置", R.drawable.ms_settings, R.drawable.ms_settings_fill))
@@ -181,6 +182,7 @@ fun EmptyState(icon: Int, title: String, body: String) {
 fun Fab(icon: Int, label: String, desc: String, modifier: Modifier, click: () -> Unit) {
     val p = LocalPalette.current
     ExtendedFloatingActionButton(onClick = click, modifier = modifier.padding(16.dp).semantics { contentDescription = desc }, containerColor = p.pCont, contentColor = p.onPCont,
+        elevation = FloatingActionButtonDefaults.elevation(3.dp, 3.dp, 3.dp, 4.dp),  // mockup: box-shadow 0 2px 6px .18 (M3 default 6dp casts a visibly larger shadow)
         icon = { Ic(icon, null) }, text = { Text(label, style = MaterialTheme.typography.labelLarge) })
 }
 

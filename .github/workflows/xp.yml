@@ -186,7 +186,7 @@ jobs:
       - name: Audit Android screenshots (light + dark)
         run: |
           python3 tools/ui_color_audit.py --self-test --out ui-audit/self-test
-          python3 tools/ui_color_audit.py --ignore-file shots/android/audit_ignore.json --out ui-audit/android shots/android/*.png
+          python3 tools/ui_color_audit.py --palette tools/palettes/android.json --ignore-file shots/android/audit_ignore.json --out ui-audit/android shots/android/*.png
       - uses: actions/upload-artifact@v4
         if: always()
         with:

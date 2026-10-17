@@ -62,8 +62,9 @@ fun Chat(st: AppState, conv: String, back: () -> Unit) {
     val name = contact?.name ?: group?.name ?: ""
     val key = contact?.fp ?: group?.id ?: conv
     val maxW = ((LocalConfiguration.current.screenWidthDp - 24) * .78f).coerceAtMost(320f).dp
-    Column(Modifier.fillMaxSize().background(p.bar).statusBarsPadding()) {
-      Column(Modifier.fillMaxSize().background(p.chat).navigationBarsPadding().imePadding()) {
+    /* mockup: status bar + messages + composer on the window colour, the gesture strip on `chat` */
+    Column(Modifier.fillMaxSize().background(p.chat)) {
+      Column(Modifier.fillMaxSize().navigationBarsPadding().imePadding().background(p.window).statusBarsPadding()) {
         /* header: back · avatar(+dot) · name + shield · status · search · more */
         Row(Modifier.fillMaxWidth().height(64.dp).background(p.bar).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(back) { Ic(R.drawable.ms_back, "返回", p.fg) }
