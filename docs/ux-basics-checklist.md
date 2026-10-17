@@ -28,61 +28,66 @@ exercised at runtime (runtime test pending) · evidence in brackets.
 | A13 | Destructive actions confirmed (屏蔽, 退出群组, 移除) | **FIXED** | 屏蔽 and 退出群组 ran immediately; now a confirmation dialog (Chat.kt "block"/"leave"); 移除 goes through a picker |
 | A14 | Empty states | **PASS** | android-*-01-empty CI shots |
 
-## WinUI 3 (lan-secure-messenger/ui-winui) — from source; runtime checks to be added to scripts/ui_smoke_windows.ps1
+> **Correction (05:59):** the first desktop pass grepped with `\|` (literal in ripgrep, not alternation), so several
+> desktop items were wrongly marked FAIL. Re-checked with proper patterns below.
+
+## WinUI 3 (lan-secure-messenger/ui-winui)
 
 | # | Item | Status | Evidence |
 |---|------|--------|----------|
-| W1 | Esc closes dialogs | **PASS** (CODE) | all dialogs are ContentDialog (Esc = Close by default) |
-| W2 | Enter sends, Shift+Enter new line | **CODE** | ChatPage.xaml.cs handles Shift in the composer KeyDown |
-| W3 | Tab order / focus visuals | **CODE** – review pending | |
-| W4 | Keyboard shortcuts (Ctrl+F search, Ctrl+N, Ctrl+, settings) | **FAIL** | no KeyboardAccelerator anywhere |
-| W5 | Window close vs tray | **FAIL** | no tray / Closing handler: close quits UI (daemon keeps running) – decide + implement |
-| W6 | Remember window size/position | **FAIL** | no placement persistence |
-| W7 | High DPI | **PASS** (CODE) | WinUI is per-monitor DPI aware; app.manifest |
-| W8 | Drag & drop files onto chat to send | **FAIL** | no AllowDrop |
-| W9 | Right-click context menu on messages (复制/保存/转发) | **FAIL** | no ContextFlyout |
-| W10 | Copy message text | **PASS** (CODE) | IsTextSelectionEnabled on bubbles |
-| W11 | Tooltips on icon buttons | **PARTIAL** | ToolTipService on some buttons only |
-| W12 | Single instance (activate the existing window) | **PASS** (CODE) | App.xaml.cs Mutex + Show event |
-| W13 | Confirm destructive actions | **CODE** – review pending | ContentDialog in Chat/Groups pages |
-| W14 | Plain-language errors | **PASS** | earlier audit: errors are Chinese sentences, no codes |
-| W15 | Empty / loading states | **CODE** – review pending | |
-| W16 | Scroll to bottom on a new message | **CODE** | MessagesAppended event → ChatPage scroll |
-| W17 | Notification click opens the chat | **FAIL** | no AppNotification usage |
+| W1 | Esc closes dialogs | **PASS** (CODE) | all dialogs are ContentDialog (Esc = Close); Esc also clears chat search (51b1df0) |
+| W2 | Enter sends, Shift+Enter new line | **PASS** (CODE) | ChatPage Composer_PreviewKeyDown (VirtualKey.Enter + Shift) |
+| W3 | Tab order / focus visuals | **CODE** – runtime check pending | default XAML tab order |
+| W4 | Keyboard shortcuts | **FIXED** 51b1df0 | Ctrl+F search, Ctrl+N add contact, Ctrl+Tab / Ctrl+Shift+Tab next/prev chat (Page.KeyboardAccelerators) |
+| W5 | Window close vs tray | **FIXED** 51b1df0 | tray existed (H.NotifyIcon, close = hide); added setting 关闭窗口时最小化到通知区域 + first-time notice |
+| W6 | Remember window size/position | **FIXED** 51b1df0 | config/window.json; restored only if the rect is on a display; maximized state kept |
+| W7 | High DPI | **PASS** (CODE) | WinUI per-monitor DPI |
+| W8 | Drag & drop files into the chat | **PASS** (CODE) | ChatPage AllowDrop + Conversation_Drop |
+| W9 | Right-click menus | **FIXED** 51b1df0/efb2a08 | messages: 复制 / 打开 / 在文件夹中显示 / 复制路径 / 删除（仅本机, confirmed; daemon delete_message, real-daemon test); conversations: 信任 / 免打扰 / 屏蔽 (confirmed) |
+| W10 | Copy message text | **PASS** | IsTextSelectionEnabled + 复制 menu |
+| W11 | Tooltips | **PASS** (CODE) | ToolTipService on icon buttons in ChatPage |
+| W12 | Single instance | **PASS** (CODE) | App.xaml.cs named Mutex + Show event |
+| W13 | Confirm destructive actions | **PASS** (CODE) | ContentDialogs; block + delete confirmed |
+| W14 | Plain-language errors | **PASS** | Chinese sentences, no codes |
+| W15 | Empty / loading states | **PASS** (CODE) | "选择左侧的联系人或群组开始聊天" empty state |
+| W16 | Scroll to bottom on new message | **PASS** (CODE) | MessagesAppended → ScrollIntoView(last) |
+| W17 | Notification click opens the chat | **PASS** (CODE) | Toasts.cs activation → App.MainWin.OpenConversation(conv) |
 
-## XP Win32 (lan-secure-messenger-xp/src/gui.c) — from source; runtime checks under wine pending
+Runtime verification on Windows CI (scripts/ui_smoke_windows.ps1) is still to be added for W4/W6/W9.
+
+## XP Win32 (lan-secure-messenger-xp/src/gui.c)
 
 | # | Item | Status | Evidence |
 |---|------|--------|----------|
-| X1 | Esc closes dialogs | **CODE** | IDCANCEL handled (dialog manager maps Esc→IDCANCEL) |
-| X2 | Enter sends, Shift/Ctrl+Enter new line | **CODE** – check | VK_RETURN handled once, no Shift check found |
-| X3 | Tab order (IsDialogMessage / WS_TABSTOP) | **CODE** – review pending | |
+| X1 | Esc closes dialogs | **PASS** (CODE) | IDCANCEL handling |
+| X2 | Enter sends, Shift+Enter new line | **PASS** (CODE) | VK_RETURN + GetKeyState(VK_SHIFT) |
 | X4 | Keyboard shortcuts / accelerators | **FAIL** | no accelerator table |
-| X5 | Close vs tray | **PASS** (CODE) | Shell_NotifyIcon + WM_CLOSE handling |
-| X6 | Remember window placement | **FAIL** | no Get/SetWindowPlacement |
-| X7 | High DPI | **FAIL** | no LOGPIXELS scaling / DPI awareness |
-| X8 | Drag & drop files | **FAIL** | no DragAcceptFiles |
-| X9 | Right-click context menu | **FAIL** | no TrackPopupMenu |
-| X10 | Copy message text | **FAIL** (to verify) | no copy support found |
-| X11 | Tooltips | **FAIL** | no TOOLTIPS_CLASS |
+| X5 | Close vs tray | **PASS** (CODE) | Shell_NotifyIcon, WM_CLOSE |
+| X6 | Remember window placement | **FAIL** | no Get/SetWindowPlacement persistence |
+| X7 | High DPI | **PARTIAL** | fonts/metrics scaled by LOGPIXELSY; no DPI-aware manifest |
+| X8 | Drag & drop files | **FAIL** | no DragAcceptFiles / WM_DROPFILES |
+| X9 | Right-click context menu (messages/contacts) | **FAIL** | only tray + menu bar popups |
+| X10 | Copy message text | **FAIL** | no clipboard code |
+| X11 | Tooltips | **FAIL** | no tooltip control |
 | X12 | Single instance | **PASS** (CODE) | CreateMutex |
-| X13 | Confirm destructive actions | **FAIL** (to verify) | no MB_YESNO found |
-| X14–X17 | errors / empty states / scroll to bottom / notification click | pending | |
+| X13 | Confirm destructive actions | **FAIL** | no MB_YESNO confirmations |
+| X17 | Notification (balloon) | **PASS** (CODE) | NIIF balloons; click → open chat: to verify |
 
-## Linux GTK (linux/gtk_gui.c; GTK4 port pending) — from source; runtime checks under xvfb pending
+## Linux GTK (linux/gtk_gui.c; GTK4 port pending)
 
 | # | Item | Status | Evidence |
 |---|------|--------|----------|
-| G1 | Esc closes dialogs | **CODE** – check | no explicit Escape binding (GtkDialog handles Esc natively) |
-| G2 | Enter sends, Shift+Enter new line | **CODE** | GDK_KEY_Return + SHIFT_MASK handled |
-| G4 | Keyboard shortcuts (Ctrl+F, Ctrl+Q, shortcuts window) | **FAIL** | no accelerators |
-| G5 | Close vs tray / background | **FAIL** (to verify) | no delete-event handling |
-| G6 | Remember window size | **FAIL** | no geometry persistence |
-| G8 | Drag & drop | **PASS** (CODE) | drag handlers present |
-| G9 | Context menu | **FAIL** | no popup menu |
-| G11 | Tooltips | **PASS** (CODE) | tooltips set |
-| G12 | Single instance | **FAIL** | no GApplication |
-| G13 | Confirm destructive actions | **FAIL** (to verify) | |
+| G1 | Esc closes dialogs | **PASS** (CODE) | GtkDialog (Esc = cancel) |
+| G2 | Enter sends, Shift+Enter new line | **PASS** (CODE) | GDK_KEY_Return + SHIFT_MASK |
+| G4 | Keyboard shortcuts | **FAIL** | no accelerators |
+| G5 | Close vs tray | **PASS** (CODE) | delete-event + status icon |
+| G6 | Remember window size | **CODE** – check | default_size set; persistence unclear |
+| G8 | Drag & drop | **PASS** (CODE) | drag-data-received |
+| G9 | Context menu | **PARTIAL** | popup menu exists (2 sites); messages to verify |
+| G10 | Copy message text | **FAIL** | no clipboard code |
+| G11 | Tooltips | **PASS** (CODE) | |
+| G12 | Single instance | **PASS** (CODE) | GtkApplication (unique by app id) |
+| G13 | Confirm destructive actions | **FAIL** | no yes/no dialogs |
+| G17 | Notification click opens chat | **CODE** – check | notification code present |
 
-Next: the desktop FAILs get fixed as part of each platform's redesign port (WinUI next, GTK4 port, XP list), each with a
-runtime check added to its CI smoke script.
+XP and GTK failures are fixed in their redesign phases (GTK4 port, XP custom-drawn list), each with runtime checks.
