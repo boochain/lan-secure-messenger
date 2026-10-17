@@ -126,6 +126,16 @@ jobs:
           $b = 'target\x86_64-pc-windows-msvc\release'
           .\tests\deploy_test.ps1 -NewBin "$b\relay-server.exe" -Cli "$b\relay-test-client.exe"
           if ($LASTEXITCODE) { exit 1 }
+      - name: Interactive menu transcript (stdin-driven, console only / Server Core compatible)
+        continue-on-error: true
+        shell: powershell
+        run: |
+          $env:RELAY_HOME = "$env:RUNNER_TEMP\menu"; $env:RELAY_BIN = "$PWD\target\x86_64-pc-windows-msvc\release\relay-server.exe"; $env:RELAY_FAKE_FIREWALL = 'inactive'
+          $in = "2`r`n9443`r`n2`r`n0.0.0.0`r`n7`r`n6`r`n9450`r`n`r`n`r`n7`r`n5`r`n8`r`ny`r`n0`r`n"
+          $in | powershell.exe -NoProfile -ExecutionPolicy Bypass -File deploy\deploy.ps1 *>&1 | Tee-Object -FilePath menu-transcript-${{ matrix.os }}.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: 'menu-transcript-${{ matrix.os }}', path: 'relay-server/menu-transcript-*.txt' }
       - name: deploy.bat launcher smoke
         shell: cmd
         timeout-minutes: 5
