@@ -95,14 +95,20 @@
                         <SolidColorBrush x:Key="LsmWindowBackgroundBrush" Color="#F3F3F3" />
                         <SolidColorBrush x:Key="LsmSidebarBackgroundBrush" Color="#EEEEEE" />
                         <SolidColorBrush x:Key="LsmCardBackgroundBrush" Color="#FBFBFB" />
-                        <SolidColorBrush x:Key="LsmChatBackgroundBrush" Color="#F9F9F9" />
-                        <SolidColorBrush x:Key="LsmBubbleInBackgroundBrush" Color="#FDFDFD" />
-                        <SolidColorBrush x:Key="LsmBubbleInForegroundBrush" Color="#1B1B1B" />
-                        <SolidColorBrush x:Key="LsmBubbleOutBackgroundBrush" Color="#005FB8" />
-                        <SolidColorBrush x:Key="LsmBubbleOutForegroundBrush" Color="#FFFFFF" />
+                        <SolidColorBrush x:Key="LsmChatBackgroundBrush" Color="#EEEEEE" />
+                        <SolidColorBrush x:Key="LsmBubbleInBackgroundBrush" Color="#FFFFFF" />
+                        <SolidColorBrush x:Key="LsmBubbleInForegroundBrush" Color="#1A1A1A" />
+                        <SolidColorBrush x:Key="LsmBubbleOutBackgroundBrush" Color="#DBE9F5" />
+                        <SolidColorBrush x:Key="LsmBubbleOutForegroundBrush" Color="#1A1A1A" />
                         <SolidColorBrush x:Key="LsmInputBackgroundBrush" Color="#FDFDFD" />
                         <SolidColorBrush x:Key="LsmInputForegroundBrush" Color="#1B1B1B" />
                         <SolidColorBrush x:Key="LsmDividerBrush" Color="#E5E5E5" />
+                        <SolidColorBrush x:Key="LsmListBackgroundBrush" Color="#F9F9F9" />
+                        <SolidColorBrush x:Key="LsmRowSelectedBrush" Color="#E0E0E0" />
+                        <SolidColorBrush x:Key="LsmMineMetaBrush" Color="#4A5866" />
+                        <SolidColorBrush x:Key="LsmMetaBrush" Color="#5C5C5C" />
+                        <SolidColorBrush x:Key="LsmChipBackgroundBrush" Color="#E3E3E3" />
+                        <SolidColorBrush x:Key="LsmChipForegroundBrush" Color="#454545" />
                         <SolidColorBrush x:Key="StatusOnlineBrush" Color="#0F7B0F" />
                         <SolidColorBrush x:Key="StatusOfflineBrush" Color="#5C5C5C" />
                         <SolidColorBrush x:Key="StatusWarnBrush" Color="#9D5D00" />
@@ -196,14 +202,20 @@
                         <SolidColorBrush x:Key="LsmWindowBackgroundBrush" Color="#202020" />
                         <SolidColorBrush x:Key="LsmSidebarBackgroundBrush" Color="#1C1C1C" />
                         <SolidColorBrush x:Key="LsmCardBackgroundBrush" Color="#2B2B2B" />
-                        <SolidColorBrush x:Key="LsmChatBackgroundBrush" Color="#282828" />
-                        <SolidColorBrush x:Key="LsmBubbleInBackgroundBrush" Color="#333333" />
+                        <SolidColorBrush x:Key="LsmChatBackgroundBrush" Color="#1C1C1C" />
+                        <SolidColorBrush x:Key="LsmBubbleInBackgroundBrush" Color="#2E2E2E" />
                         <SolidColorBrush x:Key="LsmBubbleInForegroundBrush" Color="#FFFFFF" />
-                        <SolidColorBrush x:Key="LsmBubbleOutBackgroundBrush" Color="#60CDFF" />
-                        <SolidColorBrush x:Key="LsmBubbleOutForegroundBrush" Color="#000000" />
+                        <SolidColorBrush x:Key="LsmBubbleOutBackgroundBrush" Color="#004275" />
+                        <SolidColorBrush x:Key="LsmBubbleOutForegroundBrush" Color="#FFFFFF" />
                         <SolidColorBrush x:Key="LsmInputBackgroundBrush" Color="#353535" />
                         <SolidColorBrush x:Key="LsmInputForegroundBrush" Color="#FFFFFF" />
                         <SolidColorBrush x:Key="LsmDividerBrush" Color="#323232" />
+                        <SolidColorBrush x:Key="LsmListBackgroundBrush" Color="#272727" />
+                        <SolidColorBrush x:Key="LsmRowSelectedBrush" Color="#3D3D3D" />
+                        <SolidColorBrush x:Key="LsmMineMetaBrush" Color="#C7DCEE" />
+                        <SolidColorBrush x:Key="LsmMetaBrush" Color="#C5C5C5" />
+                        <SolidColorBrush x:Key="LsmChipBackgroundBrush" Color="#2D2D2D" />
+                        <SolidColorBrush x:Key="LsmChipForegroundBrush" Color="#C5C5C5" />
                         <SolidColorBrush x:Key="StatusOnlineBrush" Color="#6CCB5F" />
                         <SolidColorBrush x:Key="StatusOfflineBrush" Color="#CCCCCC" />
                         <SolidColorBrush x:Key="StatusWarnBrush" Color="#FCE100" />
@@ -226,6 +238,12 @@
                         <SolidColorBrush x:Key="LsmInputBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
                         <SolidColorBrush x:Key="LsmInputForegroundBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
                         <SolidColorBrush x:Key="LsmDividerBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                        <SolidColorBrush x:Key="LsmListBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                        <SolidColorBrush x:Key="LsmRowSelectedBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                        <SolidColorBrush x:Key="LsmMineMetaBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
+                        <SolidColorBrush x:Key="LsmMetaBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                        <SolidColorBrush x:Key="LsmChipBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                        <SolidColorBrush x:Key="LsmChipForegroundBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
                         <SolidColorBrush x:Key="StatusOnlineBrush" Color="{ThemeResource SystemColorHighlightColor}" />
                         <SolidColorBrush x:Key="StatusOfflineBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
                         <SolidColorBrush x:Key="StatusWarnBrush" Color="{ThemeResource SystemColorWindowTextColor}" />

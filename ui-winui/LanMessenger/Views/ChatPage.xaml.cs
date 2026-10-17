@@ -59,6 +59,9 @@ public sealed partial class ChatPage : Page
     private void AddAccel(VirtualKey key, VirtualKeyModifiers mods, Action run) => AddAccel(key, mods, () => { run(); return true; });
 
     public void FocusSearch() => SearchBox.Focus(FocusState.Keyboard);
+    private void FocusSearch_Click(object sender, RoutedEventArgs e) => FocusSearch();
+    private void AddPeerFocus_Click(object sender, RoutedEventArgs e) => AddPeerBox.Focus(FocusState.Keyboard);
+    private void NewGroup_Click(object sender, RoutedEventArgs e) => App.MainWin?.NavigateTo("groups");
 
     public void CycleConversation(int d)
     {
