@@ -69,10 +69,15 @@ length must be 1..=65539.
 ### Hello (first transport message in each direction)
 ```
 Hello { proto: u16 (=5), app_version: String, name: String, ed25519_pk: [u8;32],
-        listen_port: u16 }
+        listen_port: u16 }   ‖ caps: u32 LE  (optional trailer)
 ```
 `proto != 5` ⇒ close. The remote fingerprint comes from the Noise remote static key, the
 Ed25519 key from Hello (stored in the contact, used to verify group signatures).
+
+**Capabilities.** After the bincode `Hello` a peer may append `caps: u32` (little-endian).
+Older peers ignore trailing bytes (bincode `allow_trailing_bytes`) and send no trailer, so a
+missing trailer means `caps = 0`. Bits: `CAP_RESUME = 1` (byte-offset file resume, §8.1).
+A frame that needs a capability is only ever sent to a peer that announced it.
 
 ### Frames (all subsequent transport messages): `enum Frame`
 | idx | variant | fields |
@@ -93,6 +98,7 @@ Ed25519 key from Hello (stored in the contact, used to verify group signatures).
 | 13 | PinPair | pin: String |
 | 14 | PinResult | ok: bool |
 | 15 | Bye | — |
+| 16 | FileResume | tid, offset: u64, prefix_sha256: [u8;32] — only to CAP_RESUME peers (§8.1) |
 
 `enum Payload` (inside `Msg`):
 | idx | variant | fields |
@@ -155,8 +161,33 @@ Ed25519 key from Hello (stored in the contact, used to verify group signatures).
 * Receiver: out-of-order offset ⇒ fail. Sends `FileProgress{received}` every 256 KiB and at
   the end; on `FileEnd` checks size + SHA-256, renames to a unique name in the download dir,
   replies `FileComplete{ok, error}`.
-* `FileCancel` from either side aborts. Pending offers are re-sent after reconnect; a known
-  `tid` re-offered is ignored.
+* `FileCancel` from either side aborts. Pending offers are re-sent after reconnect. A known
+  `tid` re-offered is ignored by old peers; CAP_RESUME peers handle it as in §8.1.
+
+### 8.1 Resume (CAP_RESUME, both peers)
+Identical in lan-core (Rust) and the portable C core.
+* **Link loss** (either path, LAN or relay, or link replaced): an active transfer is *paused*
+  instead of failed — state goes back to `offered`, error text `连接中断，重连后自动续传`.
+  The receiver keeps its `.part` file and its running SHA-256 state; the chat message is not
+  marked failed.
+* **Reconnect**: the sender re-sends `FileOffer` with the same `tid` for every paused
+  outgoing transfer (as for any pending offer).
+* **Receiver**, on a re-offer of a `tid` it accepted before:
+  * already `done` → reply `FileComplete{ok:true}` again (the first one may have been lost);
+  * has `n` bytes (0 < n < size) → reply `FileResume{tid, offset:n, prefix_sha256: SHA-256(first n bytes)}`
+    and keep appending;
+  * otherwise → `FileAccept` (restart from 0, fresh `.part`).
+* **Sender**, on `FileResume`: hashes the first `offset` bytes of its file; if equal to
+  `prefix_sha256` it continues with `FileChunk` at `offset` (flow-control credit starts at
+  `offset`), else it restarts at 0. A receiver that sees a first chunk at offset 0 while
+  holding data truncates its `.part` and restarts.
+* The final check is unchanged: size + SHA-256 of the whole file vs `FileOffer.sha256`.
+* **Old peers** (no CAP_RESUME): never receive `FileResume`; link loss fails the transfer as
+  before and a manual retry restarts from 0.
+* Implementations expose the offset the last (re)start continued from (`Transfer.resumed_from`
+  in lan-core, `lsm_transfer.resumed_from` / CLI `XFER … resumed=<n>` in the C core).
+* Paused state lives in memory: restarting the app while paused loses the resume
+  (the sender's offer then restarts from 0 on a fresh receiver state).
 
 ## 9. PIN pairing
 1. Peer A calls `pin_offer`: random 6-digit PIN, valid 300 s, max 5 wrong tries.
