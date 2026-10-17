@@ -9,7 +9,7 @@ cd "$(dirname "$0")/../.."; ROOT=$PWD; OUT=$ROOT/build/linux-adw-appimage; DIST=
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq build-essential meson ninja-build pkg-config curl xz-utils file git python3 python3-packaging sassc gettext \
-  libffi-dev libpcre2-dev zlib1g-dev libmount-dev libselinux1-dev \
+  libappstream-dev libffi-dev libpcre2-dev zlib1g-dev libmount-dev libselinux1-dev \
   libpango1.0-dev libcairo2-dev libgdk-pixbuf-2.0-dev libgraphene-1.0-dev libepoxy-dev libxkbcommon-dev libwayland-dev wayland-protocols \
   libx11-dev libxrandr-dev libxi-dev libxext-dev libxcursor-dev libxdamage-dev libxfixes-dev libxinerama-dev libfribidi-dev libharfbuzz-dev libfontconfig-dev libpng-dev libtiff-dev libjpeg-dev libfreetype-dev
 export PKG_CONFIG_PATH=$PREFIX/lib/x86_64-linux-gnu/pkgconfig:$PREFIX/lib/pkgconfig:$PREFIX/share/pkgconfig
@@ -33,6 +33,8 @@ A=$OUT/AppDir; rm -rf $A; mkdir -p $A/usr/bin $A/usr/lib/gio/modules $A/usr/shar
 cp build/linux-adw/lan-messenger-adw build/linux-adw/lanmsg-cli $A/usr/bin/; strip $A/usr/bin/*
 # bundle only what we built (glib/gio/gobject/gmodule/gthread, gtk-4, adwaita-1); the rest is the distro's
 for l in $(ldd $A/usr/bin/lan-messenger-adw | awk '{print $3}' | grep "^$PREFIX"); do cp -L "$l" $A/usr/lib/; done
+# libadwaita >= 1.4 links appstream (about dialog release notes); not on every Debian 12 install -> bundle it and its small deps
+for l in $(ldd $A/usr/bin/lan-messenger-adw | awk '{print $3}' | grep -E "libappstream|libxmlb|libyaml|libstemmer"); do cp -L "$l" $A/usr/lib/; done
 strip --strip-unneeded $A/usr/lib/*.so* || true
 cp $PREFIX/share/glib-2.0/schemas/*.xml $A/usr/share/glib-2.0/schemas/ 2>/dev/null || true
 glib-compile-schemas $A/usr/share/glib-2.0/schemas

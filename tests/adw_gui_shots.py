@@ -10,6 +10,11 @@ xv = subprocess.Popen(["Xvfb", disp, "-screen", "0", "1280x860x24", "-nolisten",
 env = dict(os.environ, DISPLAY=disp, GDK_BACKEND="x11", GSK_RENDERER="cairo", NO_AT_BRIDGE="1", LANG="C.UTF-8", GTK_A11Y="none")
 env.update(l.split("=", 1) for l in subprocess.check_output(["dbus-launch", "--sh-syntax"], env=env, text=True).replace(";", "\n").splitlines() if "=" in l and not l.startswith("export"))
 env = {k: v.strip("'") for k, v in env.items()}
+# a compositing manager, as on every real desktop: without one, GTK >= 4.14 popovers (own X surfaces with
+# an ARGB shadow margin) are drawn on black by Xvfb
+comp = shutil.which("xcompmgr")
+compp = subprocess.Popen([comp, "-n"], env=env, stderr=subprocess.DEVNULL) if comp else None
+print("compositor:", comp or "none", flush=True)
 class Proc:
     def __init__(n, argv, e=None):
         n.lines = []; n.p = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=e or env)
@@ -104,5 +109,5 @@ gl = len(g.lines); xdo("key", "ctrl+f"); check(g.wait_for("UI search", 5, gl) is
 time.sleep(0.8); shot("page-list-narrow", "light", "560x720", g)
 xdo("key", "ctrl+q"); time.sleep(1); g.p.poll() is None and g.p.kill(); A.cmd("quit", 10); A.p.kill()
 import json; json.dump(ignore, open(f"{out}/audit_ignore.json", "w"), ensure_ascii=False, indent=1)
-xv.kill(); subprocess.run(["kill", env.get("DBUS_SESSION_BUS_PID", "0")])
+compp and compp.kill(); xv.kill(); subprocess.run(["kill", env.get("DBUS_SESSION_BUS_PID", "0")])
 print("RESULT", "FAIL" if fails else "PASS", len(fails)); sys.exit(1 if fails else 0)

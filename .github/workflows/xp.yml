@@ -203,7 +203,7 @@ jobs:
       - name: Toolchain + X + Python deps
         run: |
           sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libadwaita-1-dev libgtk-4-dev pkg-config xvfb dbus-x11 xdotool x11-utils imagemagick \
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libadwaita-1-dev libgtk-4-dev pkg-config xvfb xcompmgr dbus-x11 xdotool x11-utils imagemagick \
             fonts-noto-cjk language-pack-zh-hans adwaita-icon-theme tesseract-ocr tesseract-ocr-chi-sim python3-numpy python3-opencv python3-pil
           pip install --break-system-packages -q pytesseract
       - name: Build lan-messenger-adw + lanmsg-cli
