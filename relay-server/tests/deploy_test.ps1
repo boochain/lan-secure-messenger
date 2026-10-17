@@ -16,7 +16,7 @@ function Deploy {
   $argl = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$D`"") + $a
   $p = Start-Process powershell.exe -ArgumentList $argl -NoNewWindow -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
   if (-not $p.WaitForExit(180000)) { Write-Host "TIMEOUT: deploy $($a -join ' ')"; Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
-  $txt = ((Get-Content $out -Raw -ErrorAction SilentlyContinue) + (Get-Content $err -Raw -ErrorAction SilentlyContinue))
+  $txt = ((Get-Content $out -Raw -Encoding UTF8 -ErrorAction SilentlyContinue) + (Get-Content $err -Raw -Encoding UTF8 -ErrorAction SilentlyContinue))
   Write-Host "----- deploy $($a -join ' ') -----"; Write-Host $txt
   return $txt
 }
@@ -31,7 +31,7 @@ function RoundTrip($port, $pw) {
 "== deploy.ps1 test on $((Get-CimInstance Win32_OperatingSystem).Caption) home=$env:RELAY_HOME"
 # 1. install (Windows service) with the firewall reported inactive -> no firewall command
 $env:RELAY_FAKE_FIREWALL = 'inactive'; $env:RELAY_FWLOG = Join-Path $T 'fw.log'
-$o = Deploy install -Port 19801 -Password 'Test-Pass-1'; $o | Set-Content (Join-Path $T 'install.log')
+$o = Deploy install -Port 19801 -Password 'Test-Pass-1'; $o | Set-Content -Encoding UTF8 (Join-Path $T 'install.log')
 Check 'install: service created' { (Get-Service LsmRelay).Status -eq 'Running' }
 Check 'install: service is a real SCM service (--service)' { (Get-CimInstance Win32_Service -Filter "Name='LsmRelay'").PathName -match '--service' }
 Check 'inactive firewall message' { $o -match '本机防火墙未启用，不做修改' }
@@ -52,13 +52,16 @@ $leg = Join-Path $T 'legacy'; New-Item -ItemType Directory -Force $leg | Out-Nul
 Copy-Item $NewBin (Join-Path $leg 'relay-server.exe')
 $env:RELAY_LEGACY_BINS = (Join-Path $leg 'relay-server.exe'); $env:RELAY_LEGACY_PIDS = (Join-Path $leg 'stale.pid')
 Set-Content (Join-Path $leg 'stale.pid') '999999'
+$null = Deploy stop
+# installed binary replaced by an 'old build' whose version cannot be read (stands in for a pre-0.1 build)
+Copy-Item -Force $Cli "$env:RELAY_HOME\bin\relay-server.exe"
 & sc.exe create RelayServer binPath= "`"$leg\relay-server.exe`" --service --port 19899 --password x" start= demand | Out-Null
 & schtasks /Create /TN RelayServer /TR "`"$leg\relay-server.exe`" --port 19898 --password x" /SC ONLOGON /F | Out-Null
 $old = Start-Process -FilePath (Join-Path $leg 'relay-server.exe') -ArgumentList '--port 19897 --password oldpass --bind 127.0.0.1' -PassThru -WindowStyle Hidden
 Start-Sleep 1
-$o = Deploy upgrade; $o | Set-Content (Join-Path $T 'upgrade.log')
+$o = Deploy upgrade; $o | Set-Content -Encoding UTF8 (Join-Path $T 'upgrade.log')
 Check 'upgrade detected leftovers' { $o -match '检测到已有安装或残留' }
-Check 'upgrade report (old → new)' { $o -match '→|版本相同' }
+Check 'upgrade report (old → new)' { $o -match 'unknown → 0\.1\.0' }
 Check 'old service removed' { -not (Get-Service RelayServer -ErrorAction SilentlyContinue) }
 Check 'old task removed' { & cmd.exe /c 'schtasks /Query /TN RelayServer >nul 2>&1'; $LASTEXITCODE -ne 0 }
 Check 'old process stopped' { -not (Get-Process -Id $old.Id -ErrorAction SilentlyContinue) }
