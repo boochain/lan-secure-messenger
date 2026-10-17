@@ -533,7 +533,8 @@ async fn status_endpoint_reports_online() {
     s.stop().await;
 }
 
-/// Cross-implementation test: C client <-> Rust client through the relay.
+/// Cross-implementation test: C client <-> Rust client through the relay (POSIX C client).
+#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn interop_c_and_rust_clients() {
     let cbin = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("c-client/relay_client");
