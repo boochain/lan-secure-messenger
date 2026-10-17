@@ -294,8 +294,17 @@ static void load_outbox(lsm_core *c){ char *t=load_sealed(c,"outbox.dat"), *line
     free(t); }
 
 /* history: append-only file of [u32 LE len][sealed record] */
+/* durable append: a record must be on disk before the event that announces it (a UI or peer may act on 'done' and the
+   process may then be killed); _commit is msvcrt (XP-safe) = FlushFileBuffers */
+static void file_sync(FILE *f){
+#ifdef _WIN32
+    _commit(_fileno(f));
+#else
+    fsync(fileno(f));
+#endif
+}
 static void hist_append(lsm_core *c, buf_t *rec){ char p[600]; size_t sn; uint8_t *s=seal_rand(c->store_key,rec->p,rec->n,&sn); FILE *f; uint8_t l[4]; int i;
-    path_join(p,sizeof p,c->data_dir,"history.dat"); f=ufopen(p,"ab"); if(f){ for(i=0;i<4;i++) l[i]=(uint8_t)(sn>>(8*i)); fwrite(l,1,4,f); fwrite(s,1,sn,f); fclose(f);} free(s); }
+    path_join(p,sizeof p,c->data_dir,"history.dat"); f=ufopen(p,"ab"); if(f){ for(i=0;i<4;i++) l[i]=(uint8_t)(sn>>(8*i)); fwrite(l,1,4,f); fwrite(s,1,sn,f); fflush(f); file_sync(f); fclose(f);} free(s); }
 static lsm_msg *msg_get(lsm_core *c, const char *id){ int i; for(i=c->nmsgs-1;i>=0;i--) if(!strcmp(c->msgs[i].id,id)) return &c->msgs[i]; return NULL; }
 static void hist_rec_msg(lsm_core *c, lsm_msg *m){ buf_t b={0};
     bfmt(&b,"M\t%s\t%s\t%d\t%s\t",m->id,m->conv,m->out,m->sender_fp); esc_put(&b,m->sender_name); bfmt(&b,"\t%d\t",m->kind); esc_put(&b,m->body?m->body:"");
@@ -654,13 +663,15 @@ static void on_file_frame(lsm_core *c, const char *fp, uint32_t v, rd_t *r){
         if(memcmp(h,t->sha,32)){ t->state=TS_ACTIVE; xfer_fail(c,t,TS_FAILED,"SHA-256 \xe6\xa0\xa1\xe9\xaa\x8c\xe5\xa4\xb1\xe8\xb4\xa5"); file_complete(c,t,0,"SHA-256 \xe6\xa0\xa1\xe9\xaa\x8c\xe5\xa4\xb1\xe8\xb4\xa5"); break; }
         unique_path(c,t->name,fin,sizeof fin);
         if(urename(t->part,fin)){ t->state=TS_ACTIVE; xfer_fail(c,t,TS_FAILED,"rename failed"); file_complete(c,t,0,"rename failed"); break; }
-        scpy(t->path,fin,sizeof t->path); t->state=TS_DONE; file_complete(c,t,1,"");
+        scpy(t->path,fin,sizeof t->path); t->state=TS_DONE;
+        /* persist first, then announce: history record (synced) -> msg_update -> transfer 'done' -> ack to the sender */
         { lsm_msg *m=msg_get(c,t->msg_id); if(m){ scpy(m->file_path,fin,520); hist_rec_upd(c,m); emit_msg(c,"msg_update",m);} }
-        emit_xfer(c,t); } break;
+        emit_xfer(c,t); file_complete(c,t,1,""); } break;
     case 11: { int ok=r_u8(r); char *e=r_str(r); if(t && t->out && !xfer_finished(t)){
-        if(ok){ int i, all=1; t->state=TS_DONE; t->transferred=t->size; emit_xfer(c,t);
+        if(ok){ int i, all=1; t->state=TS_DONE; t->transferred=t->size;
             for(i=0;i<c->nxfers;i++) if(c->xfers[i].out && !strcmp(c->xfers[i].msg_id,t->msg_id) && c->xfers[i].state!=TS_DONE) all=0;
-            if(all || !t->has_group) set_status(c,msg_get(c,t->msg_id),ST_DELIVERED); }
+            if(all || !t->has_group) set_status(c,msg_get(c,t->msg_id),ST_DELIVERED);  /* persisted before 'done' is emitted */
+            emit_xfer(c,t); }
         else { char m[300]; snprintf(m,sizeof m,"\xe5\xaf\xb9\xe6\x96\xb9\xe6\xa0\xa1\xe9\xaa\x8c\xe5\xa4\xb1\xe8\xb4\xa5: %s",e); xfer_fail(c,t,TS_FAILED,m); } }
         free(e); break; }
     case 12: { char *rs=r_str(r); if(t && !xfer_finished(t)){ char m[300]; snprintf(m,sizeof m,"\xe5\xaf\xb9\xe6\x96\xb9\xe5\x8f\x96\xe6\xb6\x88: %s",rs); xfer_fail(c,t,TS_CANCELLED,m); } free(rs); break; }

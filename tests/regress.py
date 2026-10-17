@@ -59,7 +59,9 @@ class Node:
         n.p = subprocess.Popen(cmd + ["--data", dd, "--name", tag, "--no-discovery", "--port", str(port), "--disco-port", str(port + 1)],
                                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=dict(os.environ, WINEDEBUG="-all"))
         threading.Thread(target=lambda: [n.lines.append(l.decode("utf-8", "replace").rstrip("\r\n")) for l in n.p.stdout], daemon=True).start()
-        n.fp = n.cmd("id", 60)[-1].split()[2]
+        # take the fingerprint from the "OK id" line itself: an async "EV peer <fp> online" line (the other node
+        # reconnecting) can arrive right after it, and its 3rd token is the *other* node's fingerprint
+        n.fp = next(l for l in n.cmd("id", 60) if l.startswith("OK id")).split()[2]
     def cmd(n, line, t=30):
         k = len(n.lines); n.p.stdin.write((line + "\n").encode()); n.p.stdin.flush(); end = time.time() + t
         while time.time() < end:
@@ -80,10 +82,9 @@ B.cmd(f"add 127.0.0.1:{base}"); A.has("online", 10); B.has("online", 10); A.cmd(
 src = f"/tmp/lsmreg-file-{os.getpid()}.bin"; open(src, "wb").write(os.urandom(70000)); name = os.path.basename(src)
 B.cmd(f"sendfile {A.fp} " + (src if not exe.endswith(".exe") else "Z:" + src.replace("/", "\\")))
 okrx = A.has("\tin\tdone\t", 30)
-# the 'done' event can precede the receiver's message record by a moment; wait until it is in history before restarting
-for _ in range(50):
-    if any(name in l for l in A.cmd(f"history {B.fp}") if "[file]" in l): break
-    time.sleep(0.2)
+# no grace period: the core persists (and syncs) the message record before it emits 'done', so quitting right after
+# the receiver's and the sender's 'done' events must not lose it
+okrx = okrx and B.has("\tout\tdone\t", 30)
 A.quit(); B.quit()
 A = Node("RA", base); B = Node("RB", base + 2)
 la = [l for l in A.cmd(f"history {B.fp}") if "[file]" in l]; lb = [l for l in B.cmd(f"history {A.fp}") if "[file]" in l]
