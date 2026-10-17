@@ -195,3 +195,25 @@ jobs:
           path: |
             ui-audit
             shots
+  linux-adw:
+    name: Linux GTK 4 + libadwaita GUI (build, shortcuts, light/dark shots, colour audit)
+    runs-on: ubuntu-24.04   # libadwaita 1.5; the GTK 4 edition needs >= 1.4 (Ubuntu 20.04 dropped, approved)
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain + X + Python deps
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libadwaita-1-dev libgtk-4-dev pkg-config xvfb dbus-x11 xdotool x11-utils imagemagick \
+            fonts-noto-cjk language-pack-zh-hans adwaita-icon-theme tesseract-ocr tesseract-ocr-chi-sim python3-numpy python3-opencv python3-pil
+          pip install --break-system-packages -q pytesseract
+      - name: Build lan-messenger-adw + lanmsg-cli
+        run: |
+          sh linux/build-adw.sh
+          cc -O2 -std=gnu99 -Isrc -DLSM_APP_VERSION='"ci"' -o build/linux-adw/lanmsg-cli src/cli.c src/core.c src/xcrypto.c src/third_party/monocypher.c src/third_party/monocypher-ed25519.c -lpthread
+      - name: Shortcut runtime checks + screenshots (light + dark)
+        run: python3 tests/adw_gui_shots.py build/linux-adw/lan-messenger-adw build/linux-adw/lanmsg-cli shots/adw
+      - name: Colour audit (gnome palette)
+        run: python3 tools/ui_color_audit.py --palette tools/palettes/gnome.json --out ui-audit/adw shots/adw/*.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: linux-adw-screenshots, path: "shots/adw\nui-audit/adw" }
