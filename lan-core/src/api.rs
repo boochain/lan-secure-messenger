@@ -153,6 +153,18 @@ pub struct Conversation {
     pub unread: u32,
     pub muted: bool,
     pub online: bool,
+    /// Last-message details for the chat-list row (receipt ticks, group sender prefix, file/image icon).
+    /// Additive: older UIs ignore them, older daemons omit them.
+    #[serde(default)]
+    pub last_out: bool,
+    #[serde(default)]
+    pub last_status: Option<MsgStatus>,
+    #[serde(default)]
+    pub last_sender: String,
+    #[serde(default)]
+    pub last_kind: Option<MsgKind>,
+    #[serde(default)]
+    pub last_file: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

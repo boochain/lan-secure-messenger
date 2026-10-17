@@ -905,7 +905,12 @@ impl Engine {
         if let Some(m) = self.history.get_mut(id) {
             f(m);
             let m = m.clone();
+            let is_last = self.history.last_in(&m.conversation).map(|l| l.id == m.id).unwrap_or(false);
+            let conv = m.conversation.clone();
             self.emit(Event::MessageUpdated { message: m });
+            if is_last {
+                self.emit_conv(&conv); // the chat-list row shows the last message's ticks
+            }
         }
     }
 
@@ -1287,6 +1292,11 @@ impl Engine {
             unread: self.unread.get(conv).map(|v| v.len() as u32).unwrap_or(0),
             muted: self.is_muted(conv),
             online: if let Some(fp) = conv.strip_prefix("dm:") { self.conns.contains_key(fp) } else { true },
+            last_out: last.map(|m| m.direction == Direction::Out).unwrap_or(false),
+            last_status: last.map(|m| m.status),
+            last_sender: last.map(|m| m.sender_name.clone()).unwrap_or_default(),
+            last_kind: last.map(|m| m.kind),
+            last_file: last.and_then(|m| m.file.as_ref()).map(|f| f.name.clone()).unwrap_or_default(),
         }
     }
 
