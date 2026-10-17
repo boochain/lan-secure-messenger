@@ -154,3 +154,30 @@ Reference implementations: `relay-server/src/client.rs` (Rust, tokio) and `relay
 `relay-server --status [--config f | --port p]` (or `GET http://127.0.0.1:<port+1>/status`, local only) returns JSON:
 `{"name","version","protocol","pid","bind","port","online","connections","connections_total","auth_failures",
 "frames_forwarded","bytes_forwarded","send_failures","protocol_errors","uptime_secs","started_unix"}`.
+
+## Appendix: LSM messenger client conventions (v1)
+
+The relay server never parses these; they are how the LAN Secure Messenger clients
+(Rust `lan-core/src/engine/relay.rs`, C core `src/relay.c`) use the relay.
+
+* **peer_id** = SHA-256 of the client's static X25519 public key.
+* **AUTH info** = UTF-8 `LSM5\t<fingerprint>\t<display name>\t<app version>` (≤ 512 bytes).
+  Clients ignore PEER_LIST/PEER_JOIN entries whose info does not start with `LSM5`.
+* **Stream layer** inside every SEND/DELIVER blob:
+
+  | offset | size | field |
+  |---|---|---|
+  | 0 | 1 | kind: 0 DATA, 1 OPEN, 2 CLOSE |
+  | 1 | 4 | session id (u32 BE, random, non-zero) |
+  | 5 | n | bytes |
+
+  A session carries exactly the byte stream a LAN TCP connection would carry
+  (Noise XX handshake, then length-prefixed encrypted frames), so every
+  messenger feature works unchanged. Only the peer with the numerically
+  smaller peer_id sends OPEN (and is the Noise initiator); OPEN replaces any
+  previous session with that peer. DATA for an unknown session is answered with
+  CLOSE. Either side sends CLOSE when its link ends. DATA chunks are ≤ 60000 bytes.
+* **Path preference**: LAN direct is always preferred. While a peer is on the relay
+  the client keeps dialing it on the LAN when it is announced there; a direct link
+  replaces the relay link (the relay session is closed). When the direct link drops,
+  the client opens a relay session again within ~2 s.
