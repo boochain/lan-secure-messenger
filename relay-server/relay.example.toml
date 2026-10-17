@@ -1,0 +1,24 @@
+# LSM 中继服务器配置示例 (relay-server example config)
+[server]
+bind = "0.0.0.0"          # 监听地址 (bind address); "::" for IPv4+IPv6
+port = 9443               # TCP 端口 (port)
+passphrase = "change-me-to-a-long-random-passphrase"   # 网络口令 (network passphrase)
+salt = ""                 # 32 hex chars; deploy scripts generate one. "" = built-in default
+status_addr = ""          # "" = 127.0.0.1:<port+1>; "off" disables
+
+[limits]
+max_frame = 1048640       # bytes per frame
+max_connections = 1024
+max_connections_per_ip = 64
+rate_bytes_per_sec = 67108864
+rate_frames_per_sec = 5000
+idle_timeout_secs = 90
+auth_timeout_secs = 10
+heartbeat_secs = 25
+queue_frames = 256
+send_timeout_ms = 15000
+auth_failures_per_min = 10
+
+[log]
+level = "info"            # error|warn|info|debug|trace
+file = ""                 # "" = stderr
