@@ -18,7 +18,7 @@ if ! pkg-config --atleast-version=1.4 libadwaita-1; then
   cd $OUT
   fetch(){ [ -d "$2" ] || { curl -fsSL "$1" | tar xJ; }; }
   fetch https://download.gnome.org/sources/glib/2.78/glib-$GLIB.tar.xz glib-$GLIB
-  (cd glib-$GLIB && meson setup _b --prefix=$PREFIX --buildtype=release -Dtests=false -Dintrospection=disabled -Dman-pages=disabled -Ddocumentation=false -Dnls=disabled && ninja -C _b install)
+  (cd glib-$GLIB && meson setup _b --prefix=$PREFIX --buildtype=release -Dtests=false -Dman=false -Dgtk_doc=false -Dnls=disabled -Dselinux=disabled -Dsysprof=disabled && ninja -C _b install)
   fetch https://download.gnome.org/sources/gtk/4.12/gtk-$GTK.tar.xz gtk-$GTK
   (cd gtk-$GTK && meson setup _b --prefix=$PREFIX --buildtype=release -Dmedia-gstreamer=disabled -Dprint-cpdb=disabled -Dprint-cups=disabled -Dvulkan=disabled \
       -Dintrospection=disabled -Ddocumentation=false -Dman-pages=false -Dbuild-tests=false -Dbuild-examples=false -Dbuild-demos=false -Dbuild-testsuite=false -Df16c=disabled && ninja -C _b install)
