@@ -80,6 +80,8 @@ typedef struct {
     int resumable;           /* peer announced CAP_RESUME: a link loss pauses (state offered) and resumes on reconnect */
     int accepted;            /* in: accepted once, a re-offer is resumed automatically */
     uint64_t resumed_from;   /* offset the last (re)start continued from; 0 = from the beginning */
+    int hashing;             /* internal: 1 sender prefix check, 2 receiver re-hash of a restored .part (chunked) */
+    uint64_t hash_want, hash_done; void *hctx; uint8_t hpre[32]; int reoffer_pending;
 } lsm_transfer;
 
 typedef struct lsm_core lsm_core;

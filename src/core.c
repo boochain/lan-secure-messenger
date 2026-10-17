@@ -196,6 +196,7 @@ struct lsm_core {
     uint8_t x_sk[32], x_pk[32], ed_seed[32], ed_sk[64], ed_pk[32]; char fp[FP_LEN];
     char name[300];
     uint8_t store_key[32];
+    int hash_busy; /* resume.c hashing jobs pending: poll without sleeping */
     sock_t lsock, usock, ufallback; int lport;
     iface ifs[32]; int nifs; int64_t last_enum; uint32_t joined[32]; int njoined;
     reply_mark replies[64];
@@ -605,13 +606,15 @@ static void remove_member_rekey(lsm_core *c, lsm_group *g, const char *fp){ buf_
     b_free(&p); { char u[37]; lsm_uuid_str(g->id,u); emit(c,"group\t%s\t%s",u,g->name); } }
 
 /* ------------------------------------------------------------ files */
+static void rs_sidecar_write(lsm_core *c, lsm_transfer *t); static void rs_sidecar_remove(lsm_transfer *t);
+static int rs_pump(lsm_core *c); static void rs_restore(lsm_core *c); static void rs_start_prefix(lsm_transfer *t, uint64_t off, const uint8_t pre[32]);
 static lsm_transfer *xfer_get(lsm_core *c, const uint8_t tid[16]){ int i; for(i=0;i<c->nxfers;i++) if(!memcmp(c->xfers[i].tid,tid,16)) return &c->xfers[i]; return NULL; }
 static int xfer_finished(lsm_transfer *t){ return t->state>=TS_DONE; }
 static void emit_xfer(lsm_core *c, lsm_transfer *t){ static const char *st[]={"offered","active","verifying","done","failed","rejected","cancelled"}; char u[37]; lsm_uuid_str(t->tid,u);
     emit(c,"transfer\t%s\t%s\t%s\t%s\t%llu\t%llu\t%s\t%s",u,t->out?"out":"in",st[t->state],t->peer_fp,(unsigned long long)t->transferred,(unsigned long long)t->size,t->name,t->error); }
-static void xfer_close_files(lsm_transfer *t){ if(t->fp_handle){ fclose((FILE*)t->fp_handle); t->fp_handle=NULL; } free(t->hash); t->hash=NULL; }
+static void xfer_close_files(lsm_transfer *t){ if(t->fp_handle){ fclose((FILE*)t->fp_handle); t->fp_handle=NULL; } free(t->hash); t->hash=NULL; free(t->hctx); t->hctx=NULL; t->hashing=0; }
 static void mark_file_failed(lsm_core *c, lsm_transfer *t){ lsm_msg *m=msg_get(c,t->msg_id); if(m && m->out) set_status(c,m,ST_FAILED); }
-static void xfer_fail(lsm_core *c, lsm_transfer *t, int state, const char *err){ if(xfer_finished(t)) return; xfer_close_files(t); if(!t->out && t->part[0]) uremove(t->part); t->state=state; scpy(t->error,err,sizeof t->error); emit_xfer(c,t); mark_file_failed(c,t); }
+static void xfer_fail(lsm_core *c, lsm_transfer *t, int state, const char *err){ if(xfer_finished(t)) return; xfer_close_files(t); if(!t->out && t->part[0]){ uremove(t->part); rs_sidecar_remove(t); } t->state=state; scpy(t->error,err,sizeof t->error); emit_xfer(c,t); mark_file_failed(c,t); }
 static void fail_transfers_for(lsm_core *c, const char *fp, const char *why){ int i; for(i=0;i<c->nxfers;i++){ lsm_transfer *t=&c->xfers[i];
     if(strcmp(t->peer_fp,fp) || !(t->state==TS_ACTIVE||t->state==TS_VERIFYING)) continue;
     if(t->resumable){ /* CAP_RESUME: pause; the sender re-offers on the next link (LAN or relay), the receiver resumes from its partial file */
@@ -647,13 +650,13 @@ static int accept_transfer(lsm_core *c, lsm_transfer *t){ char part[600]; conn *
         if((uint64_t)ftell((FILE*)t->fp_handle)==t->transferred){
             t->resumed_from=t->transferred; t->last_prog=t->transferred; t->state=TS_ACTIVE;
             b_u32(&f,16); b_uuid(&f,t->tid); b_u64(&f,t->transferred); b_put(&f,pre,32); send_to_fp(c,t->peer_fp,&f); b_free(&f);
-            emit_xfer(c,t); return 0; }
+            rs_sidecar_write(c,t); emit_xfer(c,t); return 0; }
         fclose((FILE*)t->fp_handle); t->fp_handle=NULL; }
-    if(t->part[0]) uremove(t->part);
+    if(t->part[0]){ uremove(t->part); rs_sidecar_remove(t); }
     snprintf(part,sizeof part,"%s" PATHSEP ".%s.part",c->dl_dir,t->name); scpy(t->part,part,sizeof t->part);
     t->fp_handle=ufopen(part,"wb"); if(!t->fp_handle){ return -1; }
     free(t->hash); t->hash=malloc(sizeof(sha256_ctx)); sha256_init((sha256_ctx*)t->hash); t->transferred=0; t->resumed_from=0; t->last_prog=0; t->state=TS_ACTIVE;
-    send_tid_frame(c,t->peer_fp,6,t->tid,NULL); emit_xfer(c,t); return 0; }
+    rs_sidecar_write(c,t); send_tid_frame(c,t->peer_fp,6,t->tid,NULL); emit_xfer(c,t); return 0; }
 /* sender pump: called every loop iteration; respects 4 MiB credit window and socket backlog */
 static void pump_files(lsm_core *c){ int i; uint8_t *buf=NULL;
     for(i=0;i<c->nxfers;i++){ lsm_transfer *t=&c->xfers[i]; conn *k; if(!t->out || t->state!=TS_ACTIVE || !t->fp_handle) continue;
@@ -677,6 +680,7 @@ static void on_file_frame(lsm_core *c, const char *fp, uint32_t v, rd_t *r){
         if(r->err || t){ free(name); free(mime);
             if(!r->err && t && !t->out){ /* re-offer after reconnect of a transfer we know */
                 if(t->state==TS_DONE) file_complete(c,t,1,"");
+                else if(t->state==TS_OFFERED && t->accepted && t->hashing) t->reoffer_pending=1;
                 else if(t->state==TS_OFFERED && t->accepted && accept_transfer(c,t)){ xfer_fail(c,t,TS_FAILED,"cannot create file"); send_tid_frame(c,fp,7,tid,"cannot create file"); } }
             return; }
         sanitize_filename(name,nm,sizeof nm); free(name);
@@ -691,16 +695,12 @@ static void on_file_frame(lsm_core *c, const char *fp, uint32_t v, rd_t *r){
             notice(c,"\xe5\xb7\xb2\xe6\x8b\x92\xe6\x94\xb6\xe6\x9d\xa5\xe8\x87\xaa\xe6\x9c\xaa\xe4\xbf\xa1\xe4\xbb\xbb\xe8\x81\x94\xe7\xb3\xbb\xe4\xba\xba %s \xe7\x9a\x84\xe6\x96\x87\xe4\xbb\xb6 %s",peer_name(c,fp),nm); emit_xfer(c,t); }
         else if(accept_transfer(c,t)){ t->state=TS_REJECTED; send_tid_frame(c,fp,7,tid,"cannot create file"); emit_xfer(c,t); }
         break; }
-    case 6: case 16: if(t && t->out && t->state==TS_OFFERED){ uint64_t off=0; uint8_t pre[32]; conn *k=conn_by_fp(c,fp);
+    case 6: case 16: if(t && t->out && t->state==TS_OFFERED && !t->hashing){ uint64_t off=0; uint8_t pre[32]; conn *k=conn_by_fp(c,fp);
         if(v==16){ off=r_u64(r); r_fix(r,pre,32); if(r->err) break; }
         t->fp_handle=ufopen(t->path,"rb"); if(!t->fp_handle){ xfer_fail(c,t,TS_FAILED,"open failed"); send_tid_frame(c,fp,12,tid,"open failed"); break; }
         t->resumable=(k && (k->rcaps&CAP_RESUME))?1:0; t->error[0]=0;
-        if(off>0 && off<=t->size){ /* continue only if our file has exactly the receiver's prefix */
-            sha256_ctx h; uint8_t got[32], *b=(uint8_t*)malloc(CHUNK); uint64_t left=off; size_t n;
-            sha256_init(&h); while(b && left>0 && (n=fread(b,1,(size_t)(left<CHUNK?left:CHUNK),(FILE*)t->fp_handle))>0){ sha256_update(&h,b,n); left-=n; } free(b); sha256_final(&h,got);
-            if(left || memcmp(got,pre,32)){ off=0; fseek((FILE*)t->fp_handle,0,SEEK_SET); } }
-        else off=0;
-        t->state=TS_ACTIVE; t->transferred=off; t->credit=off; t->resumed_from=off; t->last_credit_mono=mono_ms(); emit_xfer(c,t); } break;
+        if(off>0 && off<=t->size){ rs_start_prefix(t,off,pre); break; } /* resume.c: chunked prefix check, then ACTIVE at off or 0 */
+        t->state=TS_ACTIVE; t->transferred=0; t->credit=0; t->resumed_from=0; t->last_credit_mono=mono_ms(); emit_xfer(c,t); } break;
     case 7: { char *rs=r_str(r); if(t && t->out && !xfer_finished(t)){ t->state=TS_REJECTED; scpy(t->error,rs,sizeof t->error); emit_xfer(c,t); mark_file_failed(c,t); } free(rs); break; }
     case 9: { uint64_t rec=r_u64(r); if(t && t->out){ if(rec>t->credit) t->credit=rec; t->last_credit_mono=mono_ms(); emit_xfer(c,t); } break; }
     case 8: { uint64_t off=r_u64(r); size_t n=0; const uint8_t *d=r_bytes(r,&n);
@@ -719,7 +719,7 @@ static void on_file_frame(lsm_core *c, const char *fp, uint32_t v, rd_t *r){
         if(memcmp(h,t->sha,32)){ t->state=TS_ACTIVE; xfer_fail(c,t,TS_FAILED,"SHA-256 \xe6\xa0\xa1\xe9\xaa\x8c\xe5\xa4\xb1\xe8\xb4\xa5"); file_complete(c,t,0,"SHA-256 \xe6\xa0\xa1\xe9\xaa\x8c\xe5\xa4\xb1\xe8\xb4\xa5"); break; }
         unique_path(c,t->name,fin,sizeof fin);
         if(urename(t->part,fin)){ t->state=TS_ACTIVE; xfer_fail(c,t,TS_FAILED,"rename failed"); file_complete(c,t,0,"rename failed"); break; }
-        scpy(t->path,fin,sizeof t->path); t->state=TS_DONE;
+        scpy(t->path,fin,sizeof t->path); t->state=TS_DONE; rs_sidecar_remove(t);
         /* persist first, then announce: history record (synced) -> msg_update -> transfer 'done' -> ack to the sender */
         { lsm_msg *m=msg_get(c,t->msg_id); if(m){ scpy(m->file_path,fin,520); hist_rec_upd(c,m); emit_msg(c,"msg_update",m);} }
         emit_xfer(c,t); file_complete(c,t,1,""); } break;
@@ -875,9 +875,9 @@ static void loop_once(lsm_core *c){
     for(k=c->conns;k;k=k->next){ if(k->state==9 || k->via_relay) continue; if(k->state!=1) ADD(k->s,&rs); if(k->state==1||k->out.n) ADD(k->s,&ws); if(k->state==1) FD_SET(k->s,&es); }
     if(c->rl->s!=BADSOCK){ if(c->rl->st!=RS_CONNECTING) ADD(c->rl->s,&rs); if(c->rl->st==RS_CONNECTING||c->rl->out.n) ADD(c->rl->s,&ws); if(c->rl->st==RS_CONNECTING) FD_SET(c->rl->s,&es); }
     mu_unlock(&c->mu);
-    tv.tv_sec=0; tv.tv_usec=50000;
+    tv.tv_sec=0; tv.tv_usec=c->hash_busy?0:50000;
 #ifdef _WIN32
-    if(rs.fd_count==0 && ws.fd_count==0){ Sleep(50); n=0; } else
+    if(rs.fd_count==0 && ws.fd_count==0){ if(!c->hash_busy) Sleep(50); n=0; } else
 #endif
     n=select((int)mx+1,&rs,&ws,&es,&tv); /* Winsock reports a failed non-blocking connect ONLY in exceptfds */
     mu_lock(&c->mu);
@@ -893,6 +893,7 @@ static void loop_once(lsm_core *c){
             if(FD_ISSET(k->s,&ws)) conn_writable(c,k);
             if(k->state!=9 && k->state!=1 && FD_ISSET(k->s,&rs)) conn_readable(c,k); } }
     on_tick(c);
+    rs_pump(c);
     pump_files(c);
     for(k=c->conns;k;k=k->next) if(k->state!=9 && k->state!=1 && k->out.n && !k->via_relay) conn_writable(c,k);
     rl_pump(c); if(c->rl->s!=BADSOCK && c->rl->out.n && c->rl->st!=RS_CONNECTING) rl_writable(c);
@@ -917,7 +918,7 @@ lsm_core *lsm_start(const lsm_opts *o, char *err, size_t errn){
     c->seen=(uint8_t(*)[16])malloc(16*20000);
     c->lsock=c->usock=c->ufallback=BADSOCK;
     if(load_identity(c)){ snprintf(err,errn,"cannot write identity in %s",c->data_dir); free(c); return NULL; }
-    load_contacts(c); load_groups(c); load_history(c); load_outbox(c); rl_init(c);
+    load_contacts(c); load_groups(c); load_history(c); load_outbox(c); rl_init(c); rs_restore(c);
     { char *t=load_sealed(c,"manual.dat"), *l, *nx; for(l=t; l && *l; l=nx){ manual_rt m; nx=strchr(l,'\n'); if(nx) *nx++=0; memset(&m,0,sizeof m); if(resolve(l,41235,&m.sa)) continue; scpy(m.addr,l,sizeof m.addr);
         c->manual=(manual_rt*)realloc(c->manual,sizeof(manual_rt)*(c->nmanual+1)); c->manual[c->nmanual++]=m; } free(t); }
     { int i; for(i=0;i<c->ncontacts;i++){ c->contacts[i].online=0; c->contacts[i].rtt_ms=-1; } }
@@ -1102,3 +1103,5 @@ void lsm_initials(const char *name, char out[8]){
         out[n]=0; return; }
     { int len=*p<0x80?1:(*p>>5)==6?2:(*p>>4)==14?3:(*p>>3)==30?4:1; memcpy(out,p,len); out[len]=0; }
 }
+
+#include "resume.c"
