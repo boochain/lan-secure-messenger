@@ -178,6 +178,7 @@ typedef struct conn {
     int64_t started, last_rx, last_ping;
     char dial_key[80];   /* "fp:<fp>" or "addr:<ip:port>" or "" */
     char rname[300]; char rver[64]; uint16_t rlisten;
+    int via_relay; uint32_t rsid; uint8_t rpeer[32]; /* relay link: 1 = via relay (2 = closed by peer) */
     struct conn *next;
 } conn;
 
@@ -208,6 +209,7 @@ struct lsm_core {
     char pin[8]; int64_t pin_time; int pin_tries; char pin_wait[8][FP_LEN];
     char **events; int ev_head, ev_tail, ev_cap;
     int64_t last_announce;
+    struct relay_cl *rl;     /* optional relay client (relay.c) */
     volatile int stop;
 #ifdef _WIN32
     HANDLE th;
@@ -404,17 +406,20 @@ static void fail_transfers_for(lsm_core *c, const char *fp, const char *why);
 static void on_link_up(lsm_core *c, conn *k);
 static void on_frame(lsm_core *c, conn *k, rd_t *r);
 
+struct relay_cl; static void rl_on_link_closed(lsm_core *c, conn *k); static void rl_flush_link(lsm_core *c, conn *k); static void conn_parse(lsm_core *c, conn *k);
+/* close the transport of a link: a socket for LAN links, a CLOSE blob for relay links */
+static void link_drop(lsm_core *c, conn *k){ if(k->via_relay) rl_on_link_closed(c,k); else closesock(k->s); k->state=9; }
 static void conn_close(lsm_core *c, conn *k, const char *why, int bye){
     if(k->state==9) return;
     { char as[64]; addr_str(&k->addr,as,sizeof as); logf_(c,"link %s closed (state %d): %s",as,k->state,why); }
-    if(bye && k->state==4){ buf_t b={0}; fr_simple(&b,15); send_frame(k,&b); b_free(&b); send(k->s,(const char*)k->out.p,(int)k->out.n,0); }
+    if(bye && k->state==4){ buf_t b={0}; fr_simple(&b,15); send_frame(k,&b); b_free(&b); if(k->via_relay) rl_flush_link(c,k); else send(k->s,(const char*)k->out.p,(int)k->out.n,0); }
     if(k->state!=4 && k->dial_key[0]) dial_failed(c,k->dial_key,why);
     if(k->state==4){ conn *o; int still=0; for(o=c->conns;o;o=o->next) if(o!=k && o->state==4 && !strcmp(o->fp,k->fp)) still=1;
         if(!still){ lsm_contact *ct=contact_get(c,k->fp); peer_rt *r=rt_entry(c,k->fp); if(ct){ ct->online=0; ct->rtt_ms=-1; }
             fail_transfers_for(c,k->fp,"\xe8\xbf\x9e\xe6\x8e\xa5\xe6\x96\xad\xe5\xbc\x80"); /* 连接断开 */
             { uint8_t j; rand_bytes(&j,1); r->next_attempt=mono_ms()+300+j*700/256; }
-            emit(c,"peer\t%s\toffline\t%s",k->fp,why); } }
-    closesock(k->s); k->state=9; }
+            if(ct) ct->via_relay=0; emit(c,"peer\t%s\toffline\t%s",k->fp,why); } }
+    link_drop(c,k); }
 
 static void process_wire(lsm_core *c, conn *k, const uint8_t *m, size_t n){
     if(k->state==2){
@@ -443,6 +448,9 @@ static void conn_readable(lsm_core *c, conn *k){
         if(n>0){ b_put(&k->in,tmp,(size_t)n); k->last_rx=mono_ms(); if(n<(int)sizeof tmp) break; continue; }
         if(n==0){ conn_close(c,k,"peer closed",0); return; }
         if(WOULDBLOCK(SOCKERR)) break; conn_close(c,k,"recv error",0); return; }
+    conn_parse(c,k); }
+
+static void conn_parse(lsm_core *c, conn *k){
     while(k->state!=9 && k->in.n>=4){ size_t l=((size_t)k->in.p[0]<<24)|(k->in.p[1]<<16)|(k->in.p[2]<<8)|k->in.p[3]; uint8_t *m;
         if(l==0||l>MAX_WIRE){ conn_close(c,k,"bad frame length",0); return; }
         if(k->in.n<4+l) break;
@@ -454,6 +462,8 @@ static void conn_writable(lsm_core *c, conn *k){
     while(k->out.n){ int n=send(k->s,(const char*)k->out.p,(int)(k->out.n>65536?65536:k->out.n),0);
         if(n>0){ b_consume(&k->out,(size_t)n); continue; }
         if(n<0 && WOULDBLOCK(SOCKERR)) break; conn_close(c,k,"send error",0); return; } }
+
+#include "relay.c"
 
 /* ------------------------------------------------------------ discovery */
 static void build_announce(lsm_core *c, buf_t *out){
@@ -695,17 +705,22 @@ static void on_link_up(lsm_core *c, conn *k){
     k->dial_key[0]=0;
     if(trust_of(c,k->fp)==TRUST_BLOCKED){ conn_close(c,k,"blocked",0); return; }
     for(o=c->conns;o;o=o->next) if(o!=k && o->state==4 && !strcmp(o->fp,k->fp)) ex=o;
+    if(ex && (ex->via_relay!=0)!=(k->via_relay!=0)){ /* LAN direct always beats the relay */
+        conn *loser=k->via_relay?k:ex; logf_(c,"path %s: %s",k->fp,k->via_relay?"keeping direct link, relay link dropped":"direct link up, leaving relay");
+        if(loser==k){ link_drop(c,k); return; } link_drop(c,ex); ex=NULL; }
     if(ex){ /* v0.5 tie-break: prefer links initiated by the smaller fingerprint */
         int me_small=strcmp(c->fp,k->fp)<0; int pref_ex=ex->initiator?me_small:!me_small, pref_new=k->initiator?me_small:!me_small, keep_new;
         if(mono_ms()-ex->last_rx>STALE_TIEBREAK) keep_new=1; else if(pref_ex==pref_new) keep_new=1; else keep_new=pref_new;
-        if(!keep_new){ closesock(k->s); k->state=9; return; }
-        fail_transfers_for(c,k->fp,"\xe8\xbf\x9e\xe6\x8e\xa5\xe8\xa2\xab\xe6\x9b\xbf\xe6\x8d\xa2"); closesock(ex->s); ex->state=9; }
+        if(!keep_new){ link_drop(c,k); return; }
+        fail_transfers_for(c,k->fp,"\xe8\xbf\x9e\xe6\x8e\xa5\xe8\xa2\xab\xe6\x9b\xbf\xe6\x8d\xa2"); link_drop(c,ex); }
     ct=contact_entry(c,k->fp); scpy(ct->name,k->rname,sizeof ct->name); memcpy(ct->ed,k->remote_ed,32); ct->has_ed=1; ct->last_seen_ms=wall_ms(); ct->online=1; ct->rtt_ms=-1; scpy(ct->app_version,k->rver,sizeof ct->app_version);
     if(c->o.auto_trust && ct->trust==TRUST_UNKNOWN) ct->trust=TRUST_TRUSTED;
-    if(k->rlisten){ struct sockaddr_in a=k->addr; if(!k->initiator) a.sin_port=htons(k->rlisten); addr_str(&a,ct->addr,sizeof ct->addr); }
+    ct->via_relay=k->via_relay?1:0;
+    if(k->rlisten && !k->via_relay){ struct sockaddr_in a=k->addr; if(!k->initiator) a.sin_port=htons(k->rlisten); addr_str(&a,ct->addr,sizeof ct->addr); }
     save_contacts(c);
     r=rt_entry(c,k->fp); r->dialing=0; r->failures=0; r->next_attempt=0;
-    { char as[64]; addr_str(&k->addr,as,sizeof as); emit(c,"peer\t%s\tonline\t%s\t%s\t%s",k->fp,ct->name,as,k->rver); }
+    { char as[64]; if(k->via_relay) scpy(as,"relay",sizeof as); else addr_str(&k->addr,as,sizeof as); emit(c,"peer\t%s\tonline\t%s\t%s\t%s",k->fp,ct->name,as,k->rver);
+      emit(c,"peer\t%s\tpath\t%s",k->fp,k->via_relay?"relay":"direct"); }
     flush_outbox(c,k->fp); resend_offers(c,k->fp); }
 
 static void on_payload(lsm_core *c, const char *fp, const uint8_t id[16], rd_t *r){
@@ -788,7 +803,8 @@ static void on_tick(lsm_core *c){
         else if(k->state!=9 && now-k->started>HS_TIMEOUT) conn_close(c,k,"handshake timeout",0); }
     /* redial peers: trusted, recently announced, or with pending outbox */
     for(i=0;i<c->nrt;i++){ peer_rt *r=&c->rt[i]; lsm_contact *ct=contact_get(c,r->fp); int trusted=ct&&ct->trust==TRUST_TRUSTED, recent=r->last_announce&&now-r->last_announce<60000, has_out=0, j; struct sockaddr_in a; char key[80];
-        if(conn_by_fp(c,r->fp) || r->dialing) continue; if(ct && ct->trust==TRUST_BLOCKED) continue;
+        if(conn_direct_by_fp(c,r->fp) || r->dialing) continue; if(ct && ct->trust==TRUST_BLOCKED) continue;
+        if(conn_by_fp(c,r->fp) && !recent) continue; /* on the relay: try direct only when the peer is announcing on the LAN */
         for(j=0;j<c->noutbox;j++) if(!strcmp(c->outbox[j].fp,r->fp)) has_out=1;
         if(!(trusted||recent||has_out)) continue;
         if(r->next_attempt && now<r->next_attempt) continue;
@@ -807,6 +823,7 @@ static void on_tick(lsm_core *c){
         if(now-c->last_enum>20000){ c->last_enum=now; enum_ifaces(c); }
         if(now-c->last_announce>=c->o.announce_ms){ c->last_announce=now; send_announces(c); } }
     else if(c->announce_targets[0] || c->nmanual){ if(now-c->last_announce>=c->o.announce_ms){ c->last_announce=now; send_announces(c);} }
+    rl_tick(c);
 }
 
 static void reap(lsm_core *c){ conn **pp=&c->conns; while(*pp){ conn *k=*pp; if(k->state==9){ *pp=k->next; b_free(&k->in); b_free(&k->out); crypto_wipe(k,sizeof *k); free(k); } else pp=&k->next; } }
@@ -819,7 +836,8 @@ static void loop_once(lsm_core *c){
     if(c->lsock!=BADSOCK) ADD(c->lsock,&rs);
     if(c->usock!=BADSOCK) ADD(c->usock,&rs);
     if(c->ufallback!=BADSOCK) ADD(c->ufallback,&rs);
-    for(k=c->conns;k;k=k->next){ if(k->state==9) continue; if(k->state!=1) ADD(k->s,&rs); if(k->state==1||k->out.n) ADD(k->s,&ws); if(k->state==1) FD_SET(k->s,&es); }
+    for(k=c->conns;k;k=k->next){ if(k->state==9 || k->via_relay) continue; if(k->state!=1) ADD(k->s,&rs); if(k->state==1||k->out.n) ADD(k->s,&ws); if(k->state==1) FD_SET(k->s,&es); }
+    if(c->rl->s!=BADSOCK){ if(c->rl->st!=RS_CONNECTING) ADD(c->rl->s,&rs); if(c->rl->st==RS_CONNECTING||c->rl->out.n) ADD(c->rl->s,&ws); if(c->rl->st==RS_CONNECTING) FD_SET(c->rl->s,&es); }
     mu_unlock(&c->mu);
     tv.tv_sec=0; tv.tv_usec=50000;
 #ifdef _WIN32
@@ -831,13 +849,17 @@ static void loop_once(lsm_core *c){
         if(c->lsock!=BADSOCK && FD_ISSET(c->lsock,&rs)){ struct sockaddr_in a; socklen_t al=sizeof a; sock_t s=accept(c->lsock,(struct sockaddr*)&a,&al); if(s!=BADSOCK){ set_nonblock(s); conn_start(c,s,&a,0,NULL); } }
         { sock_t us[2]; int u; us[0]=c->usock; us[1]=c->ufallback;
           for(u=0;u<2;u++) if(us[u]!=BADSOCK && FD_ISSET(us[u],&rs)){ uint8_t b[2048]; struct sockaddr_in a; socklen_t al=sizeof a; int got=recvfrom(us[u],(char*)b,sizeof b,0,(struct sockaddr*)&a,&al); if(got>0) on_udp(c,b,(size_t)got,&a); } }
-        for(k=c->conns;k;k=k->next){ if(k->state==9) continue;
+        if(c->rl->s!=BADSOCK){ sock_t rs_=c->rl->s;
+            if(c->rl->st==RS_CONNECTING && FD_ISSET(rs_,&es)) rl_fail(c,"error","\xe6\x97\xa0\xe6\xb3\x95\xe8\xbf\x9e\xe6\x8e\xa5\xe6\x9c\x8d\xe5\x8a\xa1\xe5\x99\xa8");
+            else { if(FD_ISSET(rs_,&ws)) rl_writable(c); if(c->rl->s==rs_ && c->rl->st!=RS_CONNECTING && FD_ISSET(rs_,&rs)) rl_readable(c); } }
+        for(k=c->conns;k;k=k->next){ if(k->state==9 || k->via_relay) continue;
             if(k->state==1 && FD_ISSET(k->s,&es)){ conn_close(c,k,"connect failed",0); continue; }
             if(FD_ISSET(k->s,&ws)) conn_writable(c,k);
             if(k->state!=9 && k->state!=1 && FD_ISSET(k->s,&rs)) conn_readable(c,k); } }
     on_tick(c);
     pump_files(c);
-    for(k=c->conns;k;k=k->next) if(k->state!=9 && k->state!=1 && k->out.n) conn_writable(c,k);
+    for(k=c->conns;k;k=k->next) if(k->state!=9 && k->state!=1 && k->out.n && !k->via_relay) conn_writable(c,k);
+    rl_pump(c); if(c->rl->s!=BADSOCK && c->rl->out.n && c->rl->st!=RS_CONNECTING) rl_writable(c);
     reap(c);
     mu_unlock(&c->mu); }
 
@@ -859,7 +881,7 @@ lsm_core *lsm_start(const lsm_opts *o, char *err, size_t errn){
     c->seen=(uint8_t(*)[16])malloc(16*20000);
     c->lsock=c->usock=c->ufallback=BADSOCK;
     if(load_identity(c)){ snprintf(err,errn,"cannot write identity in %s",c->data_dir); free(c); return NULL; }
-    load_contacts(c); load_groups(c); load_history(c); load_outbox(c);
+    load_contacts(c); load_groups(c); load_history(c); load_outbox(c); rl_init(c);
     { char *t=load_sealed(c,"manual.dat"), *l, *nx; for(l=t; l && *l; l=nx){ manual_rt m; nx=strchr(l,'\n'); if(nx) *nx++=0; memset(&m,0,sizeof m); if(resolve(l,41235,&m.sa)) continue; scpy(m.addr,l,sizeof m.addr);
         c->manual=(manual_rt*)realloc(c->manual,sizeof(manual_rt)*(c->nmanual+1)); c->manual[c->nmanual++]=m; } free(t); }
     { int i; for(i=0;i<c->ncontacts;i++){ c->contacts[i].online=0; c->contacts[i].rtt_ms=-1; } }

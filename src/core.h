@@ -25,6 +25,7 @@ typedef struct {
     int rtt_ms;             /* runtime */
     char app_version[64];   /* runtime */
     int64_t last_announce;  /* runtime mono ms, 0 = never */
+    int via_relay;          /* runtime: 1 = the live link goes through the relay server (UI badge 经服务器) */
 } lsm_contact;
 
 typedef struct {
@@ -127,7 +128,15 @@ void lsm_initials(const char *name, char out[8]);
 int lsm_delete_message(lsm_core *c, const char *id);   /* this device only; tombstoned; emits "msg_delete\t<id>\t<conv>" */
 int lsm_set_name(lsm_core *c, const char *name);
 int lsm_transfer_cancel(lsm_core *c, const char *tid, char *err);
-int lsm_drop_links(lsm_core *c); /* test hook: abort all TCP links without Bye */
+int lsm_drop_links(lsm_core *c);
+/* optional relay server (off by default). Settings persist sealed in relay.dat. Events:
+ *   "relay\t<off|connecting|online|auth_failed|error>\t<detail>"   relay connection state (UI indicator)
+ *   "relay_peer\t<fp>\t<join|leave>\t<name>"                      peer seen on the relay
+ *   "peer\t<fp>\tpath\t<direct|relay>"                           live link path changed (badge) */
+int lsm_relay_set(lsm_core *c, int enabled, const char *host, int port, const char *pass, char *err);
+int lsm_relay_get(lsm_core *c, int *enabled, char *host, size_t hn, int *port, char *pass, size_t pn);
+const char *lsm_relay_status(lsm_core *c, char *detail, size_t dn); /* call under lsm_lock */
+int lsm_relay_peers(lsm_core *c); /* test hook: abort all TCP links without Bye */
 
 /* helpers */
 void lsm_uuid_str(const uint8_t u[16], char out[37]);
