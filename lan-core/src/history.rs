@@ -17,7 +17,12 @@ pub struct HistoryStore {
     path: std::path::PathBuf,
     dirty: bool,
     last_save: Instant,
+    /// ids deleted on this device ("tombstones"): a resend from the peer must not bring them back
+    deleted: std::collections::HashSet<String>,
+    deleted_order: Vec<String>,
 }
+
+const MAX_TOMBSTONES: usize = 20_000;
 
 pub fn load_or_create_key(path: &std::path::Path) -> Result<[u8; 32]> {
     if path.exists() {
@@ -52,7 +57,10 @@ impl HistoryStore {
         } else {
             Vec::new()
         };
-        Ok(Self { key, messages, enabled, path: paths.history.clone(), dirty: false, last_save: Instant::now() })
+        let tomb_path = paths.history.with_extension("deleted");
+        let deleted_order: Vec<String> = fs::read(&tomb_path).ok().and_then(|d| open_at_rest(&key, &d).ok()).and_then(|p| serde_json::from_slice(&p).ok()).unwrap_or_default();
+        let deleted = deleted_order.iter().cloned().collect();
+        Ok(Self { key, messages, enabled, path: paths.history.clone(), dirty: false, last_save: Instant::now(), deleted, deleted_order })
     }
 
     pub fn push(&mut self, m: Message) {
@@ -73,7 +81,27 @@ impl HistoryStore {
     pub fn remove(&mut self, id: &str) -> Option<String> {
         let i = self.messages.iter().rposition(|m| m.id == id)?;
         self.dirty = true;
+        if self.deleted.insert(id.to_string()) {
+            self.deleted_order.push(id.to_string());
+            if self.deleted_order.len() > MAX_TOMBSTONES {
+                let n = self.deleted_order.len() - MAX_TOMBSTONES;
+                for old in self.deleted_order.drain(0..n) {
+                    self.deleted.remove(&old);
+                }
+            }
+            // tombstones are written immediately (synced) and even with history disabled
+            if let Ok(plain) = serde_json::to_vec(&self.deleted_order) {
+                if let Ok(sealed) = seal_at_rest(&self.key, &plain) {
+                    let _ = atomic_write(&self.path.with_extension("deleted"), &sealed);
+                }
+            }
+        }
         Some(self.messages.remove(i).conversation)
+    }
+
+    /// True when this message id was deleted on this device.
+    pub fn is_deleted(&self, id: &str) -> bool {
+        self.deleted.contains(id)
     }
 
     pub fn get(&self, id: &str) -> Option<&Message> {
@@ -81,7 +109,7 @@ impl HistoryStore {
     }
 
     pub fn contains(&self, id: &str) -> bool {
-        self.messages.iter().rev().take(5000).any(|m| m.id == id)
+        self.deleted.contains(id) || self.messages.iter().rev().take(5000).any(|m| m.id == id)
     }
 
     pub fn conversation(&self, conv: &str, before_ts: Option<i64>, limit: usize) -> Vec<Message> {
@@ -140,5 +168,33 @@ impl HistoryStore {
 
     pub fn set_enabled(&mut self, on: bool) {
         self.enabled = on;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::{Direction, Message, MsgKind, MsgStatus};
+
+    fn msg(id: &str) -> Message {
+        Message { id: id.into(), conversation: "dm:X".into(), direction: Direction::In, sender_fp: "X".into(), sender_name: "x".into(),
+            kind: MsgKind::Text, body: "hi".into(), ts_ms: 1, status: MsgStatus::Received, file: None }
+    }
+
+    #[test]
+    fn delete_leaves_a_tombstone_that_survives_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = crate::ConfigPaths::from_base(dir.path());
+        let mut h = HistoryStore::load(&paths, true).unwrap();
+        h.push(msg("a"));
+        h.push(msg("b"));
+        assert_eq!(h.remove("a").as_deref(), Some("dm:X"));
+        assert!(h.contains("a"), "a deleted id still counts as seen, so a resend is dropped");
+        assert!(h.get("a").is_none());
+        h.flush(true).unwrap();
+        let h2 = HistoryStore::load(&paths, true).unwrap();
+        assert!(h2.is_deleted("a") && h2.contains("a"));
+        assert!(h2.get("a").is_none() && h2.get("b").is_some());
+        assert!(!h2.is_deleted("b"));
     }
 }

@@ -498,6 +498,11 @@ impl Engine {
                     }
                     None => dm_conv(fp),
                 };
+                if self.history.is_deleted(&msg_id.to_string()) {
+                    // deleted on this device: a re-offer must not resurrect it
+                    self.send_ctrl(fp, Frame::FileReject { tid, reason: "对方已删除这条消息".into() });
+                    return;
+                }
                 let trust = self.contacts.trust(fp);
                 let t = TransferRt {
                     id: tid,
