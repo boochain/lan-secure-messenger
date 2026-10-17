@@ -224,7 +224,7 @@
                                 <StackPanel Orientation="Horizontal" Spacing="4">
                                     <FontIcon Glyph="&#xE716;" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{x:Bind IsGroup}" />
                                     <TextBlock Text="{x:Bind Title, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                    <FontIcon Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE7BA;" FontSize="12" Visibility="{x:Bind IsTrusted, Mode=OneWay}" ToolTipService.ToolTip="已验证身份" />
+                                    <FontIcon Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xEA18;" FontSize="12" Visibility="{x:Bind IsTrusted, Mode=OneWay}" ToolTipService.ToolTip="已验证身份" />
                                     <FontIcon Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE74F;" FontSize="12" Visibility="{x:Bind Muted, Mode=OneWay}" ToolTipService.ToolTip="免打扰" />
                                 </StackPanel>
                                 <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" MaxLines="1" FontSize="13">
