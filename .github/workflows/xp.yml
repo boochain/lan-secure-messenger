@@ -213,7 +213,8 @@ jobs:
       - name: Shortcut runtime checks + screenshots (light + dark)
         run: python3 tests/adw_gui_shots.py build/linux-adw/lan-messenger-adw build/linux-adw/lanmsg-cli shots/adw
       - name: Colour audit (gnome palette)
-        run: python3 tools/ui_color_audit.py --palette tools/palettes/gnome.json --out ui-audit/adw shots/adw/*.png
+        # dialog-* shots are left out: the modal scrim dims the page behind on purpose
+        run: python3 tools/ui_color_audit.py --palette tools/palettes/gnome.json --out ui-audit/adw shots/adw/page-*.png shots/adw/popup-*.png
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: linux-adw-screenshots, path: "shots/adw\nui-audit/adw" }

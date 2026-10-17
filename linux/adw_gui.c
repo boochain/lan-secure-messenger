@@ -13,6 +13,14 @@
 #include <time.h>
 #include <unistd.h>
 #include "../src/core.h"
+/* the relay client (feat/relay-client) adds lsm_relay_status() and lsm_contact.via_relay; build-adw.sh passes
+   -DLSM_HAVE_RELAY when src/core.h has them, so this file builds on main and on the relay branch */
+#ifdef LSM_HAVE_RELAY
+#define VIA_RELAY(k) ((k).via_relay)
+#else
+#define VIA_RELAY(k) 0
+static const char *lsm_relay_status(lsm_core *c, char *d, size_t n){ (void)c; if(n) d[0]=0; return "off"; }
+#endif
 #include "adw_palette.h"
 #include "lsm_adw_css.h" /* LSM_ADW_RULES, generated from linux/data/lsm-adw.css by linux/build-adw.sh */
 
@@ -153,7 +161,7 @@ static void refresh_chat(void){
     gtk_stack_set_visible_child_name(GTK_STACK(content_stack),"chat");
     lsm_lock(C);
     if(!strncmp(cur_conv,"dm:",3)){ lsm_contact *k; int nk=lsm_contacts(C,&k),j; for(j=0;j<nk;j++) if(!strcmp(k[j].fp,cur_conv+3)){ snprintf(title,sizeof title,"%s",k[j].name); snprintf(key,64,"%s",k[j].fp); online=k[j].online;
-            snprintf(sub,sizeof sub,"%s · %s · %s",k[j].online?"在线":"离线",k[j].trust==TRUST_TRUSTED?"已验证身份":k[j].trust==TRUST_BLOCKED?"已屏蔽":"未验证",k[j].via_relay?"经服务器":"局域网直连"); } }
+            snprintf(sub,sizeof sub,"%s · %s · %s",k[j].online?"在线":"离线",k[j].trust==TRUST_TRUSTED?"已验证身份":k[j].trust==TRUST_BLOCKED?"已屏蔽":"未验证",VIA_RELAY(k[j])?"经服务器":"局域网直连"); } }
     else { lsm_group *g; int ng=lsm_groups(C,&g),j; char u[37]; for(j=0;j<ng;j++){ lsm_uuid_str(g[j].id,u); if(!strcmp(u,cur_conv+6)){ snprintf(title,sizeof title,"%s",g[j].name); snprintf(key,64,"%s",u); snprintf(sub,sizeof sub,"%d 人",g[j].nmembers); } } }
     n=lsm_messages(C,&m);
     for(i=0;i<n;i++){ GtkWidget *bub, *row, *meta, *grid; char day[32], ck[16], mt[64]; if(strcmp(m[i].conv,cur_conv)) continue;
@@ -235,7 +243,7 @@ static void details(void){ char b[2400]="", fp[200]=""; if(!cur_conv[0]) return;
     if(!strncmp(cur_conv,"dm:",3)){ lsm_contact *k; int nk=lsm_contacts(C,&k),j; for(j=0;j<nk;j++) if(!strcmp(k[j].fp,cur_conv+3)){ int q=0; const char *f=k[j].fp; for(;*f;f++){ if(*f=='-') continue; if(q&&q%4==0) strcat(fp," "); strncat(fp,f,1); q++; }
             char rt[32]=""; if(k[j].online&&k[j].rtt_ms>=0) snprintf(rt,sizeof rt," · %d ms",k[j].rtt_ms);
             snprintf(b,sizeof b,"状态：%s%s\n身份：%s\n连接：%s\n地址：%s\n版本：%s\n指纹：%s",k[j].online?"在线":"离线",rt,k[j].trust==TRUST_TRUSTED?"已验证身份":k[j].trust==TRUST_BLOCKED?"已屏蔽":"未验证",
-                k[j].via_relay?"经服务器中转":"局域网直连",k[j].addr[0]?k[j].addr:"—",k[j].app_version[0]?k[j].app_version:"—",fp); } }
+                VIA_RELAY(k[j])?"经服务器中转":"局域网直连",k[j].addr[0]?k[j].addr:"—",k[j].app_version[0]?k[j].app_version:"—",fp); } }
     else { lsm_group *g; int ng=lsm_groups(C,&g),j; char u[37]; for(j=0;j<ng;j++){ lsm_uuid_str(g[j].id,u); if(!strcmp(u,cur_conv+6)) snprintf(b,sizeof b,"成员：%d 人\n密钥版本：%llu\n群组 ID：%s",g[j].nmembers,(unsigned long long)g[j].key_epoch,u); } }
     lsm_unlock(C); info(strncmp(cur_conv,"dm:",3)?"群组详情":"联系人详情",b); }
 static void pin_show(void){ char pin[8], b[300]; lsm_pin_offer(C,pin); snprintf(b,sizeof b,"%s\n\n让对方在“输入 PIN 配对”中输入（5 分钟内有效）。",pin); info("请把这个 PIN 告诉对方",b); }
@@ -349,7 +357,7 @@ static void activate(GtkApplication *a, gpointer p){
     sidebar_tv=adw_toolbar_view_new(); sb_hdr=adw_header_bar_new(); adw_header_bar_set_title_widget(ADW_HEADER_BAR(sb_hdr),adw_window_title_new("局域网安全通讯",NULL));
     add_btn=gtk_menu_button_new(); gtk_menu_button_set_icon_name(GTK_MENU_BUTTON(add_btn),"contact-new-symbolic"); gtk_widget_set_tooltip_text(add_btn,"按 IP 添加联系人 (Ctrl+N)");
     add_popover=gtk_popover_new(); ab=gtk_box_new(GTK_ORIENTATION_VERTICAL,8); gtk_widget_set_size_request(ab,280,-1);
-    { GtkWidget *t=label("按 IP 添加联系人","heading"), *d=label("对方不在自动发现列表时，输入对方电脑的 IP（可带端口）。","caption sub"), *hb=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,6), *go=gtk_button_new_with_label("添加");
+    { GtkWidget *t=label("按 IP 添加联系人","heading"), *d=label("对方不在自动发现列表时，输入对方电脑的 IP（可带端口）。","sub"), *hb=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,6), *go=gtk_button_new_with_label("添加");
       gtk_label_set_wrap(GTK_LABEL(d),TRUE); add_entry=gtk_entry_new(); gtk_entry_set_placeholder_text(GTK_ENTRY(add_entry),"如 192.168.1.20"); gtk_widget_set_hexpand(add_entry,TRUE);
       g_signal_connect(add_entry,"activate",G_CALLBACK(add_entry_act),NULL); cls(go,"suggested-action"); g_signal_connect(go,"clicked",G_CALLBACK(add_btn_clicked),NULL);
       gtk_box_append(GTK_BOX(hb),add_entry); gtk_box_append(GTK_BOX(hb),go); gtk_box_append(GTK_BOX(ab),t); gtk_box_append(GTK_BOX(ab),d); gtk_box_append(GTK_BOX(ab),hb); }
@@ -364,11 +372,11 @@ static void activate(GtkApplication *a, gpointer p){
     conv_list=gtk_list_box_new(); cls(conv_list,"navigation-sidebar"); gtk_list_box_set_filter_func(GTK_LIST_BOX(conv_list),list_filter,NULL,NULL); g_signal_connect(conv_list,"row-selected",G_CALLBACK(on_row),NULL);
     sc=gtk_scrolled_window_new(); gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(sc),GTK_POLICY_NEVER,GTK_POLICY_AUTOMATIC); gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(sc),conv_list); gtk_widget_set_vexpand(sc,TRUE);
     gtk_box_append(GTK_BOX(sb_box),search); gtk_box_append(GTK_BOX(sb_box),sc); adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(sidebar_tv),sb_box);
-    status_lbl=label("","status caption"); gtk_label_set_ellipsize(GTK_LABEL(status_lbl),PANGO_ELLIPSIZE_END); adw_toolbar_view_add_bottom_bar(ADW_TOOLBAR_VIEW(sidebar_tv),status_lbl);
+    status_lbl=label("","status"); gtk_label_set_ellipsize(GTK_LABEL(status_lbl),PANGO_ELLIPSIZE_END); adw_toolbar_view_add_bottom_bar(ADW_TOOLBAR_VIEW(sidebar_tv),status_lbl);
 
     /* content */
     content_tv=adw_toolbar_view_new(); ct_hdr=adw_header_bar_new(); tbox=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,10);
-    hdr_avatar=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,0); { GtkWidget *v=gtk_box_new(GTK_ORIENTATION_VERTICAL,0); title_lbl=label("","chat-title"); sub_lbl=label("","chat-sub caption"); gtk_label_set_ellipsize(GTK_LABEL(sub_lbl),PANGO_ELLIPSIZE_END);
+    hdr_avatar=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,0); { GtkWidget *v=gtk_box_new(GTK_ORIENTATION_VERTICAL,0); title_lbl=label("","chat-title"); sub_lbl=label("","chat-sub"); gtk_label_set_ellipsize(GTK_LABEL(sub_lbl),PANGO_ELLIPSIZE_END);
       gtk_box_append(GTK_BOX(v),title_lbl); gtk_box_append(GTK_BOX(v),sub_lbl); gtk_widget_set_valign(v,GTK_ALIGN_CENTER); gtk_box_append(GTK_BOX(tbox),hdr_avatar); gtk_box_append(GTK_BOX(tbox),v); }
     { GtkGesture *g=gtk_gesture_click_new(); g_signal_connect_swapped(g,"released",G_CALLBACK(details),NULL); gtk_widget_add_controller(tbox,GTK_EVENT_CONTROLLER(g)); gtk_widget_set_tooltip_text(tbox,"联系人详情 (Ctrl+I)"); }
     adw_header_bar_set_title_widget(ADW_HEADER_BAR(ct_hdr),gtk_label_new(NULL)); adw_header_bar_pack_start(ADW_HEADER_BAR(ct_hdr),tbox);

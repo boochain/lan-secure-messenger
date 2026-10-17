@@ -8,8 +8,8 @@ window, .sidebar-pane { background-color: @lsm_window; }
 .navigation-sidebar > row:selected { background-color: @lsm_rowsel; color: @lsm_fg; }
 .conv-row { padding: 6px 4px; }
 .conv-title { font-weight: 700; color: @lsm_fg; }
-.conv-preview { color: @lsm_fg2; font-size: 0.93em; }
-.conv-time { font-size: 0.8em; color: @lsm_fg2; }
+.conv-preview { color: @lsm_fg2; font-size: 13px; }
+.conv-time { font-size: 12px; color: @lsm_fg2; }
 .conv-time.unread { color: @lsm_accenttext; font-weight: 700; }
 .badge { background-color: @lsm_badge; color: @lsm_badgefg; border-radius: 9px; min-width: 18px; min-height: 18px; padding: 0 5px; font-size: 0.75em; font-weight: 700; }
 .trusted { color: @lsm_online; }
@@ -18,9 +18,9 @@ window, .sidebar-pane { background-color: @lsm_window; }
 .av0 { background-color: @lsm_avatar0; } .av1 { background-color: @lsm_avatar1; } .av2 { background-color: @lsm_avatar2; } .av3 { background-color: @lsm_avatar3; }
 .av4 { background-color: @lsm_avatar4; } .av5 { background-color: @lsm_avatar5; } .av6 { background-color: @lsm_avatar6; } .av7 { background-color: @lsm_avatar7; }
 .online-dot { background-color: @lsm_online; border-radius: 9999px; border: 2px solid @lsm_list; min-width: 6px; min-height: 6px; margin: 0 1px 1px 0; }
-.status { padding: 8px 14px; color: @lsm_fg2; }
+.status { padding: 8px 14px; color: @lsm_fg2; font-size: 12px; }
 .chat-title { font-weight: 700; color: @lsm_fg; }
-.chat-sub { color: @lsm_fg2; }
+.chat-sub { color: @lsm_fg2; font-size: 13px; }
 .chatbg, .chatbg > viewport { background-color: @lsm_chat; }
 .chatlist { padding: 12px 18px; }
 .msg-row { margin-top: 3px; }
@@ -32,26 +32,28 @@ window, .sidebar-pane { background-color: @lsm_window; }
 .bubble .thumb { border-radius: 9px; }
 .bubble.file { min-width: 264px; }
 .bubble .sender { color: @lsm_accenttext; font-weight: 700; font-size: 0.85em; }
-.bubble.theirs .meta { color: @lsm_meta; font-size: 0.75em; }
-.bubble.mine .meta { color: @lsm_minemeta; font-size: 0.75em; }
+.bubble.theirs .meta, .bubble.theirs .file-size { color: @lsm_meta; font-size: 12px; }
+.bubble.mine .meta, .bubble.mine .file-size { color: @lsm_minemeta; font-size: 12px; }
 .bubble .meta.on-image { background-color: alpha(black, 0.6); color: #FFFFFF; border-radius: 6px; padding: 1px 6px; }
 .bubble .file-name { font-weight: 700; }
 .tile { background-color: @lsm_tile; color: @lsm_tilefg; border-radius: 8px; font-size: 0.7em; font-weight: 800; }
 .bubble button.download { color: @lsm_accenttext; min-width: 32px; min-height: 32px; border: 1px solid @lsm_divider; }
 .bubble button.link { color: @lsm_accenttext; font-size: 0.8em; font-weight: 700; padding: 0 2px; min-height: 20px; }
-.chip { background-color: @lsm_chip; color: @lsm_chipfg; border-radius: 9999px; padding: 2px 10px; margin: 6px 0; font-size: 0.8em; font-weight: 600; }
+.chip { background-color: @lsm_chip; color: @lsm_chipfg; border-radius: 9999px; padding: 2px 10px; margin: 6px 0; font-size: 12px; font-weight: 600; }
 .composer { padding: 8px 12px; background-color: @lsm_window; border-top: 1px solid @lsm_divider; min-height: 36px; }
 .field { background-color: @lsm_field; border: 1px solid @lsm_fieldborder; border-radius: 18px; min-height: 34px; border-radius: 18px; }
 .field textview, .field textview text { background-color: transparent; color: @lsm_fg; }
 .placeholder { color: @lsm_fg2; margin-left: 13px; }
-.hint { color: @lsm_fg2; font-size: 0.75em; margin-right: 14px; }
+.hint { color: @lsm_fg2; font-size: 12px; margin-right: 14px; }
 button.send { min-width: 36px; min-height: 36px; }
 .drophint { background-color: alpha(@lsm_accent, 0.92); color: #FFFFFF; border-radius: 12px; padding: 18px 28px; font-weight: 700; }
 /* audit: no translucent (dim-label) text; selected rows keep >= 4.5:1 */
-.sidebar-search { background-color: @lsm_rowhover; color: @lsm_fg; }
+.sidebar-search { background-color: @lsm_list; border: 1px solid @lsm_fieldborder; color: @lsm_fg; }
 .sidebar-search text placeholder, .sidebar-search image { color: @lsm_fg2; opacity: 1; }
 .navigation-sidebar > row:selected .conv-preview, .navigation-sidebar > row:selected .conv-time { color: @lsm_fg; }
 .navigation-sidebar > row:selected .conv-time.unread { color: @lsm_accenttext; }
 .content-pane { border-left: 1px solid @lsm_divider; }
 .chat-sub, .conv-preview, .conv-time, .status, .placeholder, .hint { opacity: 1; }
-.sub { color: @lsm_fg2; }
+.sub { color: @lsm_fg; font-size: 13px; }
+popover.menu accelerator, popover accelerator { color: @lsm_fg2; opacity: 1; }
+.dialog-sub, .heading { color: @lsm_fg; }
