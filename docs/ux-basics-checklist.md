@@ -73,22 +73,30 @@ Runtime verification on Windows CI (scripts/ui_smoke_windows.ps1) is still to be
 | X13 | Confirm destructive actions | **PASS** (CODE) | tmsg(…,cancel=1) confirms 退出群组 and 删除消息 (re-checked: the custom prompt is the yes/no) |
 | X17 | Notification (balloon) | **PASS** (CODE) | NIIF balloons; click → open chat: to verify |
 
-## Linux GTK (linux/gtk_gui.c; GTK4 port pending)
+## Linux GTK 4 + libadwaita (linux/adw_gui.c, `lan-messenger-adw`; GTK3 linux/gtk_gui.c still ships until the port is finished)
+
+Runtime = checked by tests/adw_gui_shots.py under Xvfb (real key presses / clicks via xdotool, the app logs the action it ran
+and the focused widget); CI job `linux-adw` (ubuntu-24.04). CODE = implemented, no runtime check yet.
 
 | # | Item | Status | Evidence |
 |---|------|--------|----------|
-| G1 | Esc closes dialogs | **PASS** (CODE) | GtkDialog (Esc = cancel) |
-| G2 | Enter sends, Shift+Enter new line | **PASS** (CODE) | GDK_KEY_Return + SHIFT_MASK |
-| G4 | Keyboard shortcuts | **FAIL** | no accelerators |
-| G5 | Close vs tray | **PASS** (CODE) | delete-event + status icon |
-| G6 | Remember window size | **CODE** – check | default_size set; persistence unclear |
-| G8 | Drag & drop | **PASS** (CODE) | drag-data-received |
-| G9 | Context menu | **FIXED** a789d79 | text bubbles extend the selectable label's 复制/全选 menu (populate-popup); file/image bubbles open their own right-click menu; both → 删除这条消息（仅本机）… |
-| G10 | Copy message text | **PASS** (CODE) | bubble labels are selectable (gtk_label_set_selectable) → built-in 复制 |
-| G11 | Tooltips | **PASS** (CODE) | |
-| G12 | Single instance | **PASS** (CODE) | GtkApplication (unique by app id) |
-| G13 | Confirm destructive actions | **FIXED** a789d79 | confirm() helper: destructive-action button, 取消 default; used for 删除消息 |
-| G17 | Notification click opens chat | **CODE** – check | notification code present |
+| G1 | Esc closes dialogs / popovers | **CODE** | AdwAlertDialog (1.5+) / AdwMessageDialog: Esc = 取消; popovers close on Esc; Esc in search = stop-search. The test uses Esc to close them; no explicit assert yet |
+| G2 | Enter sends, Shift+Enter new line | **PASS** (runtime) | `Enter in the composer sends (peer received it)` light + dark |
+| G4 | Keyboard shortcuts | **FIXED** (runtime) 16ee088, 7002dd8 | GtkShortcutController (capture, global): Ctrl+F search, Ctrl+N add-contact popover with focus in its box, Ctrl+Tab / Ctrl+Shift+Tab (also Ctrl+PgDn/PgUp) next/prev chat, Ctrl+I details, F10 main menu, Ctrl+O send file, Ctrl+W close, Ctrl+Q quit — each asserted light + dark; Ctrl+Tab / Ctrl+F also in the narrow layout |
+| G5 | Close vs tray | **DECIDED** | GTK 4 has no tray: close keeps running in the background + one-time notice (LSM_QUIT_ON_CLOSE=1 disables). Later: StatusNotifierItem over GDBus (no GTK3) |
+| G6 | Remember window size | **CODE** | window.ini (GKeyFile) width/height/maximized, restored on start |
+| G7 | Adaptive layout | **PASS** (runtime) | AdwNavigationSplitView + AdwBreakpoint (max-width 600sp); 560x720 shots page-chat-narrow / page-list-narrow |
+| G8 | Drag & drop files | **CODE** | GtkDropTarget GDK_TYPE_FILE_LIST on the chat + drop hint |
+| G9 | Context menu on messages | **PASS** (runtime) | right-click (GtkGestureClick button 3) / long-press (touch) → 复制 / 打开 / 删除这条消息（仅本机）…; `right-click on a message (file card) opens its menu` |
+| G10 | Copy message text | **PASS** (CODE) | selectable labels + 复制 in the menu |
+| G11 | Tooltips | **PASS** (CODE) | all icon buttons (with shortcut in the text) |
+| G12 | Single instance | **PASS** (CODE) | AdwApplication unique app id |
+| G13 | Confirm destructive actions | **PASS** (CODE) | confirm(): destructive response, 取消 default — 删除消息, 屏蔽 |
+| G14 | Colour audit (WCAG/APCA, edges, palette) | **PASS** locally light/dark/narrow (7002dd8) | gnome palette tokens: light fg2 #505055, dark fg2 #DADADF, dark timestamps (meta) #CDCDD2 → Lc ≥ 60 as rendered; decorative icons only (shield GtkImage, online dot) excluded via app-reported bounds in audit_ignore.json; dialog shots excluded (scrim) |
+| G15 | Header without piled text | **PASS** | 在线 · 已验证身份 · 局域网直连; fingerprint / address / version in 联系人详情 (Ctrl+I, ⋯) |
+| G16 | Composer | **PASS** | 36px field, placeholder 输入消息, right hint Enter 发送 · Shift+Enter 换行, no emoji button (no picker) |
+| G17 | Notification click opens chat | **PARTIAL** | GNotification; click activates the app (window raised) but has no per-chat target yet — next: app.open-conv(s) default action |
+| G18 | Older distros (Debian 12 has libadwaita 1.2) | **IN CI** | AppImage bundles glib 2.78 / GTK 4.12 / libadwaita 1.4 built on debian:12 (linux/adw-appimage/build.sh); job adw-appimage-debian12 launches it on stock debian:12 and takes a screenshot |
 
 XP and GTK failures are fixed in their redesign phases (GTK4 port, XP custom-drawn list), each with runtime checks.
 
@@ -99,4 +107,4 @@ XP and GTK failures are fixed in their redesign phases (GTK4 port, XP custom-dra
 | WinUI | message right-click → 删除（仅本机）… | ContentDialog, 取消 default | Rust `delete_message` RPC (efb2a08) | `history.deleted` sealed, synced, 20k cap (de04d2b) | lan-core unit test + DaemonTests; smoke right-click check (921829d) |
 | Android | long-press bubble → 复制 / 删除（仅本机） | LsmAlertDialog | JNI `deleteMessage` → `lsm_delete_message` (bc624b3) | C `D` history record (597b4fa) | adb step in android_chat_shots.py |
 | XP | chat right-click / Shift+F10 → 删除这条消息（仅本机）… | tmsg yes/cancel | `lsm_delete_message` | C `D` record, `seen_has` + file-offer reject | regress.py §5 (restart keeps it gone, peer keeps it) |
-| GTK | bubble right-click → 删除这条消息（仅本机）… | confirm() | `lsm_delete_message` | same C core | regress.py §5 (CLI) ; GUI not runtime-tested |
+| GTK | bubble right-click / long-press → 删除这条消息（仅本机）… (GTK3 and GTK4) | confirm() / AdwAlertDialog | `lsm_delete_message` | same C core | regress.py §5 (CLI); GTK4 menu opens at runtime (adw_gui_shots.py), delete itself not yet clicked in the GUI test |

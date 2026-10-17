@@ -85,7 +85,8 @@ for i, theme in enumerate(["light", "dark"]):
     check(l is not None, f"[{theme}] shortcut Ctrl+I opens contact details"); time.sleep(0.8); shot("dialog-details", theme, g=g); xdo("key", "Escape"); time.sleep(0.4)
     gl = len(g.lines); xdo("key", "F10"); l = g.wait_for("UI menu", 5, gl)
     check(l is not None, f"[{theme}] shortcut F10 opens the main menu"); time.sleep(0.5); shot("popup-main-menu", theme, g=g); xdo("key", "Escape"); time.sleep(0.4)
-    xdo("mousemove", "420", "560", "click", "3"); time.sleep(0.8); shot("popup-message-menu", theme, g=g); xdo("key", "Escape")
+    gl = len(g.lines); xdo("mousemove", "420", "485", "click", "3"); l = g.wait_for("UI msg-menu", 5, gl)
+    check(l is not None, f"[{theme}] right-click on a message (file card) opens its menu"); time.sleep(0.5); shot("popup-message-menu", theme, g=g); xdo("key", "Escape")
     xdo("key", "ctrl+q"); g.p.wait(10) if g.p.poll() is None else None
     check(g.p.poll() is not None, f"[{theme}] shortcut Ctrl+Q quits")
     if g.p.poll() is None: g.p.kill()

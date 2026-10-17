@@ -146,7 +146,7 @@ static void bubble_menu(GtkWidget *bub, double x, double y){
     if(path&&*path) pop_btn(box,"打开(_O)","open",path);
     pop_btn(box,"删除这条消息（仅本机）(_D)…","delete",id);
     gtk_popover_set_child(GTK_POPOVER(pop),box); gtk_widget_set_parent(pop,bub); gtk_popover_set_pointing_to(GTK_POPOVER(pop),&r); gtk_popover_set_has_arrow(GTK_POPOVER(pop),FALSE);
-    cls(pop,"menu"); g_signal_connect(pop,"closed",G_CALLBACK(pop_closed),NULL); gtk_popover_popup(GTK_POPOVER(pop)); }
+    cls(pop,"menu"); g_signal_connect(pop,"closed",G_CALLBACK(pop_closed),NULL); gtk_popover_popup(GTK_POPOVER(pop)); if(getenv("LSM_UI_TEST")) g_timeout_add(300,test_log_later,(gpointer)"msg-menu"); }
 static void bubble_rclick(GtkGestureClick *g, int n, double x, double y, gpointer p){ (void)n; (void)p; bubble_menu(gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(g)),x,y); }
 static void bubble_lpress(GtkGestureLongPress *g, double x, double y, gpointer p){ (void)p; bubble_menu(gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(g)),x,y); }
 static void bubble_click_open(GtkGestureClick *g, int n, double x, double y, gpointer p){ (void)n;(void)x;(void)y; (void)g; gchar *u=g_filename_to_uri((const char*)p,NULL,NULL); if(u){ g_app_info_launch_default_for_uri(u,NULL,NULL); g_free(u); } }
