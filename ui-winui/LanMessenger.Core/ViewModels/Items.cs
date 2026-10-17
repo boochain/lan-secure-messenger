@@ -68,25 +68,47 @@ public partial class ConversationItem : ObservableObject
     [ObservableProperty] private bool _online;
     [ObservableProperty] private bool _muted;
     [ObservableProperty] private string _initial = "?";
+    [ObservableProperty] private string _lastFrom = "";
+    [ObservableProperty] private string _preview = "";
+    [ObservableProperty] private bool _previewIsFile;
+    [ObservableProperty] private bool _previewIsImage;
+    [ObservableProperty] private int _lastTick;          // 0 none, 1 sent/queued, 2 delivered, 3 read, 4 failed
+    [ObservableProperty] private bool _isTrusted;        // set by the view model from the peer list
+    [ObservableProperty] private bool _viaServer;        // UI hook: relayed through a server (no protocol data yet)
     public bool IsDm => !IsGroup;
-    public bool ShowOfflineDot => IsDm && !Online;
+    public bool ShowOfflineDot => false;                 // WhatsApp/Telegram: only online is marked
     public bool ShowOnlineDot => IsDm && Online;
+    public string AvatarKey => IsGroup ? GroupId : PeerFingerprint;
+    public int AvatarIndex => Fmt.AvatarIndex(AvatarKey);
 
     public void Update(Conversation c)
     {
         Title = c.Title;
         LastBody = c.LastBody;
         LastTsMs = c.LastTsMs;
-        TimeText = Fmt.Time(c.LastTsMs);
+        TimeText = Fmt.ListTime(c.LastTsMs);
+        LastFrom = IsGroup && c.LastTsMs > 0 && c.LastKind != MsgKind.System && !string.IsNullOrEmpty(c.LastSender) ? (c.LastOut ? "我" : c.LastSender) + ": " : "";
+        PreviewIsFile = c.LastKind == MsgKind.File;
+        PreviewIsImage = PreviewIsFile && IsImageName(c.LastFile);
+        Preview = PreviewIsImage ? "照片" : PreviewIsFile && c.LastFile.Length > 0 ? c.LastFile : c.LastBody.Replace('\n', ' ');
+        LastTick = !c.LastOut || c.LastStatus == null ? 0 : c.LastStatus switch
+        {
+            MsgStatus.Read => 3, MsgStatus.Delivered => 2, MsgStatus.Failed => 4, _ => 1,
+        };
         Unread = c.Unread;
         HasUnread = c.Unread > 0;
         UnreadText = c.Unread > 99 ? "99+" : c.Unread.ToString();
         Online = c.Online;
         Muted = c.Muted;
-        Initial = IsGroup ? "群" : Fmt.Initial(c.Title);
+        Initial = Fmt.Initials(c.Title);
         OnPropertyChanged(nameof(ShowOfflineDot));
         OnPropertyChanged(nameof(ShowOnlineDot));
     }
+}
+
+public partial class ConversationItem
+{
+    public static bool IsImageName(string n) => Path.GetExtension(n ?? "").ToLowerInvariant() is ".png" or ".jpg" or ".jpeg" or ".gif" or ".bmp" or ".webp";
 }
 
 public partial class MessageItem : ObservableObject
@@ -122,6 +144,18 @@ public partial class MessageItem : ObservableObject
     [ObservableProperty] private string _filePath = "";
     [ObservableProperty] private bool _hasFilePath;
     [ObservableProperty] private string _transferId = "";
+    // redesign: grouping, date separators, receipts (Grouping.Apply keeps these current)
+    [ObservableProperty] private bool _isFirstInGroup = true;
+    [ObservableProperty] private bool _isLastInGroup = true;
+    [ObservableProperty] private string _dateLabel = "";
+    [ObservableProperty] private bool _showE2E;
+    [ObservableProperty] private string _clockText = "";
+    [ObservableProperty] private int _tick;              // 0 none, 1 sent/queued, 2 delivered, 3 read, 4 failed
+    [ObservableProperty] private bool _isFileCard;
+    [ObservableProperty] private string _fileExt = "";
+    [ObservableProperty] private bool _isPdf;
+    public bool HasDate => DateLabel.Length > 0;
+    partial void OnDateLabelChanged(string value) => OnPropertyChanged(nameof(HasDate));
     public long TsMs { get; private set; }
 
     public void Update(Message m)
@@ -129,8 +163,10 @@ public partial class MessageItem : ObservableObject
         TsMs = m.TsMs;
         Body = m.Body;
         SenderName = m.SenderName;
-        ShowSender = IsGroupConversation && m.Direction == Direction.In && m.Kind != MsgKind.System;
+        ShowSender = IsGroupConversation && m.Direction == Direction.In && m.Kind != MsgKind.System && IsFirstInGroup;
         TimeText = Fmt.Time(m.TsMs);
+        ClockText = Fmt.Clock(m.TsMs);
+        Tick = !IsOutgoing ? 0 : m.Status switch { MsgStatus.Read => 3, MsgStatus.Delivered => 2, MsgStatus.Failed => 4, _ => 1 };
         IsFailed = m.Status == MsgStatus.Failed;
         StatusText = !IsOutgoing ? "" : m.Status switch
         {
@@ -151,7 +187,10 @@ public partial class MessageItem : ObservableObject
             HasFilePath = !string.IsNullOrEmpty(m.File.Path) && File.Exists(m.File.Path);
             IsImage = m.File.IsImage && HasFilePath;
             TransferId = m.File.TransferId;
+            FileExt = Path.GetExtension(m.File.Name).TrimStart('.').ToUpperInvariant();
+            IsPdf = FileExt == "PDF";
         }
+        IsFileCard = IsFile && !IsImage;
     }
 }
 

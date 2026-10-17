@@ -77,6 +77,15 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _hasTransfersActive;
     [ObservableProperty] private string _transfersSummary = "";
     [ObservableProperty] private int _onlineCount;
+    // redesign: chat header (avatar + presence + status line), E2E notice, unread total for the nav badge
+    [ObservableProperty] private bool _selectedOnline;
+    [ObservableProperty] private string _selectedStatus = "";
+    [ObservableProperty] private string _selectedDetail = "";
+    [ObservableProperty] private string _selectedInitials = "";
+    [ObservableProperty] private int _selectedAvatarIndex;
+    [ObservableProperty] private string _selectedE2EText = "";
+    [ObservableProperty] private bool _selectedViaServer;
+    [ObservableProperty] private int _totalUnread;
 
     // Settings editor
     [ObservableProperty] private string _editDisplayName = "";
@@ -213,6 +222,7 @@ public partial class MainViewModel : ObservableObject
         Sync(Groups, s.Groups, g => g.Id, g => new GroupItem(g), (i, g) => i.Update(g), i => i.Id);
         Conversations.Clear();
         foreach (var c in s.Conversations.OrderByDescending(c => c.LastTsMs)) Conversations.Add(new ConversationItem(c));
+        SyncConversationTrust();
         Transfers.Clear();
         foreach (var t in s.Transfers.OrderByDescending(t => t.StartedMs)) Transfers.Add(new TransferItem(t));
         UpdateCounters();
@@ -281,6 +291,7 @@ public partial class MainViewModel : ObservableObject
                 if (p == null) break;
                 var item = Peers.FirstOrDefault(x => x.Fingerprint == p.Fingerprint);
                 if (item == null) Peers.Add(new PeerItem(p)); else item.Update(p);
+                SyncConversationTrust();
                 if (SelectedConversation?.PeerFingerprint == p.Fingerprint) UpdateSelectionHeader();
                 UpdateCounters();
                 break;
@@ -310,11 +321,13 @@ public partial class MainViewModel : ObservableObject
                     Conversations.Add(item);
                 }
                 else item.Update(c);
+                item.IsTrusted = item.IsDm && Peers.Any(p => p.Fingerprint == item.PeerFingerprint && p.IsTrusted);
                 // Keep newest first (Move keeps the ListView selection intact).
                 var idx = Conversations.IndexOf(item);
                 var target = Conversations.Count(x => x != item && x.LastTsMs > item.LastTsMs);
                 if (target != idx) Conversations.Move(idx, target);
                 if (SelectedConversation == item) UpdateSelectionHeader();
+                UpdateCounters();
                 break;
             }
             case "message_added":
@@ -324,6 +337,7 @@ public partial class MainViewModel : ObservableObject
                 if (SelectedConversation?.Id == m.Conversation && Messages.All(x => x.Id != m.Id))
                 {
                     Messages.Add(new MessageItem(m));
+                    Grouping.Apply(Messages, Messages.Count - 1);
                     MessagesAppended?.Invoke();
                     if (m.Direction == Direction.In && _platform.IsWindowActive) _ = SafeCall(c => c.MarkReadAsync(m.Conversation));
                 }
@@ -407,8 +421,14 @@ public partial class MainViewModel : ObservableObject
         catch { }
     }
 
+    private void SyncConversationTrust()
+    {
+        foreach (var c in Conversations) c.IsTrusted = c.IsDm && Peers.Any(p => p.Fingerprint == c.PeerFingerprint && p.IsTrusted);
+    }
+
     private void UpdateCounters()
     {
+        TotalUnread = Conversations.Sum(c => (int)c.Unread);
         OnlineCount = Peers.Count(p => p.Online);
         var active = Transfers.Count(t => t.IsActive);
         HasTransfersActive = active > 0;
@@ -468,6 +488,10 @@ public partial class MainViewModel : ObservableObject
             return;
         }
         SelectedTitle = c.Title;
+        SelectedInitials = c.Initial;
+        SelectedAvatarIndex = c.AvatarIndex;
+        SelectedViaServer = c.ViaServer;
+        SelectedE2EText = c.IsDm ? $"消息已端到端加密，只有你和{c.Title}能看到" : "消息已端到端加密，只有群成员能看到";
         SelectedIsDm = c.IsDm;
         SelectedMuted = c.Muted;
         if (c.IsDm)
@@ -477,11 +501,17 @@ public partial class MainViewModel : ObservableObject
             SelectedBlocked = p?.IsBlocked ?? false;
             SelectedTrustText = p?.TrustText ?? "";
             SelectedSubtitle = p == null ? c.PeerFingerprint : $"{p.StateText} · {p.TrustText} · 指纹 {p.Fingerprint}";
+            SelectedOnline = p?.Online ?? false;
+            SelectedStatus = p == null ? "离线" : p.Online ? "在线" : p.StateText;
+            SelectedDetail = (p?.Trust switch { Trust.Trusted => "已验证身份", Trust.Blocked => "已屏蔽", _ => "未验证" }) + " · " + (c.ViaServer ? "经服务器中转" : "局域网直连");
         }
         else
         {
             var g = Groups.FirstOrDefault(x => x.Id == c.GroupId);
             SelectedSubtitle = g == null ? "" : $"{g.MembersText} · {g.EpochText}";
+            SelectedOnline = false;
+            SelectedStatus = g?.MembersText ?? "";
+            SelectedDetail = g?.EpochText ?? "";
         }
     }
 
@@ -496,7 +526,9 @@ public partial class MainViewModel : ObservableObject
             {
                 if (SelectedConversation?.Id != conv) return;
                 Messages.Clear();
-                foreach (var m in list) Messages.Add(new MessageItem(m));
+                var items = list.Select(m => new MessageItem(m)).ToList();
+                Grouping.Apply(items);
+                foreach (var m in items) Messages.Add(m);
                 MessagesAppended?.Invoke();
             });
             await c.MarkReadAsync(conv);

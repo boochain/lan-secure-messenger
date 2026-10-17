@@ -122,6 +122,12 @@ public sealed class Conversation
     public uint Unread { get; set; }
     public bool Muted { get; set; }
     public bool Online { get; set; }
+    // last-message details for the chat-list row (newer daemons; defaults when absent)
+    public bool LastOut { get; set; }
+    public MsgStatus? LastStatus { get; set; }
+    public string LastSender { get; set; } = "";
+    public MsgKind? LastKind { get; set; }
+    public string LastFile { get; set; } = "";
 }
 
 public sealed class Me
