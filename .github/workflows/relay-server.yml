@@ -94,6 +94,7 @@ jobs:
   windows:
     name: Windows ${{ matrix.os }} (build x64/arm64/x86, test, deploy.ps1 service)
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -120,12 +121,14 @@ jobs:
           & "$b\relay-server.exe" --version
       - name: deploy.ps1 test (Windows PowerShell 5.1, elevated)
         shell: powershell
+        timeout-minutes: 15
         run: |
           $b = 'target\x86_64-pc-windows-msvc\release'
           .\tests\deploy_test.ps1 -NewBin "$b\relay-server.exe" -Cli "$b\relay-test-client.exe"
           if ($LASTEXITCODE) { exit 1 }
       - name: deploy.bat launcher smoke
         shell: cmd
+        timeout-minutes: 5
         run: |
           set RELAY_HOME=%RUNNER_TEMP%\bat
           set RELAY_BIN=%CD%\target\x86_64-pc-windows-msvc\release\relay-server.exe
