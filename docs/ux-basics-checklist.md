@@ -66,11 +66,11 @@ Runtime verification on Windows CI (scripts/ui_smoke_windows.ps1) is still to be
 | X6 | Remember window placement | **FAIL** | no Get/SetWindowPlacement persistence |
 | X7 | High DPI | **PARTIAL** | fonts/metrics scaled by LOGPIXELSY; no DPI-aware manifest |
 | X8 | Drag & drop files | **FAIL** | no DragAcceptFiles / WM_DROPFILES |
-| X9 | Right-click context menu (messages/contacts) | **FAIL** | only tray + menu bar popups |
-| X10 | Copy message text | **FAIL** | no clipboard code |
+| X9 | Right-click context menu (messages/contacts) | **PARTIAL → FIXED for messages** a789d79 | chat EDIT subclassed: WM_CONTEXTMENU (mouse + Shift+F10) → 复制 / 全选 / 删除这条消息（仅本机）…; contact-list menu still pending |
+| X10 | Copy message text | **FIXED** a789d79 | 复制 (WM_COPY) in the chat menu, Ctrl+A select-all, Ctrl+C native |
 | X11 | Tooltips | **FAIL** | no tooltip control |
 | X12 | Single instance | **PASS** (CODE) | CreateMutex |
-| X13 | Confirm destructive actions | **FAIL** | no MB_YESNO confirmations |
+| X13 | Confirm destructive actions | **PASS** (CODE) | tmsg(…,cancel=1) confirms 退出群组 and 删除消息 (re-checked: the custom prompt is the yes/no) |
 | X17 | Notification (balloon) | **PASS** (CODE) | NIIF balloons; click → open chat: to verify |
 
 ## Linux GTK (linux/gtk_gui.c; GTK4 port pending)
@@ -83,11 +83,20 @@ Runtime verification on Windows CI (scripts/ui_smoke_windows.ps1) is still to be
 | G5 | Close vs tray | **PASS** (CODE) | delete-event + status icon |
 | G6 | Remember window size | **CODE** – check | default_size set; persistence unclear |
 | G8 | Drag & drop | **PASS** (CODE) | drag-data-received |
-| G9 | Context menu | **PARTIAL** | popup menu exists (2 sites); messages to verify |
-| G10 | Copy message text | **FAIL** | no clipboard code |
+| G9 | Context menu | **FIXED** a789d79 | text bubbles extend the selectable label's 复制/全选 menu (populate-popup); file/image bubbles open their own right-click menu; both → 删除这条消息（仅本机）… |
+| G10 | Copy message text | **PASS** (CODE) | bubble labels are selectable (gtk_label_set_selectable) → built-in 复制 |
 | G11 | Tooltips | **PASS** (CODE) | |
 | G12 | Single instance | **PASS** (CODE) | GtkApplication (unique by app id) |
-| G13 | Confirm destructive actions | **FAIL** | no yes/no dialogs |
+| G13 | Confirm destructive actions | **FIXED** a789d79 | confirm() helper: destructive-action button, 取消 default; used for 删除消息 |
 | G17 | Notification click opens chat | **CODE** – check | notification code present |
 
 XP and GTK failures are fixed in their redesign phases (GTK4 port, XP custom-drawn list), each with runtime checks.
+
+
+## Parity: delete message (this device only) + tombstone
+| platform | UI | confirmation | core | tombstone (peer resend / file re-offer cannot resurrect) | test |
+|---|---|---|---|---|---|
+| WinUI | message right-click → 删除（仅本机）… | ContentDialog, 取消 default | Rust `delete_message` RPC (efb2a08) | `history.deleted` sealed, synced, 20k cap (de04d2b) | lan-core unit test + DaemonTests; smoke right-click check (921829d) |
+| Android | long-press bubble → 复制 / 删除（仅本机） | LsmAlertDialog | JNI `deleteMessage` → `lsm_delete_message` (bc624b3) | C `D` history record (597b4fa) | adb step in android_chat_shots.py |
+| XP | chat right-click / Shift+F10 → 删除这条消息（仅本机）… | tmsg yes/cancel | `lsm_delete_message` | C `D` record, `seen_has` + file-offer reject | regress.py §5 (restart keeps it gone, peer keeps it) |
+| GTK | bubble right-click → 删除这条消息（仅本机）… | confirm() | `lsm_delete_message` | same C core | regress.py §5 (CLI) ; GUI not runtime-tested |
