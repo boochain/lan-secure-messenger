@@ -13,7 +13,8 @@ param(
   [switch]$NoStart,
   [switch]$NoService   # 用计划任务代替服务 (use a scheduled task instead of a service)
 )
-$ErrorActionPreference = 'Stop'
+# Continue: on Windows PowerShell 5.1 native-command stderr would otherwise become a terminating error
+$ErrorActionPreference = 'Continue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
 $ScriptVersion = '0.1.0'
 $SvcName = 'LsmRelay'
@@ -208,7 +209,7 @@ function Get-OurProcs {
   @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -in @('relay-server', 'lsm-relay', 'lsm-relay-server') })
 }
 function Get-Svc($n) { Get-Service -Name $n -ErrorAction SilentlyContinue }
-function Test-TaskExists($n) { $null = & schtasks /Query /TN $n 2>$null; return ($LASTEXITCODE -eq 0) }
+function Test-TaskExists($n) { & cmd.exe /c "schtasks /Query /TN `"$n`" >nul 2>&1"; return ($LASTEXITCODE -eq 0) }
 function Test-Autostart { [bool](Get-Svc $SvcName) -or (Test-TaskExists $TaskName) }
 function Test-Running { $s = Get-Svc $SvcName; if ($s -and $s.Status -eq 'Running') { return $true }; return ((Get-OurProcs).Count -gt 0) }
 function Read-Pid($f) { if (Test-Path $f) { $t = (Get-Content $f -Raw) -replace '\D', ''; if ($t) { return [int]$t } }; return 0 }
@@ -254,7 +255,7 @@ function Ensure-Installed {
   }
   Do-It "copy $nb -> $Bin" {
     New-Item -ItemType Directory -Force -Path $InstallDir, $DataDir, $LogDir | Out-Null
-    if ($nb -ne $Bin) { for ($i = 0; $i -lt 20; $i++) { try { Copy-Item -Force $nb $Bin; break } catch { Start-Sleep -Milliseconds 300 } } }
+    if ($nb -ne $Bin) { for ($i = 0; $i -lt 20; $i++) { try { Copy-Item -Force $nb $Bin -ErrorAction Stop; break } catch { Start-Sleep -Milliseconds 300 } } }
     Copy-Item -Force $MyInvocation.ScriptName (Join-Path $InstallDir 'deploy.ps1') -ErrorAction SilentlyContinue
     Set-Content -Path (Join-Path $DataDir 'version.txt') -Value $newv
   }

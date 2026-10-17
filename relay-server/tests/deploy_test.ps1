@@ -48,7 +48,7 @@ $o = Deploy upgrade; $o | Set-Content (Join-Path $T 'upgrade.log')
 Check 'upgrade detected leftovers' { $o -match '检测到已有安装或残留' }
 Check 'upgrade report (old → new)' { $o -match '→|版本相同' }
 Check 'old service removed' { -not (Get-Service RelayServer -ErrorAction SilentlyContinue) }
-Check 'old task removed' { $null = & schtasks /Query /TN RelayServer 2>$null; $LASTEXITCODE -ne 0 }
+Check 'old task removed' { & cmd.exe /c 'schtasks /Query /TN RelayServer >nul 2>&1'; $LASTEXITCODE -ne 0 }
 Check 'old process stopped' { -not (Get-Process -Id $old.Id -ErrorAction SilentlyContinue) }
 Check 'legacy binary removed' { -not (Test-Path (Join-Path $leg 'relay-server.exe')) }
 Check 'stale pid removed' { -not (Test-Path (Join-Path $leg 'stale.pid')) }
@@ -66,9 +66,9 @@ $o = Deploy stop
 Check 'stopped' { (Deploy status) -match '未运行' }
 # 6. scheduled-task fallback
 $o = Deploy install -NoService; Start-Sleep 2
-Check 'scheduled task installed' { $null = & schtasks /Query /TN LsmRelay 2>$null; $LASTEXITCODE -eq 0 }
+Check 'scheduled task installed' { & cmd.exe /c 'schtasks /Query /TN LsmRelay >nul 2>&1'; $LASTEXITCODE -eq 0 }
 $o = Deploy remove-autostart
-Check 'scheduled task removed' { $null = & schtasks /Query /TN LsmRelay 2>$null; $LASTEXITCODE -ne 0 }
+Check 'scheduled task removed' { & cmd.exe /c 'schtasks /Query /TN LsmRelay >nul 2>&1'; $LASTEXITCODE -ne 0 }
 # 7. active firewall: unchanged without flag; real rule with -OpenFirewall; uninstall removes only ours
 Remove-Item Env:RELAY_FWLOG; $env:RELAY_FAKE_FIREWALL = 'active'
 $o = Deploy config -Port 19821

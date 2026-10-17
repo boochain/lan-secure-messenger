@@ -7,6 +7,10 @@ on:
     paths: ['relay-server/**', '.github/workflows/relay-server.yml']
   workflow_dispatch:
 
+concurrency:
+  group: relay-server-${{ github.ref }}
+  cancel-in-progress: true
+
 defaults:
   run:
     working-directory: relay-server
