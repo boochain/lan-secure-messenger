@@ -93,8 +93,15 @@ class Rust:
         cmd = (["ip", "netns", "exec", ns] if ns else []) + [f"{args.rust_bin}/lan-daemon", "--data-dir", s.dir, "--ipc", s.sock]
         extra = [f"listen_port={port}", f"discovery_port={port + 1}", "discovery_enabled=false"] if port else []
         for x in [f'display_name="{tag.split("/")[-1]}"', "announce_interval_secs=1", f'download_dir="{s.dl}"'] + extra: cmd += ["--set", x]
-        s.p = subprocess.Popen(cmd, stdout=open(f"{W}/{tag}.log", "w"), stderr=subprocess.STDOUT, env=dict(os.environ, LSM_NO_DIALOG="1"))
+        s._cmd, s._log = cmd, f"{W}/{tag}.log"; s._spawn()
+    def _spawn(s):
+        s.p = subprocess.Popen(s._cmd, stdout=open(s._log, "a"), stderr=subprocess.STDOUT, env=dict(os.environ, LSM_NO_DIALOG="1"))
         wait(lambda: os.path.exists(s.sock), 15); s.fp = wait(lambda: s.j("status")["me"]["fingerprint"], 15)
+    def restart_hard(s):
+        """kill -9 mid-transfer (no shutdown), then start again on the same data dir"""
+        s.p.kill(); s.p.wait()
+        if os.path.exists(s.sock): os.remove(s.sock)
+        time.sleep(1); s._spawn()
     def m(s, *a): return subprocess.run([f"{args.rust_bin}/lan-msg", "--ipc", s.sock] + list(a), capture_output=True, text=True, timeout=60).stdout
     def j(s, *a): return json.loads(s.m("--json", *a))
     def online(s, fp): return any(p["fingerprint"] == fp and p.get("online") for p in s.j("status")["peers"])
@@ -147,10 +154,18 @@ class CCli:
             cmd = pre + [exe, "--data", f"{W}/{tag}"]; s.dl = f"{W}/{tag}/downloads"
         cmd += ["--name", tag.split("/")[-1], "--announce-ms", "1000"]
         if port: cmd += ["--port", str(port), "--disco-port", str(port + 1), "--no-discovery"]
-        s.p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
+        s._cmd, s._env = cmd, env
         os.makedirs(os.path.dirname(f"{W}/{tag}"), exist_ok=True); s.log = open(f"{W}/{tag}.log", "w", encoding="utf-8")
+        s._spawn()
+    def _spawn(s):
+        s.p = subprocess.Popen(s._cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=s._env)
         threading.Thread(target=s._rd, daemon=True).start()
         r = s.cmd("id", 60); s.fp = re.search(r"OK id (\S+)", r[-1]).group(1)
+    def restart_hard(s):
+        """kill -9 mid-transfer (no quit), then start again on the same data dir"""
+        s.p.kill(); s.p.wait()
+        if s.kind == "wine": sh(f"WINEPREFIX={s.pfx} wineserver -k", False)
+        time.sleep(1); s.lines.clear(); s._spawn()
     def _rd(s):
         for raw in s.p.stdout:
             l = raw.decode("utf-8", "replace").rstrip("\r\n"); s.log.write(l + "\n"); s.log.flush(); s.lines.append(l); s.q.put(l)
@@ -251,6 +266,8 @@ for a, b in itertools.combinations_with_replacement(kinds, 2):
             # true resume: kill the relay server at ~40%, restart it, the transfer must continue
             ok, det = resume_check(A, B, lambda: restart_relay(), f"relay_{tg}")
             checks["resume (server killed at 40%)"] = ok; details[f"{pair} relay resume"] = det; print("   ", det, flush=True)
+            ok, det = resume_check(A, B, lambda: B.restart_hard(), f"relayrst_{tg}")
+            checks["resume (receiver killed+restarted at 40%)"] = ok; details[f"{pair} relay restart resume"] = det; print("   ", det, flush=True)
             srv = SRV[0]
             # relay -> direct
             block_direct(False)
@@ -295,6 +312,8 @@ for a, b in itertools.combinations_with_replacement(kinds, 2):
             # true resume on the LAN: abort the TCP link at ~40% (ss -K), peers redial, transfer continues
             ok, det = resume_check(A, B, lambda: sh("ip netns exec mxA ss -K dst 10.78.0.2", False), f"lan_{tg}")
             checks["resume (LAN link cut at 40%)"] = ok; details[f"{pair} LAN resume"] = det; print("   ", det, flush=True)
+            ok, det = resume_check(A, B, lambda: B.restart_hard(), f"lanrst_{tg}")
+            checks["resume (receiver killed+restarted at 40%)"] = ok; details[f"{pair} LAN restart resume"] = det; print("   ", det, flush=True)
     except Exception as e:
         checks["harness"] = False; print("  exception:", repr(e)[:200])
     finally:
