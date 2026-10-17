@@ -1,0 +1,11 @@
+#!/bin/sh
+# LanMessenger (GTK 4 + libadwaita) AppImage entry. Bundles glib/GTK 4/libadwaita >= 1.4 so older distros
+# (Debian 12 ships libadwaita 1.2) keep working; everything else comes from the system.
+# "./LanMessenger-adw.AppImage cli [args]" runs the console client.
+HERE="$(dirname "$(readlink -f "$0")")"; export APPDIR="${APPDIR:-$HERE}"
+if [ "${1:-}" = "cli" ]; then shift; exec "$HERE/usr/bin/lanmsg-cli" "$@"; fi
+export LD_LIBRARY_PATH="$HERE/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export GSETTINGS_SCHEMA_DIR="$HERE/usr/share/glib-2.0/schemas"
+export GIO_MODULE_DIR="$HERE/usr/lib/gio/modules"      # system gio modules are built for the system glib
+export XDG_DATA_DIRS="$HERE/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+exec "$HERE/usr/bin/lan-messenger-adw" "$@"

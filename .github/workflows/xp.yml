@@ -214,7 +214,35 @@ jobs:
         run: python3 tests/adw_gui_shots.py build/linux-adw/lan-messenger-adw build/linux-adw/lanmsg-cli shots/adw
       - name: Colour audit (gnome palette)
         # dialog-* shots are left out: the modal scrim dims the page behind on purpose
-        run: python3 tools/ui_color_audit.py --palette tools/palettes/gnome.json --out ui-audit/adw shots/adw/page-*.png shots/adw/popup-*.png
+        run: python3 tools/ui_color_audit.py --palette tools/palettes/gnome.json --ignore-file shots/adw/audit_ignore.json --out ui-audit/adw shots/adw/page-*.png shots/adw/popup-*.png
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: linux-adw-screenshots, path: "shots/adw\nui-audit/adw" }
+  linux-adw-appimage:
+    name: GTK 4 AppImage (bundled glib/GTK 4.12/libadwaita 1.4, built on debian:12)
+    runs-on: ubuntu-24.04
+    container: debian:12
+    steps:
+      - run: apt-get update -qq && apt-get install -y -qq git ca-certificates
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with: { path: /opt/lsm-adw, key: lsm-adw-debian12-glib2.78.6-gtk4.12.5-adw1.4.7 }
+      - name: Build toolkit (cached) + AppImage
+        run: sh linux/adw-appimage/build.sh
+      - uses: actions/upload-artifact@v4
+        with: { name: linux-adw-appimage, path: dist/LanMessenger-adw-*.AppImage }
+  adw-appimage-debian12:
+    name: GTK 4 AppImage launches on stock debian:12 (Xvfb screenshot)
+    needs: linux-adw-appimage
+    runs-on: ubuntu-24.04
+    container: debian:12
+    steps:
+      - run: apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ca-certificates libgtk-4-1 xvfb dbus-x11 imagemagick fonts-noto-cjk adwaita-icon-theme
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: linux-adw-appimage, path: appimage }
+      - name: Launch + screenshot
+        run: sh tests/adw_appimage_launch.sh appimage/LanMessenger-adw-*.AppImage shots/appimage
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: adw-appimage-debian12-screenshot, path: shots/appimage }
