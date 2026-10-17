@@ -1,0 +1,200 @@
+name: relay-server
+on:
+  push:
+    branches: [feat/relay-server]
+    paths: ['relay-server/**', '.github/workflows/relay-server.yml']
+  pull_request:
+    paths: ['relay-server/**', '.github/workflows/relay-server.yml']
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: relay-server
+
+jobs:
+  linux-test:
+    name: Linux tests (unit + integration + C interop + deploy.sh/systemd)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: relay-server }
+      - name: C test client
+        run: make -C c-client && c-client/relay_client --selftest
+      - name: cargo test (release, 2 min stress, 3000 fuzz conns)
+        env: { RELAY_STRESS_SECS: '120', RELAY_FUZZ_ITERS: '3000' }
+        run: cargo test --release -- --nocapture 2>&1 | tee test.log
+      - name: deploy.sh test (root + real systemd)
+        run: |
+          cargo build --release
+          sudo -E env "PATH=$PATH" bash tests/deploy_test.sh target/release/relay-server target/release/relay-test-client
+      - name: deploy.sh test (non-root, no systemd, background mode)
+        run: RELAY_NO_SYSTEMD=1 bash tests/deploy_test.sh target/release/relay-server target/release/relay-test-client
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: linux-test-log, path: relay-server/test.log }
+
+  linux-build:
+    name: Linux musl ${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x86_64,  target: x86_64-unknown-linux-musl,      qemu: '' }
+          - { arch: aarch64, target: aarch64-unknown-linux-musl,     qemu: qemu-aarch64-static }
+          - { arch: armv7,   target: armv7-unknown-linux-musleabihf, qemu: qemu-arm-static }
+          - { arch: i686,    target: i686-unknown-linux-musl,        qemu: qemu-i386-static }
+          - { arch: riscv64, target: riscv64gc-unknown-linux-musl,   qemu: qemu-riscv64-static }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: '${{ matrix.target }}' }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: relay-server, key: '${{ matrix.target }}' }
+      - name: Install zig + cargo-zigbuild + qemu-user
+        run: |
+          pip3 install --user ziglang==0.13.0
+          cargo install cargo-zigbuild --locked
+          sudo apt-get update -qq && sudo apt-get install -y -qq qemu-user-static file
+      - name: Build static binaries
+        run: |
+          cargo zigbuild --release --target ${{ matrix.target }}
+          file target/${{ matrix.target }}/release/relay-server
+      - name: Smoke test (native or qemu-user) — start, --status, relay round-trip
+        run: |
+          B=target/${{ matrix.target }}/release; Q="${{ matrix.qemu }}"
+          $Q $B/relay-server --version
+          $Q $B/relay-server --port 19900 --password qemu-test-pass > srv.log 2>&1 &
+          sleep 8
+          $Q $B/relay-server --status --port 19900 | tee status.json
+          grep -q '"online"' status.json
+          $Q $B/relay-test-client --addr 127.0.0.1:19900 --password qemu-test-pass --name echo --echo --timeout 60 &
+          sleep 5
+          $Q $B/relay-test-client --addr 127.0.0.1:19900 --password qemu-test-pass --name send --to echo --count 20 --size 4096 --timeout 60 | tee rt.txt
+          grep -q 'OK roundtrip count=20' rt.txt
+          $Q $B/relay-test-client --addr 127.0.0.1:19900 --password WRONG --name bad --to echo --timeout 20 && exit 1 || echo "wrong passphrase rejected: OK"
+          kill %1 || true
+      - name: Package
+        run: |
+          d=relay-server-linux-${{ matrix.arch }}; mkdir -p dist/$d
+          cp target/${{ matrix.target }}/release/relay-server deploy/deploy.sh ../docs/relay-protocol.md dist/$d/
+          cp relay.example.toml dist/$d/ 2>/dev/null || true
+          tar -C dist -czf $d.tar.gz $d
+      - uses: actions/upload-artifact@v4
+        with:
+          name: relay-server-linux-${{ matrix.arch }}.tar.gz
+          path: relay-server/relay-server-linux-${{ matrix.arch }}.tar.gz
+
+  windows:
+    name: Windows ${{ matrix.os }} (build x64/arm64/x86, test, deploy.ps1 service)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-2025]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: 'x86_64-pc-windows-msvc,aarch64-pc-windows-msvc,i686-pc-windows-msvc' }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: relay-server }
+      - name: Build (static CRT)
+        shell: pwsh
+        env: { RUSTFLAGS: '-C target-feature=+crt-static' }
+        run: |
+          foreach ($t in 'x86_64-pc-windows-msvc','aarch64-pc-windows-msvc','i686-pc-windows-msvc') { cargo build --release --target $t; if ($LASTEXITCODE) { exit 1 } }
+      - name: cargo test (x64)
+        shell: pwsh
+        env: { RELAY_STRESS_SECS: '30', RELAY_FUZZ_ITERS: '1500' }
+        run: cargo test --release --target x86_64-pc-windows-msvc -- --nocapture
+      - name: i686 smoke (WOW64)
+        shell: pwsh
+        run: |
+          $b = 'target\i686-pc-windows-msvc\release'
+          & "$b\relay-server.exe" --version
+      - name: deploy.ps1 test (Windows PowerShell 5.1, elevated)
+        shell: powershell
+        run: |
+          $b = 'target\x86_64-pc-windows-msvc\release'
+          .\tests\deploy_test.ps1 -NewBin "$b\relay-server.exe" -Cli "$b\relay-test-client.exe"
+          if ($LASTEXITCODE) { exit 1 }
+      - name: deploy.bat launcher smoke
+        shell: cmd
+        run: |
+          set RELAY_HOME=%RUNNER_TEMP%\bat
+          set RELAY_BIN=%CD%\target\x86_64-pc-windows-msvc\release\relay-server.exe
+          call deploy\deploy.bat version || exit /b 1
+          call deploy\deploy.bat install -Port 19950 -Password bat-test-pass -NoStart || exit /b 1
+          call deploy\deploy.bat status || exit /b 1
+          call deploy\deploy.bat uninstall -Yes || exit /b 1
+      - name: Package
+        if: matrix.os == 'windows-2022'
+        shell: pwsh
+        run: |
+          $map = @{ 'x64' = 'x86_64-pc-windows-msvc'; 'arm64' = 'aarch64-pc-windows-msvc'; 'x86' = 'i686-pc-windows-msvc' }
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $all = 'dist\relay-server-win-all'; New-Item -ItemType Directory -Force $all | Out-Null
+          Copy-Item deploy\deploy.ps1, deploy\deploy.bat, ..\docs\relay-protocol.md $all
+          foreach ($a in $map.Keys) {
+            $d = "dist\relay-server-win-$a"; New-Item -ItemType Directory -Force $d | Out-Null
+            Copy-Item "target\$($map[$a])\release\relay-server.exe", deploy\deploy.ps1, deploy\deploy.bat, ..\docs\relay-protocol.md $d
+            Compress-Archive -Force -Path "$d\*" -DestinationPath "relay-server-win-$a.zip"
+            New-Item -ItemType Directory -Force "$all\bin\win-$a" | Out-Null
+            Copy-Item "target\$($map[$a])\release\relay-server.exe" "$all\bin\win-$a\"
+          }
+          Compress-Archive -Force -Path "$all\*" -DestinationPath relay-server-win-all.zip
+      - uses: actions/upload-artifact@v4
+        if: matrix.os == 'windows-2022'
+        with: { name: relay-server-win-x64.zip, path: relay-server/relay-server-win-x64.zip }
+      - uses: actions/upload-artifact@v4
+        if: matrix.os == 'windows-2022'
+        with: { name: relay-server-win-arm64.zip, path: relay-server/relay-server-win-arm64.zip }
+      - uses: actions/upload-artifact@v4
+        if: matrix.os == 'windows-2022'
+        with: { name: relay-server-win-x86.zip, path: relay-server/relay-server-win-x86.zip }
+      - uses: actions/upload-artifact@v4
+        if: matrix.os == 'windows-2022'
+        with: { name: relay-server-win-all.zip, path: relay-server/relay-server-win-all.zip }
+
+  windows-arm64:
+    name: Windows 11 ARM64 native smoke
+    runs-on: windows-11-arm
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build + round-trip on ARM64
+        shell: pwsh
+        run: |
+          cargo build --release
+          $b = 'target\release'
+          & "$b\relay-server.exe" --version
+          $s = Start-Process "$b\relay-server.exe" -ArgumentList '--port 19960 --password arm-pass' -PassThru
+          Start-Sleep 3
+          & "$b\relay-server.exe" --status --port 19960
+          $e = Start-Process "$b\relay-test-client.exe" -ArgumentList '--addr 127.0.0.1:19960 --password arm-pass --name echo --echo --timeout 20' -PassThru
+          Start-Sleep 2
+          & "$b\relay-test-client.exe" --addr 127.0.0.1:19960 --password arm-pass --name send --to echo --count 20 --size 4096
+          if ($LASTEXITCODE) { exit 1 }
+
+  linux-bundle:
+    name: Linux all-in-one bundle
+    needs: linux-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { pattern: 'relay-server-linux-*', merge-multiple: true }
+      - name: Bundle every arch (deploy.sh auto-detects uname -m)
+        working-directory: .
+        run: |
+          mkdir -p all/bin
+          for f in relay-server-linux-*.tar.gz; do
+            a=${f#relay-server-linux-}; a=${a%.tar.gz}; tar xzf $f
+            mkdir -p all/bin/linux-$a; cp relay-server-linux-$a/relay-server all/bin/linux-$a/
+            cp relay-server-linux-$a/deploy.sh relay-server-linux-$a/relay-protocol.md all/
+          done
+          mv all relay-server-linux-all && tar czf relay-server-linux-all.tar.gz relay-server-linux-all
+      - uses: actions/upload-artifact@v4
+        with: { name: relay-server-linux-all.tar.gz, path: relay-server-linux-all.tar.gz }
