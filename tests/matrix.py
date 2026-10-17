@@ -9,6 +9,10 @@ Kinds:
   wine    XP edition x86 lanmsg-cli.exe under wine                         --wine-exe PATH
   linux   Linux edition CLI (same C core, packaged build)                  --linux-cli PATH
   android slot: --android-cmd "/data/local/tmp/lanmsg-cli" (Android build of the core on an adb device/emulator)  (skipped when absent)
+Relay mode (--relay --relay-bin PATH): an LSM relay-server runs on the bridge (10.78.0.254); direct traffic
+between the two namespaces is blackholed so every pair must work THROUGH THE SERVER: online via relay, PIN pairing,
+msg both ways + receipt, file both ways (sha256), file resume across a server restart, group create + group msg,
+relay->direct and direct->relay switching, server restart, network drop (eth0 down/up), wrong passphrase.
 Usage: sudo python3 tests/matrix.py --rust-bin ... --native-cli ... --wine-exe ... [--kinds rust,native,wine]
 Writes results JSON to <work>/matrix.json and a table to stdout. Exit 1 on any failure.
 """
@@ -18,6 +22,8 @@ ap.add_argument("--rust-bin"); ap.add_argument("--native-cli"); ap.add_argument(
 ap.add_argument("--linux-cli"); ap.add_argument("--android-cmd")
 ap.add_argument("--kinds", default="rust,native,wine,linux,android")
 ap.add_argument("--work", default="/tmp/lsm-matrix")
+ap.add_argument("--relay", action="store_true", help="run every pair through the relay server")
+ap.add_argument("--relay-bin", help="relay-server binary (relay mode)")
 args = ap.parse_args()
 W = args.work
 def sh(c, check=True):
@@ -41,6 +47,19 @@ def net_up():
         sh(f"ip netns add {ns}"); sh(f"ip netns exec mxBR ip link add v{ns} type veth peer name eth0 netns {ns}")
         sh(f"ip netns exec mxBR ip link set v{ns} master br0 up")
         sh(f"ip netns exec {ns} ip addr add 10.78.0.{i}/24 brd 10.78.0.255 dev eth0 && ip netns exec {ns} ip link set eth0 up && ip netns exec {ns} ip link set lo up")
+RHOST, RPORT, RPASS = "10.78.0.254", 29443, "matrix-relay-pass"
+def relay_up():
+    sh("ip netns exec mxBR ip addr add 10.78.0.254/24 dev br0", False)
+    return subprocess.Popen(["ip", "netns", "exec", "mxBR", args.relay_bin, "--port", str(RPORT), "--password", RPASS],
+                            stdout=open(f"{W}/relay-server.log", "a"), stderr=subprocess.STDOUT)
+def relay_down(p):
+    if p:
+        p.terminate()
+        try: p.wait(5)
+        except Exception: p.kill()
+def block_direct(on):
+    op = "add" if on else "del"
+    sh(f"ip netns exec mxA ip route {op} blackhole 10.78.0.2/32", False); sh(f"ip netns exec mxB ip route {op} blackhole 10.78.0.1/32", False)
 def net_down():
     for ns in ["mxA", "mxB", "mxBR"]:
         sh(f"ip netns pids {ns} 2>/dev/null | xargs -r kill -9", False); sh(f"ip netns del {ns}", False)
@@ -63,6 +82,18 @@ class Rust:
     def has(s, fp, t): return any(m.get("body") == t for m in s.j("history", fp))
     def sendfile(s, fp, path): s.m("send-file", fp, path)
     def dlpath(s, name): return f"{s.dl}/{name}"
+    def peer(s, fp): return next((p for p in s.j("status")["peers"] if p["fingerprint"] == fp), {})
+    def via(s, fp):
+        p = s.peer(fp); return ("relay" if p.get("via_relay") else "direct") if p.get("online") else None
+    def trusted(s, fp): return s.peer(fp).get("trust") == "trusted"
+    def relay(s, host, port, pw): s.m("relay", "on", host, str(port), pw)
+    def relay_state(s): return s.j("relay", "status")["state"]
+    def pin_offer(s): return s.j("pin-offer")["pin"]
+    def pin_pair(s, fp, pin): s.m("pin-pair", fp, pin)
+    def group_create(s, name, fp): s.m("group-create", name, fp); return s.group_id(name)
+    def group_id(s, name): return next((g["id"] for g in s.j("groups") if g["name"] == name), None)
+    def send_group(s, gid, t): s.m("send-group", gid, t)
+    def has_group(s, gid, t): return any(m.get("body") == t for m in s.j("history", "g:" + gid))
     def stop(s):
         s.m("shutdown")
         try: s.p.wait(5)
@@ -119,6 +150,23 @@ class CCli:
     def dlpath(s, name):
         if s.kind != "android": return f"{s.dl}/{name}"
         local = f"{W}/pulled-{name}"; subprocess.run([ADB, "pull", f"{s.dl}/{name}", local], capture_output=True); return local
+    def via(s, fp):
+        for l in s.cmd("peers"):
+            if l.startswith(f"PEER {fp}\tonline"): return "relay" if "via=relay" in l else "direct"
+        return None
+    def trusted(s, fp): return any(l.startswith(f"PEER {fp}\t") and "\ttrusted\t" in l for l in s.cmd("peers"))
+    def relay(s, host, port, pw):
+        if s.kind == "android" and host.startswith("10.78."): host = "10.0.2.2"
+        s.cmd(f"relay {host} {port} {pw}")
+    def relay_state(s): return s.cmd("relay status")[-1].split()[2]
+    def pin_offer(s): return re.search(r"OK pin (\d+)", s.cmd("pin-offer")[-1]).group(1)
+    def pin_pair(s, fp, pin): s.cmd(f"pin-pair {fp} {pin}")
+    def group_create(s, name, fp): s.cmd(f"group-create {name} {fp}"); return s.group_id(name)
+    def group_id(s, name):
+        for l in s.cmd("groups"):
+            if l.startswith("GROUP ") and l.split("\t")[1] == name: return l.split("\t")[0][6:]
+    def send_group(s, gid, t): s.cmd(f"sendgroup {gid} {t}")
+    def has_group(s, gid, t): return any(l.startswith("MSG") and l.endswith("\t" + t) for l in s.cmd(f"history group:{gid}"))
     def stop(s):
         try: s.cmd("quit", 15)
         except Exception: pass
@@ -138,10 +186,56 @@ for a, b in itertools.combinations_with_replacement(kinds, 2):
         results.append({"pair": pair, "status": "SKIP", "why": "needs two Android devices"}); print(f"[SKIP] {pair} (needs two devices)"); continue
     if not (avail[a] and avail[b]):
         results.append({"pair": pair, "status": "SKIP", "why": "implementation not provided"}); print(f"[SKIP] {pair}"); continue
-    checks = {}; net_up(); A = B = None; t0 = time.time()
+    checks = {}; net_up(); A = B = None; t0 = time.time(); srv = None
     try:
         tg = f"{a}-{b}"
-        if "android" in (a, b):
+        if args.relay:
+            if "android" in (a, b): raise RuntimeError("relay mode: android pairs need the emulator host network (not wired yet)")
+            srv = relay_up(); time.sleep(0.5); block_direct(True)
+            A = mk(a, f"{tg}/{a}A", "mxA"); B = mk(b, f"{tg}/{b}B", "mxB")
+            A.relay(RHOST, RPORT, RPASS); B.relay(RHOST, RPORT, RPASS)
+            checks["online via server"] = bool(wait(lambda: A.via(B.fp) == "relay" and B.via(A.fp) == "relay", 40))
+            pin = A.pin_offer(); B.pin_pair(A.fp, pin)
+            checks["PIN pairing"] = bool(wait(lambda: A.trusted(B.fp) and B.trusted(A.fp), 30))
+            A.trust(B.fp); B.trust(A.fp)
+            for X, Y, d in ((A, B, "A->B"), (B, A, "B->A")):
+                t = f"中转消息 {d} {pair} ✓"; mid = X.send(Y.fp, t)
+                checks[f"msg+receipt {d}"] = bool(wait(lambda: Y.has(X.fp, t), 20) and wait(lambda: X.delivered(Y.fp, mid), 20))
+                name = f"rx_{d.replace('->','_')}.bin"; src = f"{W}/{name}"; open(src, "wb").write(os.urandom(1_500_000 + len(d)))
+                X.sendfile(Y.fp, src)
+                checks[f"file {d}"] = bool(wait(lambda: os.path.exists(Y.dlpath(name)) and os.path.getsize(Y.dlpath(name)) == os.path.getsize(src) and sha(Y.dlpath(name)) == sha(src), 90))
+            gid = A.group_create(f"mxg{abs(hash(pair)) % 10000}", B.fp)
+            ok = bool(gid and wait(lambda: B.group_id(f"mxg{abs(hash(pair)) % 10000}"), 20))
+            if ok:
+                gt = f"群消息 {pair}"; A.send_group(gid, gt); ok = bool(wait(lambda: B.has_group(gid, gt), 20))
+            checks["group create+msg"] = ok
+            # resume across a server restart
+            name = "rx_resume.bin"; src = f"{W}/{name}"; open(src, "wb").write(os.urandom(24_000_000)); A.sendfile(B.fp, src)
+            time.sleep(0.6); relay_down(srv); time.sleep(2); srv = relay_up()
+            checks["file resume across server restart"] = bool(wait(lambda: os.path.exists(B.dlpath(name)) and os.path.getsize(B.dlpath(name)) == os.path.getsize(src) and sha(B.dlpath(name)) == sha(src), 150, 1))
+            # relay -> direct
+            block_direct(False)
+            checks["switch server->direct"] = bool(wait(lambda: A.via(B.fp) == "direct" and B.via(A.fp) == "direct", 60))
+            t = f"直连消息 {pair}"; A.send(B.fp, t); checks["msg after ->direct"] = bool(wait(lambda: B.has(A.fp, t), 20))
+            # direct -> relay
+            block_direct(True)
+            checks["switch direct->server"] = bool(wait(lambda: A.via(B.fp) == "relay" and B.via(A.fp) == "relay", 90))
+            t = f"回到中转 {pair}"; B.send(A.fp, t); checks["msg after ->server"] = bool(wait(lambda: A.has(B.fp, t), 20))
+            # server restart
+            relay_down(srv); time.sleep(1); srv = relay_up()
+            checks["server restart"] = bool(wait(lambda: A.via(B.fp) == "relay" and B.via(A.fp) == "relay", 90))
+            t = f"重启后 {pair}"; A.send(B.fp, t); checks["msg after restart"] = bool(wait(lambda: B.has(A.fp, t), 20))
+            # network drop on A
+            sh("ip netns exec mxA ip link set eth0 down"); time.sleep(8); sh("ip netns exec mxA ip link set eth0 up")
+            sh("ip netns exec mxA ip route add blackhole 10.78.0.2/32", False)
+            checks["network drop recovery"] = bool(wait(lambda: A.via(B.fp) == "relay" and B.via(A.fp) == "relay", 120))
+            t = f"断网恢复 {pair}"; B.send(A.fp, t); checks["msg after drop"] = bool(wait(lambda: A.has(B.fp, t), 20))
+            # wrong passphrase
+            A.relay(RHOST, RPORT, "wrong-pass")
+            checks["wrong passphrase rejected"] = bool(wait(lambda: A.relay_state() == "auth_failed", 30)) and bool(wait(lambda: B.via(A.fp) is None, 60))
+            A.relay(RHOST, RPORT, RPASS)
+            checks["recover after fixing passphrase"] = bool(wait(lambda: A.via(B.fp) == "relay", 60))
+        elif "android" in (a, b):
             # emulator NAT: no broadcast across it, so connect by IP (the host is 10.0.2.2 from the guest)
             if a == "android" and b == "android": raise RuntimeError("android<->android needs two devices")
             other = b if a == "android" else a; hp = 47600 + 4 * kinds.index(other)
@@ -151,8 +245,8 @@ for a, b in itertools.combinations_with_replacement(kinds, 2):
         else:
             A = mk(a, f"{tg}/{a}A", "mxA"); B = mk(b, f"{tg}/{b}B", "mxB")
             checks["discovery"] = bool(wait(lambda: A.online(B.fp) and B.online(A.fp), 40))
-        A.trust(B.fp); B.trust(A.fp)
-        for X, Y, d in ((A, B, "A->B"), (B, A, "B->A")):
+        if not args.relay: A.trust(B.fp); B.trust(A.fp)
+        for X, Y, d in (() if args.relay else ((A, B, "A->B"), (B, A, "B->A"))):
             t = f"矩阵消息 {d} {pair} ✓"; mid = X.send(Y.fp, t)
             checks[f"msg {d}"] = bool(wait(lambda: Y.has(X.fp, t), 15) and wait(lambda: X.delivered(Y.fp, mid), 15))
             name = f"mx_{d.replace('->','_')}.bin"; src = f"{W}/{name}"; open(src, "wb").write(os.urandom(1_500_000 + len(d)))
@@ -164,10 +258,18 @@ for a, b in itertools.combinations_with_replacement(kinds, 2):
         for n in (A, B):
             try: n and n.stop()
             except Exception: pass
-        net_down()
+        relay_down(srv); net_down()
     st = "PASS" if checks and all(checks.values()) else "FAIL"
     results.append({"pair": pair, "status": st, "checks": checks, "secs": round(time.time() - t0, 1)})
     print(f"[{st}] {pair} " + " ".join(f"{k}={'ok' if v else 'FAIL'}" for k, v in checks.items()), flush=True)
+if args.relay:
+    names = []
+    for r in results:
+        for k in r.get("checks", {}):
+            if k not in names: names.append(k)
+    print("\n| pair | " + " | ".join(names) + " |\n|" + "---|" * (len(names) + 1))
+    for r in results:
+        c = r.get("checks", {}); print(f"| {r['pair']} | " + " | ".join("✅" if c.get(n) else ("❌" if n in c else "–") for n in names) + " |")
 json.dump(results, open(f"{W}/matrix.json", "w"), ensure_ascii=False, indent=1)
 print("\nMATRIX: %d pass, %d fail, %d skip" % tuple(sum(r["status"] == s for r in results) for s in ("PASS", "FAIL", "SKIP")))
 sys.exit(1 if any(r["status"] == "FAIL" for r in results) else 0)
