@@ -1,6 +1,6 @@
 # LAN Secure Messenger — v0.5 wire protocol (PROTO_VERSION = 5)
 
-Extracted from the Rust source of `FREC86/lan-secure-messenger`, branch `refactor/v0.5`
+Extracted from the Rust source of `boochain/lan-secure-messenger`, branch `refactor/v0.5`
 (tag v0.5.0-beta.2, commit 1504404): `lan-core/src/{wire,crypto,link,discovery,identity,group}.rs`,
 `lan-core/src/engine.rs`, `lan-core/src/engine/files.rs`. The XP edition implements exactly this.
 
