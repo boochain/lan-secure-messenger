@@ -192,15 +192,18 @@ static void refresh_list(void){
     SendMessageW(hList,WM_SETREDRAW,TRUE,0); InvalidateRect(hList,NULL,TRUE); }
 
 static const wchar_t *status_txt(int s){ switch(s){ case 0: return L"排队中"; case 1: return L"已发送"; case 2: return L"已送达"; case 3: return L"已读"; case 5: return L"失败"; default: return L""; } }
+/* char offset where each message starts in hChat, for the per-message context menu */
+static int *chat_off, nchat, capchat; static char (*chat_ids)[40];
 static void refresh_chat(void){
     lsm_msg *m; int n,i; size_t cap=65536, len=0; wchar_t *buf=(wchar_t*)malloc(cap*sizeof(wchar_t)); wchar_t title[400]=L"";
-    buf[0]=0;
+    buf[0]=0; nchat=0;
     lsm_lock(C);
     if(cur_conv[0]){ lsm_contact *k; lsm_group *g; int nk, j;
         if(!strncmp(cur_conv,"dm:",3)){ nk=lsm_contacts(C,&k); for(j=0;j<nk;j++) if(!strcmp(k[j].fp,cur_conv+3)) _snwprintf(title,400,L"%s    %s    %s%s%s",W(k[j].name),W(k[j].fp),k[j].online?L"在线":L"离线",k[j].app_version[0]?L"  ":L"",W(k[j].app_version)); }
         else { char u[37]; nk=lsm_groups(C,&g); for(j=0;j<nk;j++){ lsm_uuid_str(g[j].id,u); if(!strcmp(u,cur_conv+6)) _snwprintf(title,400,L"群组「%s」  %d 人  密钥版本 %llu",W(g[j].name),g[j].nmembers,(unsigned long long)g[j].key_epoch); } }
         title[399]=0;
-        n=lsm_messages(C,&m);
+        n=lsm_messages(C,&m); nchat=0;
+        if(n>capchat){ capchat=n+64; chat_off=(int*)realloc(chat_off,capchat*sizeof *chat_off); chat_ids=realloc(chat_ids,capchat*sizeof *chat_ids); }
         for(i=0;i<n;i++){ wchar_t line[9000]; time_t t; struct tm *tm; wchar_t ts[32]=L""; size_t ll; if(strcmp(m[i].conv,cur_conv)) continue;
             t=(time_t)(m[i].ts_ms/1000); tm=localtime(&t); if(tm) wcsftime(ts,32,L"%m-%d %H:%M",tm);
             if(m[i].kind==K_SYSTEM) _snwprintf(line,9000,L"[%s] —— %s ——\r\n",ts,W(m[i].body));
@@ -208,7 +211,7 @@ static void refresh_chat(void){
                 for(j2=0;j2<nt;j2++){ char u[37]; lsm_uuid_str(t2[j2].tid,u); if(!strcmp(t2[j2].msg_id,m[i].id)){ static const wchar_t *TS[]={L"等待接收",L"传输中",L"校验中",L"完成",L"失败",L"被拒收",L"已取消"}; fs=TS[t2[j2].state]; if(t2[j2].size) _snwprintf(prog,64,L" %d%%",(int)(t2[j2].transferred*100/t2[j2].size)); } }
                 _snwprintf(line,9000,L"[%s] %s: [文件] %s (%llu 字节) %s%s %s\r\n",ts,m[i].out?L"我":W(m[i].sender_name),W(m[i].file_name),(unsigned long long)m[i].file_size,fs,prog,m[i].out?status_txt(m[i].status):L""); }
             else _snwprintf(line,9000,L"[%s] %s: %s   %s\r\n",ts,m[i].out?L"我":W(m[i].sender_name),W(m[i].body),m[i].out?status_txt(m[i].status):L"");
-            line[8999]=0; ll=wcslen(line); if(len+ll+1>cap){ cap=(cap+ll)*2; buf=(wchar_t*)realloc(buf,cap*sizeof(wchar_t)); } wcscpy(buf+len,line); len+=ll; } }
+            line[8999]=0; ll=wcslen(line); if(len+ll+1>cap){ cap=(cap+ll)*2; buf=(wchar_t*)realloc(buf,cap*sizeof(wchar_t)); } wcscpy(buf+len,line); chat_off[nchat]=(int)len; memcpy(chat_ids[nchat],m[i].id,40); nchat++; len+=ll; } }
     lsm_unlock(C);
     SetWindowTextW(hTitle,cur_conv[0]?title:L"← 从左侧选择联系人或群组");
     SetWindowTextW(hChat,buf); fit_vscroll(hChat); SendMessageW(hChat,EM_SETSEL,(WPARAM)len,(LPARAM)len); SendMessageW(hChat,EM_SCROLLCARET,0,0);
@@ -295,6 +298,27 @@ static void send_file_dlg(void){
     if(!GetOpenFileNameW(&of)) return;
     if(lsm_send_file(C,cur_conv,U(path,u8,sizeof u8),err)) msgbox(err,MB_ICONWARNING); refresh_chat(); }
 
+/* right-click (or Shift+F10 / menu key) on the chat: 复制 / 全选 / 删除这条消息（仅本机）… */
+static WNDPROC oldChatProc;
+static LRESULT CALLBACK ChatProc(HWND h, UINT m, WPARAM w, LPARAM l){
+    if(m==WM_CONTEXTMENU){ POINT pt; DWORD a=0,b=0; int ch=-1, k=-1, j, cmd; HMENU pm; char id[40]="";
+        SendMessageW(h,EM_GETSEL,(WPARAM)&a,(LPARAM)&b);
+        if(l==(LPARAM)-1){ ch=(int)a; GetCaretPos(&pt); ClientToScreen(h,&pt); }
+        else { POINT c; pt.x=(short)LOWORD(l); pt.y=(short)HIWORD(l); c=pt; ScreenToClient(h,&c);
+            { LRESULT r=SendMessageW(h,EM_CHARFROMPOS,0,MAKELPARAM(c.x,c.y)); ch=(int)SendMessageW(h,EM_LINEINDEX,HIWORD(r),0); } }
+        for(j=0;j<nchat;j++) if(chat_off[j]<=ch) k=j;
+        if(k>=0) memcpy(id,chat_ids[k],40);
+        pm=CreatePopupMenu();
+        AM(pm,MF_STRING|(a!=b?0:MF_GRAYED),1,L"复制(&C)"); AM(pm,MF_STRING,2,L"全选(&A)"); AM(pm,MF_SEPARATOR,0,NULL);
+        AM(pm,MF_STRING|(id[0]?0:MF_GRAYED),3,L"删除这条消息（仅本机）(&D)…"); menu_bg(pm);
+        cmd=TrackPopupMenu(pm,TPM_RIGHTBUTTON|TPM_RETURNCMD|TPM_NONOTIFY,pt.x,pt.y,0,h,NULL); DestroyMenu(pm);
+        if(cmd==1) SendMessageW(h,WM_COPY,0,0);
+        else if(cmd==2) SendMessageW(h,EM_SETSEL,0,-1);
+        else if(cmd==3 && tmsg(L"删除消息",L"只会从本机删除这条消息，对方仍保留。此操作无法撤销。确定删除？",1)==1){
+            if(lsm_delete_message(C,id)) msgbox("删除失败：消息不存在。",MB_ICONWARNING); refresh_chat(); }
+        return 0; }
+    if(m==WM_KEYDOWN && w=='A' && (GetKeyState(VK_CONTROL)&0x8000)){ SendMessageW(h,EM_SETSEL,0,-1); return 0; }
+    return CallWindowProcW(oldChatProc,h,m,w,l); }
 static WNDPROC oldInputProc;
 static LRESULT CALLBACK InputProc(HWND h, UINT m, WPARAM w, LPARAM l){ if(m==WM_KEYDOWN && w==VK_TAB){ SetFocus(GetNextDlgTabItem(hMain,h,(GetKeyState(VK_SHIFT)&0x8000)?TRUE:FALSE)); return 0; } if(m==WM_CHAR && w=='\t') return 0; if(m==WM_KEYDOWN && w==VK_RETURN && !(GetKeyState(VK_SHIFT)&0x8000)){ send_current(); return 0; } if(m==WM_CHAR && w=='\r' && !(GetKeyState(VK_SHIFT)&0x8000)) return 0; return CallWindowProcW(oldInputProc,h,m,w,l); }
 
@@ -340,7 +364,7 @@ static LRESULT CALLBACK MainProc(HWND h, UINT m, WPARAM w, LPARAM l){
         SendMessageW(hList,WM_SETFONT,(WPARAM)hFont,1); SendMessageW(hChat,WM_SETFONT,(WPARAM)hFont,1); SendMessageW(hInput,WM_SETFONT,(WPARAM)hFont,1);
         SendMessageW(hSend,WM_SETFONT,(WPARAM)hFont,1); SendMessageW(hFile,WM_SETFONT,(WPARAM)hFont,1); SendMessageW(hStatus,WM_SETFONT,(WPARAM)fBody,1); /* body: 12px caption CJK at wine/XP grayscale AA measured below 4.5:1 */ SendMessageW(hTitle,WM_SETFONT,(WPARAM)fBodyStrong,1);
         SendMessageW(hInput,EM_LIMITTEXT,60000,0);
-        oldInputProc=(WNDPROC)SetWindowLongPtrW(hInput,GWLP_WNDPROC,(LONG_PTR)InputProc); ShowScrollBar(hChat,SB_VERT,FALSE); ShowScrollBar(hInput,SB_VERT,FALSE);
+        oldInputProc=(WNDPROC)SetWindowLongPtrW(hInput,GWLP_WNDPROC,(LONG_PTR)InputProc); oldChatProc=(WNDPROC)SetWindowLongPtrW(hChat,GWLP_WNDPROC,(LONG_PTR)ChatProc); ShowScrollBar(hChat,SB_VERT,FALSE); ShowScrollBar(hInput,SB_VERT,FALSE);
         SetTimer(h,TIMER_POLL,300,NULL);
         return 0; }
     case WM_SIZE: if(w!=SIZE_MINIMIZED){ layout(LOWORD(l),HIWORD(l)); fit_vscroll(hChat); fit_vscroll(hInput); InvalidateRect(h,NULL,TRUE); } else ShowWindow(h,SW_HIDE); return 0;

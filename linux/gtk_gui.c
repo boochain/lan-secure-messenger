@@ -93,6 +93,28 @@ static void refresh_list(void){
     if(sel){ g_signal_handlers_block_matched(peer_list,G_SIGNAL_MATCH_DATA,0,0,NULL,NULL,(gpointer)1); gtk_list_box_select_row(GTK_LIST_BOX(peer_list),sel); g_signal_handlers_unblock_matched(peer_list,G_SIGNAL_MATCH_DATA,0,0,NULL,NULL,(gpointer)1); } }
 
 static gboolean open_file_cb(GtkWidget *w, GdkEventButton *ev, gpointer p){ (void)w; (void)ev; gchar *uri=g_filename_to_uri((const char*)p,NULL,NULL); if(uri){ g_app_info_launch_default_for_uri(uri,NULL,NULL); g_free(uri);} return TRUE; }
+/* destructive actions are confirmed; the destructive button is styled and Cancel is the default */
+static int confirm(const char *title, const char *body, const char *ok){
+    GtkWidget *d=gtk_message_dialog_new(GTK_WINDOW(win),GTK_DIALOG_MODAL|GTK_DIALOG_DESTROY_WITH_PARENT,GTK_MESSAGE_QUESTION,GTK_BUTTONS_NONE,"%s",title), *b; int r;
+    gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(d),"%s",body); gtk_dialog_add_button(GTK_DIALOG(d),"取消",GTK_RESPONSE_CANCEL);
+    b=gtk_dialog_add_button(GTK_DIALOG(d),ok,GTK_RESPONSE_OK); gtk_style_context_add_class(gtk_widget_get_style_context(b),"destructive-action");
+    gtk_dialog_set_default_response(GTK_DIALOG(d),GTK_RESPONSE_CANCEL); gtk_window_set_title(GTK_WINDOW(d),"局域网安全通讯");
+    r=gtk_dialog_run(GTK_DIALOG(d)); gtk_widget_destroy(d); return r==GTK_RESPONSE_OK; }
+static void refresh_chat(void);
+/* 删除这条消息（仅本机）: runs from idle so the bubble that owns the menu is not destroyed inside its own signal */
+static gboolean delete_msg_idle(gpointer id){
+    if(confirm("删除这条消息？","只会从本机删除，对方仍保留这条消息。此操作无法撤销。","删除")){ if(lsm_delete_message(C,(const char*)id)) msgbox(GTK_MESSAGE_WARNING,"删除失败：消息不存在。"); refresh_chat(); }
+    g_free(id); return G_SOURCE_REMOVE; }
+static void delete_msg_cb(GtkMenuItem *mi_, gpointer id){ (void)mi_; g_idle_add(delete_msg_idle,g_strdup((const char*)id)); }
+static void add_delete_item(GtkMenuShell *menu, const char *id){ GtkWidget *it=gtk_menu_item_new_with_mnemonic("删除这条消息（仅本机）(_D)…");
+    g_signal_connect_data(it,"activate",G_CALLBACK(delete_msg_cb),g_strdup(id),(GClosureNotify)g_free,0); gtk_menu_shell_append(menu,gtk_separator_menu_item_new()); gtk_menu_shell_append(menu,it); gtk_widget_show_all(GTK_WIDGET(menu)); }
+/* selectable text labels have their own 复制/全选 menu: extend it */
+static void label_popup_cb(GtkLabel *l, GtkMenu *menu, gpointer id){ (void)l; add_delete_item(GTK_MENU_SHELL(menu),(const char*)id); }
+/* file / image bubbles: right-click (or long-press on touch) opens a small menu */
+static gboolean bubble_press_cb(GtkWidget *w, GdkEventButton *ev, gpointer id){ GtkWidget *menu;
+    if(ev->type!=GDK_BUTTON_PRESS || ev->button!=3) return FALSE;
+    menu=gtk_menu_new(); add_delete_item(GTK_MENU_SHELL(menu),(const char*)id); gtk_menu_attach_to_widget(GTK_MENU(menu),w,NULL);
+    g_signal_connect(menu,"selection-done",G_CALLBACK(gtk_widget_destroy),NULL); gtk_menu_popup_at_pointer(GTK_MENU(menu),(GdkEvent*)ev); return TRUE; }
 static void scroll_bottom(void){ GtkAdjustment *a=gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(chat_scroll)); gtk_adjustment_set_value(a,gtk_adjustment_get_upper(a)); }
 static gboolean scroll_later(gpointer p){ (void)p; scroll_bottom(); return G_SOURCE_REMOVE; }
 
@@ -122,9 +144,12 @@ static void refresh_chat(void){
                 if(pb){ GtkWidget *img=gtk_image_new_from_pixbuf(pb), *ev=gtk_event_box_new(); g_object_unref(pb); gtk_container_add(GTK_CONTAINER(ev),img); gtk_widget_set_halign(ev,GTK_ALIGN_START);
                     gtk_widget_set_tooltip_text(ev,"点击用默认程序打开"); g_signal_connect_data(ev,"button-press-event",G_CALLBACK(open_file_cb),g_strdup(path),(GClosureNotify)g_free,0); gtk_box_pack_start(GTK_BOX(bub),ev,FALSE,FALSE,0); }
                 else if(er) g_error_free(er); } }
-        else { body=gtk_label_new(m[i].body?m[i].body:""); gtk_label_set_line_wrap(GTK_LABEL(body),TRUE); gtk_label_set_line_wrap_mode(GTK_LABEL(body),PANGO_WRAP_WORD_CHAR); gtk_label_set_selectable(GTK_LABEL(body),TRUE); gtk_label_set_xalign(GTK_LABEL(body),0); gtk_label_set_max_width_chars(GTK_LABEL(body),48); gtk_box_pack_start(GTK_BOX(bub),body,FALSE,FALSE,0); }
+        else { body=gtk_label_new(m[i].body?m[i].body:""); gtk_label_set_line_wrap(GTK_LABEL(body),TRUE); gtk_label_set_line_wrap_mode(GTK_LABEL(body),PANGO_WRAP_WORD_CHAR); gtk_label_set_selectable(GTK_LABEL(body),TRUE); gtk_label_set_xalign(GTK_LABEL(body),0); gtk_label_set_max_width_chars(GTK_LABEL(body),48); gtk_box_pack_start(GTK_BOX(bub),body,FALSE,FALSE,0);
+            g_signal_connect_data(body,"populate-popup",G_CALLBACK(label_popup_cb),g_strdup(m[i].id),(GClosureNotify)g_free,0); }
         gtk_widget_set_halign(bub,m[i].out?GTK_ALIGN_END:GTK_ALIGN_START);
-        gtk_box_pack_start(GTK_BOX(row),meta,FALSE,FALSE,0); gtk_box_pack_start(GTK_BOX(row),bub,FALSE,FALSE,0); gtk_box_pack_start(GTK_BOX(chat_box),row,FALSE,FALSE,0); }
+        gtk_box_pack_start(GTK_BOX(row),meta,FALSE,FALSE,0); gtk_box_pack_start(GTK_BOX(row),bub,FALSE,FALSE,0);
+        { GtkWidget *eb=gtk_event_box_new(); gtk_event_box_set_visible_window(GTK_EVENT_BOX(eb),FALSE); gtk_container_add(GTK_CONTAINER(eb),row);
+          g_signal_connect_data(eb,"button-press-event",G_CALLBACK(bubble_press_cb),g_strdup(m[i].id),(GClosureNotify)g_free,0); gtk_box_pack_start(GTK_BOX(chat_box),eb,FALSE,FALSE,0); } }
     lsm_unlock(C);
     gtk_label_set_text(GTK_LABEL(title_lbl),title); gtk_label_set_text(GTK_LABEL(sub_lbl),sub);
     gtk_widget_show_all(chat_box); g_idle_add(scroll_later,NULL); }
