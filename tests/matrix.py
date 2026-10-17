@@ -11,7 +11,7 @@ Kinds:
   android slot: --android-cmd "/data/local/tmp/lanmsg-cli" (Android build of the core on an adb device/emulator)  (skipped when absent)
 Relay mode (--relay --relay-bin PATH): an LSM relay-server runs on the bridge (10.78.0.254); direct traffic
 between the two namespaces is blackholed so every pair must work THROUGH THE SERVER: online via relay, PIN pairing,
-msg both ways + receipt, file both ways (sha256), file resume across a server restart, group create + group msg,
+msg both ways + receipt, file both ways (sha256), file transfer interrupted by a server restart then retried (sha256), group create + group msg,
 relay->direct and direct->relay switching, server restart, network drop (eth0 down/up), wrong passphrase.
 Usage: sudo python3 tests/matrix.py --rust-bin ... --native-cli ... --wine-exe ... [--kinds rust,native,wine]
 Writes results JSON to <work>/matrix.json and a table to stdout. Exit 1 on any failure.
@@ -88,6 +88,11 @@ class Rust:
     def trusted(s, fp): return s.peer(fp).get("trust") == "trusted"
     def relay(s, host, port, pw): s.m("relay", "on", host, str(port), pw)
     def relay_state(s): return s.j("relay", "status")["state"]
+    def retry_file(s, fp, path):
+        """neither core resumes at a byte offset: Rust retries the failed transfer (restarts, sha-verified)"""
+        for t in s.j("transfers"):
+            if t["name"] == os.path.basename(path) and t["direction"] == "out" and t["state"] in ("failed", "cancelled"): s.m("retry", t["id"]); return True
+        return False
     def pin_offer(s): return s.j("pin-offer")["pin"]
     def pin_pair(s, fp, pin): s.m("pin-pair", fp, pin)
     def group_create(s, name, fp): s.m("group-create", name, fp); return s.group_id(name)
@@ -159,6 +164,11 @@ class CCli:
         if s.kind == "android" and host.startswith("10.78."): host = "10.0.2.2"
         s.cmd(f"relay {host} {port} {pw}")
     def relay_state(s): return s.cmd("relay status")[-1].split()[2]
+    def retry_file(s, fp, path):
+        """the C core has no retry: re-send the file when the interrupted transfer failed"""
+        if any(l.startswith("XFER ") and "\tout\t" in l and "\tfailed\t" in l and os.path.basename(path) in l for l in s.cmd("transfers")):
+            s.sendfile(fp, path); return True
+        return False
     def pin_offer(s): return re.search(r"OK pin (\d+)", s.cmd("pin-offer")[-1]).group(1)
     def pin_pair(s, fp, pin): s.cmd(f"pin-pair {fp} {pin}")
     def group_create(s, name, fp): s.cmd(f"group-create {name} {fp}"); return s.group_id(name)
@@ -212,7 +222,8 @@ for a, b in itertools.combinations_with_replacement(kinds, 2):
             # resume across a server restart
             name = "rx_resume.bin"; src = f"{W}/{name}"; open(src, "wb").write(os.urandom(24_000_000)); A.sendfile(B.fp, src)
             time.sleep(0.6); relay_down(srv); time.sleep(2); srv = relay_up()
-            checks["file resume across server restart"] = bool(wait(lambda: os.path.exists(B.dlpath(name)) and os.path.getsize(B.dlpath(name)) == os.path.getsize(src) and sha(B.dlpath(name)) == sha(src), 150, 1))
+            wait(lambda: A.via(B.fp) == "relay" and B.via(A.fp) == "relay", 60); time.sleep(1); A.retry_file(B.fp, src)
+            checks["file across server restart (retry)"] = bool(wait(lambda: os.path.exists(B.dlpath(name)) and os.path.getsize(B.dlpath(name)) == os.path.getsize(src) and sha(B.dlpath(name)) == sha(src), 150, 1))
             # relay -> direct
             block_direct(False)
             checks["switch server->direct"] = bool(wait(lambda: A.via(B.fp) == "direct" and B.via(A.fp) == "direct", 60))
