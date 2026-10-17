@@ -164,6 +164,7 @@ jobs:
       - name: AVD at the mockup size (412 x 892 dp @ 2x = 824 x 1784, like design/redesign/mockups/android-*)
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "emulator" "system-images;android-30;default;x86_64" > /dev/null
+          export ANDROID_AVD_HOME=$HOME/.android/avd; mkdir -p $ANDROID_AVD_HOME; echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> $GITHUB_ENV
           echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n lsm -k "system-images;android-30;default;x86_64" -d pixel_2 --force
           C=$HOME/.android/avd/lsm.avd/config.ini; sed -i '/^hw.lcd.width\|^hw.lcd.height\|^hw.lcd.density\|^hw.ramSize/d' $C
           printf 'hw.lcd.width=824\nhw.lcd.height=1784\nhw.lcd.density=320\nhw.ramSize=2048\n' >> $C
