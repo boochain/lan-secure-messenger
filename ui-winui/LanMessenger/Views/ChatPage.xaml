@@ -179,7 +179,7 @@
                         <FontIcon Glyph="&#xE8FA;" FontSize="16" />
                         <Button.Flyout>
                             <Flyout x:Name="AddPeerFlyout" Placement="BottomEdgeAlignedLeft" Opened="AddPeerFlyout_Opened">
-                                <StackPanel Width="300" Spacing="8">
+                                <StackPanel Width="340" Spacing="8">
                                     <TextBlock Text="按 IP 添加联系人" Style="{StaticResource BodyStrongTextBlockStyle}" />
                                     <TextBlock Text="对方不在自动发现列表时，输入对方电脑的 IP（可带端口）。" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" />
                                     <Grid ColumnSpacing="6">
@@ -227,7 +227,7 @@
                                 <StackPanel Orientation="Horizontal" Spacing="4">
                                     <FontIcon Glyph="&#xE716;" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{x:Bind IsGroup}" />
                                     <TextBlock Text="{x:Bind Title, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                    <FontIcon Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xEA18;" FontSize="12" Visibility="{x:Bind IsTrusted, Mode=OneWay}" ToolTipService.ToolTip="已验证身份" />
+                                    <FontIcon Foreground="{ThemeResource SystemFillColorSuccessBrush}" Glyph="&#xEA18;" FontSize="12" Visibility="{x:Bind IsTrusted, Mode=OneWay}" ToolTipService.ToolTip="已验证身份" AutomationProperties.Name="已验证身份" />
                                     <FontIcon Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE74F;" FontSize="12" Visibility="{x:Bind Muted, Mode=OneWay}" ToolTipService.ToolTip="免打扰" />
                                 </StackPanel>
                                 <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" MaxLines="1" FontSize="13">
@@ -282,7 +282,11 @@
                              Stroke="{ThemeResource LsmListBackgroundBrush}" StrokeThickness="2" Visibility="{x:Bind VM.SelectedConversation.ShowOnlineDot, Mode=OneWay}" />
                 </Grid>
                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Tapped="Details_Tapped" Background="Transparent">
-                    <TextBlock Text="{x:Bind VM.SelectedTitle, Mode=OneWay}" FontSize="18" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="{x:Bind VM.SelectedTitle, Mode=OneWay}" FontSize="18" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                        <!-- verified identity: green shield next to the name (mockup); the words are also in the subtitle -->
+                        <FontIcon x:Name="HeaderShield" Foreground="{ThemeResource SystemFillColorSuccessBrush}" Glyph="&#xEA18;" FontSize="13" VerticalAlignment="Center" Visibility="{x:Bind VM.SelectedTrusted, Mode=OneWay}" ToolTipService.ToolTip="已验证身份" AutomationProperties.Name="已验证身份" />
+                    </StackPanel>
                     <TextBlock Text="{x:Bind VM.SelectedSubtitle, Mode=OneWay}" Style="{StaticResource SecondaryCaptionStyle}" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">

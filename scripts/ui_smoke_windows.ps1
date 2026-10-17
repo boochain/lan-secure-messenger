@@ -84,6 +84,8 @@ foreach ($theme in "light", "dark") {
   & $M send $FB "收到，界面渲染测试中。"
   & $M send-file $FB (Join-Path $Dist "README.txt")   # our own file message -> outgoing file card
   & $M --ipc $bobPipe send-file $FA $Img
+  $pdf = Join-Path $dir "需求说明-v2.pdf"; [IO.File]::WriteAllBytes($pdf, (New-Object byte[] 1363149))
+  & $M --ipc $bobPipe send-file $FA $pdf   # incoming file -> file card with the download button
   & $M --ipc $bobPipe group-create "CI 测试群" $FA
   Start-Sleep -Seconds 4
   New-Item "$dir\go" -ItemType File -Force | Out-Null
