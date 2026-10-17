@@ -120,6 +120,7 @@ pub(crate) struct Conn {
     addr: SocketAddr,
     /// Link carried by the relay server (fallback; LAN direct preferred).
     via_relay: bool,
+    caps: u32,
     since: Instant,
     last_rx: Instant,
     last_ping: Instant,
@@ -525,6 +526,7 @@ impl Engine {
         let hello = link.remote_hello.clone();
         let addr = link.remote_addr;
         let via_relay = link.via_relay;
+        let caps = link.remote_caps;
         let dial_addr = if initiator { addr } else { SocketAddr::new(addr.ip(), hello.listen_port) };
         let conn_id = self.next_conn_id;
         self.next_conn_id += 1;
@@ -563,6 +565,7 @@ impl Engine {
                 bulk: bulk_tx,
                 addr,
                 via_relay,
+                caps,
                 since: now,
                 last_rx: now,
                 last_ping: now,
@@ -890,7 +893,8 @@ impl Engine {
             | Frame::FileProgress { .. }
             | Frame::FileEnd { .. }
             | Frame::FileComplete { .. }
-            | Frame::FileCancel { .. }) => self.on_file_frame(fp, f),
+            | Frame::FileCancel { .. }
+            | Frame::FileResume { .. }) => self.on_file_frame(fp, f),
         }
     }
 

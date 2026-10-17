@@ -156,6 +156,9 @@ pub struct Transfer {
     pub bytes_per_sec: u64,
     pub started_ms: i64,
     pub retryable: bool,
+    /// Byte offset the last (re)start continued from (0 = from the beginning). Resume = > 0.
+    #[serde(default)]
+    pub resumed_from: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

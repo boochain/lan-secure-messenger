@@ -9,6 +9,9 @@ use uuid::Uuid;
 
 pub const ANNOUNCE_MAGIC: [u8; 4] = *b"LSM5";
 pub const PROTO_VERSION: u16 = 5;
+/// Capability: byte-offset file resume (`Frame::FileResume`), automatic re-offer after reconnect.
+pub const CAP_RESUME: u32 = 1;
+pub const MY_CAPS: u32 = CAP_RESUME;
 /// File chunk payload size (Noise messages are limited to 65535 bytes).
 pub const CHUNK: usize = 32 * 1024;
 
@@ -92,6 +95,11 @@ pub enum Frame {
     PinPair { pin: String },
     PinResult { ok: bool },
     Bye,
+    /// Receiver -> sender, instead of FileAccept, for a re-offered transfer it already has
+    /// `offset` bytes of; `prefix_sha256` = SHA-256 of those bytes. The sender continues at
+    /// `offset` if its file has the same prefix, otherwise it restarts at 0 (first chunk offset 0).
+    /// Only sent to peers announcing CAP_RESUME.
+    FileResume { tid: Uuid, offset: u64, prefix_sha256: [u8; 32] },
 }
 
 pub fn encode<T: Serialize>(v: &T) -> anyhow::Result<Vec<u8>> {

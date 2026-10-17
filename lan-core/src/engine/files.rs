@@ -14,6 +14,13 @@ use tokio::sync::watch;
 const WINDOW: u64 = 4 * 1024 * 1024;
 const PROGRESS_EVERY: u64 = 256 * 1024;
 
+/// Partial download kept across a link loss (CAP_RESUME peers).
+pub(crate) struct ResumePart {
+    pub part: PathBuf,
+    pub written: u64,
+    pub hasher: Sha256,
+}
+
 pub(crate) enum RecvCmd {
     Chunk { offset: u64, data: Vec<u8> },
     End,
@@ -24,6 +31,10 @@ pub(crate) enum TransferEvt {
     SendDone { tid: Uuid, result: std::result::Result<(), String> },
     RecvProgress { tid: Uuid, written: u64 },
     RecvDone { tid: Uuid, result: std::result::Result<PathBuf, String> },
+    /// recv channel dropped mid-transfer; the partial file is kept.
+    RecvInterrupted { tid: Uuid, part: ResumePart },
+    /// Sender actually (re)started at this offset.
+    SendStart { tid: Uuid, offset: u64 },
 }
 
 pub(crate) struct TransferRt {
@@ -47,6 +58,12 @@ pub(crate) struct TransferRt {
     pub credit: Option<watch::Sender<u64>>,
     pub chunk_tx: Option<mpsc::UnboundedSender<RecvCmd>>,
     pub offer_ts: i64,
+    /// Peer supports CAP_RESUME: on link loss wait for reconnect and resume instead of failing.
+    pub resumable: bool,
+    /// Receiver: transfer was accepted once (a re-offer is auto-accepted / resumed).
+    pub accepted: bool,
+    pub resume_part: Option<ResumePart>,
+    pub resumed_from: u64,
     rate_mark: (Instant, u64),
     bps: u64,
     last_emit: Instant,
@@ -70,6 +87,7 @@ impl TransferRt {
             error: self.error.clone(),
             bytes_per_sec: if self.state == TransferState::Active { self.bps } else { 0 },
             started_ms: self.started_ms,
+            resumed_from: self.resumed_from,
             retryable: self.direction == Direction::Out && matches!(self.state, TransferState::Failed | TransferState::Cancelled | TransferState::Rejected),
         }
     }
@@ -161,10 +179,33 @@ async fn send_task(
     bulk: mpsc::Sender<Frame>,
     mut credit: watch::Receiver<u64>,
     cancel: Arc<AtomicBool>,
+    resume: Option<(u64, [u8; 32])>,
+    tx: mpsc::UnboundedSender<EngineMsg>,
 ) -> std::result::Result<(), String> {
     let mut f = tokio::fs::File::open(&path).await.map_err(|e| format!("打开文件失败: {e}"))?;
     let mut off: u64 = 0;
     let mut buf = vec![0u8; crate::wire::CHUNK];
+    if let Some((want, prefix)) = resume.filter(|(o, _)| *o > 0 && *o <= size) {
+        // Continue only if our file has exactly the receiver's prefix.
+        let mut h = Sha256::new();
+        let mut left = want;
+        while left > 0 {
+            let n = f.read(&mut buf[..(left as usize).min(crate::wire::CHUNK)]).await.map_err(|e| format!("读取文件失败: {e}"))?;
+            if n == 0 {
+                break;
+            }
+            h.update(&buf[..n]);
+            left -= n as u64;
+        }
+        let got: [u8; 32] = h.finalize().into();
+        if left == 0 && got == prefix {
+            off = want;
+        } else {
+            use tokio::io::AsyncSeekExt;
+            f.seek(std::io::SeekFrom::Start(0)).await.map_err(|e| format!("读取文件失败: {e}"))?;
+        }
+    }
+    let _ = tx.send(EngineMsg::Transfer(TransferEvt::SendStart { tid, offset: off }));
     while off < size {
         if cancel.load(Ordering::Relaxed) {
             return Err("已取消".into());
@@ -202,22 +243,44 @@ async fn recv_task(
     mut rx: mpsc::UnboundedReceiver<RecvCmd>,
     ctrl: mpsc::UnboundedSender<Frame>,
     tx: mpsc::UnboundedSender<EngineMsg>,
+    resume: Option<(u64, Sha256)>,
 ) {
     let fail = |e: String, part: &PathBuf| {
         let _ = std::fs::remove_file(part);
         let _ = ctrl.send(Frame::FileComplete { tid, ok: false, error: e.clone() });
         let _ = tx.send(EngineMsg::Transfer(TransferEvt::RecvDone { tid, result: Err(e) }));
     };
-    let mut f = match tokio::fs::File::create(&part).await {
-        Ok(f) => f,
+    let (mut written, mut h) = resume.unwrap_or((0, Sha256::new()));
+    let opened = if written > 0 {
+        match tokio::fs::OpenOptions::new().write(true).open(&part).await {
+            Ok(f) => f.set_len(written).await.map(|_| f),
+            Err(e) => Err(e),
+        }
+    } else {
+        tokio::fs::File::create(&part).await
+    };
+    let mut f = match opened {
+        Ok(mut f) => {
+            use tokio::io::AsyncSeekExt;
+            let _ = f.seek(std::io::SeekFrom::Start(written)).await;
+            f
+        }
         Err(e) => return fail(format!("无法创建文件 {}: {e}", part.display()), &part),
     };
-    let mut h = Sha256::new();
-    let mut written: u64 = 0;
-    let mut last: u64 = 0;
+    let mut last: u64 = written;
     while let Some(cmd) = rx.recv().await {
         match cmd {
             RecvCmd::Chunk { offset, data } => {
+                if offset == 0 && written > 0 {
+                    // Sender could not continue (prefix differs): restart from 0.
+                    use tokio::io::AsyncSeekExt;
+                    if f.set_len(0).await.is_err() || f.seek(std::io::SeekFrom::Start(0)).await.is_err() {
+                        return fail("无法重置部分文件".into(), &part);
+                    }
+                    written = 0;
+                    last = 0;
+                    h = Sha256::new();
+                }
                 if offset != written || written + data.len() as u64 > size {
                     return fail("数据块顺序错误".into(), &part);
                 }
@@ -253,9 +316,12 @@ async fn recv_task(
             }
         }
     }
-    // Channel dropped: cancelled or link lost.
+    // Channel dropped: cancelled or link lost. Keep the partial file; the engine decides
+    // (resume on reconnect, or delete).
+    let _ = f.flush().await;
+    let _ = f.sync_all().await;
     drop(f);
-    let _ = std::fs::remove_file(&part);
+    let _ = tx.send(EngineMsg::Transfer(TransferEvt::RecvInterrupted { tid, part: ResumePart { part, written, hasher: h } }));
 }
 
 impl Engine {
@@ -323,6 +389,10 @@ impl Engine {
                 credit: None,
                 chunk_tx: None,
                 offer_ts: ts,
+                resumable: false,
+                accepted: false,
+                resume_part: None,
+                resumed_from: 0,
                 rate_mark: (Instant::now(), 0),
                 bps: 0,
                 last_emit: Instant::now(),
@@ -394,10 +464,30 @@ impl Engine {
     }
 
     pub(crate) fn fail_transfers_for(&mut self, fp: &str, why: &str) {
+        // CAP_RESUME peers: interrupted transfers wait for the next link (LAN or relay) and resume.
+        let waiting: Vec<Uuid> = self
+            .transfers
+            .values()
+            .filter(|t| t.peer_fp == fp && t.resumable && (t.state == TransferState::Active || (t.direction == Direction::Out && t.state == TransferState::Verifying)))
+            .map(|t| t.id)
+            .collect();
+        for tid in &waiting {
+            if let Some(t) = self.transfers.get_mut(tid) {
+                t.state = TransferState::Offered;
+                t.error = "连接中断，重连后自动续传".into();
+                t.credit = None;
+                t.chunk_tx = None; // receiver: recv_task reports RecvInterrupted with the partial data
+                if t.direction == Direction::Out {
+                    t.cancel.store(true, Ordering::Relaxed);
+                    t.cancel = Arc::new(AtomicBool::new(false));
+                }
+            }
+            self.emit_transfer(*tid, true);
+        }
         let tids: Vec<Uuid> = self
             .transfers
             .values()
-            .filter(|t| t.peer_fp == fp && (matches!(t.state, TransferState::Active | TransferState::Verifying) || (t.direction == Direction::In && t.state == TransferState::Offered)))
+            .filter(|t| t.peer_fp == fp && !waiting.contains(&t.id) && !(t.resumable && t.direction == Direction::In && t.state == TransferState::Offered) && (matches!(t.state, TransferState::Active | TransferState::Verifying) || (t.direction == Direction::In && t.state == TransferState::Offered)))
             .map(|t| t.id)
             .collect();
         for tid in tids {
@@ -455,13 +545,33 @@ impl Engine {
             return Err(RpcError::invalid("该传输不在等待接收状态"));
         }
         let Some(conn) = self.conns.get(&t.peer_fp) else { return Err(RpcError::new(-32004, "对方不在线")) };
-        let part = dir.join(format!(".{}.{}.part", t.name, &tid.to_string()[..8]));
+        let can_resume = conn.caps & crate::wire::CAP_RESUME != 0;
+        t.resumable = can_resume;
+        t.accepted = true;
+        t.error.clear();
+        let rp = t.resume_part.take();
+        let (part, resume) = match rp {
+            Some(r) if can_resume && r.written > 0 && r.written < t.size => {
+                let prefix: [u8; 32] = r.hasher.clone().finalize().into();
+                let _ = conn.ctrl.send(Frame::FileResume { tid, offset: r.written, prefix_sha256: prefix });
+                t.resumed_from = r.written;
+                (r.part, Some((r.written, r.hasher)))
+            }
+            other => {
+                if let Some(r) = other {
+                    let _ = std::fs::remove_file(&r.part);
+                }
+                let _ = conn.ctrl.send(Frame::FileAccept { tid });
+                t.resumed_from = 0;
+                (dir.join(format!(".{}.{}.part", t.name, &tid.to_string()[..8])), None)
+            }
+        };
         let (ctx, crx) = mpsc::unbounded_channel();
         t.chunk_tx = Some(ctx);
         t.state = TransferState::Active;
-        t.rate_mark = (Instant::now(), 0);
-        tokio::spawn(recv_task(tid, part, dir, t.name.clone(), t.size, t.sha256.unwrap_or_default(), crx, conn.ctrl.clone(), self.tx.clone()));
-        let _ = conn.ctrl.send(Frame::FileAccept { tid });
+        t.rate_mark = (Instant::now(), t.resumed_from);
+        t.transferred = t.resumed_from;
+        tokio::spawn(recv_task(tid, part, dir, t.name.clone(), t.size, t.sha256.unwrap_or_default(), crx, conn.ctrl.clone(), self.tx.clone(), resume));
         self.emit_transfer(tid, true);
         Ok(())
     }
@@ -483,8 +593,21 @@ impl Engine {
         let own = |s: &Self, tid: &Uuid, dir: Direction| s.transfers.get(tid).map(|t| t.peer_fp == fp && t.direction == dir).unwrap_or(false);
         match f {
             Frame::FileOffer { tid, msg_id, name, size, mime, sha256, group_id, ts_ms } => {
-                if self.transfers.contains_key(&tid) {
-                    // Re-offer after reconnect of an offer we already know: re-accept if still pending.
+                if let Some(t) = self.transfers.get(&tid) {
+                    // Re-offer after reconnect of a transfer we already know.
+                    if t.peer_fp != fp || t.direction != Direction::In {
+                        return;
+                    }
+                    match t.state {
+                        TransferState::Done => self.send_ctrl(fp, Frame::FileComplete { tid, ok: true, error: String::new() }),
+                        TransferState::Offered if t.accepted => {
+                            if let Err(e) = self.accept_transfer(tid) {
+                                tracing::debug!(%tid, error = %e.message, "re-accept failed");
+                            }
+                            true
+                        }
+                        _ => true,
+                    };
                     return;
                 }
                 let name = sanitize_filename(&name);
@@ -525,6 +648,10 @@ impl Engine {
                     credit: None,
                     chunk_tx: None,
                     offer_ts: ts_ms,
+                    resumable: false,
+                    accepted: false,
+                    resume_part: None,
+                    resumed_from: 0,
                     rate_mark: (Instant::now(), 0),
                     bps: 0,
                     last_emit: Instant::now(),
@@ -563,24 +690,32 @@ impl Engine {
                     self.emit_transfer(tid, true);
                 }
             }
-            Frame::FileAccept { tid } => {
+            Frame::FileAccept { tid } | Frame::FileResume { tid, .. } => {
                 if !own(self, &tid, Direction::Out) {
                     return;
                 }
+                let resume = match f {
+                    Frame::FileResume { offset, prefix_sha256, .. } => Some((offset, prefix_sha256)),
+                    _ => None,
+                };
                 let Some(conn) = self.conns.get(fp) else { return };
                 let bulk = conn.bulk.clone();
+                let can_resume = conn.caps & crate::wire::CAP_RESUME != 0;
                 let t = self.transfers.get_mut(&tid).unwrap();
                 if t.state != TransferState::Offered {
                     return;
                 }
                 t.state = TransferState::Active;
+                t.resumable = can_resume;
+                t.error.clear();
                 t.rate_mark = (Instant::now(), 0);
-                let (ctx, crx) = watch::channel(0u64);
+                let (ctx, crx) = watch::channel(resume.map(|r| r.0).unwrap_or(0));
                 t.credit = Some(ctx);
                 let (path, size, cancel) = (t.path.clone().unwrap_or_default(), t.size, t.cancel.clone());
                 let tx = self.tx.clone();
+                let tx2 = self.tx.clone();
                 tokio::spawn(async move {
-                    let r = send_task(tid, path, size, bulk, crx, cancel).await;
+                    let r = send_task(tid, path, size, bulk, crx, cancel, resume, tx2).await;
                     let _ = tx.send(EngineMsg::Transfer(TransferEvt::SendDone { tid, result: r }));
                 });
                 self.emit_transfer(tid, true);
@@ -686,11 +821,16 @@ impl Engine {
             }
             TransferEvt::SendDone { tid, result } => {
                 let Some(t) = self.transfers.get_mut(&tid) else { return };
-                if t.finished() {
-                    return;
+                if t.finished() || t.state == TransferState::Offered {
+                    return; // finished, or interrupted and waiting to resume
                 }
                 match result {
                     Ok(()) => t.state = TransferState::Verifying,
+                    Err(e) if t.resumable && e == "连接断开" => {
+                        t.state = TransferState::Offered;
+                        t.error = "连接中断，重连后自动续传".into();
+                        t.credit = None;
+                    }
                     Err(e) => {
                         t.state = TransferState::Failed;
                         t.error = e.clone();
@@ -700,6 +840,28 @@ impl Engine {
                     }
                 }
                 self.emit_transfer(tid, true);
+            }
+            TransferEvt::SendStart { tid, offset } => {
+                if let Some(t) = self.transfers.get_mut(&tid) {
+                    t.resumed_from = offset;
+                    t.transferred = offset;
+                    t.rate_mark = (Instant::now(), offset);
+                    if offset > 0 {
+                        tracing::info!(%tid, offset, "file transfer resumed");
+                    }
+                    self.emit_transfer(tid, true);
+                }
+            }
+            TransferEvt::RecvInterrupted { tid, part } => {
+                let keep = self.transfers.get(&tid).map(|t| t.state == TransferState::Offered && t.resumable && t.direction == Direction::In).unwrap_or(false);
+                if keep {
+                    tracing::info!(%tid, written = part.written, "partial download kept for resume");
+                    if let Some(t) = self.transfers.get_mut(&tid) {
+                        t.resume_part = Some(part);
+                    }
+                } else {
+                    let _ = std::fs::remove_file(&part.part);
+                }
             }
             TransferEvt::RecvProgress { tid, written } => {
                 if let Some(t) = self.transfers.get_mut(&tid) {

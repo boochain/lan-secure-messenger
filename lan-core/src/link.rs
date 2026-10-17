@@ -43,6 +43,8 @@ pub struct Link {
     pub remote_addr: std::net::SocketAddr,
     /// Carried by the relay server (UI badge 经服务器) instead of a direct LAN connection.
     pub via_relay: bool,
+    /// Capability bits the peer announced (wire::CAP_*); 0 for older peers.
+    pub remote_caps: u32,
 }
 
 async fn write_raw(wr: &mut (impl AsyncWriteExt + Unpin), data: &[u8]) -> Result<()> {
@@ -162,12 +164,18 @@ where
     let (rd, wr): (RdHalf, WrHalf) = (Box::new(rd), Box::new(wr));
     let mut writer = LinkWriter { wr, st: st.clone(), nonce: 0, buf: Vec::new() };
     let mut reader = LinkReader { rd, st, nonce: 0, buf: Vec::new(), out: Vec::new() };
-    writer.send_bytes(&wire::encode(&hello)?).await?;
-    let remote_hello: Hello = wire::decode(&reader.recv_bytes().await?)?;
+    // Capabilities ride as a u32-LE trailer after the bincode Hello: older peers ignore trailing bytes.
+    let mut hb = wire::encode(&hello)?;
+    hb.extend_from_slice(&wire::MY_CAPS.to_le_bytes());
+    writer.send_bytes(&hb).await?;
+    let rb = reader.recv_bytes().await?;
+    let remote_hello: Hello = wire::decode(&rb)?;
+    let used = wire::encode(&remote_hello)?.len();
+    let remote_caps = if rb.len() >= used + 4 { u32::from_le_bytes(rb[used..used + 4].try_into().unwrap()) } else { 0 };
     if remote_hello.proto != wire::PROTO_VERSION {
         bail!("peer speaks protocol v{}, we speak v{}", remote_hello.proto, wire::PROTO_VERSION);
     }
-    Ok(Link { reader, writer, remote_fp, remote_hello: clean_hello(remote_hello), remote_addr, via_relay })
+    Ok(Link { reader, writer, remote_fp, remote_hello: clean_hello(remote_hello), remote_addr, via_relay, remote_caps })
 }
 
 /// Remote display name sanitised.
