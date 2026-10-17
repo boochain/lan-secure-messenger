@@ -75,6 +75,7 @@ JNIEXPORT jstring JNICALL FN(groupCreate)(JNIEnv *e, jclass k, jstring name, jst
 JNIEXPORT jstring JNICALL FN(groupInvite)(JNIEnv *e, jclass k, jstring gid, jstring fps){ char *g=U(e,gid), *f=U(e,fps), err[256]=""; const char *a[64]; int n=split_csv(f,a), rc=C?lsm_group_invite(C,g,a,n,err):1; (void)k; free(g); free(f); return J(e,rc?(err[0]?err:"failed"):""); }
 JNIEXPORT jstring JNICALL FN(groupRemove)(JNIEnv *e, jclass k, jstring gid, jstring fp){ char *g=U(e,gid), *f=U(e,fp), err[256]=""; int rc=C?lsm_group_remove(C,g,f,err):1; (void)k; free(g); free(f); return J(e,rc?(err[0]?err:"failed"):""); }
 JNIEXPORT jstring JNICALL FN(groupLeave)(JNIEnv *e, jclass k, jstring gid){ char *g=U(e,gid), err[256]=""; int rc=C?lsm_group_leave(C,g,err):1; (void)k; free(g); return J(e,rc?(err[0]?err:"failed"):""); }
+JNIEXPORT jboolean JNICALL FN(deleteMessage)(JNIEnv *e, jclass k, jstring id){ char *s=U(e,id); int rc=C?lsm_delete_message(C,s):-1; (void)k; free(s); return rc==0?JNI_TRUE:JNI_FALSE; }
 JNIEXPORT void JNICALL FN(markRead)(JNIEnv *e, jclass k, jstring conv){ char *c=U(e,conv); (void)k; if(C) lsm_mark_read(C,c); free(c); }
 JNIEXPORT void JNICALL FN(setName)(JNIEnv *e, jclass k, jstring n){ char *s=U(e,n); (void)k; if(C) lsm_set_name(C,s); free(s); }
 JNIEXPORT jstring JNICALL FN(cancelTransfer)(JNIEnv *e, jclass k, jstring tid){ char *s=U(e,tid), err[256]=""; int rc=C?lsm_transfer_cancel(C,s,err):1; (void)k; free(s); return J(e,rc?(err[0]?err:"failed"):""); }

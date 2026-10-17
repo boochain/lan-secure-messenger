@@ -1,5 +1,7 @@
 package io.github.frec86.lanmessenger
 
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -52,6 +54,8 @@ fun Chat(st: AppState, conv: String, back: () -> Unit) {
     val group = st.groups.firstOrNull { "group:" + it.id == conv }
     var input by remember { mutableStateOf("") }; var menu by remember { mutableStateOf(false) }; var dlg by remember { mutableStateOf("") }
     var searching by rememberSaveable { mutableStateOf(false) }; var q by rememberSaveable { mutableStateOf("") }
+    var msgMenu by remember { mutableStateOf<Msg?>(null) }; var delMsg by remember { mutableStateOf<Msg?>(null) }
+    val clip = androidx.compose.ui.platform.LocalClipboardManager.current
     // system Back / predictive back: close the in-chat search first, then return to the list (menus/dialogs dismiss themselves)
     BackHandler { if (searching) { searching = false; q = "" } else back() }
     var saveSrc by remember { mutableStateOf<String?>(null) }
@@ -126,7 +130,14 @@ fun Chat(st: AppState, conv: String, back: () -> Unit) {
                         is ChatRow.E2E -> Box(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 0.dp), contentAlignment = Alignment.Center) {
                             ServicePill(true, if (group != null) "消息已端到端加密，只有群成员能看到" else "消息已端到端加密，只有你和${name}能看到") }
                         is ChatRow.System -> Box(Modifier.fillMaxWidth().padding(vertical = 4.dp), contentAlignment = Alignment.Center) { ServicePill(false, hm(r.m.ts) + " · " + r.m.body) }
-                        is ChatRow.Bubble -> MessageRow(r, st.transfers.firstOrNull { it.msg == r.m.id }, maxW) { path -> saveSrc = path; save.launch(r.m.file) }
+                        is ChatRow.Bubble -> Box(Modifier.fillMaxWidth().pointerInput(r.m.id) { detectTapGestures(onLongPress = { msgMenu = r.m }) }) {
+                            MessageRow(r, st.transfers.firstOrNull { it.msg == r.m.id }, maxW) { path -> saveSrc = path; save.launch(r.m.file) }
+                            // long-press menu (Material: long press shows the item's actions)
+                            DropdownMenu(msgMenu?.id == r.m.id, { msgMenu = null }, Modifier.align(if (r.m.out) Alignment.TopEnd else Alignment.TopStart)) {
+                                if (r.m.kind == 0) DropdownMenuItem({ Text("复制") }, { clip.setText(androidx.compose.ui.text.AnnotatedString(r.m.body)); msgMenu = null; Repo.toast.value = "已复制" }, leadingIcon = { Ic(R.drawable.ms_copy) })
+                                DropdownMenuItem({ Text("删除（仅本机）") }, { delMsg = r.m; msgMenu = null }, leadingIcon = { Ic(R.drawable.ms_delete) })
+                            }
+                        }
                     }
                 }
             }
@@ -148,6 +159,12 @@ fun Chat(st: AppState, conv: String, back: () -> Unit) {
                 contentAlignment = Alignment.Center) { Ic(R.drawable.ms_send_fill, "发送", p.onAccent) }
         }
       }
+    }
+    delMsg?.let { m ->
+        LsmAlertDialog(onDismissRequest = { delMsg = null }, title = { Text("删除这条消息？") },
+            text = { Text("只会从本机删除，对方仍保留这条消息。此操作无法撤销。") },
+            confirmButton = { TextButton({ delMsg = null; if (!Native.deleteMessage(m.id)) Repo.toast.value = "删除失败"; Repo.refresh() }) { Text("删除", color = p.error) } },
+            dismissButton = { TextButton({ delMsg = null }) { Text("取消") } })
     }
     when (dlg) {
         // destructive actions are confirmed (Material: confirmation dialog for irreversible/disruptive actions)
