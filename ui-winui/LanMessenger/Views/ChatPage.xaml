@@ -92,20 +92,20 @@
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <AutoSuggestBox Grid.Row="0" PlaceholderText="搜索聊天记录" QueryIcon="Find"
+            <AutoSuggestBox x:Name="SearchBox" Grid.Row="0" PlaceholderText="搜索聊天记录 (Ctrl+F)" QueryIcon="Find"
                             Text="{x:Bind VM.SearchText, Mode=TwoWay}" QuerySubmitted="Search_QuerySubmitted" />
             <Grid Grid.Row="1" ColumnSpacing="6">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <TextBox Grid.Column="0" PlaceholderText="按 IP 添加，如 192.168.1.20" Text="{x:Bind VM.AddPeerAddress, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                <TextBox x:Name="AddPeerBox" Grid.Column="0" PlaceholderText="按 IP 添加，如 192.168.1.20 (Ctrl+N)" Text="{x:Bind VM.AddPeerAddress, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                          KeyDown="AddPeer_KeyDown" />
                 <Button Grid.Column="1" Command="{x:Bind VM.AddPeerCommand}" ToolTipService.ToolTip="添加联系人">
                     <FontIcon Glyph="&#xE710;" FontSize="14" />
                 </Button>
             </Grid>
-            <ListView x:Name="ConvList" Grid.Row="2" ItemsSource="{x:Bind VM.Conversations}" SelectionMode="Single"
+            <ListView x:Name="ConvList" Grid.Row="2" RightTapped="ConvList_RightTapped" ItemsSource="{x:Bind VM.Conversations}" SelectionMode="Single"
                       SelectionChanged="ConvList_SelectionChanged">
                 <ListView.ItemTemplate>
                     <DataTemplate x:DataType="vm:ConversationItem">
@@ -203,7 +203,7 @@
                 </StackPanel>
             </Grid>
 
-            <ListView x:Name="MessageList" Grid.Row="1" Padding="12,8" SelectionMode="None" IsItemClickEnabled="False"
+            <ListView x:Name="MessageList" Grid.Row="1" RightTapped="MessageList_RightTapped" Padding="12,8" SelectionMode="None" IsItemClickEnabled="False"
                       ItemsSource="{x:Bind VM.Messages}" ItemTemplateSelector="{StaticResource MessageSelector}"
                       Visibility="{x:Bind VM.HasSelection, Mode=OneWay}">
                 <ListView.ItemContainerStyle>

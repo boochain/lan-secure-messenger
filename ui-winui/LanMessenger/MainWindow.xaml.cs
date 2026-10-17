@@ -38,7 +38,17 @@ public sealed partial class MainWindow : Window
             // Fit small screens (e.g. 1024x768 / 125% scaling laptops): clamp to the work area and center.
             var wa = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
             int w = Math.Min(1100, Math.Max(640, wa.Width - 40)), h = Math.Min(740, Math.Max(480, wa.Height - 40));
-            AppWindow.MoveAndResize(new Windows.Graphics.RectInt32(wa.X + (wa.Width - w) / 2, wa.Y + (wa.Height - h) / 2, w, h));
+            var rect = new Windows.Graphics.RectInt32(wa.X + (wa.Width - w) / 2, wa.Y + (wa.Height - h) / 2, w, h);
+            // remember size + position (Windows guidelines: restore the last placement if it is still on a display)
+            var pr = UiPrefs.Current;
+            if (pr.X != int.MinValue && pr.W >= 640 && pr.H >= 480 && Environment.GetEnvironmentVariable("LSM_UI_SMOKE") is not { Length: > 0 })
+            {
+                var saved = new Windows.Graphics.RectInt32(pr.X, pr.Y, pr.W, pr.H);
+                var da = DisplayArea.GetFromRect(saved, DisplayAreaFallback.None);
+                if (da != null) { var a = da.WorkArea; saved.Width = Math.Min(saved.Width, a.Width); saved.Height = Math.Min(saved.Height, a.Height); rect = saved; }
+            }
+            AppWindow.MoveAndResize(rect);
+            if (pr.Maximized && AppWindow.Presenter is OverlappedPresenter op0 && Environment.GetEnvironmentVariable("LSM_UI_SMOKE") is not { Length: > 0 }) op0.Maximize();
             AppWindow.Closing += AppWindow_Closing;
         }
         catch (Exception e) { CrashLog.Write("appwindow", e); }
@@ -141,15 +151,35 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void SavePlacement()
+    {
+        try
+        {
+            var pr = UiPrefs.Current;
+            pr.Maximized = AppWindow.Presenter is OverlappedPresenter p && p.State == OverlappedPresenterState.Maximized;
+            if (!pr.Maximized && !(AppWindow.Presenter is OverlappedPresenter q && q.State == OverlappedPresenterState.Minimized))
+            { pr.X = AppWindow.Position.X; pr.Y = AppWindow.Position.Y; pr.W = AppWindow.Size.Width; pr.H = AppWindow.Size.Height; }
+            pr.Save();
+        }
+        catch (Exception e) { CrashLog.Write("placement", e); }
+    }
+
     private void AppWindow_Closing(AppWindow sender, AppWindowClosingEventArgs args)
     {
+        SavePlacement();
         if (_exiting) return;
-        if (_tray != null)
+        if (_tray != null && UiPrefs.Current.CloseToTray)
         {
-            // Close = minimise to tray; the daemon keeps running and receiving.
+            // Close = minimise to tray (setting 关闭窗口时最小化到托盘); the daemon keeps running and receiving.
             args.Cancel = true;
             sender.Hide();
             _visible = false;
+            if (!UiPrefs.Current.TrayNoticeShown)
+            {
+                // first time only: say where the window went and how to quit for real
+                UiPrefs.Current.TrayNoticeShown = true; UiPrefs.Current.Save();
+                try { Toasts.Show("LAN Secure Messenger 仍在运行", "窗口已最小化到通知区域，继续接收消息。右键托盘图标选择“退出”可完全退出；可在 设置 中关闭此行为。", ""); } catch { }
+            }
             return;
         }
         args.Cancel = true;

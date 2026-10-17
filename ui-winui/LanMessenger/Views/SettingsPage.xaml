@@ -44,6 +44,7 @@
                         <TextBox Grid.Column="0" Header="下载文件夹（留空使用默认）" Text="{x:Bind VM.EditDownloadDir, Mode=TwoWay}" PlaceholderText="{x:Bind VM.DownloadDir, Mode=OneWay}" />
                         <Button Grid.Column="1" Content="浏览…" VerticalAlignment="Bottom" Command="{x:Bind VM.PickDownloadDirCommand}" />
                     </Grid>
+                    <ToggleSwitch x:Name="CloseToTraySwitch" Header="关闭窗口时最小化到通知区域（继续接收消息）" OnContent="开" OffContent="关（关闭窗口即退出界面）" Toggled="CloseToTray_Toggled" />
                     <ToggleSwitch Header="自动接收已信任联系人发来的文件" IsOn="{x:Bind VM.EditAutoAccept, Mode=TwoWay}" OnContent="开" OffContent="关" />
                     <NumberBox Header="单个文件大小上限 (MB)" Value="{x:Bind VM.EditMaxFileMb, Mode=TwoWay}" Minimum="1" Maximum="1048576"
                                SpinButtonPlacementMode="Compact" HorizontalAlignment="Left" MinWidth="220" />

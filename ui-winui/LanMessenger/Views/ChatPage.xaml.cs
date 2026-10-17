@@ -19,6 +19,17 @@ public sealed partial class ChatPage : Page
     {
         InitializeComponent();
         NavigationCacheMode = NavigationCacheMode.Required;
+        // keyboard shortcuts (Fluent: keyboard accelerators): Ctrl+F search, Ctrl+N add contact, Ctrl+(Shift+)Tab next/prev chat, Esc
+        AddAccel(VirtualKey.F, VirtualKeyModifiers.Control, () => FocusSearch());
+        AddAccel(VirtualKey.N, VirtualKeyModifiers.Control, () => AddPeerBox.Focus(FocusState.Keyboard));
+        AddAccel(VirtualKey.Tab, VirtualKeyModifiers.Control, () => CycleConversation(+1));
+        AddAccel(VirtualKey.Tab, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => CycleConversation(-1));
+        AddAccel(VirtualKey.Escape, VirtualKeyModifiers.None, () =>
+        {
+            if (SearchTip.IsOpen) { SearchTip.IsOpen = false; return true; }
+            if (!string.IsNullOrEmpty(SearchBox.Text)) { SearchBox.Text = ""; Composer.Focus(FocusState.Keyboard); return true; }
+            return false;   // let dialogs/flyouts handle Esc themselves
+        });
         Loaded += (_, _) => SyncSelection();
         Unloaded += (_, _) => { VM.MessagesAppended -= ScrollToEnd; VM.PropertyChanged -= Vm_PropertyChanged; };
         Loaded += (_, _) => { VM.MessagesAppended -= ScrollToEnd; VM.MessagesAppended += ScrollToEnd; VM.PropertyChanged -= Vm_PropertyChanged; VM.PropertyChanged += Vm_PropertyChanged; };
@@ -37,6 +48,68 @@ public sealed partial class ChatPage : Page
             ConvList.SelectedItem = VM.SelectedConversation;
             _syncing = false;
         }
+    }
+
+    private void AddAccel(VirtualKey key, VirtualKeyModifiers mods, Func<bool> run)
+    {
+        var a = new KeyboardAccelerator { Key = key, Modifiers = mods };
+        a.Invoked += (_, e) => e.Handled = run();
+        KeyboardAccelerators.Add(a);
+    }
+    private void AddAccel(VirtualKey key, VirtualKeyModifiers mods, Action run) => AddAccel(key, mods, () => { run(); return true; });
+
+    public void FocusSearch() => SearchBox.Focus(FocusState.Keyboard);
+
+    public void CycleConversation(int d)
+    {
+        var n = VM.Conversations.Count; if (n == 0) return;
+        var i = VM.SelectedConversation == null ? -1 : VM.Conversations.IndexOf(VM.SelectedConversation);
+        VM.SelectedConversation = VM.Conversations[((i < 0 ? (d > 0 ? -1 : 0) : i) + d + n) % n];
+        Composer.Focus(FocusState.Keyboard);
+    }
+
+    /* right-click menus (Fluent: context menus offer the item's common commands) */
+    private void MessageList_RightTapped(object sender, Microsoft.UI.Xaml.Input.RightTappedRoutedEventArgs e)
+    {
+        if ((e.OriginalSource as FrameworkElement)?.DataContext is not MessageItem m || m.IsSystem) return;
+        var f = new MenuFlyout();
+        void Add(string text, string glyph, Action a) { var it = new MenuFlyoutItem { Text = text, Icon = new FontIcon { Glyph = glyph } }; it.Click += (_, _) => a(); f.Items.Add(it); }
+        if (m.IsText) Add("复制", "\uE8C8", () => { var dp = new DataPackage(); dp.SetText(m.Body); Clipboard.SetContent(dp); VM.ShowStatus("已复制"); });
+        if (m.IsFile && m.HasFilePath)
+        {
+            Add("打开", "\uE8E5", () => VM.OpenMessageFileCommand.Execute(m));
+            Add("在文件夹中显示", "\uE838", () => VM.RevealMessageFileCommand.Execute(m));
+            Add("复制文件路径", "\uE8C8", () => { var dp = new DataPackage(); dp.SetText(m.FilePath); Clipboard.SetContent(dp); VM.ShowStatus("已复制"); });
+        }
+        if (m.IsFile) Add("复制文件名", "\uE8C8", () => { var dp = new DataPackage(); dp.SetText(m.FileName); Clipboard.SetContent(dp); VM.ShowStatus("已复制"); });
+        if (f.Items.Count > 0) f.ShowAt((FrameworkElement)e.OriginalSource, e.GetPosition((FrameworkElement)e.OriginalSource));
+        e.Handled = true;
+    }
+
+    private void ConvList_RightTapped(object sender, Microsoft.UI.Xaml.Input.RightTappedRoutedEventArgs e)
+    {
+        if ((e.OriginalSource as FrameworkElement)?.DataContext is not ConversationItem c) return;
+        VM.SelectedConversation = c;
+        var f = new MenuFlyout();
+        void Add(string text, string glyph, System.Windows.Input.ICommand cmd) { var it = new MenuFlyoutItem { Text = text, Icon = new FontIcon { Glyph = glyph }, Command = cmd }; f.Items.Add(it); }
+        if (c.IsDm)
+        {
+            if (VM.SelectedTrusted) Add("取消信任", "\uE8F8", VM.UntrustSelectedCommand); else Add("信任", "\uE8FB", VM.TrustSelectedCommand);
+            Add(VM.SelectedMuted ? "取消免打扰" : "免打扰", "\uE7ED", VM.ToggleMuteCommand);
+            f.Items.Add(new MenuFlyoutSeparator());
+            var block = new MenuFlyoutItem { Text = VM.SelectedBlocked ? "取消屏蔽" : "屏蔽…", Icon = new FontIcon { Glyph = "\uE8F8" } };
+            block.Click += async (_, _) =>
+            {
+                if (VM.SelectedBlocked) { VM.UntrustSelectedCommand.Execute(null); return; }
+                var d = Services.ThemeService.Prepare(new ContentDialog { XamlRoot = XamlRoot, Title = $"屏蔽 {c.Title}？", Content = "屏蔽后将不再接收对方的消息和文件。可随时取消屏蔽。",
+                    PrimaryButtonText = "屏蔽", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close });
+                if (await d.ShowAsync() == ContentDialogResult.Primary) VM.BlockSelectedCommand.Execute(null);
+            };
+            f.Items.Add(block);
+        }
+        else Add(VM.SelectedMuted ? "取消免打扰" : "免打扰", "\uE7ED", VM.ToggleMuteCommand);
+        f.ShowAt((FrameworkElement)e.OriginalSource, e.GetPosition((FrameworkElement)e.OriginalSource));
+        e.Handled = true;
     }
 
     /// <summary>UI smoke: open / close the "更多" menu so the flyout (popup layer) is captured in both themes.</summary>

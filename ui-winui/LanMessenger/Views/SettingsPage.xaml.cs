@@ -13,6 +13,7 @@ public sealed partial class SettingsPage : Page
     public SettingsPage()
     {
         InitializeComponent();
+        CloseToTraySwitch.IsOn = Services.UiPrefs.Current.CloseToTray;
         _loadingTheme = true;
         ThemeChoice.SelectedIndex = (int)LanMessenger.Services.ThemeService.Mode;
         _loadingTheme = false;
@@ -74,5 +75,11 @@ public sealed partial class SettingsPage : Page
         var pw = await AskPasswordAsync("输入备份密码", false);
         if (pw == null) return;
         await VM.RestoreAsync(path, pw);
+    }
+
+    private void CloseToTray_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (Services.UiPrefs.Current.CloseToTray == CloseToTraySwitch.IsOn) return;
+        Services.UiPrefs.Current.CloseToTray = CloseToTraySwitch.IsOn; Services.UiPrefs.Current.Save();
     }
 }
