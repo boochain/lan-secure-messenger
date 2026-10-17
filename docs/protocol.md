@@ -186,8 +186,28 @@ Identical in lan-core (Rust) and the portable C core.
   before and a manual retry restarts from 0.
 * Implementations expose the offset the last (re)start continued from (`Transfer.resumed_from`
   in lan-core, `lsm_transfer.resumed_from` / CLI `XFER … resumed=<n>` in the C core).
-* Paused state lives in memory: restarting the app while paused loses the resume
-  (the sender's offer then restarts from 0 on a fresh receiver state).
+* **Receiver restart.** Every resumable download has a sidecar `<part>.resume` next to its
+  `.part` (written on accept, removed on done/fail/cancel), identical in both cores:
+  ```
+  LSMRESUME 1
+  tid <uuid>
+  peer <fingerprint>
+  msg <chat message id>
+  conv <dm:… | group:…>
+  size <u64>
+  sha <hex SHA-256 of the whole file>
+  mime <mime>
+  name <file name>
+  ```
+  The offset and hash state are not stored. On start-up the receiver re-creates the transfer
+  (state `offered`, accepted) and re-hashes the `.part`, which takes its length as the offset.
+  It does this off the network path: Rust uses a blocking-pool task, C a chunked job of
+  2 MiB per loop turn. A re-offer that arrives before the hash finishes is deferred. Then
+  the receiver resumes with `FileResume` as after a link loss.
+* The sender's prefix check runs off the network path too: Rust in the async send task, C as
+  a chunked job.
+* Sender restart is not persisted: an outgoing transfer paused in a process that exits is
+  lost (the user re-sends; a fresh tid starts from 0).
 
 ## 9. PIN pairing
 1. Peer A calls `pin_offer`: random 6-digit PIN, valid 300 s, max 5 wrong tries.
