@@ -22,8 +22,16 @@ public sealed partial class ChatPage : Page
         // keyboard shortcuts (Fluent: keyboard accelerators): Ctrl+F search, Ctrl+N add contact, Ctrl+(Shift+)Tab next/prev chat, Esc
         AddAccel(VirtualKey.F, VirtualKeyModifiers.Control, () => FocusSearch());
         AddAccel(VirtualKey.N, VirtualKeyModifiers.Control, () => AddPeerBox.Focus(FocusState.Keyboard));
-        AddAccel(VirtualKey.Tab, VirtualKeyModifiers.Control, () => CycleConversation(+1));
-        AddAccel(VirtualKey.Tab, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => CycleConversation(-1));
+        // Ctrl+Tab / Ctrl+Shift+Tab: Tab is consumed by focus navigation (and the multi-line composer) before
+        // KeyboardAccelerators run (found by the UI smoke runtime check), so handle it in the tunnelling PreviewKeyDown.
+        PreviewKeyDown += (_, e) =>
+        {
+            if (e.Key != VirtualKey.Tab) return;
+            bool Down(VirtualKey k) => Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(k).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
+            if (!Down(VirtualKey.Control)) return;
+            CycleConversation(Down(VirtualKey.Shift) ? -1 : +1);
+            e.Handled = true;
+        };
         AddAccel(VirtualKey.Escape, VirtualKeyModifiers.None, () =>
         {
             if (SearchTip.IsOpen) { SearchTip.IsOpen = false; return true; }
