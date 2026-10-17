@@ -200,8 +200,8 @@ pub fn is_auth_fail(e: &anyhow::Error, c: u8) -> bool {
 }
 pub const BAD_PASS: u8 = code::BAD_PASSPHRASE;
 
-/// Peer id helper: 32 bytes from a label (tests) — real clients use SHA-256 of their static key.
+/// Peer id helper: 32 bytes from a label (tests) — BLAKE2b-256(label), same as the C test client.
 pub fn test_id(label: &str) -> PeerId {
-    use blake2::{Blake2s256, Digest};
-    Blake2s256::digest(label.as_bytes()).into()
+    use blake2::{digest::consts::U32, Blake2b, Digest};
+    Blake2b::<U32>::digest(label.as_bytes()).into()
 }

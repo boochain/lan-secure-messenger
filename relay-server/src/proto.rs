@@ -315,8 +315,9 @@ mod tests {
         // Fixed vector shared with the C client test (c-client/relay_client.c --selftest)
         let k = derive_key("test-pass", &DEFAULT_SALT);
         let m = auth_mac(&k, CTX_CLIENT, &[1; 32], &[2; 32], &[3; 32]);
-        assert_eq!(hex::encode(k).len(), 64);
-        assert_ne!(m, [0; 32]);
+        // Produced independently by Monocypher 4 (c-client --selftest).
+        assert_eq!(hex::encode(k), "63d2d3a326f89cb06409e204bbe49c08d46a56b4725318c66b4f97ac6d637d5d");
+        assert_eq!(hex::encode(m), "84e6b26fd79d428db2267c1360133ff87c720f067cf59b2becaa38eddb24a7b1");
         assert!(ct_eq(&m, &auth_mac(&k, CTX_CLIENT, &[1; 32], &[2; 32], &[3; 32])));
         assert!(!ct_eq(&m, &auth_mac(&k, CTX_SERVER, &[1; 32], &[2; 32], &[3; 32])));
     }
