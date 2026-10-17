@@ -344,6 +344,7 @@ pub async fn start(opts: EngineOptions) -> Result<EngineHandle> {
         relay_last_open: Instant::now(),
     };
     eng.rebuild_outbox();
+    eng.restore_partials();
     // Redial remembered trusted peers immediately.
     let fps: Vec<String> = eng.contacts.contacts.keys().cloned().collect();
     for fp in fps {

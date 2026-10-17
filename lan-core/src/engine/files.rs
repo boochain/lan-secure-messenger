@@ -64,6 +64,9 @@ pub(crate) struct TransferRt {
     pub accepted: bool,
     pub resume_part: Option<ResumePart>,
     pub resumed_from: u64,
+    /// Restored from a sidecar: the .part is being re-hashed; a re-offer meanwhile is deferred.
+    pub resume_loading: bool,
+    pub reoffer_pending: bool,
     rate_mark: (Instant, u64),
     bps: u64,
     last_emit: Instant,
@@ -246,7 +249,7 @@ async fn recv_task(
     resume: Option<(u64, Sha256)>,
 ) {
     let fail = |e: String, part: &PathBuf| {
-        let _ = std::fs::remove_file(part);
+        remove_part_and_sidecar(part, false);
         let _ = ctrl.send(Frame::FileComplete { tid, ok: false, error: e.clone() });
         let _ = tx.send(EngineMsg::Transfer(TransferEvt::RecvDone { tid, result: Err(e) }));
     };
@@ -310,6 +313,7 @@ async fn recv_task(
                 if let Err(e) = std::fs::rename(&part, &fin) {
                     return fail(format!("重命名失败: {e}"), &part);
                 }
+                remove_part_and_sidecar(&part, true);
                 let _ = ctrl.send(Frame::FileComplete { tid, ok: true, error: String::new() });
                 let _ = tx.send(EngineMsg::Transfer(TransferEvt::RecvDone { tid, result: Ok(fin) }));
                 return;
@@ -324,7 +328,145 @@ async fn recv_task(
     let _ = tx.send(EngineMsg::Transfer(TransferEvt::RecvInterrupted { tid, part: ResumePart { part, written, hasher: h } }));
 }
 
+/// Sidecar `<part>.resume` next to a resumable download (format identical to the C core):
+/// `LSMRESUME 1` then `tid/peer/msg/conv/size/sha/mime/name <value>` lines. Offset and hash
+/// state are recomputed from the .part on load.
+fn sidecar_path(part: &std::path::Path) -> PathBuf {
+    let mut s = part.as_os_str().to_owned();
+    s.push(".resume");
+    PathBuf::from(s)
+}
+
+fn write_sidecar(t: &TransferRt, part: &std::path::Path) {
+    let body = format!(
+        "LSMRESUME 1\ntid {}\npeer {}\nmsg {}\nconv {}\nsize {}\nsha {}\nmime {}\nname {}\n",
+        t.id,
+        t.peer_fp,
+        t.msg_id,
+        t.conversation,
+        t.size,
+        hex::encode(t.sha256.unwrap_or_default()),
+        t.mime,
+        t.name
+    );
+    let p = sidecar_path(part);
+    let tmp = sidecar_path(&p);
+    if std::fs::write(&tmp, body).is_ok() {
+        let _ = std::fs::rename(&tmp, &p);
+    }
+}
+
+fn remove_part_and_sidecar(part: &std::path::Path, keep_part: bool) {
+    if !keep_part {
+        let _ = std::fs::remove_file(part);
+    }
+    let _ = std::fs::remove_file(sidecar_path(part));
+}
+
+pub(crate) struct Sidecar {
+    pub part: PathBuf,
+    pub tid: Uuid,
+    pub peer: String,
+    pub msg: String,
+    pub conv: String,
+    pub size: u64,
+    pub sha: [u8; 32],
+    pub mime: String,
+    pub name: String,
+}
+
+fn read_sidecar(path: &std::path::Path) -> Option<Sidecar> {
+    let raw = std::fs::read_to_string(path).ok()?;
+    let mut it = raw.lines();
+    if it.next()? != "LSMRESUME 1" {
+        return None;
+    }
+    let mut kv: HashMap<&str, &str> = HashMap::new();
+    for l in it {
+        if let Some((k, v)) = l.split_once(' ') {
+            kv.insert(k, v);
+        }
+    }
+    let ps = path.to_string_lossy();
+    let part = PathBuf::from(ps.strip_suffix(".resume")?);
+    let mut sha = [0u8; 32];
+    hex::decode_to_slice(kv.get("sha")?, &mut sha).ok()?;
+    Some(Sidecar {
+        part,
+        tid: Uuid::parse_str(kv.get("tid")?).ok()?,
+        peer: kv.get("peer")?.to_string(),
+        msg: kv.get("msg")?.to_string(),
+        conv: kv.get("conv")?.to_string(),
+        size: kv.get("size")?.parse().ok()?,
+        sha,
+        mime: kv.get("mime").copied().unwrap_or("application/octet-stream").to_string(),
+        name: kv.get("name")?.to_string(),
+    })
+}
+
 impl Engine {
+    /// Start-up: re-create paused downloads from their sidecars; the .part is re-hashed off the
+    /// engine loop, then the transfer waits for the sender's re-offer and resumes.
+    pub(crate) fn restore_partials(&mut self) {
+        let dir = self.settings.download_dir(&self.paths);
+        let Ok(rd) = std::fs::read_dir(&dir) else { return };
+        for e in rd.flatten() {
+            let p = e.path();
+            if !p.to_string_lossy().ends_with(".part.resume") {
+                continue;
+            }
+            let Some(sc) = read_sidecar(&p) else { continue };
+            if !sc.part.exists() {
+                let _ = std::fs::remove_file(&p);
+                continue;
+            }
+            if self.transfers.contains_key(&sc.tid) {
+                continue;
+            }
+            let tid = sc.tid;
+            let t = TransferRt {
+                id: tid,
+                msg_id: sc.msg.clone(),
+                conversation: sc.conv.clone(),
+                peer_name: self.peer_name(&sc.peer),
+                peer_fp: sc.peer.clone(),
+                direction: Direction::In,
+                name: sc.name.clone(),
+                size: sc.size,
+                mime: sc.mime.clone(),
+                path: None,
+                sha256: Some(sc.sha),
+                group_id: sc.conv.strip_prefix("group:").and_then(|g| Uuid::parse_str(g).ok()),
+                transferred: 0,
+                state: TransferState::Offered,
+                error: "等待对方重发以续传".into(),
+                started_ms: now_ms(),
+                cancel: Arc::new(AtomicBool::new(false)),
+                credit: None,
+                chunk_tx: None,
+                offer_ts: 0,
+                resumable: true,
+                accepted: true,
+                resume_part: None,
+                resumed_from: 0,
+                resume_loading: true,
+                reoffer_pending: false,
+                rate_mark: (Instant::now(), 0),
+                bps: 0,
+                last_emit: Instant::now(),
+            };
+            self.transfers.insert(tid, t);
+            tracing::info!(%tid, part = %sc.part.display(), "restoring paused download");
+            let tx = self.tx.clone();
+            let part = sc.part.clone();
+            tokio::task::spawn_blocking(move || {
+                let mut h = Sha256::new();
+                let written = std::fs::File::open(&part).and_then(|mut f| std::io::copy(&mut f, &mut h)).unwrap_or(0);
+                let _ = tx.send(EngineMsg::Transfer(TransferEvt::RecvInterrupted { tid, part: ResumePart { part, written, hasher: h } }));
+            });
+        }
+    }
+
     fn emit_transfer(&mut self, tid: Uuid, force: bool) {
         if let Some(t) = self.transfers.get_mut(&tid) {
             if force || t.last_emit.elapsed() >= Duration::from_millis(200) || t.finished() {
@@ -393,6 +535,8 @@ impl Engine {
                 accepted: false,
                 resume_part: None,
                 resumed_from: 0,
+                resume_loading: false,
+                reoffer_pending: false,
                 rate_mark: (Instant::now(), 0),
                 bps: 0,
                 last_emit: Instant::now(),
@@ -559,13 +703,16 @@ impl Engine {
             }
             other => {
                 if let Some(r) = other {
-                    let _ = std::fs::remove_file(&r.part);
+                    remove_part_and_sidecar(&r.part, false);
                 }
                 let _ = conn.ctrl.send(Frame::FileAccept { tid });
                 t.resumed_from = 0;
                 (dir.join(format!(".{}.{}.part", t.name, &tid.to_string()[..8])), None)
             }
         };
+        if can_resume {
+            write_sidecar(t, &part);
+        }
         let (ctx, crx) = mpsc::unbounded_channel();
         t.chunk_tx = Some(ctx);
         t.state = TransferState::Active;
@@ -600,6 +747,12 @@ impl Engine {
                     }
                     match t.state {
                         TransferState::Done => self.send_ctrl(fp, Frame::FileComplete { tid, ok: true, error: String::new() }),
+                        TransferState::Offered if t.accepted && t.resume_loading => {
+                            if let Some(t) = self.transfers.get_mut(&tid) {
+                                t.reoffer_pending = true;
+                            }
+                            true
+                        }
                         TransferState::Offered if t.accepted => {
                             if let Err(e) = self.accept_transfer(tid) {
                                 tracing::debug!(%tid, error = %e.message, "re-accept failed");
@@ -652,6 +805,8 @@ impl Engine {
                     accepted: false,
                     resume_part: None,
                     resumed_from: 0,
+                    resume_loading: false,
+                    reoffer_pending: false,
                     rate_mark: (Instant::now(), 0),
                     bps: 0,
                     last_emit: Instant::now(),
@@ -856,11 +1011,21 @@ impl Engine {
                 let keep = self.transfers.get(&tid).map(|t| t.state == TransferState::Offered && t.resumable && t.direction == Direction::In).unwrap_or(false);
                 if keep {
                     tracing::info!(%tid, written = part.written, "partial download kept for resume");
+                    let mut go = false;
                     if let Some(t) = self.transfers.get_mut(&tid) {
+                        t.transferred = part.written.min(t.size);
                         t.resume_part = Some(part);
+                        t.resume_loading = false;
+                        go = std::mem::take(&mut t.reoffer_pending);
                     }
+                    if go && self.transfers.get(&tid).map(|t| self.conns.contains_key(&t.peer_fp)).unwrap_or(false) {
+                        if let Err(e) = self.accept_transfer(tid) {
+                            tracing::debug!(%tid, error = %e.message, "deferred resume failed");
+                        }
+                    }
+                    self.emit_transfer(tid, true);
                 } else {
-                    let _ = std::fs::remove_file(&part.part);
+                    remove_part_and_sidecar(&part.part, false);
                 }
             }
             TransferEvt::RecvProgress { tid, written } => {
