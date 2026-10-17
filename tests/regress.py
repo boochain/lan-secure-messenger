@@ -99,5 +99,8 @@ A.quit(); A = Node("RA", base)
 gone = not any("delete-me" in l for l in A.cmd(f"history {B.fp}"))
 kept = any("delete-me" in l for l in B.cmd(f"history {A.fp}"))
 check("delete message (this device only) survives restart, peer keeps it", okd and gone and kept, (mid, did, okd, gone, kept))
+want = {"王工": "王", "Alice Chen": "AC", "CI 测试群": "C", "bob": "B", "Bob Miller Jr": "BM", "李 Bob": "李", "  ": "?"}
+got = {k: next((l.split()[2] if len(l.split()) > 2 else "") for l in A.cmd(f"initials {k}") if l.startswith("OK initials")) for k in want if k.strip()}
+check("avatar initials rule (CJK -> 1 char, Latin -> up to 2, never mixed)", all(got[k] == v for k, v in want.items() if k.strip()), got)
 A.quit(); B.quit()
 sys.exit(1 if fails else 0)

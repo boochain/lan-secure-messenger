@@ -87,6 +87,7 @@ static int run_cmd(char *line){
         lsm_lock(C); n=lsm_messages(C,&m); for(i=0;i<n;i++) if(!strcmp(m[i].conv,cv)) cnt++; start=cnt-lim; cnt=0;
         for(i=0;i<n;i++) if(!strcmp(m[i].conv,cv)){ if(cnt++<start) continue; outf("MSG %s\t%s\t%s\t%s\t%s\t%s\n",m[i].id,m[i].out?"out":"in",STS[m[i].status],m[i].sender_name,m[i].kind==1?"[file]":"",m[i].kind==1?m[i].file_name:(m[i].body?m[i].body:"")); }
         lsm_unlock(C); outf("OK history\n"); return 0; }
+    if(!strcmp(cmd,"initials")){ char o[8]; lsm_initials(s?s:"",o); outf("OK initials %s\n",o); return 0; }
     if(!strcmp(cmd,"delete")){ char *id=next_tok(&s); if(!id){ outf("ERR usage: delete <msg-id>\n"); return 0; } outf(lsm_delete_message(C,id)?"ERR not found\n":"OK delete\n"); return 0; }
     if(!strcmp(cmd,"read")){ const char *cv=conv_of(s,buf); if(!cv){ outf("ERR unknown target\n"); return 0; } outf("OK read %d\n",lsm_mark_read(C,cv)); return 0; }
     if(!strcmp(cmd,"transfers")){ lsm_transfer *t; int n,i; char u[37]; lsm_lock(C); n=lsm_transfers(C,&t); for(i=0;i<n;i++){ lsm_uuid_str(t[i].tid,u); outf("XFER %s\t%s\t%s\t%llu/%llu\t%s\t%s\t%s\n",u,t[i].out?"out":"in",TST[t[i].state],(unsigned long long)t[i].transferred,(unsigned long long)t[i].size,t[i].name,t[i].path,t[i].error); } lsm_unlock(C); outf("OK transfers %d\n",n); return 0; }

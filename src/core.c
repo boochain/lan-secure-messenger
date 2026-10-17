@@ -1032,3 +1032,15 @@ int lsm_firewall_setup(const char *exe, char *report, size_t n){
 #endif
 #endif
 }
+
+static int latin_letter(unsigned char c){ return (c>='A'&&c<='Z')||(c>='a'&&c<='z'); }
+void lsm_initials(const char *name, char out[8]){
+    const unsigned char *p=(const unsigned char*)(name?name:""); int n=0;
+    while(*p==' '||*p=='\t'||*p=='\n'||*p=='\r') p++;
+    if(!*p){ strcpy(out,"?"); return; }
+    if(latin_letter(*p)){
+        while(*p && n<2){ if(latin_letter(*p)) out[n++]=(char)((*p>='a')?*p-32:*p);
+            while(*p && *p!=' ' && *p!='\t') p++; while(*p==' '||*p=='\t') p++; }
+        out[n]=0; return; }
+    { int len=*p<0x80?1:(*p>>5)==6?2:(*p>>4)==14?3:(*p>>3)==30?4:1; memcpy(out,p,len); out[len]=0; }
+}

@@ -74,9 +74,11 @@ val AVATAR_COLORS = listOf(0x6D4FC2, 0x1F6FB2, 0x0F7A6C, 0xB4471B, 0x2E6B2F, 0x9
 fun avatarIndex(id: String): Int { var h = 0x811C9DC5.toInt(); for (b in id.toByteArray(Charsets.UTF_8)) { h = h xor (b.toInt() and 0xFF); h *= 16777619 }
     return ((h.toLong() and 0xFFFFFFFFL) % 8).toInt() }
 fun avatarColor(id: String) = AVATAR_COLORS[avatarIndex(id)]
-/** Initials: Latin names -> first letters of the first two words ("Alice Chen" -> "AC"); otherwise the first character. */
+/** Initials (same rule on all clients): CJK first -> that one character ("王工" -> "王"); Latin first -> first letters of up to
+ *  two Latin words, never mixed with CJK ("Alice Chen" -> "AC", "CI 测试群" -> "C"); otherwise the first character. */
+private fun isLatin(c: Char) = c in 'A'..'Z' || c in 'a'..'z'
 fun initials(name: String): String {
     val n = name.trim(); if (n.isEmpty()) return "?"
-    if (n[0].code < 128 && n[0].isLetter()) { val w = n.split(Regex("\\s+")).filter { it.isNotEmpty() }; return w.take(2).joinToString("") { it.take(1) }.uppercase() }
+    if (isLatin(n[0])) return n.split(Regex("\\s+")).filter { it.isNotEmpty() && isLatin(it[0]) }.take(2).joinToString("") { it.take(1) }.uppercase()
     val cp = n.codePointAt(0); return String(Character.toChars(cp))
 }

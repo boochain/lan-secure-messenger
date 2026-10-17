@@ -142,12 +142,12 @@ fun Chat(st: AppState, conv: String, back: () -> Unit) {
                 }
             }
         }
-        /* composer: [emoji · field · attach] (send) */
+        /* composer: [field · attach] (send) */
         Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(8.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.weight(1f).heightIn(min = 48.dp).ifThen(!isDark()) { shadow(1.dp, RoundedCornerShape(24.dp)) }.clip(RoundedCornerShape(24.dp)).background(p.field).padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                IconButton({ Repo.toast.value = "表情即将推出" }, Modifier.size(40.dp)) { Ic(R.drawable.ms_emoji, "表情（即将推出）", p.fg2) }
-                Box(Modifier.weight(1f).padding(start = 4.dp, top = 12.dp, bottom = 12.dp)) {
+                // no emoji button until there is a real picker (a "coming soon" control is a dead end)
+                Box(Modifier.weight(1f).padding(start = 12.dp, top = 12.dp, bottom = 12.dp)) {
                     if (input.isEmpty()) Text("输入消息", style = MaterialTheme.typography.bodyLarge, color = p.fg2)
                     BasicTextField(input, { input = it }, Modifier.fillMaxWidth().semantics { contentDescription = "输入消息" }, maxLines = 5,
                         textStyle = MaterialTheme.typography.bodyLarge.copy(color = p.fg), cursorBrush = SolidColor(p.accent))
