@@ -49,7 +49,13 @@ def resume_check(X, Y, interrupt, tag):
     with open(src, "wb") as f:
         for _ in range(RESUME_SIZE // 4_000_000): f.write(os.urandom(4_000_000))
     want = sha(src); X.sendfile(Y.fp, src)
-    hit = wait(lambda: (lambda x: x and x[1] >= 0.4 * RESUME_SIZE and x)(Y.xfer(name, "in")), 120, 0.05)
+    import glob
+    def part_bytes():
+        # poll the receiver's .part file directly (C<->C on a veth is too fast for CLI polling)
+        ps = glob.glob(f"{Y.dl}/.{name}*.part") if getattr(Y, "kind", "") != "android" else []
+        if ps: n = os.path.getsize(ps[0]); return n >= 0.4 * RESUME_SIZE and ("in", n)
+        x = Y.xfer(name, "in"); return x and x[1] >= 0.4 * RESUME_SIZE and x
+    hit = wait(part_bytes, 120, 0.002)
     if not hit: return False, "never reached 40%"
     interrupt()
     got = wait(lambda: os.path.exists(Y.dlpath(name)) and os.path.getsize(Y.dlpath(name)) == RESUME_SIZE and sha(Y.dlpath(name)) == want, 240, 1)
