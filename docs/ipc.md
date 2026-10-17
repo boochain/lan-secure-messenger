@@ -117,3 +117,52 @@ PeerDiag     { fingerprint, name, state, addr?, direction?, connected_for_ms?, l
 `transfer_updated {transfer}`, `group_updated {group}`, `group_removed {id}`, `conversation_updated {conversation}`,
 `me_updated {me}`, `settings_updated {settings}`, `notice {level:"info"|"warn"|"error", text}`,
 `notify {conversation, title, body}` (show a toast unless the window is focused on that conversation), `resync`.
+
+## Relay client API (for the UI: settings section, status indicator, 经服务器 badge)
+
+Data the daemon exposes (lan-core, branch feat/relay-client). The C core equivalents are listed for XP/GTK/Android.
+
+### Settings (part of `Settings`; read via `get_snapshot().settings`, write via `update_settings`)
+| field | type | default | notes |
+|---|---|---|---|
+| `relay_enabled` | bool | `false` | off by default |
+| `relay_host` | string | `""` | hostname or IP of the relay server |
+| `relay_port` | u16 | `9443` | |
+| `relay_passphrase` | string | `""` | network passphrase. Never sent over the network (challenge-response). On disk it is sealed in `data/relay.dat` (ChaCha20-Poly1305, history key), never in settings.json. It *is* returned over local IPC so the settings page can show/edit it (mask it in the UI). |
+
+Write example: `{"method":"update_settings","params":{"settings":{"relay_enabled":true,"relay_host":"relay.example.com","relay_port":9443,"relay_passphrase":"…"}}}`.
+Changing any relay field reconnects the relay immediately; `relay_enabled:false` disconnects.
+
+### Relay status: `RelayStatus`
+```json
+{"enabled":true,"state":"online","detail":"relay.example.com:9443","server":"relay.example.com:9443","peers":3,"relayed_links":1}
+```
+* `state`: `off` | `connecting` | `online` | `auth_failed` | `error`.
+  Suggested copy: off 未启用 · connecting 正在连接中转服务器… · online 已连接中转服务器 · auth_failed 网络口令错误 · error 无法连接中转服务器 (show `detail` as secondary text/tooltip).
+* `detail`: human-readable Chinese/English detail (server address when online, reason on error).
+* `peers`: peers currently present on the server; `relayed_links`: live links carried by the relay.
+* Sources: `get_snapshot().relay` (initial), RPC `relay_status` (any time), and event
+  `{"type":"relay_updated","relay":RelayStatus}` (pushed on every change). Event names use the same serde
+  tagging as the other `Event` variants (`#[serde(tag="type", rename_all="snake_case")]`, e.g. `peer_updated`).
+* On a first `auth_failed` the daemon also sends a `Notice{level:"error"}` (中转服务器认证失败: …).
+
+### Per-contact path: `Peer.via_relay`
+* `Peer.via_relay: bool`, true when the live link to this contact goes through the relay server. It is
+  false when offline or direct. Show the badge (cloud/server icon after the name, tooltip 经服务器中转) when
+  `online && via_relay`. The header subtitle shows 经服务器中转 in place of 局域网直连.
+* `Peer.addr` is `null` for relay links. `direction` is still outbound/inbound.
+* Relay peers show up in the same contact list (same sorting, unread counts, notifications) via the
+  usual `PeerUpdated` events. The path switches automatically (direct preferred) and a `PeerUpdated` is sent
+  on every switch, so the UI just re-renders the badge.
+* Android filter chip 经服务器 = `peers.filter { it.online && it.via_relay }`.
+
+### Transfers
+* `Transfer.resumed_from: u64`: offset the last (re)start continued from (0 = from the beginning). While a link is
+  down, an interrupted transfer has `state:"offered"` with `error:"连接中断，重连后自动续传"` and resumes by itself.
+
+### C core (XP / GTK / Android JNI): same data
+* Settings: `lsm_relay_set(c, enabled, host, port, pass, err)` / `lsm_relay_get(c,&enabled,host,hn,&port,pass,pn)` (sealed `relay.dat`).
+* Status: `lsm_relay_status(c, detail, dn)` returns the state string; event `relay\t<state>\t<detail>`.
+* Peers on server: `lsm_relay_peers(c)`; events `relay_peer\t<fp>\t<join|leave>\t<name>`.
+* Per contact: `lsm_contact.via_relay`; event `peer\t<fp>\tpath\t<direct|relay>` on every switch.
+* Transfers: `lsm_transfer.resumed_from`, `resumable`.
