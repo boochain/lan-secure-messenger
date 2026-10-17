@@ -71,8 +71,8 @@
                     <StackPanel Spacing="6">
                         <Grid ColumnSpacing="12">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="44" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                            <Border Width="44" Height="44" CornerRadius="6" Background="{ThemeResource LsmChipBackgroundBrush}">
-                                <TextBlock Text="{x:Bind FileExt, Mode=OneWay}" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="11" FontWeight="SemiBold" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                            <Border Width="44" Height="44" CornerRadius="6" Background="{ThemeResource LsmTileBackgroundBrush}">
+                                <TextBlock Text="{x:Bind FileExt, Mode=OneWay}" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="11" FontWeight="SemiBold" Foreground="{ThemeResource LsmTileForegroundBrush}" />
                             </Border>
                             <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                 <TextBlock Text="{x:Bind FileName, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Foreground="{ThemeResource LsmBubbleInForegroundBrush}" />
@@ -120,8 +120,8 @@
                     <StackPanel Spacing="6">
                         <Grid ColumnSpacing="12">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="44" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                            <Border Width="44" Height="44" CornerRadius="6" Background="{ThemeResource LsmChipBackgroundBrush}">
-                                <TextBlock Text="{x:Bind FileExt, Mode=OneWay}" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="11" FontWeight="SemiBold" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                            <Border Width="44" Height="44" CornerRadius="6" Background="{ThemeResource LsmTileBackgroundBrush}">
+                                <TextBlock Text="{x:Bind FileExt, Mode=OneWay}" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="11" FontWeight="SemiBold" Foreground="{ThemeResource LsmTileForegroundBrush}" />
                             </Border>
                             <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                 <TextBlock Text="{x:Bind FileName, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Foreground="{ThemeResource LsmBubbleOutForegroundBrush}" />
@@ -336,7 +336,7 @@
                 <Button Grid.Column="0" Style="{StaticResource LsmIconButton}" VerticalAlignment="Bottom" Margin="0,0,0,2" Command="{x:Bind VM.AttachCommand}" ToolTipService.ToolTip="发送文件/图片（也可以直接拖进来）">
                     <FontIcon Glyph="&#xE723;" FontSize="16" />
                 </Button>
-                <TextBox x:Name="Composer" Grid.Column="1" AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="160" MinHeight="40" CornerRadius="20" Padding="16,9,16,6"
+                <TextBox x:Name="Composer" Grid.Column="1" Background="{ThemeResource LsmInputBackgroundBrush}" AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="160" MinHeight="40" CornerRadius="20" Padding="16,9,16,6"
                          PlaceholderText="输入消息（Enter 发送 · Shift+Enter 换行）" VerticalContentAlignment="Center"
                          Text="{x:Bind VM.ComposeText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                          PreviewKeyDown="Composer_PreviewKeyDown" />

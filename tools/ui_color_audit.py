@@ -237,8 +237,11 @@ def audit(path, pal, theme="auto", out=None, ignore=(), strict_cvd=False, ocr=Tr
         cm = np.isin(k, np.fromiter(CONTENT, np.int64)).astype(np.uint8)
         n, lab, st, _ = cv2.connectedComponentsWithStats(cm, connectivity=8)
         for i in range(1, n):  # only sizeable blobs of content colour (an image), not stray matching pixels
-            if st[i, cv2.CC_STAT_AREA] >= 400:
-                x, y, w, h = (int(st[i, j]) for j in range(4)); mask[max(0, y - 3):y + h + 3, max(0, x - 3):x + w + 3] = False
+            x, y, w, h = (int(st[i, j]) for j in range(4))
+            # an image is a compact blob; a dark photo's shades also occur in dark UI surfaces/wallpaper, and such a
+            # sprawling blob (low fill, or most of the screen) must not mask the whole page out of every gate
+            if st[i, cv2.CC_STAT_AREA] >= 400 and st[i, cv2.CC_STAT_AREA] >= 0.35 * w * h and w * h <= 0.25 * W * H:
+                mask[max(0, y - 3):y + h + 3, max(0, x - 3):x + w + 3] = False
     for (x, y, w, h) in ignore: mask[y:y + h, x:x + w] = False
     if theme == "auto": theme = "dark" if np.median(rel_lum(arr[mask].astype(float))) < 0.18 else "light"
     tok = pal[theme]; toklab = rgb_to_lab(np.stack(list(tok.values())))
