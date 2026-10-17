@@ -135,6 +135,22 @@ impl Default for Settings {
     }
 }
 
+fn relay_secret_path(paths: &ConfigPaths) -> PathBuf {
+    paths.history.with_file_name("relay.dat")
+}
+
+fn load_relay_secret(paths: &ConfigPaths) -> Option<String> {
+    let d = fs::read(relay_secret_path(paths)).ok()?;
+    let key = crate::history::load_or_create_key(&paths.history_key).ok()?;
+    match crate::crypto::open_at_rest(&key, &d) {
+        Ok(p) => String::from_utf8(p).ok(),
+        Err(e) => {
+            tracing::warn!(error = %e, "relay.dat unreadable");
+            None
+        }
+    }
+}
+
 fn default_name() -> String {
     hostname::get()
         .ok()
@@ -150,6 +166,9 @@ impl Settings {
             match serde_json::from_str::<Settings>(&raw) {
                 Ok(mut s) => {
                     s.display_name = sanitize_display_name(&s.display_name);
+                    if let Some(p) = load_relay_secret(paths) {
+                        s.relay_passphrase = p;
+                    }
                     return Ok(s);
                 }
                 Err(e) => tracing::warn!(error = %e, "settings.json unreadable, using defaults"),
@@ -158,8 +177,19 @@ impl Settings {
         Ok(Self::default())
     }
 
+    /// The relay passphrase never lands in settings.json: it is sealed (ChaCha20-Poly1305,
+    /// the at-rest history key) into relay.dat next to the history, like the C core's relay.dat.
     pub fn save(&self, paths: &ConfigPaths) -> Result<()> {
-        atomic_write(&paths.settings, serde_json::to_string_pretty(self)?.as_bytes())
+        let rf = relay_secret_path(paths);
+        if self.relay_passphrase.is_empty() {
+            let _ = fs::remove_file(&rf);
+        } else {
+            let key = crate::history::load_or_create_key(&paths.history_key)?;
+            atomic_write(&rf, &crate::crypto::seal_at_rest(&key, self.relay_passphrase.as_bytes())?)?;
+        }
+        let mut s = self.clone();
+        s.relay_passphrase.clear();
+        atomic_write(&paths.settings, serde_json::to_string_pretty(&s)?.as_bytes())
     }
 
     pub fn download_dir(&self, paths: &ConfigPaths) -> PathBuf {
@@ -169,5 +199,28 @@ impl Settings {
         directories::UserDirs::new()
             .and_then(|u| u.download_dir().map(|d| d.join("LanMessenger")))
             .unwrap_or_else(|| paths.base.join("downloads"))
+    }
+}
+
+#[cfg(test)]
+mod relay_secret_tests {
+    use super::*;
+    #[test]
+    fn relay_passphrase_sealed_not_in_settings_json() {
+        let d = tempfile::tempdir().unwrap();
+        let p = ConfigPaths::from_base(d.path());
+        p.ensure_dirs().unwrap();
+        let mut s = Settings::default();
+        s.relay_enabled = true;
+        s.relay_passphrase = "s3cret-网络口令".into();
+        s.save(&p).unwrap();
+        let raw = fs::read_to_string(&p.settings).unwrap();
+        assert!(!raw.contains("s3cret"));
+        let sealed = fs::read(p.history.with_file_name("relay.dat")).unwrap();
+        assert!(!String::from_utf8_lossy(&sealed).contains("s3cret"));
+        assert_eq!(Settings::load(&p).unwrap().relay_passphrase, "s3cret-网络口令");
+        s.relay_passphrase.clear();
+        s.save(&p).unwrap();
+        assert!(!p.history.with_file_name("relay.dat").exists());
     }
 }
