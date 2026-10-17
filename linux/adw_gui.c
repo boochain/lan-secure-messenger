@@ -28,7 +28,7 @@ static GPtrArray *icon_widgets; static gboolean test_log_later(gpointer p);
 #define APP_ID "io.github.frec86.LanMessenger"
 static lsm_core *C;
 static AdwApplication *app;
-static GtkWidget *win, *split, *conv_list, *search, *chat_box, *chat_scroll, *title_lbl, *sub_lbl, *hdr_avatar, *input, *placeholder, *hint,
+static GtkWidget *hdr_shield; static GtkWidget *win, *split, *conv_list, *search, *chat_box, *chat_scroll, *title_lbl, *sub_lbl, *hdr_avatar, *input, *placeholder, *hint,
                  *content_stack, *add_popover, *add_entry, *menu_btn, *status_lbl, *drop_hint;
 static char cur_conv[64], data_dir[1024];
 static int list_dirty, chat_dirty, held, bg_notice_shown;
@@ -211,6 +211,7 @@ static void refresh_chat(void){
         gtk_box_append(GTK_BOX(chat_box),row); }
     lsm_unlock(C);
     gtk_label_set_text(GTK_LABEL(title_lbl),title); gtk_label_set_text(GTK_LABEL(sub_lbl),sub);
+    gtk_widget_set_visible(hdr_shield,strstr(sub,"已验证身份")!=NULL);  /* green shield next to the name (mockup); the words stay in the subtitle */
     { GtkWidget *old=gtk_widget_get_first_child(hdr_avatar); if(old) gtk_box_remove(GTK_BOX(hdr_avatar),old); gtk_box_append(GTK_BOX(hdr_avatar),avatar(title,key,36,online)); gtk_widget_set_visible(hdr_avatar,TRUE); }
     g_idle_add(scroll_end,NULL); }
 
@@ -251,7 +252,7 @@ static void pin_show(void){ char pin[8], b[300]; lsm_pin_offer(C,pin); snprintf(
 
 static void test_log(const char *what){
     /* decorative icons (GtkImage, no text) for the colour audit's ignore list; printed with every UI log line */
-    if(getenv("LSM_UI_TEST") && icon_widgets){ for(guint q=0;q<icon_widgets->len;q++){ graphene_rect_t r; GtkWidget *w=icon_widgets->pdata[q];
+    if(getenv("LSM_UI_TEST") && icon_widgets){ if(hdr_shield && !g_ptr_array_find(icon_widgets,hdr_shield,NULL)) g_ptr_array_add(icon_widgets,g_object_ref(hdr_shield)); for(guint q=0;q<icon_widgets->len;q++){ graphene_rect_t r; GtkWidget *w=icon_widgets->pdata[q];
         if(gtk_widget_get_mapped(w) && gtk_widget_compute_bounds(w,win,&r)) printf("ICON %s %d,%d,%d,%d\n",GTK_IS_IMAGE(w)?gtk_image_get_icon_name(GTK_IMAGE(w)):"online-dot",(int)r.origin.x-2,(int)r.origin.y-2,(int)r.size.width+4,(int)r.size.height+4); } } const char *t=getenv("LSM_UI_TEST");
     if(getenv("LSM_UI_DEBUG")){ const char *nm[]={"dbg-tv","dbg-frame","dbg-comp","dbg-hint"}; for(int q=0;q<4;q++){ GtkWidget *w=g_object_get_data(G_OBJECT(win),nm[q]); int mn,nat; if(!w) continue; gtk_widget_measure(w,GTK_ORIENTATION_VERTICAL,-1,&mn,&nat,NULL,NULL); printf("DBG %s h=%d min=%d nat=%d\n",nm[q],gtk_widget_get_height(w),mn,nat); } { int mn,nat; gtk_widget_measure(input,GTK_ORIENTATION_VERTICAL,-1,&mn,&nat,NULL,NULL); printf("DBG input h=%d min=%d nat=%d\n",gtk_widget_get_height(input),mn,nat); } }
     if(getenv("LSM_UI_DEBUG")){ GtkWidget *a=g_object_get_data(G_OBJECT(win),"dbg-pic"),*b=g_object_get_data(G_OBJECT(win),"dbg-ov"),*c=g_object_get_data(G_OBJECT(win),"dbg-bub"); if(a&&b&&c) for(GtkWidget *ch=gtk_widget_get_first_child(c);ch;ch=gtk_widget_get_next_sibling(ch)) printf("DBG child %s %dx%d\n",G_OBJECT_TYPE_NAME(ch),gtk_widget_get_width(ch),gtk_widget_get_height(ch)); printf("DBG pic %dx%d ov %dx%d bub %dx%d\n",gtk_widget_get_width(a),gtk_widget_get_height(a),gtk_widget_get_width(b),gtk_widget_get_height(b),gtk_widget_get_width(c),gtk_widget_get_height(c)); }
@@ -382,7 +383,8 @@ static void activate(GtkApplication *a, gpointer p){
     /* content */
     content_tv=adw_toolbar_view_new(); ct_hdr=adw_header_bar_new(); cls(ct_hdr,"lsm-hdr"); tbox=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,10);
     hdr_avatar=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,0); { GtkWidget *v=gtk_box_new(GTK_ORIENTATION_VERTICAL,0); title_lbl=label("","chat-title"); sub_lbl=label("","chat-sub"); gtk_label_set_ellipsize(GTK_LABEL(sub_lbl),PANGO_ELLIPSIZE_END);
-      gtk_box_append(GTK_BOX(v),title_lbl); gtk_box_append(GTK_BOX(v),sub_lbl); gtk_widget_set_valign(v,GTK_ALIGN_CENTER); gtk_box_append(GTK_BOX(tbox),hdr_avatar); gtk_box_append(GTK_BOX(tbox),v); }
+      { GtkWidget *th=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,6); hdr_shield=gtk_image_new_from_icon_name("security-high-symbolic"); cls(hdr_shield,"trusted"); gtk_widget_set_tooltip_text(hdr_shield,"已验证身份"); gtk_widget_set_visible(hdr_shield,FALSE);
+        gtk_box_append(GTK_BOX(th),title_lbl); gtk_box_append(GTK_BOX(th),hdr_shield); gtk_box_append(GTK_BOX(v),th); } gtk_box_append(GTK_BOX(v),sub_lbl); gtk_widget_set_valign(v,GTK_ALIGN_CENTER); gtk_box_append(GTK_BOX(tbox),hdr_avatar); gtk_box_append(GTK_BOX(tbox),v); }
     { GtkGesture *g=gtk_gesture_click_new(); g_signal_connect_swapped(g,"released",G_CALLBACK(details),NULL); gtk_widget_add_controller(tbox,GTK_EVENT_CONTROLLER(g)); gtk_widget_set_tooltip_text(tbox,"联系人详情 (Ctrl+I)"); }
     adw_header_bar_set_title_widget(ADW_HEADER_BAR(ct_hdr),gtk_label_new(NULL)); adw_header_bar_pack_start(ADW_HEADER_BAR(ct_hdr),tbox);
     { GtkWidget *more=gtk_menu_button_new(); GMenu *cm=g_menu_new(), *s1=g_menu_new(), *s2=g_menu_new();
