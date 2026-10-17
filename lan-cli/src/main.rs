@@ -60,6 +60,8 @@ enum Cmd {
     PinPair { peer: String, pin: String },
     /// Set display name
     Name { name: Vec<String> },
+    /// Relay server fallback: `relay on <host> <port> <passphrase>` | `relay off` | `relay status`
+    Relay { action: String, host: Option<String>, port: Option<u16>, passphrase: Option<String> },
     /// Network diagnostics
     Diag,
     /// Add Windows Firewall rules (UAC prompt)
@@ -158,9 +160,13 @@ async fn main() -> Result<()> {
                     p["name"].as_str().unwrap_or(""),
                     p["fingerprint"].as_str().unwrap_or(""),
                     p["trust"].as_str().unwrap_or(""),
-                    p["addr"].as_str().unwrap_or("-"),
+                    if p["via_relay"].as_bool() == Some(true) { "经服务器" } else { p["addr"].as_str().unwrap_or("-") },
                     p["direction"].as_str().unwrap_or("")
                 );
+            }
+            let r = &s["relay"];
+            if r["enabled"].as_bool() == Some(true) {
+                println!("中转服务器 {}: {} {}  在线 {}", r["server"].as_str().unwrap_or(""), r["state"].as_str().unwrap_or(""), r["detail"].as_str().unwrap_or(""), r["peers"]);
             }
         }
         Cmd::Send { peer, text } => {
@@ -236,6 +242,24 @@ async fn main() -> Result<()> {
         Cmd::PinOffer => { let r = x.call("pin_offer", json!({})).await?; x.out(&r) }
         Cmd::PinPair { peer, pin } => { let fp = x.resolve_peer(&peer).await?; let r = x.call("pin_pair", json!({"fingerprint": fp, "pin": pin})).await?; x.out(&r) }
         Cmd::Name { name } => { let r = x.call("set_display_name", json!({"name": name.join(" ")})).await?; x.out(&r) }
+        Cmd::Relay { action, host, port, passphrase } => {
+            let r = match action.as_str() {
+                "on" => {
+                    let mut patch = json!({"relay_enabled": true});
+                    if let Some(h) = host { patch["relay_host"] = json!(h); }
+                    if let Some(p) = port { patch["relay_port"] = json!(p); }
+                    if let Some(p) = passphrase { patch["relay_passphrase"] = json!(p); }
+                    x.call("update_settings", json!({"settings": patch})).await?;
+                    x.call("relay_status", json!({})).await?
+                }
+                "off" => {
+                    x.call("update_settings", json!({"settings": {"relay_enabled": false}})).await?;
+                    x.call("relay_status", json!({})).await?
+                }
+                _ => x.call("relay_status", json!({})).await?,
+            };
+            x.out(&r)
+        }
         Cmd::Diag => { let r = x.call("get_diagnostics", json!({})).await?; x.out(&r) }
         Cmd::FirewallSetup { public } => { let r = x.call("firewall_setup", json!({"include_public": public})).await?; x.out(&r) }
         Cmd::Watch => {

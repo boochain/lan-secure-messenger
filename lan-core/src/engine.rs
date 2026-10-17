@@ -18,6 +18,8 @@ use crate::history::HistoryStore;
 use crate::identity::Identity;
 use crate::link::{self, Link, LinkWriter};
 mod files;
+mod relay;
+pub use relay::RelayConfig;
 use files::{TransferEvt, TransferRt};
 use crate::wire::{Frame, Hello, Payload, PROTO_VERSION};
 use crate::APP_VERSION;
@@ -106,6 +108,7 @@ pub(crate) enum EngineMsg {
     Closed { fp: String, conn_id: u64, err: String },
     Seen(Seen),
     Transfer(TransferEvt),
+    Relay(relay::RelayEvt),
     Tick,
 }
 
@@ -115,6 +118,8 @@ pub(crate) struct Conn {
     pub ctrl: mpsc::UnboundedSender<Frame>,
     pub bulk: mpsc::Sender<Frame>,
     addr: SocketAddr,
+    /// Link carried by the relay server (fallback; LAN direct preferred).
+    via_relay: bool,
     since: Instant,
     last_rx: Instant,
     last_ping: Instant,
@@ -195,6 +200,11 @@ pub struct Engine {
     seen_ids: VecDeque<Uuid>,
     seen_set: HashSet<Uuid>,
     shutdown: Arc<Notify>,
+    relay: mpsc::UnboundedSender<relay::RelayCmd>,
+    relay_state: (String, String),
+    /// fingerprint -> name of peers currently present on the relay server.
+    relay_peers: HashMap<String, String>,
+    relay_last_open: Instant,
 }
 
 pub async fn start(opts: EngineOptions) -> Result<EngineHandle> {
@@ -300,6 +310,8 @@ pub async fn start(opts: EngineOptions) -> Result<EngineHandle> {
         });
     }
 
+    let relay = relay::spawn(shared.clone(), tx.clone());
+    let _ = relay.send(relay::RelayCmd::Configure(relay_cfg(&settings)));
     let mut eng = Engine {
         shared,
         me: me.clone(),
@@ -325,6 +337,10 @@ pub async fn start(opts: EngineOptions) -> Result<EngineHandle> {
         seen_ids: VecDeque::new(),
         seen_set: HashSet::new(),
         shutdown: shutdown.clone(),
+        relay,
+        relay_state: ("off".into(), String::new()),
+        relay_peers: HashMap::new(),
+        relay_last_open: Instant::now(),
     };
     eng.rebuild_outbox();
     // Redial remembered trusted peers immediately.
@@ -343,6 +359,10 @@ pub async fn start(opts: EngineOptions) -> Result<EngineHandle> {
         eng.on_shutdown();
     });
     Ok(handle)
+}
+
+fn relay_cfg(s: &Settings) -> RelayConfig {
+    RelayConfig { enabled: s.relay_enabled, host: s.relay_host.trim().to_string(), port: s.relay_port, passphrase: s.relay_passphrase.clone() }
 }
 
 fn settings_listen(s: &Settings) -> bool {
@@ -430,6 +450,7 @@ impl Engine {
             EngineMsg::Closed { fp, conn_id, err } => self.on_closed(&fp, conn_id, &err),
             EngineMsg::Seen(s) => self.on_seen(s),
             EngineMsg::Transfer(ev) => self.on_transfer_evt(ev),
+            EngineMsg::Relay(ev) => self.on_relay(ev),
             EngineMsg::Tick => self.on_tick(),
         }
         false
@@ -478,7 +499,10 @@ impl Engine {
         // Tie-break.
         if let Some(existing) = self.conns.get(&fp) {
             let pref = |init_is_me: bool| if init_is_me { self.me < fp } else { fp < self.me };
-            let keep_new = if existing.last_rx.elapsed() > STALE_FOR_TIEBREAK {
+            let keep_new = if existing.via_relay != link.via_relay {
+                // LAN direct always beats the relay.
+                existing.via_relay
+            } else if existing.last_rx.elapsed() > STALE_FOR_TIEBREAK {
                 true
             } else if pref(existing.initiator) == pref(initiator) {
                 // Same direction twice: the peer reconnected; the old one is stale.
@@ -494,11 +518,13 @@ impl Engine {
             }
             let old = self.conns.remove(&fp).unwrap();
             old.reader.abort();
+            let _ = old.ctrl.send(Frame::Bye);
             self.fail_transfers_for(&fp, "连接被替换");
             tracing::debug!(%fp, "tie-break: replacing existing link");
         }
         let hello = link.remote_hello.clone();
         let addr = link.remote_addr;
+        let via_relay = link.via_relay;
         let dial_addr = if initiator { addr } else { SocketAddr::new(addr.ip(), hello.listen_port) };
         let conn_id = self.next_conn_id;
         self.next_conn_id += 1;
@@ -536,6 +562,7 @@ impl Engine {
                 ctrl: ctrl_tx,
                 bulk: bulk_tx,
                 addr,
+                via_relay,
                 since: now,
                 last_rx: now,
                 last_ping: now,
@@ -554,7 +581,7 @@ impl Engine {
                 c.trust = Trust::Trusted;
             }
         }
-        if hello.listen_port != 0 {
+        if hello.listen_port != 0 && !via_relay {
             self.contacts.note_addr(&fp, &dial_addr.to_string());
         }
         let _ = self.contacts.save();
@@ -563,8 +590,8 @@ impl Engine {
         r.failures = 0;
         r.last_error.clear();
         r.next_attempt = None;
-        r.sources.insert(if initiator { "outbound".into() } else { "inbound".into() });
-        tracing::info!(%fp, name = %hello.name, %addr, initiator, "peer online");
+        r.sources.insert(if via_relay { "relay".into() } else if initiator { "outbound".into() } else { "inbound".into() });
+        tracing::info!(%fp, name = %hello.name, %addr, initiator, via_relay, "peer online");
         self.emit_peer(&fp);
         self.flush_outbox(&fp);
         self.resend_offers(&fp);
@@ -670,12 +697,28 @@ impl Engine {
         for fp in dead {
             self.drop_conn(&fp, "心跳超时");
         }
+        // Relay fallback: ask for a session to every relay peer we have no link with.
+        if !self.relay_peers.is_empty() && self.relay_last_open.elapsed() >= Duration::from_secs(2) {
+            self.relay_last_open = now;
+            for fp in self.relay_peers.keys() {
+                if !self.conns.contains_key(fp) && self.contacts.trust(fp) != Trust::Blocked {
+                    let _ = self.relay.send(relay::RelayCmd::Open(fp.clone()));
+                }
+            }
+        }
         // Dial peers that should be online.
         let mut to_dial = vec![];
         let fps: HashSet<String> = self.rt.keys().chain(self.contacts.contacts.keys()).cloned().collect();
         for fp in fps {
-            if self.conns.contains_key(&fp) || self.contacts.trust(&fp) == Trust::Blocked {
+            if self.contacts.trust(&fp) == Trust::Blocked {
                 continue;
+            }
+            if let Some(c) = self.conns.get(&fp) {
+                // On the relay: keep trying LAN direct while the peer is announced on the LAN.
+                let lan_seen = self.rt.get(&fp).and_then(|r| r.last_announce).map(|t| t.elapsed() < Duration::from_secs(15)).unwrap_or(false);
+                if !c.via_relay || !lan_seen {
+                    continue;
+                }
             }
             let trusted = self.contacts.trust(&fp) == Trust::Trusted;
             let r = self.rt.entry(fp.clone()).or_default();
@@ -1192,6 +1235,61 @@ impl Engine {
 
     // ---------------------------------------------------------------- views
 
+    fn relay_view(&self) -> RelayStatus {
+        RelayStatus {
+            enabled: self.settings.relay_enabled,
+            state: self.relay_state.0.clone(),
+            detail: self.relay_state.1.clone(),
+            server: if self.settings.relay_host.trim().is_empty() { String::new() } else { format!("{}:{}", self.settings.relay_host.trim(), self.settings.relay_port) },
+            peers: self.relay_peers.len() as u32,
+            relayed_links: self.conns.values().filter(|c| c.via_relay).count() as u32,
+        }
+    }
+
+    fn emit_relay(&self) {
+        self.emit(Event::RelayUpdated { relay: self.relay_view() });
+    }
+
+    fn on_relay(&mut self, ev: relay::RelayEvt) {
+        use relay::RelayEvt as R;
+        match ev {
+            R::Status { state, detail } => {
+                if state == "auth_failed" && self.relay_state.0 != "auth_failed" {
+                    self.notice("error", &format!("中转服务器认证失败: {detail}"));
+                }
+                self.relay_state = (state, detail);
+                self.emit_relay();
+            }
+            R::PeerJoin { fp, name } => {
+                if fp == self.me {
+                    return;
+                }
+                self.relay_peers.insert(fp.clone(), name);
+                if !self.conns.contains_key(&fp) && self.contacts.trust(&fp) != Trust::Blocked {
+                    let _ = self.relay.send(relay::RelayCmd::Open(fp.clone()));
+                }
+                self.emit_peer(&fp);
+                self.emit_relay();
+            }
+            R::PeerLeave { fp } => {
+                self.relay_peers.remove(&fp);
+                self.emit_peer(&fp);
+                self.emit_relay();
+            }
+            R::PeersCleared => {
+                let fps: Vec<String> = self.relay_peers.drain().map(|(k, _)| k).collect();
+                for fp in fps {
+                    self.emit_peer(&fp);
+                }
+                self.emit_relay();
+            }
+            R::Link { link, initiator } => {
+                self.on_link_up(*link, initiator, None);
+                self.emit_relay();
+            }
+        }
+    }
+
     pub(crate) fn peer_view(&self, fp: &str) -> Peer {
         let c = self.contacts.get(fp);
         let conn = self.conns.get(fp);
@@ -1209,7 +1307,8 @@ impl Engine {
             trust: c.map(|c| c.trust).unwrap_or_default(),
             online: conn.is_some(),
             state,
-            addr: conn.map(|c| c.addr.to_string()).or_else(|| r.and_then(|r| r.announce_addr.map(|a| a.to_string()))),
+            via_relay: conn.map(|c| c.via_relay).unwrap_or(false),
+            addr: conn.filter(|c| !c.via_relay).map(|c| c.addr.to_string()).or_else(|| r.and_then(|r| r.announce_addr.map(|a| a.to_string()))),
             direction: conn.map(|c| if c.initiator { "outbound".into() } else { "inbound".into() }),
             last_seen_ms: if conn.is_some() { now_ms() } else { c.map(|c| c.last_seen_ms).unwrap_or(0) },
             muted: c.map(|c| c.muted).unwrap_or(false),
@@ -1234,6 +1333,11 @@ impl Engine {
         let mut v: Vec<String> = self.contacts.contacts.keys().cloned().collect();
         for (fp, r) in &self.rt {
             if !v.contains(fp) && r.last_announce.map(|t| t.elapsed() < Duration::from_secs(60)).unwrap_or(false) {
+                v.push(fp.clone());
+            }
+        }
+        for fp in self.relay_peers.keys() {
+            if !v.contains(fp) {
                 v.push(fp.clone());
             }
         }
@@ -1330,7 +1434,7 @@ impl Engine {
         let mut transfers: Vec<Transfer> = self.transfers.values().map(|t| t.view()).collect();
         transfers.sort_by(|a, b| b.started_ms.cmp(&a.started_ms));
         transfers.truncate(300);
-        Snapshot { me: self.me_view(), peers, groups, conversations, transfers, settings: self.settings.clone() }
+        Snapshot { me: self.me_view(), peers, groups, conversations, transfers, settings: self.settings.clone(), relay: self.relay_view() }
     }
 
     fn diag_peers(&self) -> Vec<PeerDiag> {
@@ -1632,6 +1736,7 @@ impl Engine {
                     self.settings.display_name = n.clone();
                     *self.shared.name.lock().unwrap() = n.clone();
                     self.disco.info.lock().unwrap().name = n.clone();
+                    let _ = self.relay.send(relay::RelayCmd::Rename);
                     for c in self.conns.values() {
                         let _ = c.ctrl.send(Frame::Name { name: n.clone() });
                     }
@@ -1805,6 +1910,7 @@ impl Engine {
                     ok(json!({"ok": true, "restart_required": true}))
                 }
             }
+            "relay_status" => ok(serde_json::to_value(self.relay_view()).unwrap_or_default()),
             "pin_offer" => {
                 let pin = format!("{:06}", rand::random::<u32>() % 1_000_000);
                 self.pending_pin = Some((pin.clone(), Instant::now(), 0));
@@ -1825,8 +1931,12 @@ impl Engine {
                     || s.include_interfaces != before.include_interfaces
                     || s.exclude_interfaces != before.exclude_interfaces;
                 self.history.set_enabled(s.history_enabled);
+                if relay_cfg(&s) != relay_cfg(&before) {
+                    let _ = self.relay.send(relay::RelayCmd::Configure(relay_cfg(&s)));
+                }
                 if s.display_name != before.display_name {
                     *self.shared.name.lock().unwrap() = s.display_name.clone();
+                    let _ = self.relay.send(relay::RelayCmd::Rename);
                     self.disco.info.lock().unwrap().name = s.display_name.clone();
                     for c in self.conns.values() {
                         let _ = c.ctrl.send(Frame::Name { name: s.display_name.clone() });

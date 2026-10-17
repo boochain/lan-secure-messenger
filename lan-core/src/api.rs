@@ -87,6 +87,22 @@ pub struct Peer {
     pub unread: u32,
     pub rtt_ms: Option<u32>,
     pub app_version: String,
+    /// Connected through the relay server (UI badge 经服务器 / tooltip 经服务器中转).
+    #[serde(default)]
+    pub via_relay: bool,
+}
+
+/// Relay client state. state: off | connecting | online | auth_failed | error
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RelayStatus {
+    pub enabled: bool,
+    pub state: String,
+    pub detail: String,
+    pub server: String,
+    /// Peers currently present on the relay server.
+    pub peers: u32,
+    /// Live links carried by the relay.
+    pub relayed_links: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -189,6 +205,8 @@ pub struct Snapshot {
     pub conversations: Vec<Conversation>,
     pub transfers: Vec<Transfer>,
     pub settings: Settings,
+    #[serde(default)]
+    pub relay: RelayStatus,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -236,6 +254,7 @@ pub enum Event {
     ConversationUpdated { conversation: Conversation },
     MeUpdated { me: Me },
     SettingsUpdated { settings: Settings },
+    RelayUpdated { relay: RelayStatus },
     /// Human-readable notice for toasts / status bar. level: info|warn|error
     Notice { level: String, text: String },
     /// Incoming message worth a toast (not muted, not own).

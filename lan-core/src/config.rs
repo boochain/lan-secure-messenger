@@ -99,6 +99,12 @@ pub struct Settings {
     pub auto_trust: bool,
     pub check_updates: bool,
     pub announce_interval_secs: u64,
+    /// Relay server fallback (off by default). LAN direct is always preferred.
+    pub relay_enabled: bool,
+    pub relay_host: String,
+    pub relay_port: u16,
+    /// Network passphrase (never sent; challenge-response).
+    pub relay_passphrase: String,
 }
 
 impl Default for Settings {
@@ -121,6 +127,10 @@ impl Default for Settings {
             auto_trust: false,
             check_updates: true,
             announce_interval_secs: 3,
+            relay_enabled: false,
+            relay_host: String::new(),
+            relay_port: 9443,
+            relay_passphrase: String::new(),
         }
     }
 }

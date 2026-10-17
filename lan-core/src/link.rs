@@ -9,15 +9,19 @@ use anyhow::{anyhow, bail, Context, Result};
 use snow::StatelessTransportState;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
+
+/// Read / write halves of a link transport: a LAN TCP stream, or a relay session
+/// (an in-memory duplex pumped by `relay.rs`, carrying exactly the same bytes).
+pub type RdHalf = Box<dyn AsyncRead + Send + Unpin>;
+pub type WrHalf = Box<dyn AsyncWrite + Send + Unpin>;
 
 const MAX_WIRE: usize = 65535 + 4;
 pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub struct LinkReader {
-    rd: OwnedReadHalf,
+    rd: RdHalf,
     st: Arc<StatelessTransportState>,
     nonce: u64,
     buf: Vec<u8>,
@@ -25,7 +29,7 @@ pub struct LinkReader {
 }
 
 pub struct LinkWriter {
-    wr: OwnedWriteHalf,
+    wr: WrHalf,
     st: Arc<StatelessTransportState>,
     nonce: u64,
     buf: Vec<u8>,
@@ -37,6 +41,8 @@ pub struct Link {
     pub remote_fp: Fingerprint,
     pub remote_hello: Hello,
     pub remote_addr: std::net::SocketAddr,
+    /// Carried by the relay server (UI badge 经服务器) instead of a direct LAN connection.
+    pub via_relay: bool,
 }
 
 async fn write_raw(wr: &mut (impl AsyncWriteExt + Unpin), data: &[u8]) -> Result<()> {
@@ -103,14 +109,25 @@ impl LinkReader {
 
 /// Run the Noise XX handshake plus Hello exchange.
 pub async fn establish(stream: TcpStream, identity: &Identity, hello: Hello, initiator: bool) -> Result<Link> {
-    tokio::time::timeout(HANDSHAKE_TIMEOUT, establish_inner(stream, identity, hello, initiator))
+    stream.set_nodelay(true).ok();
+    let remote_addr = stream.peer_addr()?;
+    establish_over(stream, remote_addr, false, identity, hello, initiator).await
+}
+
+/// Same handshake over any byte stream (used for relay sessions).
+pub async fn establish_over<S>(stream: S, remote_addr: std::net::SocketAddr, via_relay: bool, identity: &Identity, hello: Hello, initiator: bool) -> Result<Link>
+where
+    S: AsyncRead + AsyncWrite + Send + Unpin + 'static,
+{
+    tokio::time::timeout(HANDSHAKE_TIMEOUT, establish_inner(stream, remote_addr, via_relay, identity, hello, initiator))
         .await
         .map_err(|_| anyhow!("handshake timeout"))?
 }
 
-async fn establish_inner(mut stream: TcpStream, identity: &Identity, hello: Hello, initiator: bool) -> Result<Link> {
-    stream.set_nodelay(true).ok();
-    let remote_addr = stream.peer_addr()?;
+async fn establish_inner<S>(mut stream: S, remote_addr: std::net::SocketAddr, via_relay: bool, identity: &Identity, hello: Hello, initiator: bool) -> Result<Link>
+where
+    S: AsyncRead + AsyncWrite + Send + Unpin + 'static,
+{
     let kp = identity.snow_private();
     let mut buf = vec![0u8; 65535];
     let mut raw = Vec::new();
@@ -141,7 +158,8 @@ async fn establish_inner(mut stream: TcpStream, identity: &Identity, hello: Hell
         bail!("connected to self");
     }
     let st = Arc::new(hs.into_stateless_transport_mode().map_err(|e| anyhow!("transport: {e}"))?);
-    let (rd, wr) = stream.into_split();
+    let (rd, wr) = tokio::io::split(stream);
+    let (rd, wr): (RdHalf, WrHalf) = (Box::new(rd), Box::new(wr));
     let mut writer = LinkWriter { wr, st: st.clone(), nonce: 0, buf: Vec::new() };
     let mut reader = LinkReader { rd, st, nonce: 0, buf: Vec::new(), out: Vec::new() };
     writer.send_bytes(&wire::encode(&hello)?).await?;
@@ -149,7 +167,7 @@ async fn establish_inner(mut stream: TcpStream, identity: &Identity, hello: Hell
     if remote_hello.proto != wire::PROTO_VERSION {
         bail!("peer speaks protocol v{}, we speak v{}", remote_hello.proto, wire::PROTO_VERSION);
     }
-    Ok(Link { reader, writer, remote_fp, remote_hello: clean_hello(remote_hello), remote_addr })
+    Ok(Link { reader, writer, remote_fp, remote_hello: clean_hello(remote_hello), remote_addr, via_relay })
 }
 
 /// Remote display name sanitised.
