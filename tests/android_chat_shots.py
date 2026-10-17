@@ -71,5 +71,25 @@ for th in ("light", "dark"):
     sh("cmd uimode night " + ("yes" if th == "dark" else "no")); time.sleep(6)
     shot(f"android-{th}-10-list")
     tap_text("王工"); time.sleep(2); shot(f"android-{th}-11-chat"); back()
+# ---- regression: system Back navigates (chat -> list), closes menus first, survives rotation, double-back exits
+def has(t): return find(lambda n: n.get("text") == t or n.get("content-desc") == t) is not None
+def resumed(): return PKG in sh("dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity'")
+FAILS = []
+def check(cond, what):
+    print(("PASS " if cond else "FAIL ") + what, flush=True)
+    if not cond: FAILS.append(what)
+sh("cmd uimode night no"); time.sleep(4)
+tap_text("王工"); check(has("输入消息"), "open chat")
+back(); check(has("局域网安全通讯") and not has("输入消息") and resumed(), "Back from chat returns to the list (app stays open)")
+tap_text("王工"); tap_text("菜单"); check(has("查看指纹"), "chat menu open")
+back(); check(not has("查看指纹") and has("输入消息"), "Back closes the menu, stays in the chat")
+sh("settings put system accelerometer_rotation 0"); sh("settings put system user_rotation 1"); time.sleep(4)
+check(has("输入消息"), "rotation keeps the open chat")
+sh("settings put system user_rotation 0"); time.sleep(4)
+back(); check(has("局域网安全通讯") and resumed(), "Back after rotation returns to the list")
+tap_text("群组"); back(); check(has("局域网安全通讯") and resumed(), "Back on another tab returns to 聊天, app stays open")
+sh("input keyevent 4"); time.sleep(0.8); check(resumed(), "first Back at the root does not exit ('再按一次退出' toast)")
+sh("input keyevent 4"); time.sleep(3); check(not resumed(), "second Back within 2 s exits")
 for p in P.values(): p.stop()
+if FAILS: sys.exit("back-navigation regression: " + "; ".join(FAILS))
 sh("cmd uimode night no"); sh(f"am force-stop {PKG}")

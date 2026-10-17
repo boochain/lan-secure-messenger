@@ -1,5 +1,8 @@
 package io.github.frec86.lanmessenger
 
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -31,7 +34,19 @@ fun Home(st: AppState, open: (String) -> Unit) {
     val p = LocalPalette.current
     var tab by rememberSaveable { mutableIntStateOf(0) }; var filter by rememberSaveable { mutableIntStateOf(0) }
     var menu by remember { mutableStateOf(false) }; var dlg by remember { mutableStateOf("") }
-    var searching by remember { mutableStateOf(false) }; var q by remember { mutableStateOf("") }
+    var searching by rememberSaveable { mutableStateOf(false) }; var q by rememberSaveable { mutableStateOf("") }
+    // system Back at the root: close search, then go to the 聊天 tab, then double-press within 2 s to exit
+    val act = LocalContext.current as? android.app.Activity
+    var lastBack by remember { mutableLongStateOf(0L) }
+    BackHandler {
+        when {
+            searching -> { searching = false; q = "" }
+            tab != 0 -> tab = 0
+            filter != 0 -> filter = 0
+            android.os.SystemClock.uptimeMillis() - lastBack < 2000 -> act?.finish()
+            else -> { lastBack = android.os.SystemClock.uptimeMillis(); Toast.makeText(act, "再按一次退出", Toast.LENGTH_SHORT).show() }
+        }
+    }
     val convs = st.convs()
     val totalUnread = convs.sumOf { it.unread }
     Column(Modifier.fillMaxSize().background(p.window).statusBarsPadding()) {

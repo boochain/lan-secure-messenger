@@ -29,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -96,14 +97,15 @@ fun App(pendingShare: MutableState<List<Uri>>, openConvExt: MutableState<String?
     val st by Repo.state.collectAsState()
     val toast by Repo.toast.collectAsState()
     val ctx = LocalContext.current
-    var conv by remember { mutableStateOf<String?>(null) }
+    var conv by rememberSaveable { mutableStateOf<String?>(null) }   // survives rotation / process death
     LaunchedEffect(openConvExt.value) { openConvExt.value?.let { conv = it; openConvExt.value = null } }
     LaunchedEffect(toast) { toast?.let { Toast.makeText(ctx, it, Toast.LENGTH_LONG).show(); Repo.toast.value = null } }
     if (pendingShare.value.isNotEmpty()) SharePicker(st, onPick = { c -> sendUris(ctx, c, pendingShare.value); pendingShare.value = emptyList(); conv = c }, onDismiss = { pendingShare.value = emptyList() })
     pendingText.value?.let { txt -> SharePicker(st, onPick = { c -> val e = Native.sendText(c, txt.trim()); if (e.isNotEmpty()) Repo.toast.value = e; Repo.refresh(); pendingText.value = null; conv = c },
         onDismiss = { pendingText.value = null }) }
     val c = conv
-    if (c == null) Home(st) { conv = it } else { BackHandler { conv = null }; Chat(st, c) { conv = null } }
+    // Back: chat -> list (Chat's own handler closes its search first); the list handles tabs/search and double-back-to-exit
+    if (c == null) Home(st) { conv = it } else Chat(st, c) { conv = null }
 }
 
 /* ---------------------------------------------------------------- dialogs */

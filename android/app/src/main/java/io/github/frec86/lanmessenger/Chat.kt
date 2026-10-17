@@ -1,5 +1,7 @@
 package io.github.frec86.lanmessenger
 
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -49,7 +51,9 @@ fun Chat(st: AppState, conv: String, back: () -> Unit) {
     val contact = st.contacts.firstOrNull { "dm:" + it.fp == conv }
     val group = st.groups.firstOrNull { "group:" + it.id == conv }
     var input by remember { mutableStateOf("") }; var menu by remember { mutableStateOf(false) }; var dlg by remember { mutableStateOf("") }
-    var searching by remember { mutableStateOf(false) }; var q by remember { mutableStateOf("") }
+    var searching by rememberSaveable { mutableStateOf(false) }; var q by rememberSaveable { mutableStateOf("") }
+    // system Back / predictive back: close the in-chat search first, then return to the list (menus/dialogs dismiss themselves)
+    BackHandler { if (searching) { searching = false; q = "" } else back() }
     var saveSrc by remember { mutableStateOf<String?>(null) }
     val msgs = if (searching && q.isNotBlank()) all.filter { it.body.contains(q, true) || it.file.contains(q, true) } else all
     val rows = remember(msgs, group != null) { buildRows(msgs, group != null) }
