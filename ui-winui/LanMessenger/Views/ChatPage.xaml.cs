@@ -21,7 +21,7 @@ public sealed partial class ChatPage : Page
         NavigationCacheMode = NavigationCacheMode.Required;
         // keyboard shortcuts (Fluent: keyboard accelerators): Ctrl+F search, Ctrl+N add contact, Ctrl+(Shift+)Tab next/prev chat, Esc
         AddAccel(VirtualKey.F, VirtualKeyModifiers.Control, () => FocusSearch());
-        AddAccel(VirtualKey.N, VirtualKeyModifiers.Control, () => AddPeerBox.Focus(FocusState.Keyboard));
+        AddAccel(VirtualKey.N, VirtualKeyModifiers.Control, OpenAddPeer);
         // Ctrl+Tab / Ctrl+Shift+Tab: Tab is consumed by focus navigation (and the multi-line composer) before
         // KeyboardAccelerators run (found by the UI smoke runtime check), so handle it in the tunnelling PreviewKeyDown.
         PreviewKeyDown += (_, e) =>
@@ -68,7 +68,48 @@ public sealed partial class ChatPage : Page
 
     public void FocusSearch() => SearchBox.Focus(FocusState.Keyboard);
     private void FocusSearch_Click(object sender, RoutedEventArgs e) => FocusSearch();
-    private void AddPeerFocus_Click(object sender, RoutedEventArgs e) => AddPeerBox.Focus(FocusState.Keyboard);
+    /// <summary>Ctrl+N / the header button: the add-by-IP flyout, with its box focused.</summary>
+    public void OpenAddPeer() => AddPeerFlyout.ShowAt(AddPeerButton);
+    private void AddPeerFlyout_Opened(object? sender, object e) => DispatcherQueue.TryEnqueue(() => AddPeerBox.Focus(FocusState.Keyboard));
+    internal void SmokeCloseAddPeer() => AddPeerFlyout.Hide();
+
+    /// <summary>Contact / group details (fingerprint, latency, address, key epoch) — kept out of the header.</summary>
+    private void Details_Tapped(object sender, TappedRoutedEventArgs e) => _ = ShowDetailsAsync();
+    private void Details_Click(object sender, RoutedEventArgs e) => _ = ShowDetailsAsync();
+    private async Task ShowDetailsAsync()
+    {
+        if (!VM.HasSelection) return;
+        var body = new TextBlock { Text = VM.SelectedDetailsText, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true, LineHeight = 24 };
+        var d = Services.ThemeService.Prepare(new ContentDialog
+        {
+            XamlRoot = XamlRoot, Title = VM.SelectedIsDm ? $"联系人详情 · {VM.SelectedTitle}" : $"群组详情 · {VM.SelectedTitle}", Content = body,
+            CloseButtonText = "关闭", DefaultButton = ContentDialogButton.Close,
+            PrimaryButtonText = VM.SelectedIsDm ? "复制指纹" : "",
+        });
+        if (await d.ShowAsync() == ContentDialogResult.Primary && VM.SelectedConversation is { } c)
+        {
+            var dp = new DataPackage(); dp.SetText(c.PeerFingerprint); Clipboard.SetContent(dp); VM.ShowStatus("指纹已复制");
+        }
+    }
+    internal Task SmokeShowDetailsAsync() => ShowDetailsAsync();
+
+    /// <summary>Incoming file card: download = save a copy wherever the user wants (files are received into the download folder).</summary>
+    private async void SaveAs_Click(object sender, RoutedEventArgs e)
+    {
+        if (ItemOf(sender) is not { HasFilePath: true } m) return;
+        try
+        {
+            var picker = new Windows.Storage.Pickers.FileSavePicker { SuggestedFileName = Path.GetFileNameWithoutExtension(m.FileName) };
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(App.MainWin!));
+            var ext = Path.GetExtension(m.FileName);
+            picker.FileTypeChoices.Add(ext.Length > 1 ? ext.TrimStart('.').ToUpperInvariant() + " 文件" : "文件", new List<string> { ext.Length > 1 ? ext : ".bin" });
+            var f = await picker.PickSaveFileAsync();
+            if (f == null) return;
+            File.Copy(m.FilePath, f.Path, true);
+            VM.ShowStatus("已保存到 " + f.Path);
+        }
+        catch (Exception ex) { VM.ShowStatus("保存失败：" + ex.Message); }
+    }
     private void NewGroup_Click(object sender, RoutedEventArgs e) => App.MainWin?.NavigateTo("groups");
 
     public void CycleConversation(int d)

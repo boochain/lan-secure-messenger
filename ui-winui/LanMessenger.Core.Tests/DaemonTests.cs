@@ -200,7 +200,8 @@ public class DaemonTests
         await Until("conversation exists", () => { lock (ui.Gate) return vm.Conversations.Any(c => c.PeerFingerprint == sb.Me.Fingerprint && c.Online); });
         lock (ui.Gate) vm.SelectPeer(sb.Me.Fingerprint);
         Assert.True(vm.SelectedIsDm);
-        Assert.Contains("已信任", vm.SelectedSubtitle);
+        Assert.Equal("在线 · 已验证身份 · 局域网直连", vm.SelectedSubtitle);   // no fingerprint / latency piled into the header
+        Assert.Contains(sb.Me.Fingerprint, vm.SelectedDetailsText);
         vm.ComposeText = "hello from the view model";
         await vm.SendCommand.ExecuteAsync(null);
         Assert.Equal("", vm.ComposeText);

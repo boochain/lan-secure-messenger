@@ -109,13 +109,13 @@ foreach ($theme in "light", "dark") {
   else { $problems += "[$theme] contrast-$theme.txt missing" }
   if (-not (Select-String -Path "$dir\ui-smoke.txt" -Pattern "UI_SMOKE_OK" -Quiet -ErrorAction SilentlyContinue)) { $problems += "[$theme] app reported UI_SMOKE_FAIL" }
   # runtime checks done in the app with real SendInput keyboard/mouse input (UiSmoke.cs): each must report PASS
-  $runtime = @("shortcut Ctrl+F", "shortcut Esc clears", "shortcut Ctrl+N", "shortcut Ctrl+Tab", "shortcut Ctrl+Shift+Tab",
+  $runtime = @("shortcut Ctrl+F", "shortcut Esc clears", "shortcut Ctrl+N opens", "chat header subtitle has no", "shortcut Ctrl+Tab", "shortcut Ctrl+Shift+Tab",
                "right-click on a message", "right-click on a contact", "Esc closes the context menu",
                "window memory: saved", "window memory: restored", "window memory: an off-screen")
   foreach ($r in $runtime) {
     if (-not (Select-String -Path "$dir\ui-smoke.txt" -Pattern ("PASS: " + [regex]::Escape($r)) -Quiet -ErrorAction SilentlyContinue)) { $problems += "[$theme] runtime check did not pass: $r" }
   }
-  $need = @($shots | ForEach-Object { "$_-$theme.png" }) + @("popup-message-menu-$theme.png")
+  $need = @($shots | ForEach-Object { "$_-$theme.png" }) + @("popup-message-menu-$theme.png", "popup-add-peer-$theme.png", "dialog-details-$theme.png")
   if ($theme -eq "dark") { $need += "page-chat-dm-live-light.png" }
   foreach ($f in $need) {
     $p = Join-Path $dir $f

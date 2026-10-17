@@ -12,6 +12,11 @@ public class RedesignFmtTests
     [InlineData("bob", "B")]
     [InlineData("王工", "王")]
     [InlineData("  ", "?")]
+    [InlineData("CI 测试群", "C")]
+    [InlineData("Bob 李", "B")]
+    [InlineData("Bob Miller Jr", "BM")]
+    [InlineData("李 Bob", "李")]
+    [InlineData("运维值班", "运")]
     public void Initials(string name, string want) => Assert.Equal(want, Fmt.Initials(name));
 
     [Fact]

@@ -51,15 +51,21 @@ public static class Fmt
     public static string Initial(string name) => Initials(name);
 
     // ---- redesign (design/redesign/spec.md §6): the same rules on all four clients ----
-    /// <summary>Latin names: first letters of the first two words ("Alice Chen" -> "AC"); otherwise the first character.</summary>
+    /// <summary>
+    /// Avatar initials (same rule on WinUI / Android / GTK / XP): a name starting with a CJK character -> that one character
+    /// ("王工" -> "王"); a Latin name -> the first letters of up to two Latin words, never mixed with CJK ("Alice Chen" -> "AC",
+    /// "CI 测试群" -> "C"); anything else -> the first character.
+    /// </summary>
     public static string Initials(string name)
     {
         var n = (name ?? "").Trim();
         if (n.Length == 0) return "?";
-        if (n[0] < 128 && char.IsLetter(n[0]))
-            return string.Concat(n.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Take(2).Select(w => char.ToUpperInvariant(w[0])));
+        if (IsLatinLetter(n[0]))
+            return string.Concat(n.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+                .Where(w => IsLatinLetter(w[0])).Take(2).Select(w => char.ToUpperInvariant(w[0])));
         return char.IsSurrogatePair(n, 0) ? n[..2] : n[..1];
     }
+    private static bool IsLatinLetter(char c) => (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
 
     /// <summary>Avatar colour index: FNV-1a 32 over the UTF-8 id (fingerprint / group id), mod 8.</summary>
     public static int AvatarIndex(string id)

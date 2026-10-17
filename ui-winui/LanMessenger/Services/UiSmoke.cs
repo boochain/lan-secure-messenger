@@ -96,7 +96,12 @@ public static class UiSmoke
                             await ShotAsync(w, dir, "popup-menu", label, theme);
                             cp.CloseMoreMenuForSmoke();
                             await Task.Delay(600);
-                            await ShortcutChecksAsync(w, cp);
+                            await ShortcutChecksAsync(w, cp, dir, label, theme);
+                            // contact details dialog (fingerprint / latency moved out of the header)
+                            _ = cp.SmokeShowDetailsAsync(); await Task.Delay(1500);
+                            await ShotAsync(w, dir, "dialog-details", label, theme);
+                            Check(!App.VM.SelectedSubtitle.Contains("指纹") && !App.VM.SelectedSubtitle.Contains(" ms"), $"chat header subtitle has no fingerprint/latency ('{App.VM.SelectedSubtitle}')");
+                            await KeysAsync(VK_ESCAPE); await Task.Delay(600);
                             await ContextMenuChecksAsync(w, cp, dir, label, theme);
                         }
                     }
@@ -191,7 +196,7 @@ public static class UiSmoke
     private const ushort VK_CONTROL = 0x11, VK_SHIFT = 0x10, VK_TAB = 0x09, VK_ESCAPE = 0x1B, VK_F = 0x46, VK_N = 0x4E;
 
     /// <summary>Ctrl+F → search box, Ctrl+N → add-peer box, Esc clears the search, Ctrl+Tab / Ctrl+Shift+Tab cycle conversations.</summary>
-    private static async Task ShortcutChecksAsync(MainWindow w, ChatPage cp)
+    private static async Task ShortcutChecksAsync(MainWindow w, ChatPage cp, string dir, string label, ElementTheme theme)
     {
         try
         {
@@ -202,7 +207,9 @@ public static class UiSmoke
             await KeysAsync(VK_ESCAPE);
             Check(string.IsNullOrEmpty(cp.SmokeSearchText), $"shortcut Esc clears the search (text='{cp.SmokeSearchText}')");
             await KeysAsync(VK_CONTROL, VK_N);
-            Check(FocusWithin(w, cp.SmokeAddPeerBox), "shortcut Ctrl+N focuses the add-peer box");
+            Check(FocusWithin(w, cp.SmokeAddPeerBox), "shortcut Ctrl+N opens the add-contact flyout and focuses its box");
+            await ShotAsync(w, dir, "popup-add-peer", label, theme);
+            cp.SmokeCloseAddPeer(); await Task.Delay(600);
             cp.SmokeFocusComposer(); await Task.Delay(300);
             var before = App.VM.SelectedConversation;
             if (App.VM.Conversations.Count >= 2)

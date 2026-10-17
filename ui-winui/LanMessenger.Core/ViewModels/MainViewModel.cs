@@ -82,6 +82,14 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _selectedStatus = "";
     [ObservableProperty] private string _selectedDetail = "";
     [ObservableProperty] private string _selectedInitials = "";
+    /// <summary>Multi-line facts for the contact / group details dialog (fingerprint, latency, address, key epoch).</summary>
+    [ObservableProperty] private string _selectedDetailsText = "";
+    /// <summary>Fingerprint in groups of 4 for reading aloud when verifying.</summary>
+    public static string FormatFingerprint(string fp)
+    {
+        var f = (fp ?? "").Replace("-", "").Replace(" ", "");
+        return string.Join(" ", Enumerable.Range(0, (f.Length + 3) / 4).Select(i => f.Substring(i * 4, Math.Min(4, f.Length - i * 4))));
+    }
     [ObservableProperty] private int _selectedAvatarIndex;
     [ObservableProperty] private string _selectedE2EText = "";
     [ObservableProperty] private bool _selectedViaServer;
@@ -484,6 +492,7 @@ public partial class MainViewModel : ObservableObject
         {
             SelectedTitle = "";
             SelectedSubtitle = "";
+            SelectedDetailsText = "";
             SelectedIsDm = false;
             return;
         }
@@ -500,15 +509,25 @@ public partial class MainViewModel : ObservableObject
             SelectedTrusted = p?.IsTrusted ?? false;
             SelectedBlocked = p?.IsBlocked ?? false;
             SelectedTrustText = p?.TrustText ?? "";
-            SelectedSubtitle = p == null ? c.PeerFingerprint : $"{p.StateText} · {p.TrustText} · 指纹 {p.Fingerprint}";
             SelectedOnline = p?.Online ?? false;
-            SelectedStatus = p == null ? "离线" : p.Online ? "在线" : p.StateText;
-            SelectedDetail = (p?.Trust switch { Trust.Trusted => "已验证身份", Trust.Blocked => "已屏蔽", _ => "未验证" }) + " · " + (c.ViaServer ? "经服务器中转" : "局域网直连");
+            SelectedStatus = p == null ? "离线" : p.Online ? "在线" : p.Connecting ? "正在连接…" : "离线";
+            SelectedDetail = (p?.Trust switch { Trust.Trusted => "已验证身份", Trust.Blocked => "已屏蔽", _ => "未验证" }) + " · " + (c.ViaServer ? "经服务器" : "局域网直连");
+            // header: three short facts only (mockup); fingerprint / latency / address live in the contact details dialog
+            SelectedSubtitle = $"{SelectedStatus} · {SelectedDetail}";
+            SelectedDetailsText = string.Join("\n", new[]
+            {
+                $"状态：{(p?.StateText is { Length: > 0 } st ? st : SelectedStatus)}",
+                $"身份：{(p?.TrustText ?? "未验证")}",
+                $"连接：{(c.ViaServer ? "经服务器中转" : "局域网直连")}",
+                $"地址：{(p?.Addr is { Length: > 0 } a ? a : "—")}",
+                $"指纹：{FormatFingerprint(c.PeerFingerprint)}",
+            });
         }
         else
         {
             var g = Groups.FirstOrDefault(x => x.Id == c.GroupId);
-            SelectedSubtitle = g == null ? "" : $"{g.MembersText} · {g.EpochText}";
+            SelectedSubtitle = g == null ? "" : g.MembersText;
+            SelectedDetailsText = g == null ? "" : $"成员：{g.MembersText}\n加密：{g.EpochText}\n群组 ID：{g.Id}";
             SelectedOnline = false;
             SelectedStatus = g?.MembersText ?? "";
             SelectedDetail = g?.EpochText ?? "";
