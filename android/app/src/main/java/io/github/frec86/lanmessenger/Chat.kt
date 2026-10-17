@@ -97,14 +97,14 @@ fun Chat(st: AppState, conv: String, back: () -> Unit) {
                         if (contact != null) {
                             DropdownMenuItem({ Text("信任") }, { menu = false; Native.setTrust(contact.fp, 1); Repo.refresh() }, leadingIcon = { Ic(R.drawable.ms_trusted) })
                             DropdownMenuItem({ Text("取消信任") }, { menu = false; Native.setTrust(contact.fp, 0); Repo.refresh() }, leadingIcon = { Ic(R.drawable.ms_offline) })
-                            DropdownMenuItem({ Text("屏蔽") }, { menu = false; Native.setTrust(contact.fp, 2); Repo.refresh() }, leadingIcon = { Ic(R.drawable.ms_mute) })
+                            DropdownMenuItem({ Text("屏蔽") }, { menu = false; dlg = "block" }, leadingIcon = { Ic(R.drawable.ms_mute) })
                             DropdownMenuItem({ Text("输入 PIN 配对") }, { menu = false; dlg = "pin" }, leadingIcon = { Ic(R.drawable.ms_lock) })
                             DropdownMenuItem({ Text("查看指纹") }, { menu = false; dlg = "fp" }, leadingIcon = { Ic(R.drawable.ms_info) })
                         }
                         if (group != null) {
                             DropdownMenuItem({ Text("邀请成员") }, { menu = false; dlg = "invite" }, leadingIcon = { Ic(R.drawable.ms_add_contact) })
                             DropdownMenuItem({ Text("移除成员") }, { menu = false; dlg = "remove" }, leadingIcon = { Ic(R.drawable.ms_minimize) })
-                            DropdownMenuItem({ Text("退出群组") }, { menu = false; Native.groupLeave(group.id); Repo.refresh(); back() }, leadingIcon = { Ic(R.drawable.ms_close) })
+                            DropdownMenuItem({ Text("退出群组") }, { menu = false; dlg = "leave" }, leadingIcon = { Ic(R.drawable.ms_close) })
                         }
                     }
                 }
@@ -150,6 +150,15 @@ fun Chat(st: AppState, conv: String, back: () -> Unit) {
       }
     }
     when (dlg) {
+        // destructive actions are confirmed (Material: confirmation dialog for irreversible/disruptive actions)
+        "block" -> LsmAlertDialog(onDismissRequest = { dlg = "" }, title = { Text("屏蔽 ${contact?.name ?: ""}？") },
+            text = { Text("屏蔽后将不再接收对方的消息和文件。可随时在菜单中取消屏蔽。") },
+            confirmButton = { TextButton({ dlg = ""; contact?.let { Native.setTrust(it.fp, 2) }; Repo.refresh() }) { Text("屏蔽", color = p.error) } },
+            dismissButton = { TextButton({ dlg = "" }) { Text("取消") } })
+        "leave" -> LsmAlertDialog(onDismissRequest = { dlg = "" }, title = { Text("退出群组“${group?.name ?: ""}”？") },
+            text = { Text("退出后将不再收到该群的消息，需要成员重新邀请才能加入。") },
+            confirmButton = { TextButton({ dlg = ""; group?.let { Native.groupLeave(it.id) }; Repo.refresh(); back() }) { Text("退出", color = p.error) } },
+            dismissButton = { TextButton({ dlg = "" }) { Text("取消") } })
         "pin" -> TextDialog("输入 PIN 配对", "输入对方显示的 6 位 PIN：", digits = true, onOk = { val e = Native.pinPair(contact!!.fp, it); if (e.isNotEmpty()) Repo.toast.value = e }, onDismiss = { dlg = "" })
         "fp" -> LsmAlertDialog(onDismissRequest = { dlg = "" }, title = { Text(contact?.name ?: "") }, text = { Text("指纹：${contact?.fp}\n地址：${contact?.addr}\n版本：${contact?.version}\n状态：${trustTxt(contact?.trust ?: 0)}") },
             confirmButton = { TextButton({ dlg = "" }) { Text("好") } })
