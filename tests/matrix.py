@@ -24,6 +24,7 @@ ap.add_argument("--kinds", default="rust,native,wine,linux,android")
 ap.add_argument("--work", default="/tmp/lsm-matrix")
 ap.add_argument("--relay", action="store_true", help="run every pair through the relay server")
 ap.add_argument("--relay-bin", help="relay-server binary (relay mode)")
+ap.add_argument("--pairs", help="only these pairs, e.g. rust-wine,native-linux")
 args = ap.parse_args()
 W = args.work
 def sh(c, check=True):
@@ -40,6 +41,22 @@ def wait(pred, t, step=0.3):
         time.sleep(step)
     return None
 def sha(p): return hashlib.sha256(open(p, "rb").read()).hexdigest()
+RESUME_SIZE = 120_000_000
+def resume_check(X, Y, interrupt, tag):
+    """send a big file X->Y, interrupt the link at ~40%, expect an automatic resume: sha256 matches and the
+    sender re-sent < 70% of the file (resumed_from >= 30%). -> (ok, detail)"""
+    name = f"resume_{tag}.bin"; src = f"{W}/{name}"
+    with open(src, "wb") as f:
+        for _ in range(RESUME_SIZE // 4_000_000): f.write(os.urandom(4_000_000))
+    want = sha(src); X.sendfile(Y.fp, src)
+    hit = wait(lambda: (lambda x: x and x[1] >= 0.4 * RESUME_SIZE and x)(Y.xfer(name, "in")), 120, 0.05)
+    if not hit: return False, "never reached 40%"
+    interrupt()
+    got = wait(lambda: os.path.exists(Y.dlpath(name)) and os.path.getsize(Y.dlpath(name)) == RESUME_SIZE and sha(Y.dlpath(name)) == want, 240, 1)
+    xs = X.xfer(name, "out") or ("?", 0, RESUME_SIZE, 0)
+    resent = (RESUME_SIZE - xs[3]) / RESUME_SIZE
+    return bool(got) and resent < 0.7, f"cut at {hit[1] * 100 // RESUME_SIZE}% resumed_from={xs[3] * 100 // RESUME_SIZE}% resent={resent:.0%} sha={'ok' if got else 'FAIL'}"
+details = {}
 
 def net_up():
     net_down(); sh("ip netns add mxBR"); sh("ip netns exec mxBR ip link add br0 type bridge && ip netns exec mxBR ip link set br0 up")
@@ -88,11 +105,10 @@ class Rust:
     def trusted(s, fp): return s.peer(fp).get("trust") == "trusted"
     def relay(s, host, port, pw): s.m("relay", "on", host, str(port), pw)
     def relay_state(s): return s.j("relay", "status")["state"]
-    def retry_file(s, fp, path):
-        """neither core resumes at a byte offset: Rust retries the failed transfer (restarts, sha-verified)"""
-        for t in s.j("transfers"):
-            if t["name"] == os.path.basename(path) and t["direction"] == "out" and t["state"] in ("failed", "cancelled"): s.m("retry", t["id"]); return True
-        return False
+    def xfer(s, name, direction):
+        """-> (state, transferred, size, resumed_from) of the newest transfer with that file name"""
+        for t in reversed(s.j("transfers")):
+            if t["name"] == name and t["direction"] == direction: return (t["state"], t["transferred"], t["size"], t.get("resumed_from", 0))
     def pin_offer(s): return s.j("pin-offer")["pin"]
     def pin_pair(s, fp, pin): s.m("pin-pair", fp, pin)
     def group_create(s, name, fp): s.m("group-create", name, fp); return s.group_id(name)
@@ -164,11 +180,14 @@ class CCli:
         if s.kind == "android" and host.startswith("10.78."): host = "10.0.2.2"
         s.cmd(f"relay {host} {port} {pw}")
     def relay_state(s): return s.cmd("relay status")[-1].split()[2]
-    def retry_file(s, fp, path):
-        """the C core has no retry: re-send the file when the interrupted transfer failed"""
-        if any(l.startswith("XFER ") and "\tout\t" in l and "\tfailed\t" in l and os.path.basename(path) in l for l in s.cmd("transfers")):
-            s.sendfile(fp, path); return True
-        return False
+    def xfer(s, name, direction):
+        r = None
+        for l in s.cmd("transfers"):
+            f = l.split("\t")
+            if l.startswith("XFER ") and len(f) >= 5 and f[1] == direction and f[4] == name:
+                a, b = f[3].split("/"); m = re.search(r"resumed=(\d+)", l)
+                r = (f[2], int(a), int(b), int(m.group(1)) if m else 0)
+        return r
     def pin_offer(s): return re.search(r"OK pin (\d+)", s.cmd("pin-offer")[-1]).group(1)
     def pin_pair(s, fp, pin): s.cmd(f"pin-pair {fp} {pin}")
     def group_create(s, name, fp): s.cmd(f"group-create {name} {fp}"); return s.group_id(name)
@@ -192,6 +211,7 @@ if os.path.exists(W): shutil.rmtree(W)
 os.makedirs(W); results = []
 for a, b in itertools.combinations_with_replacement(kinds, 2):
     pair = f"{a}<->{b}"
+    if args.pairs and f"{a}-{b}" not in args.pairs.split(",") and f"{b}-{a}" not in args.pairs.split(","): continue
     if a == b == "android":
         results.append({"pair": pair, "status": "SKIP", "why": "needs two Android devices"}); print(f"[SKIP] {pair} (needs two devices)"); continue
     if not (avail[a] and avail[b]):
@@ -202,6 +222,9 @@ for a, b in itertools.combinations_with_replacement(kinds, 2):
         if args.relay:
             if "android" in (a, b): raise RuntimeError("relay mode: android pairs need the emulator host network (not wired yet)")
             srv = relay_up(); time.sleep(0.5); block_direct(True)
+            SRV = [srv]
+            def restart_relay():
+                relay_down(SRV[0]); time.sleep(1); SRV[0] = relay_up()
             A = mk(a, f"{tg}/{a}A", "mxA"); B = mk(b, f"{tg}/{b}B", "mxB")
             A.relay(RHOST, RPORT, RPASS); B.relay(RHOST, RPORT, RPASS)
             checks["online via server"] = bool(wait(lambda: A.via(B.fp) == "relay" and B.via(A.fp) == "relay", 40))
@@ -219,11 +242,10 @@ for a, b in itertools.combinations_with_replacement(kinds, 2):
             if ok:
                 gt = f"群消息 {pair}"; A.send_group(gid, gt); ok = bool(wait(lambda: B.has_group(gid, gt), 20))
             checks["group create+msg"] = ok
-            # resume across a server restart
-            name = "rx_resume.bin"; src = f"{W}/{name}"; open(src, "wb").write(os.urandom(24_000_000)); A.sendfile(B.fp, src)
-            time.sleep(0.6); relay_down(srv); time.sleep(2); srv = relay_up()
-            wait(lambda: A.via(B.fp) == "relay" and B.via(A.fp) == "relay", 60); time.sleep(1); A.retry_file(B.fp, src)
-            checks["file across server restart (retry)"] = bool(wait(lambda: os.path.exists(B.dlpath(name)) and os.path.getsize(B.dlpath(name)) == os.path.getsize(src) and sha(B.dlpath(name)) == sha(src), 150, 1))
+            # true resume: kill the relay server at ~40%, restart it, the transfer must continue
+            ok, det = resume_check(A, B, lambda: restart_relay(), f"relay_{tg}")
+            checks["resume (server killed at 40%)"] = ok; details[f"{pair} relay resume"] = det; print("   ", det, flush=True)
+            srv = SRV[0]
             # relay -> direct
             block_direct(False)
             checks["switch server->direct"] = bool(wait(lambda: A.via(B.fp) == "direct" and B.via(A.fp) == "direct", 60))
@@ -263,6 +285,10 @@ for a, b in itertools.combinations_with_replacement(kinds, 2):
             name = f"mx_{d.replace('->','_')}.bin"; src = f"{W}/{name}"; open(src, "wb").write(os.urandom(1_500_000 + len(d)))
             X.sendfile(Y.fp, src)
             checks[f"file {d}"] = bool(wait(lambda: os.path.exists(Y.dlpath(name)) and os.path.getsize(Y.dlpath(name)) == os.path.getsize(src) and sha(Y.dlpath(name)) == sha(src), 60))
+        if not args.relay and "android" not in (a, b):
+            # true resume on the LAN: abort the TCP link at ~40% (ss -K), peers redial, transfer continues
+            ok, det = resume_check(A, B, lambda: sh("ip netns exec mxA ss -K dst 10.78.0.2", False), f"lan_{tg}")
+            checks["resume (LAN link cut at 40%)"] = ok; details[f"{pair} LAN resume"] = det; print("   ", det, flush=True)
     except Exception as e:
         checks["harness"] = False; print("  exception:", repr(e)[:200])
     finally:
@@ -273,7 +299,8 @@ for a, b in itertools.combinations_with_replacement(kinds, 2):
     st = "PASS" if checks and all(checks.values()) else "FAIL"
     results.append({"pair": pair, "status": st, "checks": checks, "secs": round(time.time() - t0, 1)})
     print(f"[{st}] {pair} " + " ".join(f"{k}={'ok' if v else 'FAIL'}" for k, v in checks.items()), flush=True)
-if args.relay:
+json.dump(details, open(f"{W}/resume-details.json", "w"), ensure_ascii=False, indent=1)
+if True:
     names = []
     for r in results:
         for k in r.get("checks", {}):

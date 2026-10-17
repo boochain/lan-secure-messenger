@@ -90,7 +90,7 @@ static int run_cmd(char *line){
     if(!strcmp(cmd,"initials")){ char o[8]; lsm_initials(s?s:"",o); outf("OK initials %s\n",o); return 0; }
     if(!strcmp(cmd,"delete")){ char *id=next_tok(&s); if(!id){ outf("ERR usage: delete <msg-id>\n"); return 0; } outf(lsm_delete_message(C,id)?"ERR not found\n":"OK delete\n"); return 0; }
     if(!strcmp(cmd,"read")){ const char *cv=conv_of(s,buf); if(!cv){ outf("ERR unknown target\n"); return 0; } outf("OK read %d\n",lsm_mark_read(C,cv)); return 0; }
-    if(!strcmp(cmd,"transfers")){ lsm_transfer *t; int n,i; char u[37]; lsm_lock(C); n=lsm_transfers(C,&t); for(i=0;i<n;i++){ lsm_uuid_str(t[i].tid,u); outf("XFER %s\t%s\t%s\t%llu/%llu\t%s\t%s\t%s\n",u,t[i].out?"out":"in",TST[t[i].state],(unsigned long long)t[i].transferred,(unsigned long long)t[i].size,t[i].name,t[i].path,t[i].error); } lsm_unlock(C); outf("OK transfers %d\n",n); return 0; }
+    if(!strcmp(cmd,"transfers")){ lsm_transfer *t; int n,i; char u[37]; lsm_lock(C); n=lsm_transfers(C,&t); for(i=0;i<n;i++){ lsm_uuid_str(t[i].tid,u); outf("XFER %s\t%s\t%s\t%llu/%llu\t%s\t%s\t%s\tresumed=%llu\n",u,t[i].out?"out":"in",TST[t[i].state],(unsigned long long)t[i].transferred,(unsigned long long)t[i].size,t[i].name,t[i].path,t[i].error,(unsigned long long)t[i].resumed_from); } lsm_unlock(C); outf("OK transfers %d\n",n); return 0; }
     if(!strcmp(cmd,"name")){ lsm_set_name(C,s); outf("OK name\n"); return 0; }
     if(!strcmp(cmd,"cancel")){ if(lsm_transfer_cancel(C,s,err)) outf("ERR %s\n",err); else outf("OK cancel\n"); return 0; }
     if(!strcmp(cmd,"relay")){ /* relay <host> <port> <passphrase> | relay off | relay status */

@@ -77,6 +77,9 @@ typedef struct {
     uint64_t last_prog;
     int64_t offer_ts;
     int64_t last_credit_mono;
+    int resumable;           /* peer announced CAP_RESUME: a link loss pauses (state offered) and resumes on reconnect */
+    int accepted;            /* in: accepted once, a re-offer is resumed automatically */
+    uint64_t resumed_from;   /* offset the last (re)start continued from; 0 = from the beginning */
 } lsm_transfer;
 
 typedef struct lsm_core lsm_core;
