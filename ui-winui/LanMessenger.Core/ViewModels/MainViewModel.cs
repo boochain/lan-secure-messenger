@@ -591,6 +591,14 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
+    /// <summary>Delete a message locally (the caller confirms first). Keeps grouping/date separators consistent.</summary>
+    public async Task DeleteMessageAsync(MessageItem m)
+    {
+        await SafeCall(x => x.DeleteMessageAsync(m.Id));
+        var i = Messages.IndexOf(m);
+        if (i >= 0) { Messages.RemoveAt(i); if (Messages.Count > 0) Grouping.Apply(Messages, Math.Max(0, i - 1)); }
+    }
+
     private void OpenMessageFile(MessageItem? m)
     {
         if (m == null || string.IsNullOrEmpty(m.FilePath)) return;

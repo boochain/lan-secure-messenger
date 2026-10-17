@@ -82,7 +82,16 @@ public sealed partial class ChatPage : Page
             Add("复制文件路径", "\uE8C8", () => { var dp = new DataPackage(); dp.SetText(m.FilePath); Clipboard.SetContent(dp); VM.ShowStatus("已复制"); });
         }
         if (m.IsFile) Add("复制文件名", "\uE8C8", () => { var dp = new DataPackage(); dp.SetText(m.FileName); Clipboard.SetContent(dp); VM.ShowStatus("已复制"); });
-        if (f.Items.Count > 0) f.ShowAt((FrameworkElement)e.OriginalSource, e.GetPosition((FrameworkElement)e.OriginalSource));
+        if (f.Items.Count > 0) f.Items.Add(new MenuFlyoutSeparator());
+        var del = new MenuFlyoutItem { Text = "删除（仅本机）…", Icon = new FontIcon { Glyph = "\uE74D" } };
+        del.Click += async (_, _) =>
+        {
+            var d = Services.ThemeService.Prepare(new ContentDialog { XamlRoot = XamlRoot, Title = "删除这条消息？", Content = "只会从本机删除，对方仍保留这条消息。此操作无法撤销。",
+                PrimaryButtonText = "删除", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close });
+            if (await d.ShowAsync() == ContentDialogResult.Primary) await VM.DeleteMessageAsync(m);
+        };
+        f.Items.Add(del);
+        f.ShowAt((FrameworkElement)e.OriginalSource, e.GetPosition((FrameworkElement)e.OriginalSource));
         e.Handled = true;
     }
 

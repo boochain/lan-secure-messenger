@@ -163,6 +163,11 @@ public class DaemonTests
         });
         var inB = await B.GetMessagesAsync("dm:" + sa.Me.Fingerprint);
         Assert.Contains(inB, m => m.Body == "来自 C# 的消息" && m.Direction == Direction.In);
+        // delete on this device only: gone from A's history, B keeps its copy
+        await A.DeleteMessageAsync(msg.Id);
+        Assert.DoesNotContain(await A.GetMessagesAsync("dm:" + sb.Me.Fingerprint), m => m.Id == msg.Id);
+        Assert.Contains(await B.GetMessagesAsync("dm:" + sa.Me.Fingerprint), m => m.Body == "来自 C# 的消息");
+        await Assert.ThrowsAsync<DaemonException>(() => A.DeleteMessageAsync(msg.Id));
         var ex = await Assert.ThrowsAsync<DaemonException>(() => A.SendTextAsync("dm:" + sb.Me.Fingerprint, "   "));
         Assert.Equal(-32602, ex.Code);
         var diag = await A.GetDiagnosticsAsync();

@@ -31,6 +31,8 @@ public sealed class DaemonClient
     public Task<Me> CompleteFirstRunAsync(string? name) => Call<Me>("complete_first_run", new { name });
     public Task SetMutedAsync(string conversation, bool muted) => Call("set_muted", new { conversation, muted });
     public Task MarkReadAsync(string conversation) => Call("mark_read", new { conversation });
+    /// <summary>Delete one message on this device only (the other side keeps its copy).</summary>
+    public Task DeleteMessageAsync(string id) => Call("delete_message", new { id });
     public Task<Group> CreateGroupAsync(string name, IEnumerable<string> members) => Call<Group>("create_group", new { name, members = members.ToArray() });
     public Task<Group> InviteToGroupAsync(string groupId, IEnumerable<string> members) => Call<Group>("invite_to_group", new { group_id = groupId, members = members.ToArray() });
     public Task RemoveGroupMemberAsync(string groupId, string fingerprint) => Call("remove_group_member", new { group_id = groupId, fingerprint });

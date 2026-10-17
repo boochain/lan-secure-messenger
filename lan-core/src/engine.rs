@@ -1667,6 +1667,21 @@ impl Engine {
                 }
                 ok(json!({"ok": true}))
             }
+            "delete_message" => {
+                #[derive(Deserialize)]
+                struct P {
+                    id: String,
+                }
+                let a: P = p(params)?;
+                match self.history.remove(&a.id) {
+                    Some(conv) => {
+                        let _ = self.history.flush(true);
+                        self.emit_conv(&conv);
+                        ok(json!({"ok": true, "conversation": conv}))
+                    }
+                    None => Err(RpcError::new(-32000, "消息不存在")),
+                }
+            }
             "mark_read" => {
                 let a: ConvP = p(params)?;
                 let ids = self.unread.remove(&a.conversation).unwrap_or_default();

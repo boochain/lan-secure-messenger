@@ -69,6 +69,13 @@ impl HistoryStore {
         self.messages.iter_mut().rev().find(|m| m.id == id)
     }
 
+    /// Delete one message locally (this device only; the peer keeps its copy). Returns its conversation.
+    pub fn remove(&mut self, id: &str) -> Option<String> {
+        let i = self.messages.iter().rposition(|m| m.id == id)?;
+        self.dirty = true;
+        Some(self.messages.remove(i).conversation)
+    }
+
     pub fn get(&self, id: &str) -> Option<&Message> {
         self.messages.iter().rev().find(|m| m.id == id)
     }
