@@ -9,7 +9,15 @@ data class Group(val id: String, val name: String, val members: List<String>, va
 data class Transfer(val id: String, val msg: String, val name: String, val out: Boolean, val size: Long, val done: Long, val state: String, val path: String, val error: String)
 data class Msg(val id: String, val out: Boolean, val kind: Int, val status: String, val ts: Long, val sender: String, val body: String, val file: String, val size: Long, val path: String)
 data class Me(val fp: String = "", val name: String = "", val port: Int = 0, val version: String = "", val downloads: String = "")
-data class AppState(val me: Me = Me(), val contacts: List<Contact> = emptyList(), val groups: List<Group> = emptyList(), val transfers: List<Transfer> = emptyList(), val running: Boolean = false, val error: String = "")
+data class AppState(val me: Me = Me(), val contacts: List<Contact> = emptyList(), val groups: List<Group> = emptyList(), val transfers: List<Transfer> = emptyList(), val running: Boolean = false, val error: String = "",
+                    val last: Map<String, Msg> = emptyMap())
+/** One chat-list row (contact or group), sorted by last activity like WhatsApp/Telegram. `via` = relayed through a server (UI hook; no protocol data yet). */
+data class Conv(val id: String, val name: String, val group: Boolean, val online: Boolean, val trusted: Boolean, val via: Boolean, val unread: Int, val last: Msg?, val members: Int, val key: String)
+fun AppState.convs(): List<Conv> {
+    val l = contacts.filter { it.trust != 2 }.map { Conv("dm:" + it.fp, it.name, false, it.online, it.trust == 1, false, it.unread, last["dm:" + it.fp], 0, it.fp) } +
+            groups.map { Conv("group:" + it.id, it.name, true, false, false, false, it.unread, last["group:" + it.id], it.members.size, it.id) }
+    return l.sortedWith(compareByDescending<Conv> { it.last?.ts ?: 0L }.thenBy { it.name })
+}
 
 /** Process-wide state, refreshed by CoreService after every core event. */
 object Repo {
@@ -28,6 +36,10 @@ object Repo {
             o.getJSONArray("groups").objs().map { g -> Group(g.getString("id"), g.getString("name"), g.getJSONArray("members").let { a -> (0 until a.length()).map { a.getString(it) } }, g.getLong("epoch"), g.getInt("unread")) },
             o.getJSONArray("transfers").objs().map { Transfer(it.getString("id"), it.getString("msg"), it.getString("name"), it.getBoolean("out"), it.getLong("size"), it.getLong("done"), it.getString("state"), it.getString("path"), it.getString("error")) },
             running = true)
+        val last = HashMap<String, Msg>()
+        for (cv in state.value.contacts.map { "dm:" + it.fp } + state.value.groups.map { "group:" + it.id })
+            messages(cv).lastOrNull { it.kind != 2 }?.let { last[cv] = it }
+        state.value = state.value.copy(last = last)
         revision.value = revision.value + 1
     }
     fun messages(conv: String): List<Msg> = JSONArray(Native.messages(conv)).objs().map {
