@@ -6,6 +6,7 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.Foundation;
@@ -95,6 +96,8 @@ public static class UiSmoke
                             await ShotAsync(w, dir, "popup-menu", label, theme);
                             cp.CloseMoreMenuForSmoke();
                             await Task.Delay(600);
+                            await ShortcutChecksAsync(w, cp);
+                            await ContextMenuChecksAsync(w, cp, dir, label, theme);
                         }
                     }
                     else Fail("no DM conversation with the peer");
@@ -127,6 +130,7 @@ public static class UiSmoke
 
             if (Environment.GetEnvironmentVariable("LSM_UI_SMOKE_LIVE_FLIP") == "1")
                 await LiveFlipAsync(w, dir, theme);
+            await WindowMemoryCheckAsync(w);
 
             Log.Add($"peers={App.VM.Peers.Count} online={App.VM.OnlineCount} conversations={App.VM.Conversations.Count} messages={App.VM.Messages.Count}");
             if (!App.VM.IsConnected) Fail("not connected to daemon");
@@ -159,6 +163,139 @@ public static class UiSmoke
         Log.Add($"live flip: {before} -> {now} (systemDark={ThemeService.SystemIsDark})");
         if (now != want) { Fail($"live flip: window stayed {now} after Windows switched to {want}"); return; }
         await ShotAsync(w, dir, "page-chat-dm-live", now.ToString().ToLowerInvariant(), now);
+    }
+
+    // ---------------------------------------------------------------- runtime checks (real input via SendInput)
+
+    private static void Check(bool ok, string what) { Log.Add((ok ? "PASS: " : "FAIL: ") + what); if (!ok) _ok = false; }
+
+    private static bool FocusWithin(MainWindow w, FrameworkElement target)
+    {
+        for (var d = FocusManager.GetFocusedElement(w.Content.XamlRoot) as DependencyObject; d != null; d = VisualTreeHelper.GetParent(d))
+            if (ReferenceEquals(d, target)) return true;
+        return false;
+    }
+
+    private static async Task KeysAsync(params ushort[] chord)
+    {
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(App.MainWin!);
+        SetForegroundWindow(hwnd);
+        await Task.Delay(150);
+        var ins = new List<INPUT>();
+        foreach (var k in chord) ins.Add(Key(k, false));
+        for (int i = chord.Length - 1; i >= 0; i--) ins.Add(Key(chord[i], true));
+        SendInput((uint)ins.Count, ins.ToArray(), Marshal.SizeOf<INPUT>());
+        await Task.Delay(700);
+    }
+    private static INPUT Key(ushort vk, bool up) => new() { type = 1, U = new InputUnion { ki = new KEYBDINPUT { wVk = vk, dwFlags = up ? 2u : 0u } } };
+    private const ushort VK_CONTROL = 0x11, VK_SHIFT = 0x10, VK_TAB = 0x09, VK_ESCAPE = 0x1B, VK_F = 0x46, VK_N = 0x4E;
+
+    /// <summary>Ctrl+F → search box, Ctrl+N → add-peer box, Esc clears the search, Ctrl+Tab / Ctrl+Shift+Tab cycle conversations.</summary>
+    private static async Task ShortcutChecksAsync(MainWindow w, ChatPage cp)
+    {
+        try
+        {
+            cp.SmokeFocusComposer(); await Task.Delay(300);
+            await KeysAsync(VK_CONTROL, VK_F);
+            Check(FocusWithin(w, cp.SmokeSearchBox), "shortcut Ctrl+F focuses the search box");
+            cp.SmokeSearchText = "zz-smoke"; await Task.Delay(300);
+            await KeysAsync(VK_ESCAPE);
+            Check(string.IsNullOrEmpty(cp.SmokeSearchText), $"shortcut Esc clears the search (text='{cp.SmokeSearchText}')");
+            await KeysAsync(VK_CONTROL, VK_N);
+            Check(FocusWithin(w, cp.SmokeAddPeerBox), "shortcut Ctrl+N focuses the add-peer box");
+            cp.SmokeFocusComposer(); await Task.Delay(300);
+            var before = App.VM.SelectedConversation;
+            if (App.VM.Conversations.Count >= 2)
+            {
+                await KeysAsync(VK_CONTROL, VK_TAB);
+                var next = App.VM.SelectedConversation;
+                Check(next != null && !ReferenceEquals(next, before), $"shortcut Ctrl+Tab selects the next conversation ({before?.Title} -> {next?.Title})");
+                await KeysAsync(VK_CONTROL, VK_SHIFT, VK_TAB);
+                Check(ReferenceEquals(App.VM.SelectedConversation, before), $"shortcut Ctrl+Shift+Tab goes back ({App.VM.SelectedConversation?.Title})");
+            }
+            else Check(false, "Ctrl+Tab needs at least 2 conversations");
+            App.VM.SelectedConversation = before;
+            await Task.Delay(1500);
+        }
+        catch (Exception e) { Check(false, "shortcuts: " + e.Message); }
+    }
+
+    private static async Task RightClickAsync(MainWindow w, FrameworkElement fe)
+    {
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(w);
+        SetForegroundWindow(hwnd);
+        var scale = fe.XamlRoot.RasterizationScale;
+        var p = fe.TransformToVisual(null).TransformPoint(new Point(Math.Min(40, fe.ActualWidth / 2), fe.ActualHeight / 2));
+        var pt = new POINT { X = (int)(p.X * scale), Y = (int)(p.Y * scale) };
+        ClientToScreen(hwnd, ref pt);
+        SetCursorPos(pt.X, pt.Y);
+        await Task.Delay(200);
+        var ins = new[] { new INPUT { type = 0, U = new InputUnion { mi = new MOUSEINPUT { dwFlags = 0x0008 } } }, new INPUT { type = 0, U = new InputUnion { mi = new MOUSEINPUT { dwFlags = 0x0010 } } } };
+        SendInput(2, ins, Marshal.SizeOf<INPUT>());
+        await Task.Delay(1200);
+    }
+
+    private static List<string> OpenMenuItems(MainWindow w)
+    {
+        var items = new List<string>();
+        foreach (var pop in VisualTreeHelper.GetOpenPopupsForXamlRoot(w.Content.XamlRoot))
+            if (pop.Child != null) items.AddRange(Descendants(pop.Child).OfType<MenuFlyoutItem>().Select(i => i.Text));
+        return items;
+    }
+
+    /// <summary>Real right-clicks on a text message and on the DM row open the expected menus.</summary>
+    private static async Task ContextMenuChecksAsync(MainWindow w, ChatPage cp, string dir, string label, ElementTheme theme)
+    {
+        try
+        {
+            var msgRow = Descendants(cp.SmokeMessageList).OfType<ListViewItem>()
+                .FirstOrDefault(i => (i.Content ?? i.DataContext) is LanMessenger.Core.ViewModels.MessageItem m && m.IsText && !m.IsSystem && i.ActualHeight > 0 && Center(i).Y > 0 && Center(i).Y < ((FrameworkElement)w.Content).ActualHeight);
+            if (msgRow == null) Check(false, "right-click: no visible text message row");
+            else
+            {
+                await RightClickAsync(w, msgRow);
+                var items = OpenMenuItems(w);
+                Check(items.Contains("复制") && items.Contains("删除（仅本机）…"), "right-click on a message opens 复制 / 删除（仅本机）… [" + string.Join(", ", items) + "]");
+                await ShotAsync(w, dir, "popup-message-menu", label, theme);
+                await KeysAsync(VK_ESCAPE);
+            }
+            var dmRow = Descendants(cp.SmokeConvList).OfType<ListViewItem>().FirstOrDefault(i => (i.Content ?? i.DataContext) is LanMessenger.Core.ViewModels.ConversationItem c && c.IsDm);
+            if (dmRow == null) Check(false, "right-click: no DM row");
+            else
+            {
+                await RightClickAsync(w, dmRow);
+                var items = OpenMenuItems(w);
+                Check(items.Any(t => t is "信任" or "取消信任") && items.Any(t => t.StartsWith("屏蔽") || t == "取消屏蔽") && items.Any(t => t.Contains("免打扰")),
+                    "right-click on a contact opens trust / mute / block [" + string.Join(", ", items) + "]");
+                await KeysAsync(VK_ESCAPE);
+            }
+            Check(OpenMenuItems(w).Count == 0, "Esc closes the context menu");
+        }
+        catch (Exception e) { Check(false, "context menus: " + e.Message); }
+    }
+
+    /// <summary>Window memory: move/resize, persist, read back from disk, move elsewhere, re-apply → same placement.</summary>
+    private static async Task WindowMemoryCheckAsync(MainWindow w)
+    {
+        try
+        {
+            var orig = new Windows.Graphics.RectInt32(w.AppWindow.Position.X, w.AppWindow.Position.Y, w.AppWindow.Size.Width, w.AppWindow.Size.Height);
+            var wa = DisplayArea.GetFromWindowId(w.AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
+            var want = new Windows.Graphics.RectInt32(wa.X + 37, wa.Y + 29, Math.Min(900, wa.Width - 60), Math.Min(640, wa.Height - 60));
+            w.AppWindow.MoveAndResize(want); await Task.Delay(800);
+            w.SavePlacement();
+            var disk = UiPrefs.ReadFromDisk();
+            Check(disk.X == want.X && disk.Y == want.Y && disk.W == want.Width && disk.H == want.Height,
+                $"window memory: saved {disk.X},{disk.Y} {disk.W}x{disk.H} (want {want.X},{want.Y} {want.Width}x{want.Height})");
+            w.AppWindow.MoveAndResize(new Windows.Graphics.RectInt32(wa.X + 5, wa.Y + 5, 700, 500)); await Task.Delay(800);
+            var applied = w.ApplyPlacement(disk); await Task.Delay(800);
+            var now = (w.AppWindow.Position.X, w.AppWindow.Position.Y, w.AppWindow.Size.Width, w.AppWindow.Size.Height);
+            Check(applied && now == (want.X, want.Y, want.Width, want.Height), $"window memory: restored to {now}");
+            var off = new UiPrefs { X = -40000, Y = -40000, W = 900, H = 640 };
+            Check(!w.ApplyPlacement(off), "window memory: an off-screen placement is ignored");
+            w.AppWindow.MoveAndResize(orig);
+        }
+        catch (Exception e) { Check(false, "window memory: " + e.Message); }
     }
 
     // ---------------------------------------------------------------- capture + checks
@@ -462,6 +599,14 @@ public static class UiSmoke
         public uint biCompression, biSizeImage; public int biXPelsPerMeter, biYPelsPerMeter; public uint biClrUsed, biClrImportant;
         public uint bmiColors;
     }
+    [StructLayout(LayoutKind.Sequential)] private struct POINT { public int X, Y; }
+    [StructLayout(LayoutKind.Sequential)] private struct MOUSEINPUT { public int dx, dy; public uint mouseData, dwFlags, time; public IntPtr dwExtraInfo; }
+    [StructLayout(LayoutKind.Sequential)] private struct KEYBDINPUT { public ushort wVk, wScan; public uint dwFlags, time; public IntPtr dwExtraInfo; }
+    [StructLayout(LayoutKind.Explicit)] private struct InputUnion { [FieldOffset(0)] public MOUSEINPUT mi; [FieldOffset(0)] public KEYBDINPUT ki; }
+    [StructLayout(LayoutKind.Sequential)] private struct INPUT { public uint type; public InputUnion U; }
+    [DllImport("user32.dll", SetLastError = true)] private static extern uint SendInput(uint n, INPUT[] inputs, int size);
+    [DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] private static extern bool ClientToScreen(IntPtr h, ref POINT p);
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr h);
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr h, out RECT r);
     [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(IntPtr h, int attr, out RECT r, int size);

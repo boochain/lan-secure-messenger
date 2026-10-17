@@ -151,7 +151,19 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void SavePlacement()
+    /// <summary>Restore a saved placement (same rule as startup: only if it is still on a display). UI smoke uses it too.</summary>
+    internal bool ApplyPlacement(UiPrefs pr)
+    {
+        if (pr.X == int.MinValue || pr.W < 640 || pr.H < 480) return false;
+        var saved = new Windows.Graphics.RectInt32(pr.X, pr.Y, pr.W, pr.H);
+        var da = DisplayArea.GetFromRect(saved, DisplayAreaFallback.None);
+        if (da == null) return false;
+        var a = da.WorkArea; saved.Width = Math.Min(saved.Width, a.Width); saved.Height = Math.Min(saved.Height, a.Height);
+        AppWindow.MoveAndResize(saved);
+        return true;
+    }
+
+    internal void SavePlacement()
     {
         try
         {

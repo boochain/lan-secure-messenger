@@ -28,6 +28,8 @@ public sealed class UiPrefs
         }
     }
 
+    /// <summary>A fresh copy from disk (UI smoke verifies what was persisted).</summary>
+    public static UiPrefs ReadFromDisk() => Load();
     private static UiPrefs Load()
     {
         try { if (File.Exists(FilePath)) return JsonSerializer.Deserialize<UiPrefs>(File.ReadAllText(FilePath)) ?? new UiPrefs(); }
