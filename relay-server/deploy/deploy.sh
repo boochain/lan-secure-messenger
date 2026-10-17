@@ -296,7 +296,7 @@ ensure_installed() { # 安装/升级 二进制+配置 (install or upgrade binary
     run cp -f "$nb" "$BIN.new" && run chmod 755 "$BIN.new" && run mv -f "$BIN.new" "$BIN"
   fi
   [ "$DRY" = 1 ] || cp -f "${BASH_SOURCE[0]}" "$INSTALL_DIR/deploy.sh" 2>/dev/null || true
-  [ "$DRY" = 1 ] || echo "$newv" > "$STATE_DIR/version" 2>/dev/null || { mkdir -p "$STATE_DIR"; echo "$newv" > "$STATE_DIR/version"; }
+  [ "$DRY" = 1 ] || { mkdir -p "$STATE_DIR" "$LOG_DIR"; echo "$newv" > "$STATE_DIR/version"; }
   ok "二进制已就绪 (binary ready): $BIN ($newv, $(detect_arch))"
 }
 params_step() { # 引导或校验参数 (guided input or validation)
@@ -370,6 +370,7 @@ RCEOF
     is_running || start_bg
   else
     warn "未找到 systemd/OpenRC/crontab，请手动把下列命令加入开机启动 (add to boot manually): $BIN --config $CONF"
+    say "现在以后台方式启动 (starting in background now)"; is_running || start_bg
   fi
 }
 remove_autostart() {
