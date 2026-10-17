@@ -8,7 +8,19 @@ New-Item -ItemType Directory -Force $T | Out-Null
 $env:RELAY_HOME = Join-Path $T 'home'; $env:RELAY_BIN = $NewBin
 $script:pass = 0; $script:fail = 0
 function Check($name, [scriptblock]$cond) { $r = $false; try { $r = [bool](& $cond) } catch {}; if ($r) { "PASS: $name"; $script:pass++ } else { "FAIL: $name"; $script:fail++ } }
-function Deploy { param([Parameter(ValueFromRemainingArguments)]$a) & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $D @a 2>&1 | Out-String }
+function Deploy {
+  # Run deploy.ps1 in a child Windows PowerShell with a hard timeout; output goes to files so that
+  # background processes started by the script cannot keep a pipe open.
+  param([Parameter(ValueFromRemainingArguments)]$a)
+  $script:n++; $out = Join-Path $T "d$($script:n).out"; $err = Join-Path $T "d$($script:n).err"
+  $argl = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$D`"") + $a
+  $p = Start-Process powershell.exe -ArgumentList $argl -NoNewWindow -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+  if (-not $p.WaitForExit(180000)) { Write-Host "TIMEOUT: deploy $($a -join ' ')"; Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
+  $txt = ((Get-Content $out -Raw -ErrorAction SilentlyContinue) + (Get-Content $err -Raw -ErrorAction SilentlyContinue))
+  Write-Host "----- deploy $($a -join ' ') -----"; Write-Host $txt
+  return $txt
+}
+$script:n = 0
 function RoundTrip($port, $pw) {
   $e = Start-Process -FilePath $Cli -ArgumentList "--addr 127.0.0.1:$port --password $pw --name echo$port --echo --timeout 8" -PassThru -WindowStyle Hidden
   Start-Sleep -Milliseconds 800
