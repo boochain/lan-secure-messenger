@@ -9,7 +9,10 @@
 param(
   [string]$Dist = "dist\LanMessenger",
   [string]$Out = "ui-smoke",
-  [string]$Image = "ui-winui\LanMessenger\Assets\app.png"
+  [string]$Image = "ui-winui\LanMessenger\Assets\app.png",
+  # test relay server (relay-server.exe). With it the app turns the relay on from its settings view model and two
+  # relay-only peers join: Carol-中转 (stays online -> 经服务器 badge) and Dave-中转 (killed mid-file -> paused transfer)
+  [string]$Relay = ""
 )
 $ErrorActionPreference = "Stop"
 $Out = (New-Item -ItemType Directory -Force $Out).FullName
@@ -46,6 +49,15 @@ function Save-Desktop([string]$path) {
   $bmp.Save($path); $g.Dispose(); $bmp.Dispose()
 }
 
+$RelayPort = 29443; $RelayPass = "ci-relay-pass"
+$relayProc = $null
+if ($Relay) {
+  $Relay = (Resolve-Path $Relay).Path
+  $relayProc = Start-Process $Relay -ArgumentList "--bind 127.0.0.1 --port $RelayPort --password $RelayPass" -PassThru -NoNewWindow
+  Start-Sleep -Seconds 1
+  Write-Host "test relay on 127.0.0.1:$RelayPort (pid $($relayProc.Id))"
+}
+
 $shots = "page-chat", "page-chat-dm", "page-chat-dm-top", "page-groups", "page-transfers", "page-settings", "page-settings-bottom",
          "page-diag", "page-diag-bottom", "popup-menu", "first-run"
 $problems = @()
@@ -61,6 +73,7 @@ foreach ($theme in "light", "dark") {
   $env:LSM_DATA_DIR = Join-Path $env:RUNNER_TEMP "lsm-ui-$theme"
   $env:LSM_UI_SMOKE_LIVE_FLIP = if ($theme -eq "dark") { "1" } else { $null }
   $env:LSM_NO_DIALOG = "1"
+  $env:LSM_UI_SMOKE_RELAY = if ($Relay) { "127.0.0.1|$RelayPort|$RelayPass" } else { $null }
 
   $proc = Start-Process $AppExe -PassThru
   for ($i = 0; $i -lt 120 -and -not (Test-Path "$dir\ready.txt"); $i++) {
@@ -87,6 +100,36 @@ foreach ($theme in "light", "dark") {
   $pdf = Join-Path $dir "需求说明-v2.pdf"; [IO.File]::WriteAllBytes($pdf, (New-Object byte[] 1363149))
   & $M --ipc $bobPipe send-file $FA $pdf   # incoming file -> file card with the download button
   & $M --ipc $bobPipe group-create "CI 测试群" $FA
+  $relayPeers = @()
+  if ($Relay) {
+    # relay-only peers: no discovery, no address of the UI daemon -> the only path is the relay server
+    foreach ($who in "carol", "dave") {
+      $pipe = "\\.\pipe\lsm-ci-$who-$theme"; $data = Join-Path $env:RUNNER_TEMP "lsm-$who-$theme"
+      $name = if ($who -eq "carol") { "Carol-中转" } else { "Dave-中转" }
+      $p = Start-Process $D -ArgumentList "run --data-dir `"$data`" --ipc $pipe --set listen_port=0 --set discovery_enabled=false --set auto_trust=true --set display_name=$name" -PassThru -NoNewWindow
+      $relayPeers += @{ who = $who; pipe = $pipe; proc = $p }
+    }
+    Start-Sleep -Seconds 2
+    foreach ($r in $relayPeers) { & $M --ipc $r.pipe relay on 127.0.0.1 $RelayPort $RelayPass }
+    foreach ($r in $relayPeers) {
+      & $M --ipc $r.pipe wait-peer $FA --timeout 60
+      $r.fp = (& $M --ipc $r.pipe --json status | ConvertFrom-Json).me.fingerprint
+      & $M trust $r.fp
+    }
+    $carol = $relayPeers[0]; $dave = $relayPeers[1]
+    & $M --ipc $carol.pipe send $FA "你好，我在另一个网络，经中转服务器连接 ☁"
+    & $M send $carol.fp "收到，经服务器也能聊。"
+    # Dave: big file, killed at ~20% -> the UI daemon keeps it paused (连接中断，重连后自动续传)
+    $big = Join-Path $env:RUNNER_TEMP "项目素材-$theme.bin"; $fs = [IO.File]::Create($big); $fs.SetLength(1GB); $fs.Close()
+    & $M --ipc $dave.pipe send-file $FA $big
+    for ($i = 0; $i -lt 600; $i++) {
+      $t = (& $M --json transfers | ConvertFrom-Json) | Where-Object { $_.name -like "项目素材*" -and $_.direction -eq "in" } | Select-Object -First 1
+      if ($t -and $t.size -gt 0 -and $t.transferred -ge 0.2 * $t.size) { break }
+      Start-Sleep -Milliseconds 100
+    }
+    Stop-Process $dave.proc -Force
+    Write-Host "[$theme] relay peers: carol $($carol.fp), dave $($dave.fp) killed at $($t.transferred)/$($t.size)"
+  }
   Start-Sleep -Seconds 4
   New-Item "$dir\go" -ItemType File -Force | Out-Null
   Start-Sleep -Seconds 8
@@ -103,6 +146,7 @@ foreach ($theme in "light", "dark") {
   }
   if (-not $proc.HasExited) { Stop-Process $proc -Force; $problems += "[$theme] UI smoke timed out" }
   Stop-Process $bob -Force -ErrorAction SilentlyContinue
+  foreach ($r in $relayPeers) { Stop-Process $r.proc -Force -ErrorAction SilentlyContinue }
   Start-Sleep -Seconds 2
 
   if (Test-Path "$dir\ui-smoke.txt") { Get-Content "$dir\ui-smoke.txt" | ForEach-Object { Write-Host "[$theme] $_" } }
@@ -114,11 +158,13 @@ foreach ($theme in "light", "dark") {
   $runtime = @("shortcut Ctrl+F", "shortcut Esc clears", "shortcut Ctrl+N opens", "chat header subtitle has no", "shortcut Ctrl+Tab", "shortcut Ctrl+Shift+Tab",
                "right-click on a message", "right-click on a contact", "Esc closes the context menu",
                "window memory: saved", "window memory: restored", "window memory: an off-screen")
+  if ($Relay) { $runtime += "relay toggled on", "relay peer badge", "chat header via relay", "paused transfer", "relay passphrase is write-only" }
   foreach ($r in $runtime) {
     if (-not (Select-String -Path "$dir\ui-smoke.txt" -Pattern ("PASS: " + [regex]::Escape($r)) -Quiet -ErrorAction SilentlyContinue)) { $problems += "[$theme] runtime check did not pass: $r" }
   }
   $need = @($shots | ForEach-Object { "$_-$theme.png" }) + @("popup-message-menu-$theme.png", "popup-add-peer-$theme.png", "dialog-details-$theme.png")
   if ($theme -eq "dark") { $need += "page-chat-dm-live-light.png" }
+  if ($Relay) { $need += "page-chat-relay-$theme.png", "page-settings-relay-$theme.png" }
   foreach ($f in $need) {
     $p = Join-Path $dir $f
     if (-not (Test-Path $p)) { $problems += "[$theme] missing screenshot $f" }
@@ -131,6 +177,7 @@ foreach ($theme in "light", "dark") {
 }
 
 Set-WindowsTheme "light"
+if ($relayProc) { Stop-Process $relayProc -Force -ErrorAction SilentlyContinue }
 Get-ChildItem $Out -Recurse -Filter *.png | Format-Table FullName, Length
 if ($problems.Count -gt 0) {
   $problems | ForEach-Object { Write-Host "::error::$_" }

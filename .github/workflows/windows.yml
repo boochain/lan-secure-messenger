@@ -2,7 +2,7 @@ name: windows
 
 on:
   push:
-    branches: [main, "refactor/**"]
+    branches: [main, "refactor/**", "feat/relay-client"]
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
@@ -34,6 +34,11 @@ jobs:
 
       - name: Build lan-daemon + lan-msg
         run: cargo build --release -p lan-daemon -p lan-cli
+
+      - name: Build relay-server (test relay for the UI smoke; not shipped in the zip)
+        run: |
+          cargo build --release --manifest-path relay-server/Cargo.toml --bin relay-server
+          Copy-Item relay-server\target\release\relay-server.exe target\release\
 
       - name: Check imports (must be system DLLs only)
         shell: pwsh
@@ -94,6 +99,7 @@ jobs:
           path: |
             target/release/lan-daemon.exe
             target/release/lan-msg.exe
+            target/release/relay-server.exe
 
   winui:
     name: WinUI 3 app + portable zip
@@ -140,7 +146,7 @@ jobs:
       - name: UI smoke in light + dark theme (screenshots, contrast check, live theme switch)
         id: uismoke
         shell: pwsh
-        run: ./scripts/ui_smoke_windows.ps1 -Dist dist\LanMessenger -Out ui-smoke
+        run: ./scripts/ui_smoke_windows.ps1 -Dist dist\LanMessenger -Out ui-smoke -Relay rust-bin\relay-server.exe
 
       - name: Collect UI diagnostics
         if: always()

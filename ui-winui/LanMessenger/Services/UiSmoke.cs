@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Text;
+using LanMessenger.Core.ViewModels;
 using LanMessenger.Views;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -51,6 +52,8 @@ public static class UiSmoke
             Log.Add($"connected={App.VM.IsConnected} fp={App.VM.MyFingerprint} name={App.VM.MyName}");
             if (App.VM.FirstRunNeeded) await App.VM.CompleteFirstRunAsync("CI 测试用户");
             label = string.IsNullOrWhiteSpace(label) ? ThemeService.ActualTheme.ToString().ToLowerInvariant() : label.Trim().ToLowerInvariant();
+            var relayEnv = Environment.GetEnvironmentVariable("LSM_UI_SMOKE_RELAY");   // host|port|passphrase of the CI test relay
+            if (!string.IsNullOrWhiteSpace(relayEnv)) await RelayOnAsync(relayEnv);
             Log.Add($"ready fp={App.VM.MyFingerprint}");
             File.WriteAllText(Path.Combine(dir, "ready.txt"), App.VM.MyFingerprint);
             // CI creates <dir>/go after a second daemon has connected and sent messages (max 90 s).
@@ -74,7 +77,8 @@ public static class UiSmoke
                 if (tag == "chat")
                 {
                     // The DM with the peer (text both ways + image preview).
-                    var dm = App.VM.Conversations.FirstOrDefault(c => c.IsDm);
+                    // the LAN peer (Bob) for the regular DM shots; relay peers get their own shot below
+                    var dm = App.VM.Conversations.FirstOrDefault(c => c.IsDm && !c.ViaServer && c.Title.StartsWith("Bob")) ?? App.VM.Conversations.FirstOrDefault(c => c.IsDm);
                     if (dm != null)
                     {
                         App.VM.SelectedConversation = dm;
@@ -103,9 +107,24 @@ public static class UiSmoke
                             Check(!App.VM.SelectedSubtitle.Contains("指纹") && !App.VM.SelectedSubtitle.Contains(" ms"), $"chat header subtitle has no fingerprint/latency ('{App.VM.SelectedSubtitle}')");
                             await KeysAsync(VK_ESCAPE); await Task.Delay(600);
                             await ContextMenuChecksAsync(w, cp, dir, label, theme);
+                            if (!string.IsNullOrWhiteSpace(relayEnv)) await RelayChatChecksAsync(w, dir, label, theme);
                         }
                     }
                     else Fail("no DM conversation with the peer");
+                }
+                if (tag == "transfers" && !string.IsNullOrWhiteSpace(relayEnv))
+                {
+                    var paused = App.VM.Transfers.FirstOrDefault(t => t.IsPaused);
+                    Check(paused != null && paused.StateText == "连接中断，重连后自动续传",
+                          $"paused transfer shows 连接中断，重连后自动续传 ({string.Join("; ", App.VM.Transfers.Select(t => $"{t.Name}={t.StateText}"))})");
+                }
+                if (tag == "settings" && !string.IsNullOrWhiteSpace(relayEnv) && w.CurrentPage is SettingsPage sp)
+                {
+                    sp.ShowRelayCardForSmoke();
+                    await Task.Delay(1500);
+                    await ShotAsync(w, dir, "page-settings-relay", label, theme);
+                    Check(App.VM.RelayHasPassphrase && App.VM.RelayPassphrasePlaceholder.StartsWith("已设置") && App.VM.EditRelayPassphrase.Length == 0,
+                          $"relay passphrase is write-only: field empty, placeholder '{App.VM.RelayPassphrasePlaceholder}'");
                 }
                 if (tag is "settings" or "diag")
                 {
@@ -152,6 +171,37 @@ public static class UiSmoke
         File.WriteAllLines(Path.Combine(dir, "ui-smoke.txt"), Log);
         await App.VM.StopAsync(shutdownDaemon: true);
         w.ExitApp();
+    }
+
+    /// <summary>Turns the relay on through the settings view model (same path as the 保存并连接 button) and waits for 已连接中转服务器.</summary>
+    private static async Task RelayOnAsync(string env)
+    {
+        var f = env.Split('|');
+        App.VM.EditRelayEnabled = true;
+        App.VM.EditRelayHost = f[0];
+        App.VM.EditRelayPort = double.Parse(f[1]);
+        App.VM.EditRelayPassphrase = f.Length > 2 ? f[2] : "";
+        await App.VM.SaveRelayCommand.ExecuteAsync(null);
+        for (int i = 0; i < 60 && App.VM.RelayState != "online"; i++) await Task.Delay(500);
+        Check(App.VM.RelayState == "online" && App.VM.RelayStateText == "已连接中转服务器", $"relay toggled on: state={App.VM.RelayState} '{App.VM.RelayStateText}' {App.VM.RelayDetail}");
+    }
+
+    /// <summary>A relay peer is in the same list with the 经服务器 chip; its chat header reads 在线 · 已验证身份 · 经服务器.</summary>
+    private static async Task RelayChatChecksAsync(MainWindow w, string dir, string label, ElementTheme theme)
+    {
+        ConversationItem? carol = null;
+        for (int i = 0; i < 40 && carol == null; i++)
+        {
+            carol = App.VM.Conversations.FirstOrDefault(c => c.IsDm && c.ViaServer && c.Title.StartsWith("Carol"));
+            if (carol == null) await Task.Delay(500);
+        }
+        Check(carol != null && App.VM.Peers.Any(p => p.Fingerprint == carol.PeerFingerprint && p.ViaRelay),
+              "relay peer badge: Carol-中转 is in the conversation list with ViaServer (经服务器)");
+        if (carol == null) return;
+        App.VM.SelectedConversation = carol;
+        await Task.Delay(2500);
+        await ShotAsync(w, dir, "page-chat-relay", label, theme);
+        Check(App.VM.SelectedSubtitle == "在线 · 已验证身份 · 经服务器", $"chat header via relay: '{App.VM.SelectedSubtitle}'");
     }
 
     private static async Task LiveFlipAsync(MainWindow w, string dir, ElementTheme before)
