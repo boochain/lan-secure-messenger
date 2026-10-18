@@ -158,7 +158,7 @@ static gboolean scroll_end(gpointer p){ GtkAdjustment *a=gtk_scrolled_window_get
 static void refresh_chat(void){
     GtkWidget *c; lsm_msg *m; int n,i, first=1; char last_day[32]="", title[400]="", sub[400]="", key[64]="", prev_sender[80]=""; int online=0;
     while((c=gtk_widget_get_first_child(chat_box))) gtk_box_remove(GTK_BOX(chat_box),c);
-    if(!cur_conv[0]){ gtk_stack_set_visible_child_name(GTK_STACK(content_stack),"empty"); gtk_label_set_text(GTK_LABEL(title_lbl),"局域网安全通讯"); gtk_label_set_text(GTK_LABEL(sub_lbl),""); gtk_widget_set_visible(hdr_avatar,FALSE); return; }
+    if(!cur_conv[0]){ gtk_stack_set_visible_child_name(GTK_STACK(content_stack),"empty"); gtk_label_set_text(GTK_LABEL(title_lbl),""); gtk_label_set_text(GTK_LABEL(sub_lbl),""); if(hdr_shield) gtk_widget_set_visible(hdr_shield,FALSE); /* app name is already in the sidebar header */ gtk_widget_set_visible(hdr_avatar,FALSE); return; }
     gtk_stack_set_visible_child_name(GTK_STACK(content_stack),"chat");
     lsm_lock(C);
     if(!strncmp(cur_conv,"dm:",3)){ lsm_contact *k; int nk=lsm_contacts(C,&k),j; for(j=0;j<nk;j++) if(!strcmp(k[j].fp,cur_conv+3)){ snprintf(title,sizeof title,"%s",k[j].name); snprintf(key,64,"%s",k[j].fp); online=k[j].online;
