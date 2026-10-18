@@ -14,8 +14,8 @@ if not os.path.isdir(env["WINEPREFIX"]): subprocess.run(["wineboot", "-i"], env=
 for f in ["Tahoma", "MS Shell Dlg", "MS Shell Dlg 2", "Segoe UI", "SimSun", "Microsoft YaHei", "Microsoft YaHei UI"]:
     subprocess.run(["wine", "reg", "add", r"HKCU\Software\Wine\Fonts\Replacements", "/v", f, "/d", "Noto Sans CJK SC", "/f"], env=env, capture_output=True)
 # real XP look without a Microsoft msstyles: wine draws its own non-client frame (X11 "Decorated"=N) in Luna colours
-for k, v in {"ActiveTitle": "0 84 227", "GradientActiveTitle": "61 149 255", "TitleText": "255 255 255", "InactiveTitle": "122 150 223", "GradientInactiveTitle": "157 185 235",
-             "InactiveTitleText": "216 228 248", "ActiveBorder": "0 84 227", "InactiveBorder": "122 150 223", "ButtonFace": "236 233 216", "Menu": "255 255 255"}.items():
+for k, v in {"ActiveTitle": "0 84 227", "GradientActiveTitle": "61 149 255", "TitleText": "255 255 255", "InactiveTitle": "70 96 180", "GradientInactiveTitle": "110 140 210",
+             "InactiveTitleText": "255 255 255", "ActiveBorder": "0 84 227", "InactiveBorder": "122 150 223", "ButtonFace": "236 233 216", "Menu": "255 255 255"}.items():
     subprocess.run(["wine", "reg", "add", r"HKCU\Control Panel\Colors", "/v", k, "/d", v, "/f"], env=env, capture_output=True)
 subprocess.run(["wine", "reg", "add", r"HKCU\Software\Wine\X11 Driver", "/v", "Decorated", "/d", "N", "/f"], env=env, capture_output=True)
 import json
@@ -42,7 +42,7 @@ def shot(name, icons=None):
     subprocess.run(["import", "-window", "root", "-crop", f"{g['WIDTH']}x{g['HEIGHT']}+{g['X']}+{g['Y']}", "+repage", path], env=env); print("shot", path, flush=True)
     try: r = [[int(v) for v in l.split()[2].split(",")] for l in open(icons_file, encoding="utf-8") if l.startswith("ICON ")]
     except OSError: r = []
-    if r: ignore[os.path.basename(path)] = r; ignore["_reasons"][os.path.basename(path)] = "decorative icons only: online dots (presence is also spelled out as 在线 / N 人在线) and the trusted-identity shield (also spelled out as 已验证身份); bounds reported by the app (LSM_UI_TEST)"
+    if r: ignore[os.path.basename(path)] = r; ignore["_reasons"][os.path.basename(path)] = "decorative icons only: avatar monogram tiles with their online dot (OCR merges the two; white-on-avatar colours come from the shared palette), photo thumbnails (user content), system scrollbars (OS theme colours), online presence ( is also spelled out as 在线 / N 人在线) and the trusted-identity shield (also spelled out as 已验证身份); bounds reported by the app (LSM_UI_TEST)"
     return path
 def click(x, y, b="1"):
     g = {k: int(v) for k, v in (l.split("=") for l in xdo("getwindowgeometry", "--shell", wid).split())}; xdo("mousemove", str(g["X"] + x), str(g["Y"] + y), "click", b)

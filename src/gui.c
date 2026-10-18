@@ -506,11 +506,14 @@ static void ui_icons_dump(void){ static char last[4096]; char buf[4096]; int n=0
     top=(int)SendMessageW(hList,LB_GETTOPINDEX,0,0); cnt=(int)SendMessageW(hList,LB_GETCOUNT,0,0);
     for(i=top;i<cnt && i<nlist && n<3800;i++){ RECT d2; if(SendMessageW(hList,LB_GETITEMRECT,i,(LPARAM)&ir)==LB_ERR) break; { RECT cl; GetClientRect(hList,&cl); if(ir.top>cl.bottom) break; }
         av.left=ir.left+scale_px(10); av.top=(ir.top+ir.bottom)/2-scale_px(18); av.right=av.left+scale_px(36); av.bottom=av.top+scale_px(36);
-        if(convs[i].online){ d2.left=av.right-scale_px(9); d2.top=av.bottom-scale_px(9); d2.right=av.right+scale_px(3); d2.bottom=av.bottom+scale_px(3); ADDR(hList,d2,"online-dot"); } }
-    if(hdr_on){ RECT c; GetClientRect(hTitle,&c); av=hdr_avatar_rect(c); if(hdr_online){ RECT d2={av.right-scale_px(9),av.bottom-scale_px(9),av.right+scale_px(3),av.bottom+scale_px(3)}; ADDR(hTitle,d2,"online-dot"); }
+        if(convs[i].online){ d2=av; d2.right+=scale_px(3); d2.bottom+=scale_px(3); ADDR(hList,d2,"avatar+online-dot"); } } /* OCR merges the dot with the monogram tile: report the tile + dot */
+    if(hdr_on){ RECT c; GetClientRect(hTitle,&c); av=hdr_avatar_rect(c); if(hdr_online){ RECT d2=av; d2.right+=scale_px(3); d2.bottom+=scale_px(3); ADDR(hTitle,d2,"avatar+online-dot"); }
         if(hdr_trust==1){ HDC dc=GetDC(hTitle); SIZE sz; HGDIOBJ of=SelectObject(dc,fBodyStrong); RECT s2; int lh=line_h(dc,fSubtitle); GetTextExtentPoint32W(dc,hdr_name,(int)wcslen(hdr_name),&sz); SelectObject(dc,of); ReleaseDC(hTitle,dc);
             s2.left=av.right+scale_px(10)+sz.cx+scale_px(6); s2.top=c.top+scale_px(5)+lh/2-scale_px(7); s2.right=s2.left+scale_px(14); s2.bottom=s2.top+scale_px(14); ADDR(hTitle,s2,"shield"); } }
     { RECT c, pn[4]; GetClientRect(hStatus,&c); InflateRect(&c,0,-2); status_panes(c,pn); { RECT s2; s2.left=pn[1].left+scale_px(6); s2.top=(pn[1].top+pn[1].bottom)/2-scale_px(6); s2.right=s2.left+scale_px(12); s2.bottom=s2.top+scale_px(12); ADDR(hStatus,s2,"shield"); } }
+    { int ct=(int)SendMessageW(hChat,LB_GETTOPINDEX,0,0), cn=(int)SendMessageW(hChat,LB_GETCOUNT,0,0); RECT cl; GetClientRect(hChat,&cl); /* photo thumbnails: user content, not UI colours */
+      for(i=ct;i<cn && i<nrows && n<3800;i++){ RECT b; if(SendMessageW(hChat,LB_GETITEMRECT,i,(LPARAM)&ir)==LB_ERR || ir.top>cl.bottom) break; if(rows[i].kind!=R_IMAGE) continue; b=row_bubble(&rows[i],ir); InflateRect(&b,-scale_px(4),-scale_px(4)); if(b.bottom>cl.bottom) b.bottom=cl.bottom; if(b.top<0) b.top=0; ADDR(hChat,b,"image"); } }
+    { HWND sc[2]={hChat,hList}; int q; for(q=0;q<2;q++) if(GetWindowLongW(sc[q],GWL_STYLE)&WS_VSCROLL){ RECT c, b; GetClientRect(sc[q],&c); b.left=c.right; b.right=c.right+GetSystemMetrics(SM_CXVSCROLL); b.top=c.top; b.bottom=c.bottom; ADDR(sc[q],b,"system-scrollbar"); } } /* drawn by the OS theme, not from the app palette */
 #undef ADDR
     (void)o; if(!strcmp(buf,last)) return; strcpy(last,buf); f=fopen(ui_icons_path,"w"); if(f){ fputs(buf,f); fclose(f); } }
 
