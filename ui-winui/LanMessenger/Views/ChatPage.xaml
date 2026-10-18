@@ -60,7 +60,7 @@
                         </Grid>
                     </StackPanel>
                 </Border>
-                <Border HorizontalAlignment="Left" CornerRadius="8" Padding="4" Background="{ThemeResource LsmBubbleInBackgroundBrush}" Visibility="{x:Bind IsImage, Mode=OneWay}">
+                <Border HorizontalAlignment="Left" CornerRadius="12" Padding="0" BorderThickness="1" BorderBrush="{ThemeResource LsmDividerBrush}" Background="Transparent" Visibility="{x:Bind IsImage, Mode=OneWay}"><!-- parity with GTK: 1px edge, 12px corners clipped by the Border, no mat -->
                     <Grid>
                         <Image Source="{x:Bind FilePath, Mode=OneWay, Converter={StaticResource PathToImage}}" MaxHeight="200" MaxWidth="320" Stretch="Uniform" Tapped="Image_Tapped" />
                         <Border Style="{StaticResource LsmImageTime}"><TextBlock Text="{x:Bind ClockText, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="White" /></Border>
@@ -111,7 +111,7 @@
                         </Grid>
                     </StackPanel>
                 </Border>
-                <Border HorizontalAlignment="Right" CornerRadius="8" Padding="4" Background="{ThemeResource LsmBubbleOutBackgroundBrush}" Visibility="{x:Bind IsImage, Mode=OneWay}">
+                <Border HorizontalAlignment="Right" CornerRadius="12" Padding="0" BorderThickness="1" BorderBrush="{ThemeResource LsmDividerBrush}" Background="Transparent" Visibility="{x:Bind IsImage, Mode=OneWay}"><!-- parity with GTK: 1px edge, 12px corners clipped by the Border, no mat -->
                     <Grid>
                         <Image Source="{x:Bind FilePath, Mode=OneWay, Converter={StaticResource PathToImage}}" MaxHeight="200" MaxWidth="320" Stretch="Uniform" Tapped="Image_Tapped" />
                         <Border Style="{StaticResource LsmImageTime}"><StackPanel Orientation="Horizontal" Spacing="4"><TextBlock Text="{x:Bind ClockText, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="White" /><TextBlock Text="{x:Bind local:B.Tick(Tick), Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="White" /></StackPanel></Border>
