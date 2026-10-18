@@ -37,7 +37,7 @@ $Exe = (Resolve-Path $Exe).Path; $dir = Split-Path $Exe
 $data = Join-Path $env:RUNNER_TEMP 'lsm-xp-smoke'; New-Item -ItemType Directory -Force $data | Out-Null
 Remove-Item (Join-Path $dir 'window.txt') -ErrorAction SilentlyContinue
 $args1 = @('--data', $data, '--name', 'CI', '--port', '47320', '--disco-port', '47321')
-function Start-App { $p = Start-Process $Exe -ArgumentList $args1 -PassThru; $h = WaitFor { $x = [W]::FindWindow('LsmMain', $null); if ($x -ne [IntPtr]::Zero -and [W]::IsWindowVisible($x)) { $x } } 30; return @($p, $h) }
+function Start-App { $p = Start-Process $Exe -ArgumentList $args1 -PassThru; $h = WaitFor { $x = [W]::FindWindow('LsmMain', [NullString]::Value); if ($x -ne [IntPtr]::Zero -and [W]::IsWindowVisible($x)) { $x } } 30; return @($p, $h) }
 
 $p, $h = Start-App
 Check ($h -ne $null) "XP window appeared (pid $($p.Id))"
