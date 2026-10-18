@@ -42,7 +42,8 @@ def wait(pred, t, step=0.3):
     return None
 def sha(p): return hashlib.sha256(open(p, "rb").read()).hexdigest()
 RESUME_SIZE = 120_000_000
-def resume_check(X, Y, interrupt, tag):
+import glob
+def resume_check(X, Y, interrupt, tag, max_latency=None):
     """send a big file X->Y, interrupt the link at ~40%, expect an automatic resume: sha256 matches and the
     sender re-sent < 70% of the file (resumed_from >= 30%). -> (ok, detail)"""
     name = f"resume_{tag}.bin"; src = f"{W}/{name}"
@@ -57,11 +58,18 @@ def resume_check(X, Y, interrupt, tag):
         x = Y.xfer(name, "in"); return x and x[1] >= 0.4 * RESUME_SIZE and x
     hit = wait(part_bytes, 120, 0.002)
     if not hit: return False, "never reached 40%"
-    interrupt()
+    interrupt(); ti = time.time(); cut = hit[1]
+    def progressed():
+        if os.path.exists(Y.dlpath(name)): return True
+        ps = glob.glob(f"{Y.dl}/.{name}*.part") if getattr(Y, "kind", "") != "android" else []
+        if ps: return os.path.getsize(ps[0]) > cut + 2_000_000
+        x = Y.xfer(name, "in"); return x and x[1] > cut + 2_000_000
+    lat = wait(progressed, 120, 0.05) and time.time() - ti
     got = wait(lambda: os.path.exists(Y.dlpath(name)) and os.path.getsize(Y.dlpath(name)) == RESUME_SIZE and sha(Y.dlpath(name)) == want, 240, 1)
     xs = X.xfer(name, "out") or ("?", 0, RESUME_SIZE, 0)
     resent = (RESUME_SIZE - xs[3]) / RESUME_SIZE
-    return bool(got) and resent < 0.7, f"cut at {hit[1] * 100 // RESUME_SIZE}% resumed_from={xs[3] * 100 // RESUME_SIZE}% resent={resent:.0%} sha={'ok' if got else 'FAIL'}"
+    lat_ok = max_latency is None or (lat is not None and lat is not False and lat < max_latency)
+    return bool(got) and resent < 0.7 and lat_ok, (f"resume after {lat:.1f}s " if lat else "never resumed ") + f"cut at {hit[1] * 100 // RESUME_SIZE}% resumed_from={xs[3] * 100 // RESUME_SIZE}% resent={resent:.0%} sha={'ok' if got else 'FAIL'}"
 details = {}
 
 def net_up():
@@ -266,8 +274,10 @@ for a, b in itertools.combinations_with_replacement(kinds, 2):
             # true resume: kill the relay server at ~40%, restart it, the transfer must continue
             ok, det = resume_check(A, B, lambda: restart_relay(), f"relay_{tg}")
             checks["resume (server killed at 40%)"] = ok; details[f"{pair} relay resume"] = det; print("   ", det, flush=True)
-            ok, det = resume_check(A, B, lambda: B.restart_hard(), f"relayrst_{tg}")
-            checks["resume (receiver killed+restarted at 40%)"] = ok; details[f"{pair} relay restart resume"] = det; print("   ", det, flush=True)
+            ok, det = resume_check(A, B, lambda: B.restart_hard(), f"relayrst_{tg}", 10)
+            checks["resume (receiver killed+restarted at 40%, <10s)"] = ok; details[f"{pair} relay receiver restart"] = det; print("   ", det, flush=True)
+            ok, det = resume_check(A, B, lambda: A.restart_hard(), f"relaysrst_{tg}", 10)
+            checks["resume (sender killed+restarted at 40%, <10s)"] = ok; details[f"{pair} relay sender restart"] = det; print("   ", det, flush=True)
             srv = SRV[0]
             # relay -> direct
             block_direct(False)
@@ -312,8 +322,10 @@ for a, b in itertools.combinations_with_replacement(kinds, 2):
             # true resume on the LAN: abort the TCP link at ~40% (ss -K), peers redial, transfer continues
             ok, det = resume_check(A, B, lambda: sh("ip netns exec mxA ss -K dst 10.78.0.2", False), f"lan_{tg}")
             checks["resume (LAN link cut at 40%)"] = ok; details[f"{pair} LAN resume"] = det; print("   ", det, flush=True)
-            ok, det = resume_check(A, B, lambda: B.restart_hard(), f"lanrst_{tg}")
-            checks["resume (receiver killed+restarted at 40%)"] = ok; details[f"{pair} LAN restart resume"] = det; print("   ", det, flush=True)
+            ok, det = resume_check(A, B, lambda: B.restart_hard(), f"lanrst_{tg}", 10)
+            checks["resume (receiver killed+restarted at 40%, <10s)"] = ok; details[f"{pair} LAN receiver restart"] = det; print("   ", det, flush=True)
+            ok, det = resume_check(A, B, lambda: A.restart_hard(), f"lansrst_{tg}", 10)
+            checks["resume (sender killed+restarted at 40%, <10s)"] = ok; details[f"{pair} LAN sender restart"] = det; print("   ", det, flush=True)
     except Exception as e:
         checks["harness"] = False; print("  exception:", repr(e)[:200])
     finally:
