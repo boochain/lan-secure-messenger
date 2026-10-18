@@ -57,6 +57,8 @@
                         <SolidColorBrush x:Key="SystemFillColorSuccessBackgroundBrush" Color="#FBFBFB" />
                         <SolidColorBrush x:Key="SystemFillColorAttentionBackgroundBrush" Color="#FBFBFB" />
                         <SolidColorBrush x:Key="SystemFillColorAttentionBrush" Color="#005FB8" />
+                        <!-- hover visibly different from the list (#F9F9F9): the system hover #F0F0F0 was dE 1.85 -->
+                        <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="#EDEDED" />
                         <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="#E5E5E5" />
                         <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="#E5E5E5" />
                         <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPressed" Color="#E5E5E5" />
@@ -167,6 +169,7 @@
                         <SolidColorBrush x:Key="SystemFillColorSuccessBackgroundBrush" Color="#2B2B2B" />
                         <SolidColorBrush x:Key="SystemFillColorAttentionBackgroundBrush" Color="#2B2B2B" />
                         <SolidColorBrush x:Key="SystemFillColorAttentionBrush" Color="#60CDFF" />
+                        <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="#2E2E2E" />
                         <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="#323232" />
                         <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="#323232" />
                         <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPressed" Color="#323232" />
