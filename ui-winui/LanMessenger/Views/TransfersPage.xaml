@@ -48,7 +48,7 @@
                             <TextBlock Style="{StaticResource SecondaryCaptionStyle}">
                                 <Run Text="{x:Bind DirectionText, Mode=OneWay}" /><Run Text=" · " /><Run Text="{x:Bind StateText, Mode=OneWay}" /><Run Text=" · " /><Run Text="{x:Bind ProgressText, Mode=OneWay}" />
                             </TextBlock>
-                            <ProgressBar Value="{x:Bind Progress, Mode=OneWay}" Maximum="100" Visibility="{x:Bind IsActive, Mode=OneWay}" />
+                            <ProgressBar Value="{x:Bind Progress, Mode=OneWay}" Maximum="100" Visibility="{x:Bind IsActive, Mode=OneWay}" ShowPaused="{x:Bind IsPaused, Mode=OneWay}" />
                             <TextBlock Text="{x:Bind Error, Mode=OneWay}" Foreground="{ThemeResource StatusErrorTextBrush}" TextWrapping="Wrap"
                                        Style="{StaticResource CaptionTextBlockStyle}" Visibility="{x:Bind IsError, Mode=OneWay}" />
                         </StackPanel>
