@@ -381,13 +381,20 @@ public static class UiSmoke
     {
         try
         {
+            // neutral spot: the empty middle of the navigation rail (no hover state, no tooltip). A real mouse-move
+            // input is sent there so XAML raises PointerExited on whatever row the pointer was over (a bare
+            // SetCursorPos to outside the window leaves the last row in its hover state).
             var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(w);
-            GetWindowRect(hwnd, out RECT r);
-            int sx = GetSystemMetrics(0), sy = GetSystemMetrics(1);
-            // bottom-right screen corner unless the window covers it, then the top-left corner
-            int x = sx - 2, y = sy - 2;
-            if (x >= r.Left && x <= r.Right && y >= r.Top && y <= r.Bottom) { x = 1; y = 1; }
-            SetCursorPos(x, y);
+            if (w.Content is FrameworkElement root && root.XamlRoot != null)
+            {
+                var sc = root.XamlRoot.RasterizationScale;
+                var pt = new POINT { X = (int)(24 * sc), Y = (int)(root.ActualHeight * 0.55 * sc) };
+                ClientToScreen(hwnd, ref pt);
+                SetCursorPos(pt.X + 1, pt.Y);
+                await Task.Delay(50);
+                var mv = new[] { new INPUT { type = 0, U = new InputUnion { mi = new MOUSEINPUT { dx = -1, dy = 0, dwFlags = 0x0001 /* MOVE */ } } } };
+                SendInput(1, mv, Marshal.SizeOf<INPUT>());
+            }
             await Task.Delay(400);
             if (w.Content?.XamlRoot is { } xr)
                 foreach (var pop in VisualTreeHelper.GetOpenPopupsForXamlRoot(xr))
@@ -750,7 +757,6 @@ public static class UiSmoke
     [StructLayout(LayoutKind.Sequential)] private struct INPUT { public uint type; public InputUnion U; }
     [DllImport("user32.dll", SetLastError = true)] private static extern uint SendInput(uint n, INPUT[] inputs, int size);
     [DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);
-    [DllImport("user32.dll")] private static extern int GetSystemMetrics(int index);
     [DllImport("user32.dll")] private static extern bool ClientToScreen(IntPtr h, ref POINT p);
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr h);
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr h, out RECT r);
