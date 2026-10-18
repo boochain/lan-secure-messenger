@@ -26,7 +26,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/* ---------------------------------------------------------------- 设置 › 中继服务器（可选）
+/* ---------------------------------------------------------------- 设置 › 中转服务器（可选）
  * Off by default. LAN direct is always preferred; the server only forwards end-to-end encrypted data.
  * The passphrase is write-only: the core only reports whether one is set (已设置). Back returns to 设置. */
 @Composable

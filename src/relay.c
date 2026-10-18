@@ -125,7 +125,7 @@ static void rl_on_frame(lsm_core *c, uint8_t ty, const uint8_t *b, size_t n){
     if(r->st==RS_HELLO){
         uint8_t mac[32], hdr[99]; char info[400]; size_t il;
         if(ty==RT_ERROR||ty==RT_AUTH_FAIL){ rl_fail(c,"error",n>1?"server refused":"server refused"); return; }
-        if(ty!=RT_HELLO || n<61 || memcmp(b,"LSMR",4) || b[4]!=1){ rl_fail(c,"error","\xe4\xb8\x8d\xe6\x98\xaf LSM \xe4\xb8\xad\xe7\xbb\xa7\xe6\x9c\x8d\xe5\x8a\xa1\xe5\x99\xa8"); return; } /* 不是 LSM 中继服务器 */
+        if(ty!=RT_HELLO || n<61 || memcmp(b,"LSMR",4) || b[4]!=1){ rl_fail(c,"error","\xe4\xb8\x8d\xe6\x98\xaf\xe4\xb8\xad\xe8\xbd\xac\xe6\x9c\x8d\xe5\x8a\xa1\xe5\x99\xa8"); return; } /* 不是 LSM 中转服务器 */
         if(rl_key(r,b+5,rl_rd32(b+21),rl_rd32(b+25))){ rl_fail(c,"error","bad KDF parameters"); return; }
         memcpy(r->sn,b+29,32); rand_bytes(r->cn,32);
         rl_mac(mac,r->key,"LSMR-v1-client",r->sn,r->cn,r->myid);

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Relay client UI on Android (emulator, adb): turn the relay on in 设置 › 中继服务器（可选） with the test relay,
+"""Relay client UI on Android (emulator, adb): turn the relay on in 设置 › 中转服务器（可选） with the test relay,
 see a relay-only peer get the 经服务器 badge, and capture light + dark shots of the settings screen, the list with the
 经服务器 filter chip and the chat header via the server. Also checks Back navigation and that the passphrase is write-only.
 The relay runs on the host (127.0.0.1); the emulator reaches it at 10.0.2.2. There is no LAN path, so the relay is the only route.
@@ -54,8 +54,8 @@ try:
     sh(f"pm clear {PKG}"); sh("cmd uimode night no"); sh(f"pm grant {PKG} android.permission.POST_NOTIFICATIONS")
     sh(f"am start -W -n {PKG}/.MainActivity"); time.sleep(10)
     check(bool(sh(f"pidof {PKG}").strip()), "app running after launch")
-    # ---- 设置 › 中继服务器（可选）: off by default
-    tap_text("设置"); tap_text("中继服务器（可选）")
+    # ---- 设置 › 中转服务器（可选）: off by default
+    tap_text("设置"); tap_text("中转服务器（可选）")
     check(has("未启用") and has("保存并连接"), "relay screen opens, off by default (未启用)")
     check(has("局域网直连始终优先") or any("局域网直连始终优先" in (n.get("text") or "") for n in nodes()), "explains LAN direct is preferred")
     field("服务器地址"); sh("input text 10.0.2.2")
@@ -71,13 +71,13 @@ try:
     fp = ui_seed.wait(lambda: next((x[0][5:] for x in P.peers() if x[1] == "online" and "via=relay" in "\t".join(x)), None), 90)
     check(fp is not None, "app online at the relay-only peer (via=relay)")
     if fp: P.cmd(f"trust {fp}"); P.cmd(f"send {fp} 我在外地，经服务器联系你")
-    back(); check(has("中继服务器（可选）") and not has("保存并连接"), "Back: relay screen -> 设置")
+    back(); check(has("中转服务器（可选）") and not has("保存并连接"), "Back: relay screen -> 设置")
     tap_text("聊天")
     tap_text(PEER, 90); tap_text("菜单"); tap_text("信任"); back()
     check(ui_seed.wait(lambda: has("经服务器中转"), 30, 2) is not None, "relay peer in the list has the 经服务器 badge (icon + text)")
     for th in ("light", "dark"):
         sh("cmd uimode night " + ("yes" if th == "dark" else "no")); time.sleep(6)
-        tap_text("设置"); tap_text("中继服务器（可选）"); shot(f"android-{th}-20-relay-settings"); back()
+        tap_text("设置"); tap_text("中转服务器（可选）"); shot(f"android-{th}-20-relay-settings"); back()
         tap_text("聊天"); shot(f"android-{th}-21-relay-list")
         tap_text("经服务器", idx=0)                                           # filter chip (first; row badges follow)
         check(has(PEER), f"{th}: 经服务器 filter shows the relay peer"); shot(f"android-{th}-22-relay-chip")
@@ -87,7 +87,7 @@ try:
         back(); check(has("全部"), f"{th}: Back chat -> list"); back()     # Back clears the filter
         check(has("局域网安全通讯"), f"{th}: Back clears the filter, stays in the app")
     # ---- relay off: the peer goes offline (no LAN path), badge disappears
-    tap_text("设置"); tap_text("中继服务器（可选）"); tap_text("通过中转服务器连接")
+    tap_text("设置"); tap_text("中转服务器（可选）"); tap_text("通过中转服务器连接")
     check(ui_seed.wait(lambda: has("未启用"), 30, 2) is not None, "relay toggled off -> 未启用"); back(); tap_text("聊天")
     check(ui_seed.wait(lambda: not has("经服务器中转"), 60, 3) is not None, "badge gone after relay off")
 except Exception as ex:
