@@ -75,7 +75,7 @@ static HBRUSH brWin, brSide, brChat, brInput, brCard;
 static HMENU hMenuTree; static HWND hMenuBtn[5];
 #define IDC_MENUBTN 120
 #define MENUBAR_H 30
-static HFONT fCaption, fBody, fBodyStrong, fSubtitle, fTitle;
+static HFONT fCaptionStrong, fCaption, fBody, fBodyStrong, fSubtitle, fTitle;
 #define TITLE_H 32
 #define IDM_THEME_SYS 230
 #define IDM_THEME_LIGHT 231
@@ -278,7 +278,7 @@ static void draw_chat_item(DRAWITEMSTRUCT *d){ RECT it=d->rcItem, b; row_t *r; H
         tm=tr; tm.top=tm.bottom-(inl?lh:line_h(dc,fCaption)); if(r->out) tm.right-=scale_px(24); SelectObject(dc,fCaption); SetTextColor(dc,r->out?P.minemeta:P.meta); DrawTextW(dc,r->time,-1,&tm,DT_RIGHT|DT_BOTTOM|DT_SINGLELINE);
         if(r->out) ticks(dc,tr.right-scale_px(16),(tm.top+tm.bottom)/2+1,r->status); }
     else { RECT tile={b.left+scale_px(10),b.top+scale_px(10),b.left+scale_px(46),b.top+scale_px(46)}, nr, br=file_btn_rect(b), tm; COLORREF fg=r->out?P.minefg:P.theirsfg, meta=r->out?P.minemeta:P.meta;
-        bubble(dc,tile,P.tile,P.stroke); SelectObject(dc,fCaption); SetTextColor(dc,P.tilefg); DrawTextW(dc,r->ext,-1,&tile,DT_CENTER|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX);
+        bubble(dc,tile,P.tile,P.stroke); SelectObject(dc,fCaptionStrong); SetTextColor(dc,P.tilefg); /* bold: regular 12px Latin measured 4.50:1 / Lc 57 after grayscale AA */ DrawTextW(dc,r->ext,-1,&tile,DT_CENTER|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX);
         nr.left=tile.right+scale_px(10); nr.right=br.left-scale_px(6); nr.top=b.top+scale_px(9); nr.bottom=nr.top+line_h(dc,fBodyStrong);
         SelectObject(dc,fBodyStrong); SetTextColor(dc,fg); DrawTextW(dc,r->name,-1,&nr,DT_LEFT|DT_SINGLELINE|DT_NOPREFIX|DT_END_ELLIPSIS);
         nr.top=nr.bottom+scale_px(1); nr.bottom=nr.top+line_h(dc,fBody); SelectObject(dc,fBody); SetTextColor(dc,meta); /* 14px: 12px Latin at wine/XP grayscale AA measured < 4.5:1 */ DrawTextW(dc,r->meta,-1,&nr,DT_LEFT|DT_SINGLELINE|DT_NOPREFIX|DT_END_ELLIPSIS);
@@ -580,7 +580,7 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE prev, LPWSTR cmd, int show){
       for(i=0;faces[i];i++){ LOGFONTW q; memset(&q,0,sizeof q); q.lfCharSet=DEFAULT_CHARSET; wcsncpy(q.lfFaceName,faces[i],31);
         if(!EnumFontFamiliesExW(dc,&q,(FONTENUMPROCW)font_found,0,0)){ face=faces[i]; break; } }
       ReleaseDC(NULL,dc);
-      fCaption=mkfont(face,12,FW_NORMAL); fBody=mkfont(face,14,FW_NORMAL); fBodyStrong=mkfont(face,14,FW_SEMIBOLD); fSubtitle=mkfont(face,20,FW_SEMIBOLD); fTitle=mkfont(face,28,FW_SEMIBOLD);
+      fCaption=mkfont(face,12,FW_NORMAL); fCaptionStrong=mkfont(face,12,FW_BOLD); fBody=mkfont(face,14,FW_NORMAL); fBodyStrong=mkfont(face,14,FW_SEMIBOLD); fSubtitle=mkfont(face,20,FW_SEMIBOLD); fTitle=mkfont(face,28,FW_SEMIBOLD);
       hFont=fBody; hFontBold=fBodyStrong; }
     theme_load(); if(theme_cli>=0) theme_mode=theme_cli; theme_apply();
     C=lsm_start(&o,err,sizeof err);
