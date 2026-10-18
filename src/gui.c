@@ -421,7 +421,7 @@ static LRESULT CALLBACK ChatProc(HWND h, UINT m, WPARAM w, LPARAM l){
         AM(pm,MF_STRING|(r?0:MF_GRAYED),1,L"复制(&C)\tCtrl+C");
         if(r && r->kind>=R_FILE){ AM(pm,MF_STRING|(r->path[0]?0:MF_GRAYED),4,L"打开(&O)"); AM(pm,MF_STRING|(r->path[0]?0:MF_GRAYED),5,L"在文件夹中显示(&S)"); }
         AM(pm,MF_SEPARATOR,0,NULL); AM(pm,MF_STRING|(r?0:MF_GRAYED),3,L"删除这条消息（仅本机）(&D)…"); menu_bg(pm);
-        cmd=TrackPopupMenu(pm,TPM_RIGHTBUTTON|TPM_RETURNCMD|TPM_NONOTIFY,pt.x,pt.y,0,h,NULL); DestroyMenu(pm);
+        cmd=TrackPopupMenu(pm,TPM_RIGHTBUTTON|TPM_RETURNCMD|TPM_NONOTIFY,pt.x,pt.y,0,hMain,NULL); /* owner = main window: with the owner-drawn LISTBOX as owner wine measured every item 0 px wide (blank menu) */ DestroyMenu(pm);
         if(cmd==1 && r) copy_text(r->kind==R_TEXT?r->text:r->name);
         else if(cmd==4 && r) ShellExecuteW(hMain,L"open",W(r->path),NULL,NULL,SW_SHOWNORMAL);
         else if(cmd==5 && r) show_in_folder(r->path);
@@ -443,7 +443,7 @@ static void tray_balloon(const char *title, const char *body){ if(!tray_added ||
     Shell_NotifyIconW(NIM_MODIFY,&nid); nid.uFlags=NIF_ICON|NIF_MESSAGE|NIF_TIP; nid.szInfo[0]=0; }
 /* XP: the shell may not be up yet at autostart, and explorer.exe restarts drop all icons
  * (it then broadcasts "TaskbarCreated"). Keep retrying NIM_ADD until it succeeds. */
-static void tray_add(void){ nid.uFlags=NIF_ICON|NIF_MESSAGE|NIF_TIP; tray_added=Shell_NotifyIconW(NIM_ADD,&nid)?1:0; }
+static void tray_add(void){ nid.uFlags=NIF_ICON|NIF_MESSAGE|NIF_TIP; tray_added=(Shell_NotifyIconW(NIM_ADD,&nid)||Shell_NotifyIconW(NIM_MODIFY,&nid))?1:0; } /* NIM_ADD fails when the icon is already there (TaskbarCreated after a successful add, as wine sends when a tray docks): still added */
 
 static void poll_events(void){
     char e[4096]; int list_dirty=0, chat_dirty=0;
@@ -777,7 +777,8 @@ static LRESULT CALLBACK MainProc(HWND h, UINT m, WPARAM w, LPARAM l){
         if(l==WM_LBUTTONDBLCLK||l==NIN_BALLOONUSERCLICK) do_command(IDM_SHOW);
         else if(l==WM_RBUTTONUP){ POINT pt; HMENU pm=CreatePopupMenu(); AM(pm,MF_STRING,IDM_SHOW,L"显示主窗口"); AM(pm,MF_SEPARATOR,0,NULL); AM(pm,MF_STRING,IDM_EXIT,L"退出"); menu_bg(pm); GetCursorPos(&pt); SetForegroundWindow(h); TrackPopupMenu(pm,TPM_RIGHTBUTTON,pt.x,pt.y,0,h,NULL); DestroyMenu(pm); }
         return 0;
-    case WM_CLOSE: win_save(); ShowWindow(h,SW_HIDE); tray_balloon("局域网安全通讯","程序仍在后台运行，双击托盘图标可打开。"); return 0;
+    case WM_CLOSE: win_save(); if(!tray_added) tray_add(); if(!tray_added){ DestroyWindow(h); return 0; } /* no notification area: close really exits (never hide with no way back) */
+        ShowWindow(h,SW_HIDE); { static int told; if(!told){ told=1; tray_balloon("局域网安全通讯","程序仍在后台运行，双击托盘图标可打开。"); } } return 0;
     case WM_DESTROY: win_save(); KillTimer(h,TIMER_POLL); Shell_NotifyIconW(NIM_DELETE,&nid); PostQuitMessage(0); return 0;
     case WM_SYSCOLORCHANGE: theme_apply(); InvalidateRect(h,NULL,TRUE); return 0;
     }

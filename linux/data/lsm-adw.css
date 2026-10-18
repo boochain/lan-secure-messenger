@@ -52,7 +52,7 @@ button.send { min-width: 36px; min-height: 36px; }
 .sidebar-search { background-color: @lsm_list; border: 1px solid @lsm_fieldborder; color: @lsm_fg; }
 .sidebar-search text placeholder, .sidebar-search image { color: @lsm_fg2; opacity: 1; }
 .navigation-sidebar > row:selected .conv-preview, .navigation-sidebar > row:selected .conv-time { color: @lsm_fg; }
-.navigation-sidebar > row:selected .conv-time.unread { color: @lsm_accenttext; }
+.navigation-sidebar > row:selected .conv-time.unread { color: @lsm_fg; } /* bold keeps it "unread"; accent text was 3.8:1 on the light rowsel #CDCDD1 */
 .content-pane { border-left: 1px solid @lsm_divider; }
 .chat-sub, .conv-preview, .conv-time, .status, .placeholder, .hint { opacity: 1; }
 .sub { color: @lsm_fg; font-size: 13px; }

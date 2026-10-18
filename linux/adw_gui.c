@@ -15,6 +15,7 @@
 #include "../src/core.h"
 /* the relay client (feat/relay-client) adds lsm_relay_status() and lsm_contact.via_relay; build-adw.sh passes
    -DLSM_HAVE_RELAY when src/core.h has them, so this file builds on main and on the relay branch */
+static void save_window(void);
 #ifdef LSM_HAVE_RELAY
 #define VIA_RELAY(k) ((k).via_relay)
 #else
@@ -342,6 +343,12 @@ static void relay_dialog(void){ GtkWidget *tv, *hb, *pg, *grp, *grp2, *box, *btn
 static gboolean relay_test_fill(gpointer p){ /* LSM_UI_TEST_RELAY="host port pass": open the dialog, fill it and press 保存并连接 like a user */ char h[256], ps[256]; int port;
     if(sscanf((const char*)p,"%255s %d %255s",h,&port,ps)!=3) return G_SOURCE_REMOVE; relay_dialog(); { char b[16]; snprintf(b,sizeof b,"%d",port); gtk_switch_set_active(GTK_SWITCH(rl_sw),TRUE); gtk_editable_set_text(GTK_EDITABLE(rl_host),h); gtk_editable_set_text(GTK_EDITABLE(rl_port),b); gtk_editable_set_text(GTK_EDITABLE(rl_pass),ps); }
     relay_save_cb(NULL,NULL); return G_SOURCE_REMOVE; }
+static gboolean ui_state_tick(gpointer p){ /* LSM_UI_TEST: open dialogs / popover / window size, for the basics test (Esc closes, window memory) */ int nd=0; GListModel *tl=gtk_window_get_toplevels(); guint i; (void)p;
+    for(i=0;i<g_list_model_get_n_items(tl);i++){ GtkWindow *t=g_list_model_get_item(tl,i); if(t!=GTK_WINDOW(win) && gtk_widget_get_visible(GTK_WIDGET(t))) nd++; g_object_unref(t); }
+#if ADW_CHECK_VERSION(1,5,0)
+    if(adw_application_window_get_visible_dialog(ADW_APPLICATION_WINDOW(win))) nd++;
+#endif
+    printf("UISTATE dialogs=%d addpop=%d size=%dx%d\n",nd,add_popover&&gtk_widget_get_visible(add_popover),gtk_widget_get_width(win),gtk_widget_get_height(win)); fflush(stdout); return G_SOURCE_CONTINUE; }
 static void win_act(GSimpleAction *a, GVariant *v, gpointer p){ const char *n=g_action_get_name(G_ACTION(a)); (void)v;(void)p;
     g_timeout_add(400,test_log_later,(gpointer)n);
     if(!strcmp(n,"search")){ adw_navigation_split_view_set_show_content(ADW_NAVIGATION_SPLIT_VIEW(split),FALSE); gtk_widget_grab_focus(search); }
@@ -359,7 +366,7 @@ static void win_act(GSimpleAction *a, GVariant *v, gpointer p){ const char *n=g_
     else if(!strcmp(n,"menu")) gtk_menu_button_popup(GTK_MENU_BUTTON(menu_btn));
     else if(!strcmp(n,"close")) gtk_window_close(GTK_WINDOW(win));
     else if(!strcmp(n,"about")){ char b[400]; snprintf(b,sizeof b,"版本 %s（协议 v5）\n与 Windows v0.5、XP 版和 Android 版互通。\nGTK %d.%d · libadwaita %d.%d",LSM_APP_VERSION,gtk_get_major_version(),gtk_get_minor_version(),adw_get_major_version(),adw_get_minor_version()); info("局域网安全通讯",b); }
-    else if(!strcmp(n,"quit")){ if(held){ g_application_release(G_APPLICATION(app)); held=0; } g_application_quit(G_APPLICATION(app)); } }
+    else if(!strcmp(n,"quit")){ save_window(); /* 退出 / Ctrl+Q also remembers the window */ if(held){ g_application_release(G_APPLICATION(app)); held=0; } g_application_quit(G_APPLICATION(app)); } }
 
 /* ---------------------------------------------------------------- window memory + close-to-background */
 static void prefs_path(char *o, size_t n){ snprintf(o,n,"%s/window.ini",data_dir); }
@@ -436,6 +443,7 @@ static void activate(GtkApplication *a, gpointer p){
     C=lsm_start(&o,err,sizeof err); if(!C){ fprintf(stderr,"启动失败：%s\n",err); exit(1); }
     if(getenv("LSM_UI_TEST")){ lsm_lock(C); printf("LSM_FP %s\nLSM_TOOLKIT gtk %u.%u.%u adwaita %u.%u.%u\n",lsm_my_fp(C),gtk_get_major_version(),gtk_get_minor_version(),gtk_get_micro_version(),adw_get_major_version(),adw_get_minor_version(),adw_get_micro_version()); lsm_unlock(C); fflush(stdout); }
     load_palette();
+    if(getenv("LSM_UI_TEST")) g_timeout_add(500,ui_state_tick,NULL);
     if(getenv("LSM_UI_TEST") && getenv("LSM_UI_TEST_RELAY")) g_timeout_add(2500,relay_test_fill,(gpointer)getenv("LSM_UI_TEST_RELAY"));
     install_icons(); win=adw_application_window_new(a); gtk_window_set_title(GTK_WINDOW(win),"局域网安全通讯"); gtk_window_set_default_size(GTK_WINDOW(win),1024,694); gtk_window_set_icon_name(GTK_WINDOW(win),"lan-messenger");
     gtk_widget_set_size_request(win,360,400);
