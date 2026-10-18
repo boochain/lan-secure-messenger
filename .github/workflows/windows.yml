@@ -196,7 +196,7 @@ jobs:
         run: cargo build --release --target aarch64-pc-windows-msvc -p lan-daemon -p lan-cli
       - name: Publish WinUI app (win-arm64, unpackaged, self-contained)
         shell: pwsh
-        run: dotnet publish ui-winui/LanMessenger/LanMessenger.csproj -c Release -r win-arm64 -p:Platform=ARM64 -o publish-arm64
+        run: dotnet publish ui-winui/LanMessenger/LanMessenger.csproj -c Release -r win-arm64 -p:Platform=ARM64 -p:PlatformTarget=ARM64 -o publish-arm64
       - name: Assemble, check machine type, zip
         shell: pwsh
         run: |
