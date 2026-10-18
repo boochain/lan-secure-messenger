@@ -4,6 +4,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -53,13 +55,14 @@ fun RelayScreen(st: AppState, back: () -> Unit) {
             Text("不在同一局域网时，可通过你自己部署的中转服务器联系对方。局域网直连始终优先；服务器只转发端到端加密的数据，无法看到消息内容。",
                 style = MaterialTheme.typography.bodyMedium, color = p.fg2)
         }
-        Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
+        // the whole row toggles (Material list-item switch pattern): tapping the label works too
+        Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).toggleable(on, role = Role.Switch) { v -> on = v; if (!v || host.isNotBlank()) save(v) },
+            verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("通过中转服务器连接", fontSize = 16.sp, lineHeight = 24.sp, color = p.fg)
                 Text(if (on) "局域网直连不可用时经服务器中转" else "关闭：只使用局域网直连", style = MaterialTheme.typography.bodyMedium, color = p.fg2)
             }
-            Switch(on, { v -> on = v; if (!v || host.isNotBlank()) save(v) }, modifier = Modifier.semantics { contentDescription = "通过中转服务器连接" },
-                colors = SwitchDefaults.colors(checkedTrackColor = p.accent, checkedThumbColor = p.onAccent))
+            Switch(on, null, colors = SwitchDefaults.colors(checkedTrackColor = p.accent, checkedThumbColor = p.onAccent))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(host, { host = it }, label = { Text("服务器地址") }, placeholder = { Text("relay.example.com") }, singleLine = true, modifier = Modifier.weight(1f),
