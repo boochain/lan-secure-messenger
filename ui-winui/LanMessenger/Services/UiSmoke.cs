@@ -347,6 +347,7 @@ public static class UiSmoke
     private static async Task ShotAsync(MainWindow w, string dir, string name, string label, ElementTheme theme)
     {
         var file = Path.Combine(dir, $"{name}-{label}.png");
+        await ParkPointerAsync(w);
         var (px, width, height, how) = await GrabAsync(w, theme);
         await SavePngAsync(file, px, width, height);
         var luma = MeanLuma(px);
@@ -359,6 +360,28 @@ public static class UiSmoke
         }
         CheckContrast(w, $"{name}-{label}", theme);
         RecordAuditHints(w, dir, file);
+    }
+
+    /// <summary>Before every shot: move the mouse to a neutral spot outside the window (no hover row, no hover tooltip)
+    /// and close any open ToolTip (a keyboard-focus tooltip such as Ctrl+F). Menus/flyouts being shot stay open.</summary>
+    private static async Task ParkPointerAsync(MainWindow w)
+    {
+        try
+        {
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(w);
+            GetWindowRect(hwnd, out RECT r);
+            int sx = GetSystemMetrics(0), sy = GetSystemMetrics(1);
+            // bottom-right screen corner unless the window covers it, then the top-left corner
+            int x = sx - 2, y = sy - 2;
+            if (x >= r.Left && x <= r.Right && y >= r.Top && y <= r.Bottom) { x = 1; y = 1; }
+            SetCursorPos(x, y);
+            await Task.Delay(400);
+            if (w.Content?.XamlRoot is { } xr)
+                foreach (var pop in VisualTreeHelper.GetOpenPopupsForXamlRoot(xr))
+                    if (pop.Child is ToolTip) pop.IsOpen = false;
+            await Task.Delay(200);
+        }
+        catch (Exception e) { Log.Add("park pointer: " + e.Message); }
     }
 
     // ---------------------------------------------------------------- colour-audit hints
@@ -716,6 +739,7 @@ public static class UiSmoke
     [DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr h);
+    [DllImport("user32.dll")] private static extern int GetSystemMetrics(int index);
     [DllImport("user32.dll")] private static extern bool ClientToScreen(IntPtr h, ref POINT p);
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr h);
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr h, out RECT r);
