@@ -183,6 +183,7 @@ public sealed partial class ChatPage : Page
     internal ListView SmokeConvList => ConvList;
     internal string SmokeSearchText { get => SearchBox.Text; set => SearchBox.Text = value; }
     internal void SmokeFocusComposer() => Composer.Focus(FocusState.Keyboard);
+    internal string SmokeComposerText { get => Composer.Text; set { Composer.Text = value; Composer.Select(value.Length, 0); } }
     public void ScrollMessagesToTopForSmoke() { if (VM.Messages.Count > 0) MessageList.ScrollIntoView(VM.Messages[0], ScrollIntoViewAlignment.Leading); }
 
     private void ScrollToEnd()
