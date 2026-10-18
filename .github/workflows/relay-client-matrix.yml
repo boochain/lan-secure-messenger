@@ -97,3 +97,62 @@ jobs:
           name: matrix-android-relay
           path: logs
           if-no-files-found: ignore
+
+  android-relay-ui:
+    name: Android relay UI (adb smoke + light/dark shots + colour audit)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with: { repository: boochain/lan-secure-messenger, ref: feat/relay-client, path: rust }
+      - uses: actions/checkout@v4
+        with: { repository: boochain/lan-secure-messenger-xp, ref: feat/relay-client, path: xp }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "21" }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: rust/relay-server }
+      - name: SDK packages (NDK, CMake)
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" "ndk;26.3.11579264" "cmake;3.22.1" > /dev/null
+      - name: Build APK (debug), native CLI, test relay
+        run: |
+          (cd xp/android && ./gradlew --no-daemon assembleDebug)
+          (cd xp && make build/linux/lanmsg-cli)
+          (cd rust/relay-server && cargo build --release --bin relay-server)
+      - name: Screenshot + audit deps (Pillow, numpy, OpenCV, tesseract chi_sim)
+        run: |
+          sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tesseract-ocr tesseract-ocr-chi-sim python3-numpy python3-opencv python3-pil
+          python3 -m pip install --break-system-packages -q pytesseract pillow numpy opencv-python-headless
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - name: AVD at the mockup size (824 x 1784 @ 320 dpi, same as xp.yml)
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "emulator" "system-images;android-30;default;x86_64" > /dev/null
+          export ANDROID_AVD_HOME=$HOME/.android/avd; mkdir -p $ANDROID_AVD_HOME; echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> $GITHUB_ENV
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n lsm -k "system-images;android-30;default;x86_64" -d pixel_2 --force
+          C=$HOME/.android/avd/lsm.avd/config.ini; sed -i '/^hw.lcd.width\|^hw.lcd.height\|^hw.lcd.density\|^hw.ramSize/d' $C
+          printf 'hw.lcd.width=824\nhw.lcd.height=1784\nhw.lcd.density=320\nhw.ramSize=2048\n' >> $C
+      - name: Relay UI smoke on the emulator (toggle relay on, peer gets 经服务器, Back navigation, shots)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: default
+          avd-name: lsm
+          force-avd-creation: false
+          disable-animations: true
+          script: |
+            for i in 1 2 3 4 5 6; do adb wait-for-device; adb shell pm path android >/dev/null 2>&1 && adb install -r xp/android/app/build/outputs/apk/debug/app-debug.apk && break; echo "install retry $i"; sleep 10; done
+            python3 -u xp/tests/android_relay_shots.py --relay-bin rust/relay-server/target/release/relay-server --native-cli xp/build/linux/lanmsg-cli --out shots/android-relay
+      - name: Colour audit (android palette, light + dark)
+        if: always()
+        run: |
+          cd xp && python3 tools/ui_color_audit.py --palette tools/palettes/android.json --out ../ui-audit/android-relay ../shots/android-relay/*.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-relay-ui
+          path: |
+            shots
+            ui-audit
