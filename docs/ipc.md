@@ -169,3 +169,10 @@ Changing any relay field reconnects the relay immediately; `relay_enabled:false`
 * Peers on server: `lsm_relay_peers(c)`; events `relay_peer\t<fp>\t<join|leave>\t<name>`.
 * Per contact: `lsm_contact.via_relay`; event `peer\t<fp>\tpath\t<direct|relay>` on every switch.
 * Transfers: `lsm_transfer.resumed_from`, `resumable`.
+
+### C core (XP / GTK / Android): same rule
+The relay passphrase is write-only there too.
+- `lsm_relay_set(c, enabled, host, port, pass, err)` takes it: `NULL` keeps it, `""` clears it.
+- `lsm_relay_get(c, &enabled, host, hn, &port, &has_pass)` reports only `has_pass` (0/1).
+- CLI: `relay status` → `OK relay <state> <detail> enabled=<0|1> server=<host:port> peers=<n> passphrase=set|none`.
+- The Android JNI layer has no relay binding yet. When the UI worker adds one, it should expose `hasPassphrase` (Boolean) and a setter, never a getter for the passphrase.
