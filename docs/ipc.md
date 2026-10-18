@@ -128,7 +128,10 @@ Data the daemon exposes (lan-core, branch feat/relay-client). The C core equival
 | `relay_enabled` | bool | `false` | off by default |
 | `relay_host` | string | `""` | hostname or IP of the relay server |
 | `relay_port` | u16 | `9443` | |
-| `relay_passphrase` | string | `""` | network passphrase. Never sent over the network (challenge-response). On disk it is sealed in `data/relay.dat` (ChaCha20-Poly1305, history key), never in settings.json. It *is* returned over local IPC so the settings page can show/edit it (mask it in the UI). |
+| `relay_passphrase` | string | `""` | network passphrase. **Write-only.** Never sent over the network (challenge-response). On disk it is sealed in `data/relay.dat` (ChaCha20-Poly1305, history key), never in settings.json. It is **never returned over IPC**: `snapshot.settings` and `settings_updated` omit the key. In an `update_settings` patch, leave the key out to keep the passphrase, send `""` to clear it, or send any other value to set it. |
+| `relay_has_passphrase` | bool | `false` | read-only: whether a passphrase is configured (omitted when false). Use it to show "已设置" / a masked placeholder. Ignored in `update_settings`. |
+
+`relay_status` / `snapshot.relay` also carries `has_passphrase` (bool).
 
 Write example: `{"method":"update_settings","params":{"settings":{"relay_enabled":true,"relay_host":"relay.example.com","relay_port":9443,"relay_passphrase":"…"}}}`.
 Changing any relay field reconnects the relay immediately; `relay_enabled:false` disconnects.

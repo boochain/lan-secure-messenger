@@ -1247,6 +1247,7 @@ impl Engine {
             detail: self.relay_state.1.clone(),
             server: if self.settings.relay_host.trim().is_empty() { String::new() } else { format!("{}:{}", self.settings.relay_host.trim(), self.settings.relay_port) },
             peers: self.relay_peers.len() as u32,
+            has_passphrase: !self.settings.relay_passphrase.is_empty(),
             relayed_links: self.conns.values().filter(|c| c.via_relay).count() as u32,
         }
     }
@@ -1439,7 +1440,7 @@ impl Engine {
         let mut transfers: Vec<Transfer> = self.transfers.values().map(|t| t.view()).collect();
         transfers.sort_by(|a, b| b.started_ms.cmp(&a.started_ms));
         transfers.truncate(300);
-        Snapshot { me: self.me_view(), peers, groups, conversations, transfers, settings: self.settings.clone(), relay: self.relay_view() }
+        Snapshot { me: self.me_view(), peers, groups, conversations, transfers, settings: self.settings.for_ipc(), relay: self.relay_view() }
     }
 
     fn diag_peers(&self) -> Vec<PeerDiag> {
@@ -1927,6 +1928,7 @@ impl Engine {
                 let mut v = serde_json::to_value(&self.settings).map_err(|e| RpcError::new(-32000, e.to_string()))?;
                 merge(&mut v, &patch);
                 let mut s: Settings = p(v)?;
+                s.relay_has_passphrase = false;
                 s.display_name = crate::util::sanitize_display_name(&s.display_name);
                 let restart = s.discovery_port != before.discovery_port
                     || s.listen_port != before.listen_port
@@ -1949,7 +1951,7 @@ impl Engine {
                 }
                 self.settings = s;
                 self.settings.save(&self.paths)?;
-                self.emit(Event::SettingsUpdated { settings: self.settings.clone() });
+                self.emit(Event::SettingsUpdated { settings: self.settings.for_ipc() });
                 self.emit(Event::MeUpdated { me: self.me_view() });
                 ok(json!({"ok": true, "restart_required": restart}))
             }

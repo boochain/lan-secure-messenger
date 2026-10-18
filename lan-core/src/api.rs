@@ -103,6 +103,9 @@ pub struct RelayStatus {
     pub peers: u32,
     /// Live links carried by the relay.
     pub relayed_links: u32,
+    /// A passphrase is configured (the passphrase itself is never returned over IPC).
+    #[serde(default)]
+    pub has_passphrase: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

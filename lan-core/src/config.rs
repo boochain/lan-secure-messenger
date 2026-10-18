@@ -103,8 +103,28 @@ pub struct Settings {
     pub relay_enabled: bool,
     pub relay_host: String,
     pub relay_port: u16,
-    /// Network passphrase (never sent; challenge-response).
+    /// Network passphrase (never sent; challenge-response). Write-only over IPC: reads (snapshot,
+    /// settings_updated) leave it out and set `relay_has_passphrase` instead. In an
+    /// `update_settings` patch: absent = keep, "" = clear, any other value = set.
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub relay_passphrase: String,
+    /// IPC read-only view flag: a passphrase is configured. Ignored on write, never persisted.
+    #[serde(skip_serializing_if = "is_false")]
+    pub relay_has_passphrase: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
+impl Settings {
+    /// The settings as shown over local IPC: the passphrase is replaced by `relay_has_passphrase`.
+    pub fn for_ipc(&self) -> Settings {
+        let mut s = self.clone();
+        s.relay_has_passphrase = !s.relay_passphrase.is_empty();
+        s.relay_passphrase.clear();
+        s
+    }
 }
 
 impl Default for Settings {
@@ -131,6 +151,7 @@ impl Default for Settings {
             relay_host: String::new(),
             relay_port: 9443,
             relay_passphrase: String::new(),
+            relay_has_passphrase: false,
         }
     }
 }
@@ -166,6 +187,7 @@ impl Settings {
             match serde_json::from_str::<Settings>(&raw) {
                 Ok(mut s) => {
                     s.display_name = sanitize_display_name(&s.display_name);
+                    s.relay_has_passphrase = false;
                     if let Some(p) = load_relay_secret(paths) {
                         s.relay_passphrase = p;
                     }
@@ -205,6 +227,17 @@ impl Settings {
 #[cfg(test)]
 mod relay_secret_tests {
     use super::*;
+    #[test]
+    fn relay_passphrase_write_only_over_ipc() {
+        let mut s = Settings::default();
+        s.relay_passphrase = "口令".into();
+        let v = serde_json::to_value(s.for_ipc()).unwrap();
+        assert!(v.get("relay_passphrase").is_none());
+        assert_eq!(v["relay_has_passphrase"], true);
+        let v = serde_json::to_value(Settings::default().for_ipc()).unwrap();
+        assert!(v.get("relay_passphrase").is_none() && v.get("relay_has_passphrase").is_none());
+    }
+
     #[test]
     fn relay_passphrase_sealed_not_in_settings_json() {
         let d = tempfile::tempdir().unwrap();
