@@ -285,7 +285,7 @@ static void measure_chat(MEASUREITEMSTRUCT *mi){ row_t *r; HDC dc; int bw,bh,inl
     if(r->kind==R_DAY||r->kind==R_NOTICE) mi->itemHeight=line_h(dc,fBody)+scale_px(r->kind==R_DAY?18:12); /* 14px: 12px CJK at XP/wine grayscale AA measured < 4.5:1 */
     else if(r->kind==R_TEXT){ text_geom(dc,r,chat_maxw(),&bw,&bh,&inl); r->bw=bw; mi->itemHeight=bh+scale_px(6); }
     else if(r->kind==R_IMAGE){ HBITMAP bm; int w,h,ow,oh; if(thumb_get(r->path,&bm,&w,&h)){ thumb_fit(w,h,chat_maxw(),&ow,&oh); r->bw=ow+scale_px(8); mi->itemHeight=oh+scale_px(8)+scale_px(6); } else { r->bw=scale_px(160); mi->itemHeight=scale_px(100); } }
-    else { r->bw=scale_px(272); mi->itemHeight=scale_px(r->path[0]?86:66)+scale_px(6); }
+    else { SIZE mz; HGDIOBJ of=SelectObject(dc,fBody); GetTextExtentPoint32W(dc,r->meta,(int)wcslen(r->meta),&mz); SelectObject(dc,of); r->bw=scale_px(272); if(mz.cx+scale_px(124)>r->bw) r->bw=mz.cx+scale_px(124); if(r->bw>chat_maxw()) r->bw=chat_maxw(); mi->itemHeight=scale_px(r->path[0]?86:66)+scale_px(6); }
     r->h=mi->itemHeight; ReleaseDC(hChat,dc); }
 static void bubble(HDC dc, RECT b, COLORREF fill, COLORREF edge){ HBRUSH br=CreateSolidBrush(fill); HPEN pn=CreatePen(PS_SOLID,1,edge); HGDIOBJ ob=SelectObject(dc,br), op=SelectObject(dc,pn);
     RoundRect(dc,b.left,b.top,b.right,b.bottom,scale_px(14),scale_px(14)); SelectObject(dc,ob); SelectObject(dc,op); DeleteObject(br); DeleteObject(pn); }
