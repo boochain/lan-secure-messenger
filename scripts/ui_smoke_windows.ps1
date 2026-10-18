@@ -123,7 +123,7 @@ foreach ($theme in "light", "dark") {
     $big = Join-Path $env:RUNNER_TEMP "项目素材-$theme.bin"; $fs = [IO.File]::Create($big); $fs.SetLength(1GB); $fs.Close()
     & $M --ipc $dave.pipe send-file $FA $big
     for ($i = 0; $i -lt 600; $i++) {
-      $t = (& $M --json transfers | ConvertFrom-Json) | Where-Object { $_.name -like "项目素材*" -and $_.direction -eq "in" } | Select-Object -First 1
+      $t = (& $M --json transfers | ConvertFrom-Json) | Where-Object { $_.name -eq "项目素材-$theme.bin" -and $_.direction -eq "in" }   # exact name: the light run's paused .part is restored from the shared Downloads folder | Select-Object -First 1
       if ($t -and $t.size -gt 0 -and $t.transferred -ge 0.2 * $t.size) { break }
       Start-Sleep -Milliseconds 100
     }
