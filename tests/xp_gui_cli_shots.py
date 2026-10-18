@@ -60,7 +60,7 @@ for i, theme in enumerate(themes):
     B.cmd(f"send {xfp[:12]} Can you send me the latest build?"); time.sleep(0.4)
     A.cmd(f"sendfile {xfp[:12]} {img}"); time.sleep(3)
     A.cmd(f"send {xfp[:12]} 这是最新的数据，第 4 页有改动。"); time.sleep(1.5)
-    click(200, 52); time.sleep(1.5)   # first conversation (x clear of the tray balloon wine draws top-left)
+    click(200, 96); time.sleep(1.5)   # first conversation (x clear of the tray balloon wine draws top-left)
     xdo("type", "--delay", "40", "OK, see you at 3 pm."); xdo("key", "Return"); time.sleep(2.5)
     shot(f"xp-{theme}-chat")
     click(600, 300, "3"); time.sleep(1); shot(f"xp-{theme}-chat-menu"); xdo("key", "Escape"); time.sleep(0.5)
