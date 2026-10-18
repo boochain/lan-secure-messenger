@@ -164,7 +164,7 @@ Changing any relay field reconnects the relay immediately; `relay_enabled:false`
   down, an interrupted transfer has `state:"offered"` with `error:"连接中断，重连后自动续传"` and resumes by itself.
 
 ### C core (XP / GTK / Android JNI): same data
-* Settings: `lsm_relay_set(c, enabled, host, port, pass, err)` / `lsm_relay_get(c,&enabled,host,hn,&port,pass,pn)` (sealed `relay.dat`).
+* Settings: `lsm_relay_set(c, enabled, host, port, pass, err)` / `lsm_relay_get(c,&enabled,host,hn,&port,&has_pass)` (sealed `relay.dat`; `pass` NULL = keep, "" = clear; there is no passphrase getter).
 * Status: `lsm_relay_status(c, detail, dn)` returns the state string; event `relay\t<state>\t<detail>`.
 * Peers on server: `lsm_relay_peers(c)`; events `relay_peer\t<fp>\t<join|leave>\t<name>`.
 * Per contact: `lsm_contact.via_relay`; event `peer\t<fp>\tpath\t<direct|relay>` on every switch.
@@ -175,4 +175,9 @@ The relay passphrase is write-only there too.
 - `lsm_relay_set(c, enabled, host, port, pass, err)` takes it: `NULL` keeps it, `""` clears it.
 - `lsm_relay_get(c, &enabled, host, hn, &port, &has_pass)` reports only `has_pass` (0/1).
 - CLI: `relay status` → `OK relay <state> <detail> enabled=<0|1> server=<host:port> peers=<n> passphrase=set|none`.
-- The Android JNI layer has no relay binding yet. When the UI worker adds one, it should expose `hasPassphrase` (Boolean) and a setter, never a getter for the passphrase.
+- Android JNI (xp `android/app/src/main/cpp/jni.c`, `Native.kt`):
+  - `Native.relaySet(enabled: Boolean, host: String, port: Int, pass: String?): String` returns "" on success or the error text.
+    `pass` null = keep the stored passphrase, "" = clear it, anything else = set it.
+  - `Native.state()` JSON gains `"relay":{"enabled","host","port","has_pass","state","detail","peers"}` (Kotlin `RelayInfo.hasPassphrase`),
+    `contacts[].via` (online through the relay) and `transfers[].resumed` (byte offset a resumed transfer continued from).
+  - There is no getter for the passphrase.
