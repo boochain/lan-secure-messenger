@@ -206,8 +206,26 @@ Identical in lan-core (Rust) and the portable C core.
   the receiver resumes with `FileResume` as after a link loss.
 * The sender's prefix check runs off the network path too: Rust in the async send task, C as
   a chunked job.
-* Sender restart is not persisted: an outgoing transfer paused in a process that exits is
-  lost (the user re-sends; a fresh tid starts from 0).
+* Sender restart is persisted too. When an offer is created, the sender writes
+  `<data>/outgoing/<tid>.out`; it removes the file once the transfer is finished (done, failed or
+  cancelled). The format is the same in Rust and C:
+  ```
+  LSMOUT 1
+  tid <hex>   peer <fp>   msg <id>   conv <…>   size <u64>   sha <hex>   mime <mime>
+  mtime <unix secs of the source file>   offer_ts <unix secs>   path <absolute source path>   name <file name>
+  ```
+  There is one key/value per line; the inline layout above is only for brevity. On start-up
+  each record re-creates the transfer (state `offered`, out). If the source is missing, the
+  transfer fails with `源文件不存在: <path>`. If its size or mtime differs, it fails with
+  `源文件已更改: <path>`. Otherwise the sender re-offers the same tid as soon as the peer's link
+  comes up, and the receiver answers with `FileResume` from its own `.part`.
+* Expiry: at start-up both cores delete anything abandoned for more than 30 days, judged by
+  mtime. That covers `.resume` sidecars with their `.part` files, bare `.<name>*.part` files
+  with no sidecar, and `outgoing/*.out` records (the transfer is marked failed:
+  `发送记录已过期 (30 天)`).
+* Fast redial: start-up connects the relay and dials the known peer addresses at once (no
+  first announce interval is awaited), so a restarted side resumes within seconds. The matrix
+  asserts < 10 s for receiver and sender kill -9 + restart; measured 0.3–3.2 s.
 
 ## 9. PIN pairing
 1. Peer A calls `pin_offer`: random 6-digit PIN, valid 300 s, max 5 wrong tries.
