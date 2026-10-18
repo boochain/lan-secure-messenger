@@ -607,10 +607,11 @@ static void remove_member_rekey(lsm_core *c, lsm_group *g, const char *fp){ buf_
 
 /* ------------------------------------------------------------ files */
 static void rs_sidecar_write(lsm_core *c, lsm_transfer *t); static void rs_sidecar_remove(lsm_transfer *t);
-static int rs_pump(lsm_core *c); static void rs_restore(lsm_core *c); static void rs_start_prefix(lsm_transfer *t, uint64_t off, const uint8_t pre[32]);
+static int rs_pump(lsm_core *c); static void rs_restore(lsm_core *c); static void rs_out_write(lsm_core *c, lsm_transfer *t); static void rs_out_remove(lsm_core *c, lsm_transfer *t); static void rs_start_prefix(lsm_transfer *t, uint64_t off, const uint8_t pre[32]);
 static lsm_transfer *xfer_get(lsm_core *c, const uint8_t tid[16]){ int i; for(i=0;i<c->nxfers;i++) if(!memcmp(c->xfers[i].tid,tid,16)) return &c->xfers[i]; return NULL; }
 static int xfer_finished(lsm_transfer *t){ return t->state>=TS_DONE; }
 static void emit_xfer(lsm_core *c, lsm_transfer *t){ static const char *st[]={"offered","active","verifying","done","failed","rejected","cancelled"}; char u[37]; lsm_uuid_str(t->tid,u);
+    if(t->out && t->state>=TS_DONE) rs_out_remove(c,t);
     emit(c,"transfer\t%s\t%s\t%s\t%s\t%llu\t%llu\t%s\t%s",u,t->out?"out":"in",st[t->state],t->peer_fp,(unsigned long long)t->transferred,(unsigned long long)t->size,t->name,t->error); }
 static void xfer_close_files(lsm_transfer *t){ if(t->fp_handle){ fclose((FILE*)t->fp_handle); t->fp_handle=NULL; } free(t->hash); t->hash=NULL; free(t->hctx); t->hctx=NULL; t->hashing=0; }
 static void mark_file_failed(lsm_core *c, lsm_transfer *t){ lsm_msg *m=msg_get(c,t->msg_id); if(m && m->out) set_status(c,m,ST_FAILED); }
@@ -1001,7 +1002,7 @@ int lsm_send_file(lsm_core *c, const char *conv, const char *path, char *err){
         if(g){ t.has_group=1; memcpy(t.group_id,gid,16); } scpy(t.path,path,sizeof t.path); t.offer_ts=ts; t.state=TS_OFFERED;
         if(i==0){ char u[37]; lsm_uuid_str(t.tid,u); scpy(m->file_tid,u,40); }
         c->xfers=(lsm_transfer*)realloc(c->xfers,sizeof(lsm_transfer)*(c->nxfers+1)); c->xfers[c->nxfers++]=t;
-        send_offer(c,&c->xfers[c->nxfers-1]); emit_xfer(c,&c->xfers[c->nxfers-1]); }
+        rs_out_write(c,&c->xfers[c->nxfers-1]); send_offer(c,&c->xfers[c->nxfers-1]); emit_xfer(c,&c->xfers[c->nxfers-1]); }
     hist_rec_msg(c,msg_get(c,ids));
 out: mu_unlock(&c->mu); return rc; }
 
