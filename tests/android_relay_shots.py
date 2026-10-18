@@ -26,9 +26,10 @@ def find_all(pred):
 def is_(t): return lambda n: n.get("text") == t or n.get("content-desc") == t
 def has(t): return bool(find_all(is_(t)))
 def tap_text(t, timeout=60, idx=0):
-    r = ui_seed.wait(lambda: (lambda l: l[idx] if len(l) > idx else None)(find_all(is_(t))), timeout, 2)
+    # note: an ElementTree node without children is falsy, so wait on its centre tuple
+    r = ui_seed.wait(lambda: (lambda l: centre(l[idx])[0] if len(l) > idx else None)(find_all(is_(t))), timeout, 2)
     if r is None: raise RuntimeError("not found: " + t)
-    tap(*centre(r)[0]); time.sleep(2)
+    tap(*r); time.sleep(2)
 def field(label):
     """tap the EditText whose label is `label` (OutlinedTextField: the label Text is a child of the EditText node)"""
     for n in nodes():
