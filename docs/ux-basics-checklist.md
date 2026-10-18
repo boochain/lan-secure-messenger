@@ -9,6 +9,60 @@ notifications); Win32 UX guidelines (dialog keys, IsDialogMessage, tray, single 
 Status legend: **PASS** · **FAIL** · **FIXED** (was failing, fixed + regression) · **CODE** = judged from source only, not yet
 exercised at runtime (runtime test pending) · evidence in brackets.
 
+## Re-audit 2026-10-18 (11:00–11:30, Asia/Shanghai) — how each item was verified
+
+Methods: **CI-adb** = tests/android_chat_shots.py on the CI emulator (android-emulator-matrix) · **CI-Win** = ui-winui UiSmoke
+(SendInput, scripts/ui_smoke_windows.ps1, windows CI job) · **wine** = tests/xp_basics.py (wine 32-bit + Xvfb + openbox +
+stalonetray, xdotool) · **Xvfb** = tests/adw_basics.py (GTK 4, xdotool, app-reported `UISTATE dialogs/addpop/size`) ·
+**shot** = screenshot looked at by hand · **CODE** = source only.
+
+| # | Item | Status | Verified by |
+|---|------|--------|-------------|
+| A1 | Back from chat → list | PASS | CI-adb `Back from chat returns to the list` |
+| A2 | Back closes menu first | PASS | CI-adb `Back closes the menu, stays in the chat` |
+| A3 | Back closes search | PASS pending CI | CI-adb `Back closes the list search` (added 1fc4f14) |
+| A4 | Back on other tab → 聊天 | PASS | CI-adb |
+| A5 | Double-Back to exit (2 s) | PASS | CI-adb `first Back … does not exit`, `second Back within 2 s exits` |
+| A6 | Predictive back opt-in | PASS (CODE) | manifest flag |
+| A7 | Rotation keeps the chat | PASS | CI-adb `rotation keeps the open chat`, `Back after rotation returns to the list` |
+| A8 | Process death restores the chat | PASS pending CI | CI-adb `am kill` in background + launcher relaunch (added 1fc4f14) |
+| A12 | Notification tap opens chat | CODE | not driven at runtime yet |
+| W1 | Esc closes dialogs | PASS pending CI | CI-Win `Esc closes the contact-details dialog` (034329d) |
+| W2 | Enter / Shift+Enter | PASS pending CI | CI-Win `Shift+Enter inserts a new line, nothing sent`, `Enter sends and clears the composer` |
+| W3 | Tab order | PASS | CI-Win Tab / Shift+Tab focus moves (run 39083192273) |
+| W4 | Ctrl shortcuts | PASS | CI-Win Ctrl+F / Ctrl+N / Ctrl+Tab (run 39083192273) |
+| W5 | Close → tray, tray Show | PASS pending CI | CI-Win `close hides to the tray, app keeps running`, `tray: show restores the window` |
+| W6 | Window memory | PASS | CI-Win saved / restored / off-screen rect ignored (run 39083192273) |
+| W9 | Context menus | PASS | CI-Win right-click message + contact menus, Esc closes (run 39083192273) |
+| W7/W8/W11–W13/W17 | DPI, DnD, tooltips, single instance, confirms, toast click | CODE | no runtime check yet |
+| X1 | Esc closes dialogs | PASS | wine: Ctrl+N 按 IP 添加 and 设置 › 中转服务器 close on Esc |
+| X2 | Enter / Shift+Enter | PASS | wine: Shift+Enter not sent; Enter → peer gets one message with both lines |
+| X4 | Shortcuts | PASS | wine: Ctrl+F filter (shot xp-basics-search-filter) + earlier xp_gui_cli_shots |
+| X5 | Close vs tray | **FIXED** 7803449 | wine+stalonetray: close hides, app keeps running. Bugs fixed: NIM_ADD after TaskbarCreated reset `tray_added` (icon lost → close exited); with no tray at all close now exits instead of hiding forever |
+| X6 | Window placement | PASS | wine: moved/resized → 文件 › 退出 → restart at 60,50 900×640 |
+| X7 | High DPI | PARTIAL | metrics scale by LOGPIXELSY; no DPI-aware manifest |
+| X8 | Drag & drop | CODE | WM_DROPFILES; not driven under wine |
+| X9 | Message context menu | **FIXED** 7803449 | wine: menu window 246×71 appears, Esc closes it. Bug: owner was the owner-drawn LISTBOX → wine drew an empty 18 px menu (visible in old s12–s15 shots) |
+| X10 | Copy message text | PASS | wine: Ctrl+C on bubble → Ctrl+V in composer → peer receives the same text |
+| X11 | Tooltips | PASS | wine: tooltip window on hover over 发送 (shot xp-basics-tooltip) |
+| X12 | Single instance | **FAIL (wine)** | second start exits (mutex works) but the hidden window is not re-shown under wine; 465f3a5 posts IDM_SHOW to the running copy instead — still fails under wine, needs a real-Windows check |
+| X13 | Confirm destructive | PASS (CODE) | tmsg yes/cancel |
+| X17 | Balloon click → chat | CODE | balloon now shown once per session |
+| G1 | Esc closes dialog / popover | PASS | Xvfb: Ctrl+I details (dialogs 1→0), Ctrl+N popover (1→0) |
+| G2 | Enter / Shift+Enter | PASS | Xvfb: Shift+Enter not sent; Enter → one message with both lines |
+| G4 | Shortcuts | PASS | adw_gui_shots (CI linux-adw) |
+| G5 | Close keeps running | PASS | Xvfb: Ctrl+W → no visible window, process alive |
+| G6 | Window size memory | **FIXED** 7803449 | Xvfb: 890×630 → Ctrl+Q → restart 890×630. Bug: 退出/Ctrl+Q did not save window.ini (only close did) |
+| G8 | Drag & drop | CODE | GtkDropTarget |
+| G9 | Message menu | PASS | Xvfb shot adw-basics-msg-menu (复制 / 删除这条消息（仅本机）…) |
+| G10 | Copy | PASS | Xvfb: menu 复制 → Ctrl+V → peer receives the text |
+| G11 | Tooltips | PASS | Xvfb: tooltip surface appears on hover over send |
+| G12 | Single instance | PASS | Xvfb: second launch exits, the hidden window is presented again |
+| G13 | Confirm destructive | PASS (CODE) | confirm() AdwAlertDialog |
+| G17 | Notification click → chat | PARTIAL | raises the app, no per-chat target |
+
+Remaining FAIL/PARTIAL/CODE: X12 (FAIL under wine), X7, G17 (PARTIAL), A12, X8, G8, W7/W8/W11–W13/W17, X13/G13/X17 (CODE).
+
 ## Android (Compose, lan-secure-messenger-xp/android)
 
 | # | Item | Status | Evidence |
