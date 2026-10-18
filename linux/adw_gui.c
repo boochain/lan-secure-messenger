@@ -21,7 +21,7 @@
 #define VIA_RELAY(k) 0
 static const char *lsm_relay_status(lsm_core *c, char *d, size_t n){ (void)c; if(n) d[0]=0; return "off"; }
 #endif
-static GPtrArray *icon_widgets; static gboolean test_log_later(gpointer p);
+static GPtrArray *icon_widgets; static GtkWidget *empty_page; static gboolean test_log_later(gpointer p);
 #include "adw_palette.h"
 #include "lsm_adw_css.h" /* LSM_ADW_RULES, generated from linux/data/lsm-adw.css by linux/build-adw.sh */
 
@@ -250,11 +250,16 @@ static void details(void){ char b[2400]="", fp[200]=""; if(!cur_conv[0]) return;
     lsm_unlock(C); info(strncmp(cur_conv,"dm:",3)?"群组详情":"联系人详情",b); }
 static void pin_show(void){ char pin[8], b[300]; lsm_pin_offer(C,pin); snprintf(b,sizeof b,"%s\n\n让对方在“输入 PIN 配对”中输入（5 分钟内有效）。",pin); info("请把这个 PIN 告诉对方",b); }
 
+static void log_status_icon(GtkWidget *w){ /* AdwStatusPage illustration: large symbolic GtkImage, decorative (title + description carry the meaning) */
+    for(GtkWidget *c=gtk_widget_get_first_child(w);c;c=gtk_widget_get_next_sibling(c)){ graphene_rect_t r;
+        if(GTK_IS_IMAGE(c)){ if(gtk_widget_get_mapped(c) && gtk_widget_compute_bounds(c,win,&r)) printf("ICON status-page %d,%d,%d,%d\n",(int)r.origin.x-2,(int)r.origin.y-2,(int)r.size.width+4,(int)r.size.height+4); }
+        else log_status_icon(c); } }
 static void test_log(const char *what){
     /* decorative icons (GtkImage, no text) for the colour audit's ignore list; printed with every UI log line */
     if(getenv("LSM_UI_TEST") && hdr_avatar){ /* header avatar's online dot is rebuilt with the chat, outside icon_widgets */
         for(GtkWidget *a=gtk_widget_get_first_child(hdr_avatar);a;a=gtk_widget_get_next_sibling(a)) for(GtkWidget *d=gtk_widget_get_first_child(a);d;d=gtk_widget_get_next_sibling(d)){ graphene_rect_t r;
             if(gtk_widget_has_css_class(d,"online-dot") && gtk_widget_get_mapped(d) && gtk_widget_compute_bounds(d,win,&r)) printf("ICON online-dot %d,%d,%d,%d\n",(int)r.origin.x-2,(int)r.origin.y-2,(int)r.size.width+4,(int)r.size.height+4); } }
+    if(getenv("LSM_UI_TEST") && empty_page && gtk_widget_get_mapped(empty_page)) log_status_icon(empty_page);
     if(getenv("LSM_UI_TEST") && icon_widgets){ if(hdr_shield && !g_ptr_array_find(icon_widgets,hdr_shield,NULL)) g_ptr_array_add(icon_widgets,g_object_ref(hdr_shield)); for(guint q=0;q<icon_widgets->len;q++){ graphene_rect_t r; GtkWidget *w=icon_widgets->pdata[q];
         if(gtk_widget_get_mapped(w) && gtk_widget_compute_bounds(w,win,&r)) printf("ICON %s %d,%d,%d,%d\n",GTK_IS_IMAGE(w)?gtk_image_get_icon_name(GTK_IMAGE(w)):"online-dot",(int)r.origin.x-2,(int)r.origin.y-2,(int)r.size.width+4,(int)r.size.height+4); } } const char *t=getenv("LSM_UI_TEST");
     if(getenv("LSM_UI_DEBUG")){ const char *nm[]={"dbg-tv","dbg-frame","dbg-comp","dbg-hint"}; for(int q=0;q<4;q++){ GtkWidget *w=g_object_get_data(G_OBJECT(win),nm[q]); int mn,nat; if(!w) continue; gtk_widget_measure(w,GTK_ORIENTATION_VERTICAL,-1,&mn,&nat,NULL,NULL); printf("DBG %s h=%d min=%d nat=%d\n",nm[q],gtk_widget_get_height(w),mn,nat); } { int mn,nat; gtk_widget_measure(input,GTK_ORIENTATION_VERTICAL,-1,&mn,&nat,NULL,NULL); printf("DBG input h=%d min=%d nat=%d\n",gtk_widget_get_height(input),mn,nat); } }
@@ -397,7 +402,7 @@ static void activate(GtkApplication *a, gpointer p){
       hdr_more=more; adw_header_bar_pack_end(ADW_HEADER_BAR(ct_hdr),more); adw_header_bar_pack_end(ADW_HEADER_BAR(ct_hdr),icon_btn("system-search-symbolic","搜索 (Ctrl+F)","win.search")); }
     adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(content_tv),ct_hdr);
     content_stack=gtk_stack_new();
-    empty=adw_status_page_new(); adw_status_page_set_icon_name(ADW_STATUS_PAGE(empty),"mail-message-new-symbolic"); adw_status_page_set_title(ADW_STATUS_PAGE(empty),"选择一个会话");
+    empty=empty_page=adw_status_page_new(); adw_status_page_set_icon_name(ADW_STATUS_PAGE(empty),"mail-message-new-symbolic"); adw_status_page_set_title(ADW_STATUS_PAGE(empty),"选择一个会话");
     adw_status_page_set_description(ADW_STATUS_PAGE(empty),"同一局域网内的设备会自动出现在左侧，也可以按 Ctrl+N 按 IP 添加。\n所有消息均端到端加密，只在局域网内传输。");
     chat_ov=gtk_overlay_new(); chat_scroll=gtk_scrolled_window_new(); chat_box=gtk_box_new(GTK_ORIENTATION_VERTICAL,0); cls(chat_box,"chatlist");
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(chat_scroll),GTK_POLICY_NEVER,GTK_POLICY_AUTOMATIC);
