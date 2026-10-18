@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 concurrency:
   group: relay-client-matrix-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   matrix:
     runs-on: ubuntu-latest
@@ -43,10 +43,11 @@ jobs:
             --relay-bin $R/relay-server/target/release/relay-server --kinds rust,native --work /tmp/mx-${{ matrix.mode }}
       - name: Collect logs
         if: always()
-        run: sudo find /tmp/mx-${{ matrix.mode }} -name '*.bin' -delete; sudo chmod -R a+r /tmp/mx-${{ matrix.mode }} || true
+        run: |
+          mkdir -p logs && cd /tmp/mx-${{ matrix.mode }} 2>/dev/null && sudo find . -type f \( -name '*.log' -o -name '*.json' \) -exec cp --parents {} $GITHUB_WORKSPACE/logs/ \; ; sudo chown -R $(id -u) $GITHUB_WORKSPACE/logs || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: matrix-${{ matrix.mode }}
-          path: /tmp/mx-${{ matrix.mode }}
+          path: logs
           if-no-files-found: ignore
