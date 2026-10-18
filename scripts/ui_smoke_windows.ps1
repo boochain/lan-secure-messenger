@@ -147,6 +147,8 @@ foreach ($theme in "light", "dark") {
   if (-not $proc.HasExited) { Stop-Process $proc -Force; $problems += "[$theme] UI smoke timed out" }
   Stop-Process $bob -Force -ErrorAction SilentlyContinue
   foreach ($r in $relayPeers) { Stop-Process $r.proc -Force -ErrorAction SilentlyContinue }
+  # the paused 1 GB download lives in the shared Downloads folder: drop it so the next theme's run starts clean
+  if ($Relay) { Start-Sleep -Seconds 2; Get-ChildItem (Join-Path $env:USERPROFILE "Downloads\LanMessenger") -Force -Filter ".项目素材-*" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue }
   Start-Sleep -Seconds 2
 
   if (Test-Path "$dir\ui-smoke.txt") { Get-Content "$dir\ui-smoke.txt" | ForEach-Object { Write-Host "[$theme] $_" } }
