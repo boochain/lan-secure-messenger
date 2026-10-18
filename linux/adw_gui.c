@@ -252,6 +252,9 @@ static void pin_show(void){ char pin[8], b[300]; lsm_pin_offer(C,pin); snprintf(
 
 static void test_log(const char *what){
     /* decorative icons (GtkImage, no text) for the colour audit's ignore list; printed with every UI log line */
+    if(getenv("LSM_UI_TEST") && hdr_avatar){ /* header avatar's online dot is rebuilt with the chat, outside icon_widgets */
+        for(GtkWidget *a=gtk_widget_get_first_child(hdr_avatar);a;a=gtk_widget_get_next_sibling(a)) for(GtkWidget *d=gtk_widget_get_first_child(a);d;d=gtk_widget_get_next_sibling(d)){ graphene_rect_t r;
+            if(gtk_widget_has_css_class(d,"online-dot") && gtk_widget_get_mapped(d) && gtk_widget_compute_bounds(d,win,&r)) printf("ICON online-dot %d,%d,%d,%d\n",(int)r.origin.x-2,(int)r.origin.y-2,(int)r.size.width+4,(int)r.size.height+4); } }
     if(getenv("LSM_UI_TEST") && icon_widgets){ if(hdr_shield && !g_ptr_array_find(icon_widgets,hdr_shield,NULL)) g_ptr_array_add(icon_widgets,g_object_ref(hdr_shield)); for(guint q=0;q<icon_widgets->len;q++){ graphene_rect_t r; GtkWidget *w=icon_widgets->pdata[q];
         if(gtk_widget_get_mapped(w) && gtk_widget_compute_bounds(w,win,&r)) printf("ICON %s %d,%d,%d,%d\n",GTK_IS_IMAGE(w)?gtk_image_get_icon_name(GTK_IMAGE(w)):"online-dot",(int)r.origin.x-2,(int)r.origin.y-2,(int)r.size.width+4,(int)r.size.height+4); } } const char *t=getenv("LSM_UI_TEST");
     if(getenv("LSM_UI_DEBUG")){ const char *nm[]={"dbg-tv","dbg-frame","dbg-comp","dbg-hint"}; for(int q=0;q<4;q++){ GtkWidget *w=g_object_get_data(G_OBJECT(win),nm[q]); int mn,nat; if(!w) continue; gtk_widget_measure(w,GTK_ORIENTATION_VERTICAL,-1,&mn,&nat,NULL,NULL); printf("DBG %s h=%d min=%d nat=%d\n",nm[q],gtk_widget_get_height(w),mn,nat); } { int mn,nat; gtk_widget_measure(input,GTK_ORIENTATION_VERTICAL,-1,&mn,&nat,NULL,NULL); printf("DBG input h=%d min=%d nat=%d\n",gtk_widget_get_height(input),mn,nat); } }
