@@ -27,11 +27,11 @@ stalonetray, xdotool) · **Xvfb** = tests/adw_basics.py (GTK 4, xdotool, app-rep
 | A7 | Rotation keeps the chat | PASS | CI-adb `rotation keeps the open chat`, `Back after rotation returns to the list` |
 | A8 | Process death restores the chat | PASS pending CI | CI-adb `am kill` in background + launcher relaunch (added 1fc4f14) |
 | A12 | Notification tap opens chat | CODE | not driven at runtime yet |
-| W1 | Esc closes dialogs | PASS pending CI | CI-Win `Esc closes the contact-details dialog` (034329d) |
-| W2 | Enter / Shift+Enter | PASS pending CI | CI-Win `Shift+Enter inserts a new line, nothing sent`, `Enter sends and clears the composer` |
+| W1 | Esc closes dialogs | PASS | CI-Win (run 39091099848, light + dark) `Esc closes the contact-details dialog` (034329d) |
+| W2 | Enter / Shift+Enter | PASS | CI-Win (run 39091099848, light + dark) `Shift+Enter inserts a new line, nothing sent`, `Enter sends and clears the composer` |
 | W3 | Tab order | PASS | CI-Win Tab / Shift+Tab focus moves (run 39083192273) |
 | W4 | Ctrl shortcuts | PASS | CI-Win Ctrl+F / Ctrl+N / Ctrl+Tab (run 39083192273) |
-| W5 | Close → tray, tray Show | PASS pending CI | CI-Win `close hides to the tray, app keeps running`, `tray: show restores the window` |
+| W5 | Close → tray, tray Show | PASS | CI-Win (run 39091099848, light + dark) `close hides to the tray, app keeps running`, `tray: show restores the window` |
 | W6 | Window memory | PASS | CI-Win saved / restored / off-screen rect ignored (run 39083192273) |
 | W9 | Context menus | PASS | CI-Win right-click message + contact menus, Esc closes (run 39083192273) |
 | W7/W8/W11–W13/W17 | DPI, DnD, tooltips, single instance, confirms, toast click | CODE | no runtime check yet |
