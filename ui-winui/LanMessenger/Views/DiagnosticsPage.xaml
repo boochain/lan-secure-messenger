@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="LanMessenger.Views.DiagnosticsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:LanMessenger"
+    xmlns:vm="using:LanMessenger.Core.ViewModels"
+    Background="Transparent">
+    <ScrollViewer><!-- padding lives on the content: ScrollViewer.Padding clipped cards 16px above the edge with no border (audit: indistinct card/page) -->
+        <StackPanel Spacing="12" MaxWidth="960" Margin="16,4,16,16">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="网络诊断" Style="{StaticResource TitleTextBlockStyle}" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <ProgressRing IsActive="{x:Bind VM.DiagBusy, Mode=OneWay}" Width="20" Height="20" />
+                    <Button Content="刷新" Command="{x:Bind VM.RefreshDiagnosticsCommand}" />
+                    <Button Content="复制诊断信息" Command="{x:Bind VM.CopyDiagnosticsCommand}" />
+                </StackPanel>
+            </Grid>
+
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Windows 防火墙" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="&#xE73E;" Foreground="{ThemeResource StatusOnlineBrush}" Visibility="{x:Bind VM.FirewallOk, Mode=OneWay}" />
+                        <FontIcon Glyph="&#xE7BA;" Foreground="{ThemeResource StatusWarnBrush}" Visibility="{x:Bind local:B.Not(VM.FirewallOk), Mode=OneWay}" />
+                        <TextBlock Text="{x:Bind VM.FirewallSummary, Mode=OneWay}" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind VM.FirewallAdvice, Mode=OneWay}" TextWrapping="Wrap"
+                               Visibility="{x:Bind local:B.NotEmpty(VM.FirewallAdvice), Mode=OneWay}" />
+                    <TextBlock TextWrapping="Wrap">
+                        <Run Text="网络类型：" /><Run Text="{x:Bind VM.ProfilesText, Mode=OneWay}" />
+                    </TextBlock>
+                    <InfoBar IsOpen="{x:Bind VM.PublicNetwork, Mode=OneWay}" IsClosable="False" Severity="Warning" Title="当前是公用网络"
+                             Message="Windows 在公用网络上默认阻止入站连接。推荐：设置 → 网络和 Internet → 属性 → 网络配置文件类型 改为「专用」。如果无法修改，可勾选下方选项，让防火墙规则也作用于公用网络。" />
+                    <CheckBox Content="规则同时允许公用网络（不推荐，仅在无法切换为专用网络时使用）" IsChecked="{x:Bind VM.IncludePublic, Mode=TwoWay}" />
+                    <Button Style="{StaticResource AccentButtonStyle}" Content="一键配置防火墙（需要管理员确认）" Command="{x:Bind VM.FirewallSetupCommand}" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="发现与端口" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock Text="{x:Bind VM.PortsText, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind VM.DiscoveryText, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="网卡" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock Text="虚拟网卡（Hyper-V、VMware、VirtualBox、WSL、Docker、VPN 等）会被自动跳过；可在「设置」中手动指定。"
+                               Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" />
+                    <ItemsRepeater ItemsSource="{x:Bind VM.Interfaces}">
+                        <ItemsRepeater.Layout>
+                            <StackLayout Spacing="6" />
+                        </ItemsRepeater.Layout>
+                        <ItemsRepeater.ItemTemplate>
+                            <DataTemplate x:DataType="vm:InterfaceItem">
+                                <Grid ColumnSpacing="10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Ellipse Grid.Column="0" Width="8" Height="8" Fill="{ThemeResource StatusOnlineBrush}" Visibility="{x:Bind Used}" />
+                                    <Ellipse Grid.Column="0" Width="8" Height="8" Fill="{ThemeResource StatusOfflineBrush}" Visibility="{x:Bind local:B.Not(Used)}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="{x:Bind Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                        <TextBlock Text="{x:Bind Detail}" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="2" Text="{x:Bind UsedText}" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="联系人连接状态" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="暂无联系人" Visibility="{x:Bind local:B.Empty(VM.PeerDiags.Count), Mode=OneWay}" />
+                    <ItemsRepeater ItemsSource="{x:Bind VM.PeerDiags}">
+                        <ItemsRepeater.Layout>
+                            <StackLayout Spacing="6" />
+                        </ItemsRepeater.Layout>
+                        <ItemsRepeater.ItemTemplate>
+                            <DataTemplate x:DataType="vm:PeerDiagItem">
+                                <Grid ColumnSpacing="10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Ellipse Grid.Column="0" Width="8" Height="8" Fill="{ThemeResource StatusOnlineBrush}" Visibility="{x:Bind Connected}" />
+                                    <Ellipse Grid.Column="0" Width="8" Height="8" Fill="{ThemeResource StatusOfflineBrush}" Visibility="{x:Bind local:B.Not(Connected)}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="{x:Bind Title}" FontWeight="SemiBold" />
+                                        <TextBlock Text="{x:Bind Detail}" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="2" Text="{x:Bind StateText}" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="手动添加的地址" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock Text="这些地址会被持续重连，适用于广播被路由器/防火墙拦截的网络。" Style="{StaticResource SecondaryCaptionStyle}" />
+                    <ItemsRepeater ItemsSource="{x:Bind VM.ManualPeers}">
+                        <ItemsRepeater.ItemTemplate>
+                            <DataTemplate x:DataType="x:String">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Text="{x:Bind}" VerticalAlignment="Center" FontFamily="Consolas" />
+                                    <HyperlinkButton Content="移除" Tag="{x:Bind}" Click="RemoveManual_Click" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
+                </StackPanel>
+            </Border>
+
+            <Expander Header="原始诊断数据 (JSON)" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                <TextBox Text="{x:Bind VM.DiagnosticsJson, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
+                         FontFamily="Consolas" MaxHeight="400" />
+            </Expander>
+        </StackPanel>
+    </ScrollViewer>
+</Page>
