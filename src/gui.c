@@ -234,16 +234,16 @@ static void draw_conv_item(DRAWITEMSTRUCT *d){ RECT it=d->rcItem, r, av, tr; con
     x=av.right+scale_px(10); lh=line_h(dc,fBodyStrong);
     tr.left=x; tr.right=it.right-scale_px(10); tr.top=it.top+scale_px(8); tr.bottom=tr.top+lh;
     SelectObject(dc,fCaption); SetTextColor(dc,c->unread?P.accenttext:sel?T.text_primary:P.meta); DrawTextW(dc,c->time,-1,&tr,DT_RIGHT|DT_SINGLELINE); { SIZE s; GetTextExtentPoint32W(dc,c->time,(int)wcslen(c->time),&s); tr.right-=s.cx+scale_px(8); }
-    if(c->via){ /* 经服务器 badge (tooltip 经服务器中转): pill right after the name, name ellipsized first */ SIZE nz, bz; RECT bd; int room;
-        SelectObject(dc,fBody); GetTextExtentPoint32W(dc,L"经服务器",4,&bz); SelectObject(dc,fBodyStrong); GetTextExtentPoint32W(dc,c->name,(int)wcslen(c->name),&nz);
-        room=tr.right-tr.left-bz.cx-scale_px(30); if(nz.cx>room) nz.cx=room; bd.left=tr.left+nz.cx+scale_px(6); bd.right=bd.left+bz.cx+scale_px(24); bd.top=tr.top+scale_px(1); bd.bottom=tr.top+scale_px(19);
-        fill_round(dc,bd,scale_px(6),P.chip,P.stroke); SelectObject(dc,fBody); SetBkMode(dc,TRANSPARENT); SetTextColor(dc,P.chipfg); { /* cloud glyph (WinUI/Android badge icon) */ HBRUSH cb=CreateSolidBrush(P.chipfg); HPEN cp=CreatePen(PS_SOLID,1,P.chipfg); HGDIOBJ ob=SelectObject(dc,cb), op=SelectObject(dc,cp); int x=bd.left+scale_px(5), y=(bd.top+bd.bottom)/2, u=scale_px(1);
-            Ellipse(dc,x,y-u,x+5*u,y+4*u); Ellipse(dc,x+2*u,y-4*u,x+9*u,y+3*u); Ellipse(dc,x+6*u,y-2*u,x+12*u,y+4*u); Rectangle(dc,x+2*u,y+u,x+10*u,y+4*u); SelectObject(dc,ob); SelectObject(dc,op); DeleteObject(cb); DeleteObject(cp); }
-        { RECT tb=bd; tb.left+=scale_px(18); tb.right-=scale_px(4); DrawTextW(dc,L"经服务器",-1,&tb,DT_CENTER|DT_VCENTER|DT_SINGLELINE); } tr.right=bd.left-scale_px(4); }
     SelectObject(dc,fBodyStrong); SetTextColor(dc,T.text_primary); DrawTextW(dc,c->name,-1,&tr,DT_LEFT|DT_SINGLELINE|DT_NOPREFIX|DT_END_ELLIPSIS);
     tr.right=it.right-scale_px(10); tr.top=tr.bottom+scale_px(2); tr.bottom=tr.top+line_h(dc,fBody);
     if(c->unread){ wchar_t b[8]; SIZE s; RECT bd; _snwprintf(b,8,c->unread>99?L"99+":L"%d",c->unread); b[7]=0; SelectObject(dc,fCaption); GetTextExtentPoint32W(dc,b,(int)wcslen(b),&s);
         bd.right=tr.right; bd.left=bd.right-(s.cx+scale_px(12)>scale_px(20)?s.cx+scale_px(12):scale_px(20)); bd.top=tr.top+1; bd.bottom=bd.top+scale_px(18); fill_round(dc,bd,scale_px(18),P.badge,P.badge); SetTextColor(dc,P.badgefg); DrawTextW(dc,b,-1,&bd,DT_CENTER|DT_VCENTER|DT_SINGLELINE); tr.right=bd.left-scale_px(6); }
+    if(c->via){ /* 经服务器 badge (tooltip 经服务器中转): second line, before the preview, so the name keeps the first line */ SIZE bz; RECT bd;
+        SelectObject(dc,fBody); GetTextExtentPoint32W(dc,L"经服务器",4,&bz);
+        bd.left=tr.left; bd.right=bd.left+bz.cx+scale_px(24); bd.top=tr.top; bd.bottom=tr.top+scale_px(19);
+        fill_round(dc,bd,scale_px(6),P.chip,P.stroke); SelectObject(dc,fBody); SetBkMode(dc,TRANSPARENT); SetTextColor(dc,P.chipfg); { /* cloud glyph (WinUI/Android badge icon) */ HBRUSH cb=CreateSolidBrush(P.chipfg); HPEN cp=CreatePen(PS_SOLID,1,P.chipfg); HGDIOBJ ob=SelectObject(dc,cb), op=SelectObject(dc,cp); int x=bd.left+scale_px(5), y=(bd.top+bd.bottom)/2, u=scale_px(1);
+            Ellipse(dc,x,y-u,x+5*u,y+4*u); Ellipse(dc,x+2*u,y-4*u,x+9*u,y+3*u); Ellipse(dc,x+6*u,y-2*u,x+12*u,y+4*u); Rectangle(dc,x+2*u,y+u,x+10*u,y+4*u); SelectObject(dc,ob); SelectObject(dc,op); DeleteObject(cb); DeleteObject(cp); }
+        { RECT tb=bd; tb.left+=scale_px(18); tb.right-=scale_px(4); DrawTextW(dc,L"经服务器",-1,&tb,DT_CENTER|DT_VCENTER|DT_SINGLELINE); } tr.left=bd.right+scale_px(6); }
     SelectObject(dc,fBody); SetTextColor(dc,sel?T.text_primary:T.text_secondary); DrawTextW(dc,c->preview,-1,&tr,DT_LEFT|DT_SINGLELINE|DT_NOPREFIX|DT_END_ELLIPSIS);
     if((d->itemState&ODS_FOCUS) && GetFocus()==hList){ RECT f=it; InflateRect(&f,-scale_px(4),-2); SetTextColor(dc,T.text_primary); SetBkColor(dc,T.sidebar_bg); DrawFocusRect(dc,&f); } }
 
