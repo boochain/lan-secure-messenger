@@ -1,0 +1,162 @@
+[
+  [
+    "report.pdf",
+    "report.pdf"
+  ],
+  [
+    "../../etc/passwd",
+    "passwd"
+  ],
+  [
+    "..\\..\\Windows\\system32\\evil.dll",
+    "evil.dll"
+  ],
+  [
+    "C:\\Users\\a\\x.txt",
+    "x.txt"
+  ],
+  [
+    "/abs/path/a.txt",
+    "a.txt"
+  ],
+  [
+    "..",
+    "file"
+  ],
+  [
+    "...",
+    "file"
+  ],
+  [
+    ".",
+    "file"
+  ],
+  [
+    "",
+    "file"
+  ],
+  [
+    " ",
+    "file"
+  ],
+  [
+    ".bashrc",
+    "bashrc"
+  ],
+  [
+    " . hidden . ",
+    "hidden"
+  ],
+  [
+    ". . a",
+    "a"
+  ],
+  [
+    "a. . ",
+    "a"
+  ],
+  [
+    "CON",
+    "_CON"
+  ],
+  [
+    "con.txt",
+    "_con.txt"
+  ],
+  [
+    "Aux.tar.gz",
+    "_Aux.tar.gz"
+  ],
+  [
+    "NUL",
+    "_NUL"
+  ],
+  [
+    "COM1.log",
+    "_COM1.log"
+  ],
+  [
+    "LPT9",
+    "_LPT9"
+  ],
+  [
+    "COM10.txt",
+    "COM10.txt"
+  ],
+  [
+    "CONSOLE.txt",
+    "CONSOLE.txt"
+  ],
+  [
+    "nul .txt",
+    "_nul .txt"
+  ],
+  [
+    "a<b>c:d\"e|f?g*h.txt",
+    "a_b_c_d_e_f_g_h.txt"
+  ],
+  [
+    "tab\there.txt",
+    "tab_here.txt"
+  ],
+  [
+    "line\nbreak",
+    "line_break"
+  ],
+  [
+    "delchar",
+    "del_char"
+  ],
+  [
+    "c1ctl.txt",
+    "c1_ctl_.txt"
+  ],
+  [
+    "　全角空格　.txt",
+    "全角空格　.txt"
+  ],
+  [
+    " nbsp ",
+    "nbsp"
+  ],
+  [
+    "  spaced  .txt  ",
+    "spaced  .txt"
+  ],
+  [
+    "中文文件名.docx",
+    "中文文件名.docx"
+  ],
+  [
+    "emoji😀.png",
+    "emoji😀.png"
+  ],
+  [
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.jpeg",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.jpeg"
+  ],
+  [
+    "长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长.扩展名很长很长很长很长",
+    "长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长.扩展名很长很长很长很"
+  ],
+  [
+    "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+    "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+  ],
+  [
+    "a.eeeeeeeeeeeeeeeeeeee",
+    "a.eeeeeeeeeeeeeeeeeeee"
+  ],
+  [
+    "trailing...",
+    "trailing"
+  ],
+  [
+    ".part",
+    "part"
+  ],
+  [
+    "file name with spaces.txt",
+    "file name with spaces.txt"
+  ]
+]

@@ -30,6 +30,10 @@ jobs:
           cd relay-server && cargo build --release --bin relay-server
       - name: Build C core CLI
         run: cd xp && make build/linux/lanmsg-cli
+      - name: C core unit vectors (same expected output as the Rust reference, lan-core/tests/data)
+        run: |
+          cd xp && mkdir -p build && cc -std=gnu99 -Isrc -DLSM_APP_VERSION='"test"' -o build/c_unit_test tests/c_unit_test.c src/xcrypto.c src/third_party/monocypher.c src/third_party/monocypher-ed25519.c -lpthread
+          build/c_unit_test $GITHUB_WORKSPACE/rust/lan-core/tests/data/filename_vectors.json
       - name: Matrix (${{ matrix.mode }})
         run: |
           R=$GITHUB_WORKSPACE/rust; X=$GITHUB_WORKSPACE/xp

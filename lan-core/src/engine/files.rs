@@ -139,13 +139,15 @@ pub fn sanitize_filename(name: &str) -> String {
         .chars()
         .map(|c| if c.is_control() || "<>:\"/\\|?*".contains(c) { '_' } else { c })
         .collect();
-    s = s.trim().trim_matches('.').trim().to_string();
+    // strip whitespace and dots at both ends until none is left (". . a" must not become the hidden ". a")
+    s = s.trim_matches(|c: char| c.is_whitespace() || c == '.').to_string();
     if s.chars().count() > 180 {
         let ext: String = s.rsplit_once('.').map(|(_, e)| e.chars().take(10).collect()).unwrap_or_default();
         let stem: String = s.chars().take(160).collect();
         s = if ext.is_empty() { stem } else { format!("{stem}.{ext}") };
     }
-    let stem_upper = s.split('.').next().unwrap_or("").to_uppercase();
+    // Windows ignores trailing spaces in the device-name part ("nul .txt" is NUL)
+    let stem_upper = s.split('.').next().unwrap_or("").trim_end().to_uppercase();
     let reserved = ["CON", "PRN", "AUX", "NUL"].contains(&stem_upper.as_str())
         || ((stem_upper.starts_with("COM") || stem_upper.starts_with("LPT")) && stem_upper.len() == 4 && stem_upper.as_bytes()[3].is_ascii_digit());
     if reserved {

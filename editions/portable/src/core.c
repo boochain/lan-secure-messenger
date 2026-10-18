@@ -104,14 +104,16 @@ static void set_nonblock(sock_t s){fcntl(s,F_SETFL,fcntl(s,F_GETFL)|O_NONBLOCK);
 #define PATHSEP "/"
 #endif
 
-static char *xstrdup(const char *s){size_t n=strlen(s)+1; char *d=(char*)malloc(n); memcpy(d,s,n); return d;}
+static void oom(void){ fputs("lan-messenger: out of memory\n",stderr); abort(); }
+static char *xstrdup(const char *s){size_t n=strlen(s)+1; char *d=(char*)malloc(n); if(!d) oom(); memcpy(d,s,n); return d;}
 static void scpy(char *d, const char *s, size_t n){ if(!n) return; strncpy(d,s?s:"",n-1); d[n-1]=0; }
 /* UTF-8 safe truncate: never cut a multibyte sequence */
 static void utf8_trunc(char *s, size_t max){ size_t n=strlen(s); if(n<=max) return; while(max>0 && ((unsigned char)s[max]&0xC0)==0x80) max--; s[max]=0; }
 
 /* ------------------------------------------------------------ growable buffer + bincode */
 typedef struct { uint8_t *p; size_t n, cap; } buf_t;
-static void b_res(buf_t *b, size_t add){ if(b->n+add>b->cap){ size_t c=b->cap?b->cap:256; while(c<b->n+add) c*=2; b->p=(uint8_t*)realloc(b->p,c); b->cap=c; } }
+static void b_res(buf_t *b, size_t add){ if(add>((size_t)1<<30)-b->n) oom(); /* frames are <= 1 MiB; never wrap */
+    if(b->n+add>b->cap){ size_t c=b->cap?b->cap:256; uint8_t *np; while(c<b->n+add) c*=2; np=(uint8_t*)realloc(b->p,c); if(!np) oom(); b->p=np; b->cap=c; } }
 static void b_put(buf_t *b, const void *d, size_t n){ b_res(b,n); memcpy(b->p+b->n,d,n); b->n+=n; }
 static void b_u8(buf_t *b, uint8_t v){ b_put(b,&v,1); }
 static void b_u16(buf_t *b, uint16_t v){ uint8_t x[2]={(uint8_t)v,(uint8_t)(v>>8)}; b_put(b,x,2); }
@@ -131,7 +133,7 @@ static uint32_t r_u32(rd_t *r){ const uint8_t *q=r_take(r,4); uint32_t v=0; int 
 static uint64_t r_u64(rd_t *r){ const uint8_t *q=r_take(r,8); uint64_t v=0; int i; if(q) for(i=7;i>=0;i--) v=(v<<8)|q[i]; return v; }
 static const uint8_t *r_bytes(rd_t *r, size_t *n){ uint64_t l; *n=0; l=r_u64(r); if(r->err||l>(1u<<20)){ r->err=1; return NULL; } *n=(size_t)l; return r_take(r,(size_t)l); }
 /* returns malloc'd NUL-terminated string */
-static char *r_str(rd_t *r){ size_t n; const uint8_t *q=r_bytes(r,&n); char *s; if(!q) return xstrdup(""); s=(char*)malloc(n+1); memcpy(s,q,n); s[n]=0; return s; }
+static char *r_str(rd_t *r){ size_t n; const uint8_t *q=r_bytes(r,&n); char *s; if(!q) return xstrdup(""); s=(char*)malloc(n+1); if(!s) oom(); memcpy(s,q,n); s[n]=0; return s; }
 static void r_uuid(rd_t *r, uint8_t u[16]){ size_t n; const uint8_t *q=r_bytes(r,&n); if(!q||n!=16){ r->err=1; memset(u,0,16); return; } memcpy(u,q,16); }
 static void r_fix(rd_t *r, uint8_t *d, size_t n){ const uint8_t *q=r_take(r,n); if(q) memcpy(d,q,n); else memset(d,0,n); }
 
@@ -626,11 +628,46 @@ static void fail_transfers_for(lsm_core *c, const char *fp, const char *why){ in
     xfer_fail(c,t,TS_FAILED,why); } }
 static const char *mime_guess(const char *n){ const char *e=strrchr(n,'.'); static const char *m[][2]={{"png","image/png"},{"jpg","image/jpeg"},{"jpeg","image/jpeg"},{"gif","image/gif"},{"bmp","image/bmp"},{"webp","image/webp"},{"txt","text/plain"},{"pdf","application/pdf"},{"zip","application/zip"},{"doc","application/msword"},{"docx","application/vnd.openxmlformats-officedocument.wordprocessingml.document"},{"xls","application/vnd.ms-excel"},{"xlsx","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},{"mp4","video/mp4"},{"mp3","audio/mpeg"}}; size_t i;
     if(e){ char l[16]; scpy(l,e+1,sizeof l); { char *q; for(q=l;*q;q++) *q=(char)tolower((unsigned char)*q);} for(i=0;i<sizeof m/sizeof m[0];i++) if(!strcmp(l,m[i][0])) return m[i][1]; } return "application/octet-stream"; }
-static void sanitize_filename(const char *in, char *out, size_t n){ const char *b=in, *p; size_t o=0;
+/* identical to lan-core sanitize_filename (Rust): basename after the last / or \, control chars (C0, DEL, C1) and
+   <>:"/\|?* -> '_', strip whitespace and dots at both ends, > 180 chars -> first 160 chars + "." + up to 10 ext chars,
+   Windows device names (CON PRN AUX NUL COM0-9 LPT0-9, any extension) get a leading '_', empty -> "file". */
+/* Unicode White_Space (what Rust str::trim removes) as UTF-8: returns its byte length at p, 0 if none */
+static size_t fn_ws(const char *p){ const unsigned char *u=(const unsigned char*)p;
+    if(u[0]==' '||(u[0]>=9&&u[0]<=13)) return 1;
+    if(u[0]==0xC2 && (u[1]==0x85||u[1]==0xA0)) return 2;
+    if(u[0]==0xE1 && u[1]==0x9A && u[2]==0x80) return 3;
+    if(u[0]==0xE2 && u[1]==0x80 && ((u[2]>=0x80&&u[2]<=0x8A)||u[2]==0xA8||u[2]==0xA9||u[2]==0xAF)) return 3;
+    if(u[0]==0xE2 && u[1]==0x81 && u[2]==0x9F) return 3;
+    if(u[0]==0xE3 && u[1]==0x80 && u[2]==0x80) return 3;
+    return 0; }
+static size_t fn_ws_end(const char *s0, const char *e){ size_t k; for(k=1;k<=3 && e-k>=s0;k++) if(fn_ws(e-k)==k) return k; return 0; }
+static size_t fn_chars(const char *s){ size_t k=0; for(;*s;s++) if(((unsigned char)*s&0xC0)!=0x80) k++; return k; }
+static const char *fn_skip(const char *s, size_t nch){ while(*s && nch){ s++; while(((unsigned char)*s&0xC0)==0x80) s++; nch--; } return s; }
+static void sanitize_filename(const char *in, char *out, size_t n){ const char *b=in, *p; char t[1024]; size_t o=0;
+    if(n<8) { if(n) out[0]=0; return; }
     for(p=in;*p;p++) if(*p=='/'||*p=='\\') b=p+1;
-    for(p=b;*p && o+1<n;p++){ unsigned char ch=(unsigned char)*p; if(ch<0x20||strchr("<>:\"|?*",ch)) out[o++]='_'; else out[o++]=(char)ch; } out[o]=0;
-    utf8_trunc(out,200); while(o && (out[strlen(out)-1]=='.'||out[strlen(out)-1]==' ')) { out[strlen(out)-1]=0; o--; }
-    if(!out[0]||!strcmp(out,".")||!strcmp(out,"..")) scpy(out,"file",n); }
+    for(p=b;*p && o+4<sizeof t;p++){ unsigned char ch=(unsigned char)*p;
+        if(ch<0x20||ch==0x7f||strchr("<>:\"|?*",ch)) t[o++]='_';
+        else if(ch==0xC2 && (unsigned char)p[1]>=0x80 && (unsigned char)p[1]<=0x9F){ t[o++]='_'; p++; }
+        else t[o++]=(char)ch; }
+    t[o]=0;
+    { char *s0=t, *e; size_t k; /* strip Unicode whitespace and '.' at both ends until none is left */
+      for(;;){ if(*s0=='.') s0++; else if((k=fn_ws(s0))) s0+=k; else break; }
+      e=s0+strlen(s0);
+      for(;;){ if(e>s0 && e[-1]=='.') e--; else if(e>s0 && (k=fn_ws_end(s0,e))) e-=k; else break; }
+      *e=0; memmove(t,s0,strlen(s0)+1); }
+    if(fn_chars(t)>180){ char ext[64]="", stem[1024]; const char *dot=strrchr(t,'.'); size_t sl;
+        if(dot){ const char *ee=fn_skip(dot+1,10); size_t el=(size_t)(ee-(dot+1)); memcpy(ext,dot+1,el); ext[el]=0; }
+        sl=(size_t)(fn_skip(t,160)-t); memcpy(stem,t,sl); stem[sl]=0;
+        if(ext[0]) snprintf(t,sizeof t,"%s.%s",stem,ext); else scpy(t,stem,sizeof t); }
+    { char up[8]; size_t k=0, sl=strcspn(t,"."); int res=0;
+      while(sl && fn_ws_end(t,t+sl)) sl-=fn_ws_end(t,t+sl); /* Windows ignores trailing spaces: "nul .txt" is NUL */
+      if(sl==3||sl==4){ for(k=0;k<sl;k++) up[k]=(char)toupper((unsigned char)t[k]); up[k]=0;
+        res=!strcmp(up,"CON")||!strcmp(up,"PRN")||!strcmp(up,"AUX")||!strcmp(up,"NUL")||
+            ((!strncmp(up,"COM",3)||!strncmp(up,"LPT",3)) && k==4 && isdigit((unsigned char)up[3])); }
+      if(res){ memmove(t+1,t,strlen(t)+1); t[0]='_'; } }
+    if(!t[0]) scpy(t,"file",sizeof t);
+    scpy(out,t,n); utf8_trunc(out,n-1); }
 static void unique_path(lsm_core *c, const char *name, char *out, size_t n){ int i; char stem[260], ext[64]=""; const char *dot=strrchr(name,'.');
     path_join(out,n,c->dl_dir,name); if(!uexists(out)) return;
     scpy(stem,name,sizeof stem); if(dot && dot!=name){ scpy(ext,dot,sizeof ext); stem[dot-name]=0; }

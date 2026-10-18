@@ -18,6 +18,7 @@ use crate::history::HistoryStore;
 use crate::identity::Identity;
 use crate::link::{self, Link, LinkWriter};
 mod files;
+pub use files::sanitize_filename;
 mod relay;
 pub use relay::RelayConfig;
 use files::{TransferEvt, TransferRt};
