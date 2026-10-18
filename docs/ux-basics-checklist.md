@@ -60,17 +60,18 @@ Runtime verification on Windows CI (scripts/ui_smoke_windows.ps1) is still to be
 | # | Item | Status | Evidence |
 |---|------|--------|----------|
 | X1 | Esc closes dialogs | **PASS** (CODE) | IDCANCEL handling |
-| X2 | Enter sends, Shift+Enter new line | **PASS** (CODE) | VK_RETURN + GetKeyState(VK_SHIFT) |
-| X4 | Keyboard shortcuts / accelerators | **FAIL** | no accelerator table |
+| X2 | Enter sends, Shift+Enter new line | **PASS** (RUNTIME) fee27b3 | VK_RETURN + GetKeyState(VK_SHIFT); composer shows the placeholder 输入消息 + hint "Enter 发送 · Shift+Enter 换行"; tests/xp_gui_cli_shots.py sends with Return under wine |
+| X4 | Keyboard shortcuts / accelerators | **FIXED** fee27b3 (RUNTIME) | app_key() in the message loop, same keys as WinUI/GTK: Ctrl+F search, Ctrl+N add by IP, Ctrl+Tab / Ctrl+Shift+Tab next/previous chat, Esc clears the search; wine shots xp-*-ctrl-n / -ctrl-tab / -search |
 | X5 | Close vs tray | **PASS** (CODE) | Shell_NotifyIcon, WM_CLOSE |
-| X6 | Remember window placement | **FAIL** | no Get/SetWindowPlacement persistence |
+| X6 | Remember window placement | **FIXED** fee27b3 (CODE) | GetWindowPlacement → window.txt next to the exe on close/exit (normal rect + maximized), restored only if still mostly inside the work area |
 | X7 | High DPI | **PARTIAL** | fonts/metrics scaled by LOGPIXELSY; no DPI-aware manifest |
-| X8 | Drag & drop files | **FAIL** | no DragAcceptFiles / WM_DROPFILES |
-| X9 | Right-click context menu (messages/contacts) | **PARTIAL → FIXED for messages** a789d79 | chat EDIT subclassed: WM_CONTEXTMENU (mouse + Shift+F10) → 复制 / 全选 / 删除这条消息（仅本机）…; contact-list menu still pending |
-| X10 | Copy message text | **FIXED** a789d79 | 复制 (WM_COPY) in the chat menu, Ctrl+A select-all, Ctrl+C native |
-| X11 | Tooltips | **FAIL** | no tooltip control |
+| X8 | Drag & drop files | **FIXED** fee27b3 (CODE) | DragAcceptFiles on the main window; WM_DROPFILES sends every dropped file (folders skipped) to the open chat, asks to pick a chat first otherwise; not driven under wine yet |
+| X9 | Right-click context menu (messages/contacts) | **FIXED** e0cd4a7 + fee27b3 (RUNTIME) | bubble list: 复制 / 打开 / 在文件夹中显示 / 删除这条消息（仅本机）… (mouse + Shift+F10); contact list: 打开聊天 / 信任 / 取消信任 / 输入 PIN 配对 / 复制指纹 / 屏蔽 (groups: 邀请 / 移除 / 退出); wine shots xp-*-chat-menu, xp-*-contact-menu |
+| X10 | Copy message text | **FIXED** e0cd4a7 | 复制 in the bubble menu and Ctrl+C on the focused bubble (CF_UNICODETEXT) |
+| X11 | Tooltips | **FIXED** fee27b3 (RUNTIME) | TOOLTIPS_CLASS (TTF_IDISHWND / TTF_SUBCLASS) on send, send-file, search and the contact list (seen in the wine shots) |
 | X12 | Single instance | **PASS** (CODE) | CreateMutex |
 | X13 | Confirm destructive actions | **PASS** (CODE) | tmsg(…,cancel=1) confirms 退出群组 and 删除消息 (re-checked: the custom prompt is the yes/no) |
+| X18 | Redesigned views (xp-*-chat mockups) | **PARTIAL** e0cd4a7 f1e80b1 2db3a90 | owner-drawn bubble list (day chip, E2E notice, time + drawn ticks inside bubbles, file cards), conversation list (avatars, badges, previews), search box, Luna palette tools/palettes/xp.json; local audit 14/14. Still to do: header bar with avatar + shield, real Luna toolbar / status-bar panes, image thumbnails |
 | X17 | Notification (balloon) | **PASS** (CODE) | NIIF balloons; click → open chat: to verify |
 
 ## Linux GTK 4 + libadwaita (linux/adw_gui.c, `lan-messenger-adw`; GTK3 linux/gtk_gui.c still ships until the port is finished)
