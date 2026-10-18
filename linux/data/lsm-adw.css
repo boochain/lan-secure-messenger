@@ -66,3 +66,5 @@ popover > contents { border: 1px solid @lsm_fieldborder; }
 entry text placeholder { color: @lsm_fg2; opacity: 1; }
 popover entry { background-color: @lsm_field; border: 1px solid @lsm_fieldborder; color: @lsm_fg; }
 .relay-badge { background-color: @lsm_chip; color: @lsm_chipfg; border-radius: 6px; padding: 0 6px; font-size: 12px; font-weight: 600; }
+.lsm-relay .dim-label, .lsm-relay row .subtitle, .lsm-relay preferencesgroup .description, .lsm-relay .relay-status { color: @lsm_fg2; opacity: 1; }
+.lsm-relay entry text placeholder { color: @lsm_fg2; opacity: 1; }

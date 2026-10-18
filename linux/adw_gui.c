@@ -286,7 +286,8 @@ static void relay_status_text(char *o, size_t n){ char det[256]="";
 #endif
 }
 static void relay_refresh(void){ char s[400]; if(!rl_status) return; relay_status_text(s,sizeof s); gtk_label_set_text(GTK_LABEL(rl_status),s); }
-static void relay_pass_placeholder(int hp){ gtk_entry_set_placeholder_text(GTK_ENTRY(rl_pass),hp?"已设置（留空则保持不变）":"未设置"); gtk_widget_set_visible(rl_passrow,hp); }
+static GtkWidget *rl_passfield; /* the hint sits in the row subtitle: GTK's entry placeholder is drawn at reduced alpha (APCA |Lc| 55 in dark) */
+static void relay_pass_placeholder(int hp){ adw_action_row_set_subtitle(ADW_ACTION_ROW(rl_passfield),hp?"已设置（留空则保持不变）":"未设置"); gtk_widget_set_visible(rl_passrow,hp); }
 static void relay_clear_cb(GtkButton *b, gpointer p){ (void)b;(void)p; rl_clear=1; relay_pass_placeholder(0); toast("已清除网络口令"); }
 static void relay_save_cb(GtkButton *b, gpointer p){ (void)b;(void)p;
 #ifdef LSM_HAVE_RELAY
@@ -308,20 +309,21 @@ static void relay_dialog(void){ GtkWidget *tv, *hb, *pg, *grp, *grp2, *box, *btn
     lsm_relay_get(C,&en,host,sizeof host,&port,&hp);
 #endif
     rl_clear=0; rl_win=adw_window_new(); gtk_window_set_title(GTK_WINDOW(rl_win),"中转服务器（可选）"); gtk_window_set_transient_for(GTK_WINDOW(rl_win),GTK_WINDOW(win)); gtk_window_set_modal(GTK_WINDOW(rl_win),TRUE); gtk_window_set_default_size(GTK_WINDOW(rl_win),520,560);
-    g_signal_connect(rl_win,"destroy",G_CALLBACK(relay_closed),NULL);
+    g_signal_connect(rl_win,"destroy",G_CALLBACK(relay_closed),NULL); cls(rl_win,"lsm-relay");
     tv=gtk_box_new(GTK_ORIENTATION_VERTICAL,0); hb=adw_header_bar_new(); gtk_box_append(GTK_BOX(tv),hb);
     pg=adw_preferences_page_new(); gtk_widget_set_vexpand(pg,TRUE); gtk_box_append(GTK_BOX(tv),pg);
-    grp=adw_preferences_group_new(); adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(grp),"中转服务器（可选）");
-    adw_preferences_group_set_description(ADW_PREFERENCES_GROUP(grp),"不在同一局域网时，可通过你自己部署的中转服务器联系对方。局域网直连始终优先；服务器只转发端到端加密的数据，无法看到消息内容。");
+    grp=adw_preferences_group_new();
+    { GtkWidget *g0=adw_preferences_group_new(), *dl=label("不在同一局域网时，可通过你自己部署的中转服务器联系对方。局域网直连始终优先；服务器只转发端到端加密的数据，无法看到消息内容。","relay-status");
+      gtk_label_set_wrap(GTK_LABEL(dl),TRUE); adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(g0),"中转服务器（可选）"); adw_preferences_group_add(ADW_PREFERENCES_GROUP(g0),dl); adw_preferences_page_add(ADW_PREFERENCES_PAGE(pg),ADW_PREFERENCES_GROUP(g0)); }
     rl_sw=gtk_switch_new(); gtk_switch_set_active(GTK_SWITCH(rl_sw),en); gtk_widget_set_tooltip_text(rl_sw,"关闭时只使用局域网直连");
     { GtkWidget *r=rl_row(grp,"通过中转服务器连接",en?"局域网直连不可用时经服务器中转":"关闭：只使用局域网直连",rl_sw); adw_action_row_set_activatable_widget(ADW_ACTION_ROW(r),rl_sw); g_signal_connect(rl_sw,"notify::active",G_CALLBACK(relay_sw_changed),r); }
     { GtkEventController *ek=gtk_shortcut_controller_new(); gtk_shortcut_controller_add_shortcut(GTK_SHORTCUT_CONTROLLER(ek),gtk_shortcut_new(gtk_keyval_trigger_new(GDK_KEY_Escape,0),gtk_named_action_new("window.close"))); gtk_widget_add_controller(rl_win,ek); }
     rl_host=gtk_entry_new(); gtk_editable_set_text(GTK_EDITABLE(rl_host),host); gtk_entry_set_placeholder_text(GTK_ENTRY(rl_host),"relay.example.com"); gtk_widget_set_size_request(rl_host,240,-1); rl_row(grp,"服务器地址",NULL,rl_host);
     snprintf(ps,sizeof ps,"%d",port?port:9443); rl_port=gtk_entry_new(); gtk_editable_set_text(GTK_EDITABLE(rl_port),ps); gtk_entry_set_input_purpose(GTK_ENTRY(rl_port),GTK_INPUT_PURPOSE_DIGITS); gtk_editable_set_width_chars(GTK_EDITABLE(rl_port),6); rl_row(grp,"端口",NULL,rl_port);
-    rl_pass=gtk_entry_new(); gtk_entry_set_visibility(GTK_ENTRY(rl_pass),FALSE); gtk_entry_set_input_purpose(GTK_ENTRY(rl_pass),GTK_INPUT_PURPOSE_PASSWORD); gtk_widget_set_size_request(rl_pass,240,-1); rl_row(grp,"网络口令",NULL,rl_pass);
+    rl_pass=gtk_entry_new(); gtk_entry_set_visibility(GTK_ENTRY(rl_pass),FALSE); gtk_entry_set_input_purpose(GTK_ENTRY(rl_pass),GTK_INPUT_PURPOSE_PASSWORD); gtk_widget_set_size_request(rl_pass,240,-1); rl_passfield=rl_row(grp,"网络口令",NULL,rl_pass);
     clr=gtk_button_new_with_label("清除口令"); cls(clr,"flat"); cls(clr,"link"); g_signal_connect(clr,"clicked",G_CALLBACK(relay_clear_cb),NULL); rl_passrow=rl_row(grp,"口令已设置",NULL,clr);
     relay_pass_placeholder(hp); adw_preferences_page_add(ADW_PREFERENCES_PAGE(pg),ADW_PREFERENCES_GROUP(grp));
-    grp2=adw_preferences_group_new(); box=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,12); rl_status=label("","dim-label"); gtk_label_set_wrap(GTK_LABEL(rl_status),TRUE); gtk_widget_set_hexpand(rl_status,TRUE); gtk_box_append(GTK_BOX(box),rl_status);
+    grp2=adw_preferences_group_new(); box=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,12); rl_status=label("","relay-status"); gtk_label_set_wrap(GTK_LABEL(rl_status),TRUE); gtk_widget_set_hexpand(rl_status,TRUE); gtk_box_append(GTK_BOX(box),rl_status);
     btn=gtk_button_new_with_label("保存并连接"); cls(btn,"suggested-action"); cls(btn,"pill"); g_signal_connect(btn,"clicked",G_CALLBACK(relay_save_cb),NULL); gtk_box_append(GTK_BOX(box),btn);
     adw_preferences_group_add(ADW_PREFERENCES_GROUP(grp2),box); adw_preferences_page_add(ADW_PREFERENCES_PAGE(pg),ADW_PREFERENCES_GROUP(grp2));
     g_signal_connect_swapped(rl_pass,"activate",G_CALLBACK(relay_save_cb),NULL);
