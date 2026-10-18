@@ -8,6 +8,7 @@
 #include <commctrl.h>
 #include <commdlg.h>
 #include <shellapi.h>
+#include <shlobj.h>   /* DROPFILES (test drop hook) */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -718,6 +719,12 @@ static void contact_menu(LPARAM l){ POINT pt; int s=-1, dm, cmd; HMENU pm;
     menu_bg(pm); cmd=TrackPopupMenu(pm,TPM_RIGHTBUTTON|TPM_RETURNCMD|TPM_NONOTIFY,pt.x,pt.y,0,hMain,NULL); DestroyMenu(pm);
     if(cmd==IDM_OPENCHAT) SetFocus(hInput); else if(cmd==IDM_COPYFP) copy_text(W(cur_conv+3)); else if(cmd) do_command(cmd); }
 
+/* LSM_UI_TEST_DROP=<path> (test only): once a chat is open, hand that path to the real WM_DROPFILES handler in a
+   shell-style HDROP (DROPFILES + wide path list), exactly what Explorer posts on a drag & drop (X8) */
+static void test_drop(HWND h){ static int done; wchar_t p[MAX_PATH]; DWORD n; HGLOBAL g; DROPFILES *df; if(done || !cur_conv[0]) return;
+    n=GetEnvironmentVariableW(L"LSM_UI_TEST_DROP",p,MAX_PATH); if(!n || n>=MAX_PATH) { done=1; return; } done=1;
+    g=GlobalAlloc(GMEM_MOVEABLE|GMEM_ZEROINIT,sizeof(DROPFILES)+(n+2)*sizeof(wchar_t)); if(!g) return; df=(DROPFILES*)GlobalLock(g); df->pFiles=sizeof(DROPFILES); df->fWide=TRUE;
+    memcpy((char*)df+sizeof(DROPFILES),p,n*sizeof(wchar_t)); GlobalUnlock(g); SendMessageW(h,WM_DROPFILES,(WPARAM)g,0); }
 static LRESULT CALLBACK MainProc(HWND h, UINT m, WPARAM w, LPARAM l){
     switch(m){
     case WM_CREATE: {
@@ -749,7 +756,7 @@ static LRESULT CALLBACK MainProc(HWND h, UINT m, WPARAM w, LPARAM l){
     case WM_SIZE: if(w!=SIZE_MINIMIZED){ if(hTip) SendMessageW(hTip,TTM_POP,0,0); layout(LOWORD(l),HIWORD(l)); if(C) refresh_chat(); fit_vscroll(hInput); InvalidateRect(h,NULL,TRUE); } else ShowWindow(h,SW_HIDE); return 0;
     case WM_GETMINMAXINFO: ((MINMAXINFO*)l)->ptMinTrackSize.x=640; ((MINMAXINFO*)l)->ptMinTrackSize.y=420; return 0;
     case WM_SETFOCUS: SetFocus(hList); return 0; /* keyboard users land in the contact list */
-    case WM_TIMER: if(!tray_added) tray_add(); poll_events(); ui_icons_dump(); return 0;
+    case WM_TIMER: if(!tray_added) tray_add(); poll_events(); ui_icons_dump(); test_drop(h); return 0;
     /* system colours only: readable in any theme incl. high-contrast */
     case WM_CTLCOLORSTATIC: case WM_CTLCOLORBTN: case WM_CTLCOLORDLG: return ctl_color((HDC)w,(HWND)l,0);
     case WM_CTLCOLOREDIT: return ctl_color((HDC)w,(HWND)l,1);
