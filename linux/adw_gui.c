@@ -345,11 +345,19 @@ static void relay_dialog(void){ GtkWidget *tv, *hb, *pg, *grp, *grp2, *box, *btn
 static gboolean relay_test_fill(gpointer p){ /* LSM_UI_TEST_RELAY="host port pass": open the dialog, fill it and press 保存并连接 like a user */ char h[256], ps[256]; int port;
     if(sscanf((const char*)p,"%255s %d %255s",h,&port,ps)!=3) return G_SOURCE_REMOVE; relay_dialog(); { char b[16]; snprintf(b,sizeof b,"%d",port); gtk_switch_set_active(GTK_SWITCH(rl_sw),TRUE); gtk_editable_set_text(GTK_EDITABLE(rl_host),h); gtk_editable_set_text(GTK_EDITABLE(rl_port),b); gtk_editable_set_text(GTK_EDITABLE(rl_pass),ps); }
     relay_save_cb(NULL,NULL); return G_SOURCE_REMOVE; }
+/* LSM_UI_TEST_DROP=<path> (test only): once a chat is open, emit "drop" on the chat's real GtkDropTarget with a
+   GdkFileList, the same signal + value a desktop drag & drop delivers (G8) */
+static GtkDropTarget *test_dt;
+static void test_drop(void){ static int done; const char *pth=getenv("LSM_UI_TEST_DROP"); GSList *l; GdkFileList *fl; GValue v=G_VALUE_INIT; gboolean ret=FALSE;
+    if(done || !pth || !test_dt || !cur_conv[0]) return; done=1;
+    l=g_slist_append(NULL,g_file_new_for_path(pth)); fl=gdk_file_list_new_from_list(l); g_value_init(&v,GDK_TYPE_FILE_LIST); g_value_take_boxed(&v,fl);
+    g_signal_emit_by_name(test_dt,"drop",&v,10.0,10.0,&ret); g_value_unset(&v); g_slist_free_full(l,g_object_unref); printf("TESTDROP %s ret=%d\n",pth,ret); fflush(stdout); }
 static gboolean ui_state_tick(gpointer p){ /* LSM_UI_TEST: open dialogs / popover / window size, for the basics test (Esc closes, window memory) */ int nd=0; GListModel *tl=gtk_window_get_toplevels(); guint i; (void)p;
     for(i=0;i<g_list_model_get_n_items(tl);i++){ GtkWindow *t=g_list_model_get_item(tl,i); if(t!=GTK_WINDOW(win) && gtk_widget_get_visible(GTK_WIDGET(t))) nd++; g_object_unref(t); }
 #if ADW_CHECK_VERSION(1,5,0)
     if(adw_application_window_get_visible_dialog(ADW_APPLICATION_WINDOW(win))) nd++;
 #endif
+    test_drop();
     printf("UISTATE dialogs=%d addpop=%d size=%dx%d visible=%d conv=%s\n",nd,add_popover&&gtk_widget_get_visible(add_popover),gtk_widget_get_width(win),gtk_widget_get_height(win),gtk_widget_get_visible(win),cur_conv[0]?cur_conv:"-"); fflush(stdout); return G_SOURCE_CONTINUE; }
 static void win_act(GSimpleAction *a, GVariant *v, gpointer p){ const char *n=g_action_get_name(G_ACTION(a)); (void)v;(void)p;
     g_timeout_add(400,test_log_later,(gpointer)n);
@@ -500,7 +508,7 @@ static void activate(GtkApplication *a, gpointer p){
     { GtkWidget *clamp=adw_clamp_new(); adw_clamp_set_maximum_size(ADW_CLAMP(clamp),900); adw_clamp_set_tightening_threshold(ADW_CLAMP(clamp),900); adw_clamp_set_child(ADW_CLAMP(clamp),chat_box); gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(chat_scroll),clamp); }
     cls(chat_scroll,"chatbg"); gtk_widget_set_vexpand(chat_scroll,TRUE); gtk_overlay_set_child(GTK_OVERLAY(chat_ov),chat_scroll);
     drop_hint=gtk_label_new("松开即可发送文件"); cls(drop_hint,"drophint"); gtk_widget_set_halign(drop_hint,GTK_ALIGN_CENTER); gtk_widget_set_valign(drop_hint,GTK_ALIGN_CENTER); gtk_widget_set_visible(drop_hint,FALSE); gtk_overlay_add_overlay(GTK_OVERLAY(chat_ov),drop_hint);
-    { GtkDropTarget *dt=gtk_drop_target_new(GDK_TYPE_FILE_LIST,GDK_ACTION_COPY); g_signal_connect(dt,"drop",G_CALLBACK(on_drop),NULL); g_signal_connect(dt,"enter",G_CALLBACK(drop_enter),NULL); g_signal_connect(dt,"leave",G_CALLBACK(drop_leave),NULL); gtk_widget_add_controller(chat_ov,GTK_EVENT_CONTROLLER(dt)); }
+    { GtkDropTarget *dt=gtk_drop_target_new(GDK_TYPE_FILE_LIST,GDK_ACTION_COPY); test_dt=dt; g_signal_connect(dt,"drop",G_CALLBACK(on_drop),NULL); g_signal_connect(dt,"enter",G_CALLBACK(drop_enter),NULL); g_signal_connect(dt,"leave",G_CALLBACK(drop_leave),NULL); gtk_widget_add_controller(chat_ov,GTK_EVENT_CONTROLLER(dt)); }
     /* composer: attach · [field: 输入消息 … Enter 发送 · Shift+Enter 换行] · send (no emoji button until there is a picker) */
     composer=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,8); cls(composer,"composer");
     attach=icon_btn("mail-attachment-symbolic","发送文件 (Ctrl+O)，也可以把文件拖进来","win.send-file"); cls(attach,"circular"); gtk_widget_set_valign(attach,GTK_ALIGN_END);

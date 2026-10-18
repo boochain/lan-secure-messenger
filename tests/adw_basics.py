@@ -70,10 +70,14 @@ port = base; A = peer("a", "王工", port + 2)
 def start(extra=None):
     e = dict(env, LSM_THEME="light", LSM_UI_TEST="1", LSM_INSTANCE=".basics"); e.update(extra or {})
     return Proc([gui, "--data", f"{W}/gui", "--name", "Bill", "--no-discovery", "--port", str(port), "--disco-port", str(port + 1), "--auto-trust"], e)
-g = start({"LSM_WINDOW_SIZE": "1024x694"}); fp = (g.wait_for("LSM_FP", 20) or " ? ").split()[1]; check(fp != "?", "GUI started")
+dropf = f"{W}/拖放测试.txt"; open(dropf, "w").write("drop test\n")
+g = start({"LSM_WINDOW_SIZE": "1024x694", "LSM_UI_TEST_DROP": dropf}); fp = (g.wait_for("LSM_FP", 20) or " ? ").split()[1]; check(fp != "?", "GUI started")
 A.cmd(f"add 127.0.0.1:{port}"); time.sleep(2); A.cmd(f"trust {fp[:12]}"); A.cmd(f"send {fp[:12]} 基础检查：请回复。"); time.sleep(3)
 B = peer("b", "陈静", port + 4); B.cmd(f"add 127.0.0.1:{port}"); time.sleep(2); B.cmd(f"trust {fp[:12]}"); B.cmd(f"send {fp[:12]} 第二个会话。"); time.sleep(3)
 xdo("mousemove", "130", "220", "click", "1"); time.sleep(1)   # second row = 王工 (陈静 wrote last)
+# G8 drag & drop: the test hook emits "drop" on the chat's GtkDropTarget with a GdkFileList -> the open chat's peer gets the offer
+off = wait(lambda: next((l for l in A.lines if "拖放测试.txt" in l), None), 20)
+check(bool(off), f"G8 a dropped file (GtkDropTarget drop, GdkFileList) is offered to the open chat ({(off or '')[:60]!r})")
 # G1 Esc closes: Ctrl+I details dialog, Ctrl+N add popover
 xdo("key", "ctrl+i"); time.sleep(1.2); d = fresh(g, "dialogs"); xdo("key", "Escape"); time.sleep(1); d2 = fresh(g, "dialogs")
 check(d == "1" and d2 == "0", f"G1 Ctrl+I opens the details dialog, Esc closes it (dialogs {d} -> {d2})")
@@ -88,6 +92,10 @@ check(bool(r2), f"G2 Enter sends one message with both lines ({(r2 or '')[-30:]!
 xdo("mousemove", "428", "167", "click", "3"); time.sleep(1.2); snap("adw-basics-msg-menu"); xdo("key", "Return"); time.sleep(0.8)
 xdo("mousemove", "600", "663", "click", "1"); time.sleep(0.4); xdo("key", "ctrl+v"); time.sleep(0.4); xdo("key", "Return")
 check(bool(wait(lambda: any("\tin\t" in l and "基础检查：请回复。" in l for l in A.lines), 8)), "G10 bubble menu 复制 copies the text (pasted with Ctrl+V and received by the peer)")
+# G13 destructive action confirmed: bubble menu -> 删除这条消息（仅本机）… opens an alert dialog, Esc cancels
+xdo("mousemove", "428", "167", "click", "3"); time.sleep(1.2); xdo("key", "Down"); time.sleep(0.3); xdo("key", "Return"); time.sleep(1.2); d = fresh(g, "dialogs"); snap("adw-basics-delete-confirm")
+xdo("key", "Escape"); time.sleep(1); d2 = fresh(g, "dialogs")
+check(d == "1" and d2 == "0", f"G13 删除这条消息 asks for confirmation, Esc cancels (dialogs {d} -> {d2})")
 # G11 tooltip on the send button
 def tops(): return set(subprocess.run(["xdotool", "search", "--onlyvisible", "--maxdepth", "1", "--name", ""], env=env, capture_output=True, text=True).stdout.split())
 tb = tops(); xdo("mousemove", "985", "663"); time.sleep(2.5); tn = tops() - tb; snap("adw-basics-tooltip")
