@@ -141,7 +141,7 @@ jobs:
       - name: Colour audit (android palette, light + dark)
         if: always()
         run: |
-          cd xp && python3 tools/ui_color_audit.py --palette tools/palettes/android.json --out ../ui-audit/android-relay ../shots/android-relay/*.png
+          cd xp && python3 tools/ui_color_audit.py --palette tools/palettes/android.json --out $GITHUB_WORKSPACE/ui-audit/android-relay $GITHUB_WORKSPACE/shots/android-relay/*.png
       - uses: actions/upload-artifact@v4
         if: always()
         with:
