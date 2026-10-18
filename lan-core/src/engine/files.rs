@@ -28,7 +28,8 @@ pub(crate) enum RecvCmd {
 
 pub(crate) enum TransferEvt {
     Hashed { tid: Uuid, result: std::result::Result<[u8; 32], String> },
-    SendDone { tid: Uuid, result: std::result::Result<(), String> },
+    /// `cancel` identifies the send task: a task superseded by a pause (link lost / replaced) reports with an old flag
+    SendDone { tid: Uuid, result: std::result::Result<(), String>, cancel: Arc<AtomicBool> },
     RecvProgress { tid: Uuid, written: u64 },
     RecvDone { tid: Uuid, result: std::result::Result<PathBuf, String> },
     /// recv channel dropped mid-transfer; the partial file is kept.
@@ -768,6 +769,11 @@ impl Engine {
                 t.state = TransferState::Offered;
                 t.error = "连接中断，重连后自动续传".into();
                 t.credit = None;
+                if t.direction == Direction::In && t.chunk_tx.is_some() {
+                    // the recv task still owns the partial file and reports it via RecvInterrupted; a re-offer that
+                    // arrives first (link replaced: the new link is already up) must wait for it (reoffer_pending)
+                    t.resume_loading = true;
+                }
                 t.chunk_tx = None; // receiver: recv_task reports RecvInterrupted with the partial data
                 if t.direction == Direction::Out {
                     t.cancel.store(true, Ordering::Relaxed);
@@ -1018,8 +1024,8 @@ impl Engine {
                 let tx = self.tx.clone();
                 let tx2 = self.tx.clone();
                 tokio::spawn(async move {
-                    let r = send_task(tid, path, size, bulk, crx, cancel, resume, tx2).await;
-                    let _ = tx.send(EngineMsg::Transfer(TransferEvt::SendDone { tid, result: r }));
+                    let r = send_task(tid, path, size, bulk, crx, cancel.clone(), resume, tx2).await;
+                    let _ = tx.send(EngineMsg::Transfer(TransferEvt::SendDone { tid, result: r, cancel }));
                 });
                 self.emit_transfer(tid, true);
             }
@@ -1123,8 +1129,13 @@ impl Engine {
                     }
                 }
             }
-            TransferEvt::SendDone { tid, result } => {
+            TransferEvt::SendDone { tid, result, cancel } => {
                 let Some(t) = self.transfers.get_mut(&tid) else { return };
+                if !Arc::ptr_eq(&cancel, &t.cancel) {
+                    // a send task from before a pause (relay<->direct switch, reconnect): the transfer has already
+                    // been re-offered/resumed on the new link; its late "连接断开" must not pause the new task again
+                    return;
+                }
                 if t.finished() || t.state == TransferState::Offered {
                     return; // finished, or interrupted and waiting to resume
                 }
