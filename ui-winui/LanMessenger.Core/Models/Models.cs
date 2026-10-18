@@ -71,6 +71,8 @@ public sealed class Peer
     public uint Unread { get; set; }
     public uint? RttMs { get; set; }
     public string AppVersion { get; set; } = "";
+    /// <summary>The live link goes through the relay server (false when offline or direct).</summary>
+    public bool ViaRelay { get; set; }
 }
 
 public sealed class GroupMember
@@ -110,6 +112,8 @@ public sealed class Transfer
     public ulong BytesPerSec { get; set; }
     public long StartedMs { get; set; }
     public bool Retryable { get; set; }
+    /// <summary>Offset the last (re)start continued from; 0 = from the beginning.</summary>
+    public ulong ResumedFrom { get; set; }
 }
 
 public sealed class Conversation
@@ -163,6 +167,22 @@ public sealed class Settings
     public bool AutoTrust { get; set; }
     public bool CheckUpdates { get; set; } = true;
     public ulong AnnounceIntervalSecs { get; set; } = 3;
+    // relay server fallback (optional, off by default); the passphrase is write-only over IPC
+    public bool RelayEnabled { get; set; }
+    public string RelayHost { get; set; } = "";
+    public ushort RelayPort { get; set; } = 9443;
+    public bool RelayHasPassphrase { get; set; }
+}
+
+public sealed class RelayStatus
+{
+    public bool Enabled { get; set; }
+    public string State { get; set; } = "off";   // off | connecting | online | auth_failed | error
+    public string Detail { get; set; } = "";
+    public string Server { get; set; } = "";
+    public uint Peers { get; set; }
+    public uint RelayedLinks { get; set; }
+    public bool HasPassphrase { get; set; }
 }
 
 public sealed class Snapshot
@@ -173,6 +193,7 @@ public sealed class Snapshot
     public List<Conversation> Conversations { get; set; } = new();
     public List<Transfer> Transfers { get; set; } = new();
     public Settings Settings { get; set; } = new();
+    public RelayStatus Relay { get; set; } = new();
 }
 
 public sealed class NetIf

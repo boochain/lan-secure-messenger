@@ -229,6 +229,14 @@
                                     <TextBlock Text="{x:Bind Title, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                                     <FontIcon Tag="lsm-icon" Foreground="{ThemeResource SystemFillColorSuccessBrush}" Glyph="&#xEA18;" FontSize="12" Visibility="{x:Bind IsTrusted, Mode=OneWay}" ToolTipService.ToolTip="已验证身份" AutomationProperties.Name="已验证身份" />
                                     <FontIcon Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE74F;" FontSize="12" Visibility="{x:Bind Muted, Mode=OneWay}" ToolTipService.ToolTip="免打扰" />
+                                    <!-- relay peer: same list, same row; small 经服务器 chip (icon + text) -->
+                                    <Border Background="{ThemeResource LsmChipBackgroundBrush}" CornerRadius="8" Padding="6,1,6,1" VerticalAlignment="Center"
+                                            Visibility="{x:Bind ViaServer, Mode=OneWay}" ToolTipService.ToolTip="经服务器中转（端到端加密，局域网直连恢复后自动切换）" AutomationProperties.Name="经服务器">
+                                        <StackPanel Orientation="Horizontal" Spacing="3">
+                                            <FontIcon Glyph="&#xE753;" FontSize="11" Foreground="{ThemeResource LsmChipForegroundBrush}" VerticalAlignment="Center" />
+                                            <TextBlock Text="经服务器" FontSize="12" Foreground="{ThemeResource LsmChipForegroundBrush}" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </Border>
                                 </StackPanel>
                                 <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" MaxLines="1" FontSize="13">
                                     <Run Text="{x:Bind local:B.Tick(LastTick), Mode=OneWay}" /><Run Text="{x:Bind LastFrom, Mode=OneWay}" /><Run Text="{x:Bind Preview, Mode=OneWay}" />
@@ -287,7 +295,12 @@
                         <!-- verified identity: green shield next to the name (mockup); the words are also in the subtitle -->
                         <FontIcon x:Name="HeaderShield" Tag="lsm-icon" Foreground="{ThemeResource SystemFillColorSuccessBrush}" Glyph="&#xEA18;" FontSize="13" VerticalAlignment="Center" Visibility="{x:Bind VM.SelectedTrusted, Mode=OneWay}" ToolTipService.ToolTip="已验证身份" AutomationProperties.Name="已验证身份" />
                     </StackPanel>
-                    <TextBlock Text="{x:Bind VM.SelectedSubtitle, Mode=OneWay}" Style="{StaticResource SecondaryCaptionStyle}" TextTrimming="CharacterEllipsis" />
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <FontIcon x:Name="HeaderRelayIcon" Glyph="&#xE753;" FontSize="12" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                  Visibility="{x:Bind local:B.Both(VM.SelectedViaServer, VM.SelectedOnline), Mode=OneWay}"
+                                  ToolTipService.ToolTip="经服务器中转（端到端加密）" AutomationProperties.Name="经服务器" />
+                        <TextBlock Text="{x:Bind VM.SelectedSubtitle, Mode=OneWay}" Style="{StaticResource SecondaryCaptionStyle}" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
                 </StackPanel>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                     <Button Style="{StaticResource LsmIconButton}" Click="FocusSearch_Click" ToolTipService.ToolTip="搜索聊天记录 (Ctrl+F)">

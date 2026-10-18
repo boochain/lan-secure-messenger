@@ -20,12 +20,14 @@ public partial class PeerItem : ObservableObject
     [ObservableProperty] private string _detail = "";
     [ObservableProperty] private string _initial = "?";
     [ObservableProperty] private bool _isSelected;
+    [ObservableProperty] private bool _viaRelay;        // online through the relay server
     public bool Offline => !Online;
 
     public void Update(Peer p)
     {
         Name = p.Name;
         Online = p.Online;
+        ViaRelay = p.Online && p.ViaRelay;
         Connecting = p.State == ConnState.Connecting;
         StateText = p.State switch
         {
@@ -74,7 +76,7 @@ public partial class ConversationItem : ObservableObject
     [ObservableProperty] private bool _previewIsImage;
     [ObservableProperty] private int _lastTick;          // 0 none, 1 sent/queued, 2 delivered, 3 read, 4 failed
     [ObservableProperty] private bool _isTrusted;        // set by the view model from the peer list
-    [ObservableProperty] private bool _viaServer;        // UI hook: relayed through a server (no protocol data yet)
+    [ObservableProperty] private bool _viaServer;        // online and the live link goes through the relay server (Peer.via_relay)
     public bool IsDm => !IsGroup;
     public bool ShowOfflineDot => false;                 // WhatsApp/Telegram: only online is marked
     public bool ShowOnlineDot => IsDm && Online;
@@ -214,6 +216,8 @@ public partial class TransferItem : ObservableObject
     [ObservableProperty] private string _path = "";
     [ObservableProperty] private string _error = "";
     [ObservableProperty] private string _conversation = "";
+    [ObservableProperty] private bool _isPaused;          // 连接中断，重连后自动续传
+    [ObservableProperty] private string _resumedText = ""; // 从 40%（48 MB）处续传
     public long StartedMs { get; private set; }
 
     public void Update(Transfer t)
@@ -227,8 +231,13 @@ public partial class TransferItem : ObservableObject
         Progress = t.Size == 0 ? (t.State == TransferState.Done ? 100 : 0) : Math.Min(100.0, t.Transferred * 100.0 / t.Size);
         var speed = t.State == TransferState.Active && t.BytesPerSec > 0 ? $" · {Fmt.Bytes(t.BytesPerSec)}/s" : "";
         ProgressText = $"{Fmt.Bytes(t.Transferred)} / {Fmt.Bytes(t.Size)}{speed}";
+        // link lost mid-transfer: the daemon keeps it "offered" with this reason and resumes by itself
+        IsPaused = t.State == TransferState.Offered && t.Error.Length > 0;
+        var pct = t.Size == 0 ? 0 : (int)(t.ResumedFrom * 100 / t.Size);
+        ResumedText = t.ResumedFrom > 0 ? $"从 {pct}%（{Fmt.Bytes(t.ResumedFrom)}）处续传" : "";
         StateText = t.State switch
         {
+            TransferState.Offered when IsPaused => t.Error,
             TransferState.Offered => IsOutgoing ? "等待对方接收" : "等待接收",
             TransferState.Active => "传输中",
             TransferState.Verifying => "校验中",
@@ -238,6 +247,7 @@ public partial class TransferItem : ObservableObject
             TransferState.Rejected => "被拒绝",
             _ => "",
         };
+        if (ResumedText.Length > 0 && t.State is TransferState.Active or TransferState.Verifying or TransferState.Done) StateText += " · " + ResumedText;
         IsActive = t.State is TransferState.Active or TransferState.Offered or TransferState.Verifying;
         CanCancel = IsActive;
         CanRetry = t.Retryable;

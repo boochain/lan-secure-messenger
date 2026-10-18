@@ -77,6 +77,26 @@ public sealed partial class SettingsPage : Page
         await VM.RestoreAsync(path, pw);
     }
 
+    /// <summary>Enter in a relay field saves (and connects); Esc leaves the field without saving.</summary>
+    private void Relay_KeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        if (e.Key == Windows.System.VirtualKey.Enter)
+        {
+            e.Handled = true;
+            if (sender is PasswordBox pb) VM.EditRelayPassphrase = pb.Password;
+            if (VM.SaveRelayCommand.CanExecute(null)) VM.SaveRelayCommand.Execute(null);
+        }
+        else if (e.Key == Windows.System.VirtualKey.Escape)
+        {
+            e.Handled = true;
+            VM.EditRelayPassphrase = "";
+            RelaySaveButton.Focus(FocusState.Keyboard);
+        }
+    }
+
+    /// <summary>For the UI smoke: bring the relay card into view.</summary>
+    public void ShowRelayCardForSmoke() => RelayCard.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false, VerticalAlignmentRatio = 0.0 });
+
     private void CloseToTray_Toggled(object sender, RoutedEventArgs e)
     {
         if (Services.UiPrefs.Current.CloseToTray == CloseToTraySwitch.IsOn) return;

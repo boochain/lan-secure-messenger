@@ -29,6 +29,8 @@ public static class B
     public static Visibility NotEmpty(string? s) => string.IsNullOrEmpty(s) ? Visibility.Collapsed : Visibility.Visible;
     public static Visibility Empty(int count) => count == 0 ? Visibility.Visible : Visibility.Collapsed;
     public static string Str(int v) => v.ToString();
+    public static Visibility Is(int v, int want) => v == want ? Visibility.Visible : Visibility.Collapsed;
+    public static Visibility Both(bool a, bool b) => a && b ? Visibility.Visible : Visibility.Collapsed;
 
     // shared avatar palette (same 8 colours and FNV-1a index on every platform; white initials >= 4.5:1 on each)
     private static readonly Windows.UI.Color[] AvatarColors =

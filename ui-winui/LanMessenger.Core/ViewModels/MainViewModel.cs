@@ -226,6 +226,7 @@ public partial class MainViewModel : ObservableObject
     {
         ApplyMe(s.Me);
         ApplySettings(s.Settings);
+        ApplyRelay(s.Relay);
         Sync(Peers, s.Peers, p => p.Fingerprint, (p) => new PeerItem(p), (i, p) => i.Update(p), (i) => i.Fingerprint);
         Sync(Groups, s.Groups, g => g.Id, g => new GroupItem(g), (i, g) => i.Update(g), i => i.Id);
         Conversations.Clear();
@@ -287,6 +288,72 @@ public partial class MainViewModel : ObservableObject
         EditExclude = string.Join(", ", s.ExcludeInterfaces);
         EditMaxFileMb = s.MaxFileBytes / 1024.0 / 1024.0;
         EditCheckUpdates = s.CheckUpdates;
+        EditRelayEnabled = s.RelayEnabled;
+        EditRelayHost = s.RelayHost;
+        EditRelayPort = s.RelayPort == 0 ? 9443 : s.RelayPort;
+        RelayHasPassphrase = s.RelayHasPassphrase;
+        EditRelayPassphrase = "";
+    }
+
+    // ------------------------------------------------------------ relay server (optional)
+    [ObservableProperty] private bool _editRelayEnabled;
+    [ObservableProperty] private string _editRelayHost = "";
+    [ObservableProperty] private double _editRelayPort = 9443;
+    /// <summary>New passphrase typed by the user; empty = keep the stored one (it is write-only, never read back).</summary>
+    [ObservableProperty] private string _editRelayPassphrase = "";
+    [ObservableProperty] private bool _relayHasPassphrase;
+    [ObservableProperty] private string _relayState = "off";
+    [ObservableProperty] private string _relayStateText = "未启用";
+    [ObservableProperty] private string _relayDetail = "";
+    [ObservableProperty] private int _relayStateKind;   // 0 off, 1 connecting, 2 online, 3 error
+    public string RelayPassphrasePlaceholder => RelayHasPassphrase ? "已设置（留空则保持不变）" : "未设置";
+    partial void OnRelayHasPassphraseChanged(bool value) => OnPropertyChanged(nameof(RelayPassphrasePlaceholder));
+
+    public static string RelayStateLabel(string state) => state switch
+    {
+        "connecting" => "正在连接中转服务器…",
+        "online" => "已连接中转服务器",
+        "auth_failed" => "网络口令错误",
+        "error" => "无法连接中转服务器",
+        _ => "未启用",
+    };
+
+    public void ApplyRelay(RelayStatus r)
+    {
+        RelayState = r.State;
+        RelayStateText = RelayStateLabel(r.State);
+        RelayStateKind = r.State switch { "online" => 2, "connecting" => 1, "auth_failed" or "error" => 3, _ => 0 };
+        RelayDetail = r.State == "online" ? $"{r.Server} · 服务器上 {r.Peers} 人 · 经服务器连接 {r.RelayedLinks} 个" : r.Detail;
+        RelayHasPassphrase = r.HasPassphrase;
+    }
+
+    [RelayCommand]
+    private async Task SaveRelayAsync()
+    {
+        var host = EditRelayHost.Trim();
+        if (EditRelayEnabled && host.Length == 0) { ShowStatus("请填写服务器地址", true); return; }
+        var patch = new Dictionary<string, object?>
+        {
+            ["relay_enabled"] = EditRelayEnabled,
+            ["relay_host"] = host,
+            ["relay_port"] = (ushort)Math.Clamp(EditRelayPort, 1, 65535),
+        };
+        if (EditRelayPassphrase.Length > 0) patch["relay_passphrase"] = EditRelayPassphrase;   // absent = keep
+        await SafeCall(async x =>
+        {
+            await x.UpdateSettingsAsync(patch);
+            _ui.Post(() => { EditRelayPassphrase = ""; ShowStatus(EditRelayEnabled ? "中转服务器设置已保存，正在连接…" : "已关闭中转服务器"); });
+        });
+    }
+
+    [RelayCommand]
+    private async Task ClearRelayPassphraseAsync()
+    {
+        await SafeCall(async x =>
+        {
+            await x.UpdateSettingsAsync(new Dictionary<string, object?> { ["relay_passphrase"] = "" });
+            _ui.Post(() => ShowStatus("已清除网络口令"));
+        });
     }
 
     public void ApplyEvent(DaemonEvent e)
@@ -329,7 +396,7 @@ public partial class MainViewModel : ObservableObject
                     Conversations.Add(item);
                 }
                 else item.Update(c);
-                item.IsTrusted = item.IsDm && Peers.Any(p => p.Fingerprint == item.PeerFingerprint && p.IsTrusted);
+                SyncConversationTrust();
                 // Keep newest first (Move keeps the ListView selection intact).
                 var idx = Conversations.IndexOf(item);
                 var target = Conversations.Count(x => x != item && x.LastTsMs > item.LastTsMs);
@@ -395,6 +462,12 @@ public partial class MainViewModel : ObservableObject
                 if (me != null) ApplyMe(me);
                 break;
             }
+            case "relay_updated":
+            {
+                var r = e.Get<RelayStatus>("relay");
+                if (r != null) ApplyRelay(r);
+                break;
+            }
             case "settings_updated":
             {
                 var s = e.Get<Settings>("settings");
@@ -431,7 +504,12 @@ public partial class MainViewModel : ObservableObject
 
     private void SyncConversationTrust()
     {
-        foreach (var c in Conversations) c.IsTrusted = c.IsDm && Peers.Any(p => p.Fingerprint == c.PeerFingerprint && p.IsTrusted);
+        foreach (var c in Conversations)
+        {
+            var p = c.IsDm ? Peers.FirstOrDefault(x => x.Fingerprint == c.PeerFingerprint) : null;
+            c.IsTrusted = p?.IsTrusted ?? false;
+            c.ViaServer = p?.ViaRelay ?? false;   // 经服务器 badge; switches live when a direct link takes over
+        }
     }
 
     private void UpdateCounters()
@@ -511,14 +589,15 @@ public partial class MainViewModel : ObservableObject
             SelectedTrustText = p?.TrustText ?? "";
             SelectedOnline = p?.Online ?? false;
             SelectedStatus = p == null ? "离线" : p.Online ? "在线" : p.Connecting ? "正在连接…" : "离线";
-            SelectedDetail = (p?.Trust switch { Trust.Trusted => "已验证身份", Trust.Blocked => "已屏蔽", _ => "未验证" }) + " · " + (c.ViaServer ? "经服务器" : "局域网直连");
+            // path only while online: 在线 · 已验证身份 · 经服务器 ↔ 局域网直连 (switches live on peer_updated)
+            SelectedDetail = (p?.Trust switch { Trust.Trusted => "已验证身份", Trust.Blocked => "已屏蔽", _ => "未验证" }) + (SelectedOnline ? " · " + (c.ViaServer ? "经服务器" : "局域网直连") : "");
             // header: three short facts only (mockup); fingerprint / latency / address live in the contact details dialog
             SelectedSubtitle = $"{SelectedStatus} · {SelectedDetail}";
             SelectedDetailsText = string.Join("\n", new[]
             {
                 $"状态：{(p?.StateText is { Length: > 0 } st ? st : SelectedStatus)}",
                 $"身份：{(p?.Trust switch { Trust.Trusted => "已验证身份", Trust.Blocked => "已屏蔽", _ => "未验证" })}",
-                $"连接：{(c.ViaServer ? "经服务器中转" : "局域网直连")}",
+                $"连接：{(!SelectedOnline ? "—" : c.ViaServer ? "经服务器中转（端到端加密）" : "局域网直连")}",
                 $"地址：{(p?.Addr is { Length: > 0 } a ? a : "—")}",
                 $"指纹：{FormatFingerprint(c.PeerFingerprint)}",
             });
