@@ -191,6 +191,20 @@ public sealed partial class ChatPage : Page
         {
             if (VM.Messages.Count > 0) MessageList.ScrollIntoView(VM.Messages[^1]);
         });
+        // ScrollIntoView runs before tall items (images, file cards) are measured, which left the newest
+        // message half below the composer: pin to the real end once layout has run, and again after decoding
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, PinToEnd);
+        var t = DispatcherQueue.CreateTimer(); t.Interval = TimeSpan.FromMilliseconds(400); t.IsRepeating = false;
+        t.Tick += (_, _) => PinToEnd(); t.Start();
+    }
+
+    private void PinToEnd()
+    {
+        for (var d = (DependencyObject)MessageList; d != null; )
+        {
+            if (d is ScrollViewer sv) { sv.UpdateLayout(); sv.ChangeView(null, sv.ScrollableHeight, null, true); return; }
+            d = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(d) > 0 ? Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(d, 0) : null;
+        }
     }
 
     private void ConvList_SelectionChanged(object sender, SelectionChangedEventArgs e)
