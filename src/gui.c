@@ -42,7 +42,13 @@
 #define TIMER_POLL 1
 
 static lsm_core *C;
-static HWND hMain, hList, hChat, hInput, hSend, hFile, hStatus, hTitle;
+static HWND hMain, hList, hChat, hInput, hSend, hFile, hStatus, hTitle, hAdd, hHdrSearch, hTip;
+#define IDC_ADD 109
+#define IDC_HDRSEARCH 110
+/* header + status-bar state (owner-drawn, xp-*-chat mockups) */
+static wchar_t hdr_name[160], hdr_ini[8], hdr_sub[160]; static int hdr_av, hdr_online, hdr_trust, hdr_group, hdr_on;
+static wchar_t st_conn[96], st_me[200], st_fp[96], st_tcp[32];
+static char ui_icons_path[MAX_PATH*4];
 static HFONT hFont, hFontBold;
 static HINSTANCE hInst;
 static NOTIFYICONDATAW nid;
@@ -53,6 +59,7 @@ static wchar_t exe_dir[MAX_PATH];
 static wchar_t *W(const char *s){ static wchar_t buf[8][8192]; static int k; wchar_t *b=buf[k++&7]; MultiByteToWideChar(CP_UTF8,0,s?s:"",-1,b,8192); return b; }
 static char *U(const wchar_t *s, char *out, int n){ WideCharToMultiByte(CP_UTF8,0,s,-1,out,n,NULL,NULL); return out; }
 static int tmsg(const wchar_t *title, const wchar_t *text, int cancel);
+static UINT WM_TASKBARCREATED; static int tray_added;
 static void fit_vscroll(HWND e);
 static void msgbox(const char *t, UINT f){ (void)f; tmsg(L"局域网安全通讯 XP",W(t),0); }
 
@@ -65,7 +72,7 @@ static const theme_t THEME_LIGHT={HX(0xECE9D8),HX(0xFFFFFF),HX(0xFFFFFF),HX(0xFF
 static const theme_t THEME_DARK ={HX(0x202020),HX(0x262626),HX(0x2B2B2B),HX(0x1E1E1E),HX(0xFFFFFF),HX(0xCCCCCC),HX(0x3C78C3),HX(0x3C78C3),HX(0xFFFFFF),HX(0x2B2B2B),HX(0xFFFFFF),HX(0x3C3C3C),HX(0x6CCB5F),HX(0xFCE100),HX(0xFF99A4)};
 /* Luna palette for the redesigned views (tools/palettes/xp.json) */
 typedef struct { COLORREF rowsel, rowselborder, rowhover, accenttext, mine, mineborder, minefg, minemeta, theirs, theirsborder, theirsfg, meta, stroke, badge, badgefg, field, fieldborder, chip, chipfg, service, servicefg, read, tile, tilefg, header, av[8]; } xpal_t;
-static const xpal_t PAL_LIGHT={HX(0xC1D2EE),HX(0x316AC5),HX(0xEEF3FB),HX(0x0B4AA8),HX(0xDCE9FA),HX(0xA7C1E6),HX(0x000000),HX(0x4A5568),HX(0xF4F3EE),HX(0xD6D3C4),HX(0x000000),HX(0x55534A),HX(0xD6D3C4),HX(0x316AC5),HX(0xFFFFFF),HX(0xFFFFFF),HX(0x7F9DB9),HX(0xECE9D8),HX(0x3B3A33),HX(0xF1EFE2),HX(0x3B3A33),HX(0x0B4AA8),HX(0xFFFFFF),HX(0x316AC5),HX(0xF6F5EF),
+static const xpal_t PAL_LIGHT={HX(0xC1D2EE),HX(0x316AC5),HX(0xEEF3FB),HX(0x0B4AA8),HX(0xDCE9FA),HX(0x7DA2CE),HX(0x000000),HX(0x4A5568),HX(0xF4F3EE),HX(0xD6D3C4),HX(0x000000),HX(0x55534A),HX(0xD6D3C4),HX(0x316AC5),HX(0xFFFFFF),HX(0xFFFFFF),HX(0x7F9DB9),HX(0xECE9D8),HX(0x3B3A33),HX(0xF1EFE2),HX(0x3B3A33),HX(0x0B4AA8),HX(0xFFFFFF),HX(0x316AC5),HX(0xF6F5EF),
     {HX(0x6D4FC2),HX(0x1F6FB2),HX(0x0F7A6C),HX(0xB4471B),HX(0x2E6B2F),HX(0x9C2F55),HX(0x5A5F14),HX(0x8A4B08)}};
 static const xpal_t PAL_DARK={HX(0x1F3A5F),HX(0x3C78C3),HX(0x2C2F35),HX(0x8EC1FF),HX(0x1F3A5A),HX(0x2F5A8A),HX(0xFFFFFF),HX(0xC9D9EC),HX(0x2E2E2E),HX(0x444444),HX(0xFFFFFF),HX(0xC5C5C5),HX(0x3C3C3C),HX(0x2F6AB8),HX(0xFFFFFF),HX(0x2B2B2B),HX(0x5A7AA0),HX(0x333333),HX(0xE0E0E0),HX(0x2B2B2B),HX(0xD6D6D6),HX(0x8EC1FF),HX(0x2B2B2B),HX(0x8EC1FF),HX(0x262626),
     {HX(0x6D4FC2),HX(0x1F6FB2),HX(0x0F7A6C),HX(0xB4471B),HX(0x2E6B2F),HX(0x9C2F55),HX(0x5A5F14),HX(0x8A4B08)}};
@@ -209,7 +216,7 @@ static void refresh_list(void){
     for(i=0;i<n && nlist<512;i++){ conv_t *c=&convs[nlist]; int64_t ts; char u[37], ini[8]; memset(c,0,sizeof *c); lsm_uuid_str(g[i].id,u); snprintf(c->id,64,"group:%s",u); wcsncpy(c->name,W(g[i].name),159);
         if(!conv_match(c->name,q)) continue; c->group=1; lsm_initials(g[i].name,ini); wcsncpy(c->ini,W(ini),7); c->av=avatar_index(u); conv_last(m,nm,c->id,c,&ts); if(!c->preview[0]) _snwprintf(c->preview,200,L"%d 位成员",g[i].nmembers);
         SendMessageW(hList,LB_ADDSTRING,0,(LPARAM)c->name); strcpy(list_ids[nlist],c->id); if(!strcmp(c->id,keep)) sel=nlist; nlist++; }
-    { wchar_t st[400]; int on=0; n=lsm_contacts(C,&k); for(i=0;i<n;i++) on+=k[i].online; _snwprintf(st,400,L"已连接 · 局域网 · %d 人在线    我：%s    指纹 %s    TCP %d",on,W(lsm_my_name(C)),W(lsm_my_fp(C)),lsm_listen_port(C)); st[399]=0; SetWindowTextW(hStatus,st); }
+    { int on=0; n=lsm_contacts(C,&k); for(i=0;i<n;i++) on+=k[i].online; _snwprintf(st_conn,96,L"已连接 · 局域网 · %d 人在线",on); _snwprintf(st_me,200,L"我：%s",W(lsm_my_name(C))); _snwprintf(st_fp,96,L"指纹 %s",W(lsm_my_fp(C))); _snwprintf(st_tcp,32,L"TCP %d",lsm_listen_port(C)); InvalidateRect(hStatus,NULL,FALSE); }
     lsm_unlock(C);
     if(sel>=0) SendMessageW(hList,LB_SETCURSEL,sel,0);
     SendMessageW(hList,WM_SETREDRAW,TRUE,0); InvalidateRect(hList,NULL,TRUE); }
@@ -234,7 +241,21 @@ static void draw_conv_item(DRAWITEMSTRUCT *d){ RECT it=d->rcItem, r, av, tr; con
  * LISTBOX + LBS_OWNERDRAWVARIABLE: one item per row (day chip, service notice, text bubble, file card). Rounded bubbles
  * with the time (and ticks on outgoing) inside the bubble, file cards with a type tile, open button and folder link.
  * Plain GDI only (RoundRect/Polyline/DrawText): XP SP3 without GDI+. */
-enum { R_DAY, R_NOTICE, R_TEXT, R_FILE };
+enum { R_DAY, R_NOTICE, R_TEXT, R_FILE, R_IMAGE };
+/* image thumbnails: GDI+ flat API loaded at run time (gdiplus.dll ships with XP SP3; no import, so the exe still starts without it) */
+typedef struct { UINT32 ver; void *cb; BOOL nothread, nocodecs; } gdip_in;
+static int (WINAPI *pGdiplusStartup)(ULONG_PTR*, const gdip_in*, void*); static int (WINAPI *pGdipCreateBitmapFromFile)(const WCHAR*, void**);
+static int (WINAPI *pGdipCreateHBITMAPFromBitmap)(void*, HBITMAP*, DWORD); static int (WINAPI *pGdipDisposeImage)(void*);
+static struct { char path[520]; HBITMAP bm; int w, h; } thumbs[32]; static int nthumbs, gdip_state;
+static int thumb_get(const char *path, HBITMAP *bm, int *w, int *h){ int i; void *img=NULL; HBITMAP b=NULL; BITMAP bi;
+    for(i=0;i<nthumbs;i++) if(!strcmp(thumbs[i].path,path)){ *bm=thumbs[i].bm; *w=thumbs[i].w; *h=thumbs[i].h; return *bm!=NULL; }
+    if(!gdip_state){ HMODULE g=LoadLibraryW(L"gdiplus.dll"); ULONG_PTR tok; gdip_in in={1,NULL,FALSE,FALSE}; gdip_state=-1;
+        if(g){ pGdiplusStartup=(void*)GetProcAddress(g,"GdiplusStartup"); pGdipCreateBitmapFromFile=(void*)GetProcAddress(g,"GdipCreateBitmapFromFile"); pGdipCreateHBITMAPFromBitmap=(void*)GetProcAddress(g,"GdipCreateHBITMAPFromBitmap"); pGdipDisposeImage=(void*)GetProcAddress(g,"GdipDisposeImage");
+            if(pGdiplusStartup && pGdipCreateBitmapFromFile && pGdipCreateHBITMAPFromBitmap && pGdipDisposeImage && pGdiplusStartup(&tok,&in,NULL)==0) gdip_state=1; } }
+    if(gdip_state==1 && pGdipCreateBitmapFromFile(W(path),&img)==0){ pGdipCreateHBITMAPFromBitmap(img,&b,0xFFFFFFFF); pGdipDisposeImage(img); }
+    if(nthumbs<32){ i=nthumbs++; strncpy(thumbs[i].path,path,519); thumbs[i].bm=b; thumbs[i].w=thumbs[i].h=0; if(b && GetObject(b,sizeof bi,&bi)){ thumbs[i].w=bi.bmWidth; thumbs[i].h=bi.bmHeight; } *bm=b; *w=thumbs[i].w; *h=thumbs[i].h; }
+    return b!=NULL && *w>0; }
+static void thumb_fit(int w, int h, int maxw, int *ow, int *oh){ int mw=maxw<scale_px(300)?maxw:scale_px(300), mh=scale_px(200); double k=1.0; if(w>mw) k=(double)mw/w; if(h*k>mh) k=(double)mh/h; *ow=(int)(w*k); *oh=(int)(h*k); if(*ow<scale_px(60)) *ow=scale_px(60); if(*oh<scale_px(40)) *oh=scale_px(40); }
 typedef struct { int kind, out, status, tstate, pct, h, bw; char id[40]; char path[520]; wchar_t *text; wchar_t time[8]; wchar_t name[260]; wchar_t meta[96]; wchar_t ext[8]; } row_t;
 static row_t *rows; static int nrows, caprows;
 static int nchat;
@@ -255,6 +276,7 @@ static void text_geom(HDC dc, row_t *r, int maxw, int *bw, int *bh, int *tw_inli
 static void measure_chat(MEASUREITEMSTRUCT *mi){ row_t *r; HDC dc; int bw,bh,inl; if(mi->itemID>=(UINT)nrows){ mi->itemHeight=1; return; } r=&rows[mi->itemID]; dc=GetDC(hChat);
     if(r->kind==R_DAY||r->kind==R_NOTICE) mi->itemHeight=line_h(dc,fBody)+scale_px(r->kind==R_DAY?18:12); /* 14px: 12px CJK at XP/wine grayscale AA measured < 4.5:1 */
     else if(r->kind==R_TEXT){ text_geom(dc,r,chat_maxw(),&bw,&bh,&inl); r->bw=bw; mi->itemHeight=bh+scale_px(6); }
+    else if(r->kind==R_IMAGE){ HBITMAP bm; int w,h,ow,oh; if(thumb_get(r->path,&bm,&w,&h)){ thumb_fit(w,h,chat_maxw(),&ow,&oh); r->bw=ow+scale_px(8); mi->itemHeight=oh+scale_px(8)+scale_px(6); } else { r->bw=scale_px(160); mi->itemHeight=scale_px(100); } }
     else { r->bw=scale_px(272); mi->itemHeight=scale_px(r->path[0]?86:66)+scale_px(6); }
     r->h=mi->itemHeight; ReleaseDC(hChat,dc); }
 static void bubble(HDC dc, RECT b, COLORREF fill, COLORREF edge){ HBRUSH br=CreateSolidBrush(fill); HPEN pn=CreatePen(PS_SOLID,1,edge); HGDIOBJ ob=SelectObject(dc,br), op=SelectObject(dc,pn);
@@ -273,7 +295,13 @@ static void draw_chat_item(DRAWITEMSTRUCT *d){ RECT it=d->rcItem, b; row_t *r; H
         b.left=(it.left+it.right-w)/2; b.right=b.left+w; b.top=it.top+scale_px(r->kind==R_DAY?7:3); b.bottom=it.bottom-scale_px(r->kind==R_DAY?7:5);
         bubble(dc,b,r->kind==R_DAY?P.chip:P.service,P.stroke); SetTextColor(dc,r->kind==R_DAY?P.chipfg:P.servicefg); DrawTextW(dc,r->text,-1,&b,DT_CENTER|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX); SelectObject(dc,o); return; }
     b=row_bubble(r,it); bubble(dc,b,r->out?P.mine:P.theirs,r->out?P.mineborder:P.theirsborder);
-    if(r->kind==R_TEXT){ int bw,bh,inl; RECT tr=b, tm; text_geom(dc,r,chat_maxw(),&bw,&bh,&inl); lh=line_h(dc,fBody);
+    if(r->kind==R_IMAGE){ HBITMAP bm; int w,h; RECT ir=b, tc; InflateRect(&ir,-scale_px(4),-scale_px(4));
+        if(thumb_get(r->path,&bm,&w,&h)){ HDC mdc=CreateCompatibleDC(dc); HGDIOBJ ob=SelectObject(mdc,bm); HRGN rg=CreateRoundRectRgn(ir.left,ir.top,ir.right+1,ir.bottom+1,scale_px(10),scale_px(10)); POINT bo;
+            SelectClipRgn(dc,rg); GetBrushOrgEx(dc,&bo); SetStretchBltMode(dc,HALFTONE); SetBrushOrgEx(dc,bo.x,bo.y,NULL); StretchBlt(dc,ir.left,ir.top,ir.right-ir.left,ir.bottom-ir.top,mdc,0,0,w,h,SRCCOPY); SelectClipRgn(dc,NULL); DeleteObject(rg); SelectObject(mdc,ob); DeleteDC(mdc); }
+        { SIZE sz; SelectObject(dc,fCaption); GetTextExtentPoint32W(dc,r->time,(int)wcslen(r->time),&sz); tc.right=ir.right-scale_px(6); tc.bottom=ir.bottom-scale_px(6); tc.left=tc.right-sz.cx-scale_px(12)-(r->out?scale_px(20):0); tc.top=tc.bottom-sz.cy-scale_px(4);
+          fill_round(dc,tc,scale_px(10),RGB(0x20,0x20,0x20),RGB(0x20,0x20,0x20)); { RECT tt=tc; tt.left+=scale_px(6); SetTextColor(dc,RGB(255,255,255)); DrawTextW(dc,r->time,-1,&tt,DT_LEFT|DT_VCENTER|DT_SINGLELINE); }
+          if(r->out){ COLORREF keep=P.minemeta; P.minemeta=RGB(255,255,255); ticks(dc,tc.right-scale_px(16),(tc.top+tc.bottom)/2,r->status==3?2:r->status); P.minemeta=keep; } } }
+    else if(r->kind==R_TEXT){ int bw,bh,inl; RECT tr=b, tm; text_geom(dc,r,chat_maxw(),&bw,&bh,&inl); lh=line_h(dc,fBody);
         InflateRect(&tr,-PADX,-PADY); SelectObject(dc,fBody); SetTextColor(dc,r->out?P.minefg:P.theirsfg); DrawTextW(dc,r->text,-1,&tr,DT_WORDBREAK|DT_EDITCONTROL|DT_NOPREFIX);
         tm=tr; tm.top=tm.bottom-(inl?lh:line_h(dc,fCaption)); if(r->out) tm.right-=scale_px(24); SelectObject(dc,fCaption); SetTextColor(dc,r->out?P.minemeta:P.meta); DrawTextW(dc,r->time,-1,&tm,DT_RIGHT|DT_BOTTOM|DT_SINGLELINE);
         if(r->out) ticks(dc,tr.right-scale_px(16),(tm.top+tm.bottom)/2+1,r->status); }
@@ -293,8 +321,10 @@ static void refresh_chat(void){
     SendMessageW(hChat,WM_SETREDRAW,FALSE,0); SendMessageW(hChat,LB_RESETCONTENT,0,0); rows_clear(); nchat=0;
     lsm_lock(C);
     if(cur_conv[0]){ lsm_contact *k; lsm_group *g; int nk, j;
-        if(!strncmp(cur_conv,"dm:",3)){ nk=lsm_contacts(C,&k); for(j=0;j<nk;j++) if(!strcmp(k[j].fp,cur_conv+3)){ wcsncpy(peer,W(k[j].name),299); _snwprintf(title,400,L"%s    %s  ·  %s  ·  局域网直连",W(k[j].name),k[j].online?L"在线":L"离线",k[j].trust==1?L"已验证身份":k[j].trust==2?L"已屏蔽":L"未验证身份"); } }
-        else { char u[37]; nk=lsm_groups(C,&g); for(j=0;j<nk;j++){ lsm_uuid_str(g[j].id,u); if(!strcmp(u,cur_conv+6)) _snwprintf(title,400,L"%s    %d 人  ·  群密钥版本 %llu",W(g[j].name),g[j].nmembers,(unsigned long long)g[j].key_epoch); } }
+        hdr_on=0;
+        if(!strncmp(cur_conv,"dm:",3)){ nk=lsm_contacts(C,&k); for(j=0;j<nk;j++) if(!strcmp(k[j].fp,cur_conv+3)){ char ini[8]; wcsncpy(peer,W(k[j].name),299); hdr_on=1; hdr_group=0; wcsncpy(hdr_name,W(k[j].name),159); lsm_initials(k[j].name,ini); wcsncpy(hdr_ini,W(ini),7); hdr_av=avatar_index(k[j].fp); hdr_online=k[j].online; hdr_trust=k[j].trust;
+            _snwprintf(hdr_sub,160,L"  ·  %s  ·  局域网直连",k[j].trust==1?L"已验证身份":k[j].trust==2?L"已屏蔽":L"未验证身份"); _snwprintf(title,400,L"%s    %s  ·  %s  ·  局域网直连",W(k[j].name),k[j].online?L"在线":L"离线",k[j].trust==1?L"已验证身份":k[j].trust==2?L"已屏蔽":L"未验证身份"); } }
+        else { char u[37]; nk=lsm_groups(C,&g); for(j=0;j<nk;j++){ lsm_uuid_str(g[j].id,u); if(!strcmp(u,cur_conv+6)){ char ini[8]; _snwprintf(title,400,L"%s    %d 人  ·  群密钥版本 %llu",W(g[j].name),g[j].nmembers,(unsigned long long)g[j].key_epoch); hdr_on=1; hdr_group=1; hdr_online=0; hdr_trust=0; wcsncpy(hdr_name,W(g[j].name),159); lsm_initials(g[j].name,ini); wcsncpy(hdr_ini,W(ini),7); hdr_av=avatar_index(u); _snwprintf(hdr_sub,160,L"%d 位成员  ·  群密钥版本 %llu",g[j].nmembers,(unsigned long long)g[j].key_epoch); } } }
         title[399]=0; peer[299]=0;
         n=lsm_messages(C,&m);
         for(i=0;i<n;i++){ time_t t; struct tm *tm; row_t *r; if(strcmp(m[i].conv,cur_conv)) continue;
@@ -311,13 +341,14 @@ static void refresh_chat(void){
                 fmt_size(m[i].file_size,sz,32); r->tstate=3;
                 for(j2=0;j2<nt;j2++) if(!strcmp(t2[j2].msg_id,m[i].id)){ r->tstate=t2[j2].state; if(t2[j2].size) r->pct=(int)(t2[j2].transferred*100/t2[j2].size); if(t2[j2].state==3) strncpy(r->path,t2[j2].path,519); }
                 if(!r->path[0] && m[i].file_path[0] && r->tstate==3) strncpy(r->path,m[i].file_path,519);
+                if(r->path[0] && (!wcscmp(r->ext,L"PNG")||!wcscmp(r->ext,L"JPG")||!wcscmp(r->ext,L"JPEG")||!wcscmp(r->ext,L"GIF")||!wcscmp(r->ext,L"BMP"))) r->kind=R_IMAGE;
                 if(r->tstate==1) _snwprintf(r->meta,96,L"%s  ·  %s %d%%",sz,TS[1],r->pct); else if(r->tstate==3) _snwprintf(r->meta,96,L"%s  ·  %s",sz,r->ext); else _snwprintf(r->meta,96,L"%s  ·  %s",sz,TS[r->tstate<7?r->tstate:4]); r->meta[95]=0; }
         } }
     lsm_unlock(C);
-    SetWindowTextW(hTitle,cur_conv[0]?title:L"");
+    if(!cur_conv[0]) hdr_on=0; SetWindowTextW(hTitle,cur_conv[0]?title:L""); InvalidateRect(hTitle,NULL,FALSE); ShowWindow(hHdrSearch,hdr_on?SW_SHOW:SW_HIDE);
     for(i=0;i<nrows;i++) SendMessageW(hChat,LB_ADDSTRING,0,(LPARAM)i);
-    if(nrows){ RECT cr; int top=nrows-1, acc; GetClientRect(hChat,&cr); acc=rows[top].h; while(top>0 && acc+rows[top-1].h<=cr.bottom){ top--; acc+=rows[top].h; } SendMessageW(hChat,LB_SETTOPINDEX,top,0); } /* newest at the bottom, scrolled to the end */
-    SendMessageW(hChat,WM_SETREDRAW,TRUE,0); InvalidateRect(hChat,NULL,TRUE); InvalidateRect(hMain,NULL,FALSE); }
+    if(nrows){ RECT cr; int top=nrows-1, acc; GetClientRect(hChat,&cr); acc=rows[top].h; while(top>0 && acc+rows[top-1].h<=cr.bottom){ top--; acc+=rows[top].h; } SendMessageW(hChat,LB_SETCURSEL,nrows-1,0); SendMessageW(hChat,LB_SETTOPINDEX,top,0); } /* SETCURSEL scrolls the last row into view (selection itself is not drawn) */ /* newest at the bottom, scrolled to the end */
+    SendMessageW(hChat,WM_SETREDRAW,TRUE,0); if(nrows) PostMessageW(hChat,WM_VSCROLL,SB_BOTTOM,0); /* after redraw is back on: the listbox recomputes its page first */ InvalidateRect(hChat,NULL,TRUE); InvalidateRect(hMain,NULL,FALSE); }
 
 static void copy_text(const wchar_t *t){ size_t n=(wcslen(t)+1)*sizeof(wchar_t); HGLOBAL g; if(!OpenClipboard(hMain)) return; EmptyClipboard(); g=GlobalAlloc(GMEM_MOVEABLE,n); if(g){ memcpy(GlobalLock(g),t,n); GlobalUnlock(g); SetClipboardData(CF_UNICODETEXT,g); } CloseClipboard(); }
 static void show_in_folder(const char *path){ wchar_t a[1200]; _snwprintf(a,1200,L"/select,\"%s\"",W(path)); a[1199]=0; ShellExecuteW(hMain,L"open",L"explorer.exe",a,NULL,SW_SHOWNORMAL); }
@@ -326,6 +357,7 @@ static WNDPROC oldChatProc;
 static int chat_hit(LPARAM l, RECT *ir){ DWORD r=(DWORD)SendMessageW(hChat,LB_ITEMFROMPOINT,0,l); int i=(int)LOWORD(r); if(HIWORD(r) || i<0 || i>=nrows) return -1; SendMessageW(hChat,LB_GETITEMRECT,i,(LPARAM)ir); return i; }
 static LRESULT CALLBACK ChatProc(HWND h, UINT m, WPARAM w, LPARAM l){
     if(m==WM_LBUTTONUP){ RECT ir; int i=chat_hit(l,&ir); POINT p={(short)LOWORD(l),(short)HIWORD(l)};
+        if(i>=0 && rows[i].kind==R_IMAGE){ RECT b=row_bubble(&rows[i],ir); if(PtInRect(&b,p)) ShellExecuteW(hMain,L"open",W(rows[i].path),NULL,NULL,SW_SHOWNORMAL); }
         if(i>=0 && rows[i].kind==R_FILE && rows[i].path[0]){ RECT b=row_bubble(&rows[i],ir), br=file_btn_rect(b), lr=file_link_rect(b);
             if(PtInRect(&br,p)) ShellExecuteW(hMain,L"open",W(rows[i].path),NULL,NULL,SW_SHOWNORMAL); else if(PtInRect(&lr,p)) show_in_folder(rows[i].path); } }
     if(m==WM_SETCURSOR){ POINT p; RECT ir; int i; GetCursorPos(&p); ScreenToClient(h,&p); i=chat_hit(MAKELPARAM(p.x,p.y),&ir);
@@ -333,10 +365,10 @@ static LRESULT CALLBACK ChatProc(HWND h, UINT m, WPARAM w, LPARAM l){
     if(m==WM_CONTEXTMENU){ POINT pt; RECT ir; int k=-1, cmd; HMENU pm; row_t *r=NULL;
         if(l==(LPARAM)-1){ k=(int)SendMessageW(h,LB_GETCARETINDEX,0,0); if(k>=0 && k<nrows){ SendMessageW(h,LB_GETITEMRECT,k,(LPARAM)&ir); pt.x=ir.left+scale_px(40); pt.y=ir.top+scale_px(10); ClientToScreen(h,&pt); } else { pt.x=pt.y=0; ClientToScreen(h,&pt); } }
         else { POINT c; pt.x=(short)LOWORD(l); pt.y=(short)HIWORD(l); c=pt; ScreenToClient(h,&c); k=chat_hit(MAKELPARAM(c.x,c.y),&ir); if(k>=0) SendMessageW(h,LB_SETCURSEL,k,0); }
-        if(k>=0 && k<nrows && (rows[k].kind==R_TEXT||rows[k].kind==R_FILE)) r=&rows[k];
+        if(k>=0 && k<nrows && rows[k].kind>=R_TEXT) r=&rows[k];
         pm=CreatePopupMenu();
         AM(pm,MF_STRING|(r?0:MF_GRAYED),1,L"复制(&C)\tCtrl+C");
-        if(r && r->kind==R_FILE){ AM(pm,MF_STRING|(r->path[0]?0:MF_GRAYED),4,L"打开(&O)"); AM(pm,MF_STRING|(r->path[0]?0:MF_GRAYED),5,L"在文件夹中显示(&S)"); }
+        if(r && r->kind>=R_FILE){ AM(pm,MF_STRING|(r->path[0]?0:MF_GRAYED),4,L"打开(&O)"); AM(pm,MF_STRING|(r->path[0]?0:MF_GRAYED),5,L"在文件夹中显示(&S)"); }
         AM(pm,MF_SEPARATOR,0,NULL); AM(pm,MF_STRING|(r?0:MF_GRAYED),3,L"删除这条消息（仅本机）(&D)…"); menu_bg(pm);
         cmd=TrackPopupMenu(pm,TPM_RIGHTBUTTON|TPM_RETURNCMD|TPM_NONOTIFY,pt.x,pt.y,0,h,NULL); DestroyMenu(pm);
         if(cmd==1 && r) copy_text(r->kind==R_TEXT?r->text:r->name);
@@ -352,12 +384,14 @@ static void fit_vscroll(HWND e){ RECT r; TEXTMETRICW tm; HDC dc; HGDIOBJ of; int
     GetClientRect(e,&r); dc=GetDC(e); of=SelectObject(dc,(HFONT)SendMessageW(e,WM_GETFONT,0,0)); GetTextMetricsW(dc,&tm); SelectObject(dc,of); ReleaseDC(e,dc);
     lines=(int)SendMessageW(e,EM_GETLINECOUNT,0,0); vis=tm.tmHeight?(r.bottom-r.top)/tm.tmHeight:1; need=lines>vis;
     if(need!=((st&WS_VSCROLL)!=0)){ ShowScrollBar(e,SB_VERT,need); } }
-static void tray_balloon(const char *title, const char *body){
+/* a balloon must point at a real taskbar tray: wine/CI without one draws it at the window's top-left */
+static int tray_visible(void){ HWND t=FindWindowW(L"Shell_TrayWnd",NULL), n; RECT r, w, x; if(!t || !IsWindowVisible(t)) return 0; n=FindWindowExW(t,NULL,L"TrayNotifyWnd",NULL); if(!n || !GetWindowRect(n,&r) || r.right-r.left<8) return 0;
+    GetWindowRect(hMain,&w); return !(IsWindowVisible(hMain) && IntersectRect(&x,&r,&w)); }
+static void tray_balloon(const char *title, const char *body){ if(!tray_added || !tray_visible()) return;
     nid.uFlags=NIF_INFO; wcsncpy(nid.szInfoTitle,W(title),63); nid.szInfoTitle[63]=0; wcsncpy(nid.szInfo,W(body),255); nid.szInfo[255]=0; nid.dwInfoFlags=NIIF_INFO;
     Shell_NotifyIconW(NIM_MODIFY,&nid); nid.uFlags=NIF_ICON|NIF_MESSAGE|NIF_TIP; nid.szInfo[0]=0; }
 /* XP: the shell may not be up yet at autostart, and explorer.exe restarts drop all icons
  * (it then broadcasts "TaskbarCreated"). Keep retrying NIM_ADD until it succeeds. */
-static UINT WM_TASKBARCREATED; static int tray_added;
 static void tray_add(void){ nid.uFlags=NIF_ICON|NIF_MESSAGE|NIF_TIP; tray_added=Shell_NotifyIconW(NIM_ADD,&nid)?1:0; }
 
 static void poll_events(void){
@@ -428,6 +462,58 @@ static void send_file_dlg(void){
     if(!GetOpenFileNameW(&of)) return;
     if(lsm_send_file(C,cur_conv,U(path,u8,sizeof u8),err)) msgbox(err,MB_ICONWARNING); refresh_chat(); }
 
+/* ---------------------------------------------------------------- header, status-bar panes, icon buttons (xp-*-chat mockups) */
+#define SHIELD_FILL RGB(0xE8,0xB3,0x0E)
+#define SHIELD_EDGE RGB(0x9A,0x6A,0x00)
+static void draw_shield(HDC dc, int x, int y, int s){ POINT p[6]={{x,y+s/6},{x+s/2,y},{x+s,y+s/6},{x+s,y+s/2},{x+s/2,y+s},{x,y+s/2}}; HBRUSH br=CreateSolidBrush(SHIELD_FILL); HPEN pn=CreatePen(PS_SOLID,1,SHIELD_EDGE); HGDIOBJ ob=SelectObject(dc,br), op=SelectObject(dc,pn); Polygon(dc,p,6); SelectObject(dc,ob); SelectObject(dc,op); DeleteObject(br); DeleteObject(pn); }
+static void online_dot(HDC dc, RECT av, COLORREF ring){ RECT o={av.right-scale_px(9),av.bottom-scale_px(9),av.right+scale_px(3),av.bottom+scale_px(3)}; HBRUSH br=CreateSolidBrush(T.online); HPEN pn=CreatePen(PS_SOLID,2,ring); HGDIOBJ ob=SelectObject(dc,br), op=SelectObject(dc,pn); Ellipse(dc,o.left,o.top,o.right,o.bottom); SelectObject(dc,ob); SelectObject(dc,op); DeleteObject(br); DeleteObject(pn); }
+static RECT hdr_avatar_rect(RECT c){ RECT a; a.left=c.left+scale_px(10); a.top=(c.top+c.bottom)/2-scale_px(17); a.right=a.left+scale_px(34); a.bottom=a.top+scale_px(34); return a; }
+static void draw_header(DRAWITEMSTRUCT *d){ RECT c=d->rcItem, av, t; HDC dc=d->hDC; HBRUSH bg=CreateSolidBrush(P.header); SIZE sz; int x, lh;
+    FillRect(dc,&c,bg); DeleteObject(bg); if(!hdr_on) return; SetBkMode(dc,TRANSPARENT);
+    av=hdr_avatar_rect(c); fill_round(dc,av,scale_px(8),P.av[hdr_av],P.av[hdr_av]); SelectObject(dc,fBodyStrong); SetTextColor(dc,RGB(255,255,255)); DrawTextW(dc,hdr_ini,-1,&av,DT_CENTER|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX);
+    if(hdr_online) online_dot(dc,av,P.header);
+    x=av.right+scale_px(10); lh=line_h(dc,fSubtitle);
+    t.left=x; t.top=c.top+scale_px(5); t.right=c.right-scale_px(8); t.bottom=t.top+lh; SelectObject(dc,fBodyStrong); SetTextColor(dc,T.text_primary); DrawTextW(dc,hdr_name,-1,&t,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX|DT_END_ELLIPSIS);
+    GetTextExtentPoint32W(dc,hdr_name,(int)wcslen(hdr_name),&sz); if(hdr_trust==1) draw_shield(dc,x+sz.cx+scale_px(6),(t.top+t.bottom)/2-scale_px(7),scale_px(14));
+    t.top=t.bottom; t.bottom=c.bottom-scale_px(4); SelectObject(dc,fBody);
+    if(!hdr_group){ const wchar_t *on=hdr_online?L"在线":L"离线"; SetTextColor(dc,hdr_online?T.online:T.text_secondary); DrawTextW(dc,on,-1,&t,DT_LEFT|DT_VCENTER|DT_SINGLELINE); GetTextExtentPoint32W(dc,on,(int)wcslen(on),&sz); t.left+=sz.cx; }
+    SetTextColor(dc,T.text_secondary); DrawTextW(dc,hdr_sub,-1,&t,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX|DT_END_ELLIPSIS); }
+static const int pane_w[4]={0,190,230,90}; /* 0 = takes the rest */
+static void status_panes(RECT c, RECT out[4]){ int i, x=c.right; for(i=3;i>=1;i--){ out[i]=c; out[i].right=x; out[i].left=x-scale_px(pane_w[i]); x=out[i].left-scale_px(3); } out[0]=c; out[0].right=x; }
+static void draw_status(DRAWITEMSTRUCT *d){ RECT c=d->rcItem, pn[4]; const wchar_t *tx[4]={st_conn,st_me,st_fp,st_tcp}; int i; HDC dc=d->hDC; FillRect(dc,&c,brWin); SetBkMode(dc,TRANSPARENT); SelectObject(dc,fBody); SetTextColor(dc,T.text_primary);
+    InflateRect(&c,0,-2); status_panes(c,pn);
+    for(i=0;i<4;i++){ RECT t=pn[i]; HPEN sh=CreatePen(PS_SOLID,1,T.divider), hi=CreatePen(PS_SOLID,1,theme_mode==2?RGB(0x40,0x40,0x40):RGB(255,255,255)); HGDIOBJ op=SelectObject(dc,sh); /* sunken pane: shadow top/left, highlight bottom/right */
+        MoveToEx(dc,t.left,t.bottom-1,NULL); LineTo(dc,t.left,t.top); LineTo(dc,t.right-1,t.top); SelectObject(dc,hi); LineTo(dc,t.right-1,t.bottom-1); LineTo(dc,t.left,t.bottom-1); SelectObject(dc,op); DeleteObject(sh); DeleteObject(hi);
+        t.left+=scale_px(6); t.right-=scale_px(4); if(i==1) { draw_shield(dc,t.left,(t.top+t.bottom)/2-scale_px(6),scale_px(12)); t.left+=scale_px(18); } DrawTextW(dc,tx[i],-1,&t,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX|DT_END_ELLIPSIS); } }
+/* icon buttons: paperclip (attach), magnifier (header search), person+ (添加), paper plane + 发送(S) (default button, Luna-style blue edge) */
+static void draw_icon_button(DRAWITEMSTRUCT *d){ RECT r=d->rcItem; HDC dc=d->hDC; int id=d->CtlID, hot=(d->itemState&ODS_SELECTED)!=0, cx, cy, u=scale_px(1); wchar_t t[64]; HPEN pn; HGDIOBJ op, ob;
+    COLORREF bg=id==IDC_HDRSEARCH?P.header:T.window_bg; HBRUSH b=CreateSolidBrush(bg); FillRect(dc,&r,b); DeleteObject(b); SetBkMode(dc,TRANSPARENT);
+    if(id==IDC_SEND||id==IDC_ADD||id==IDC_HDRSEARCH){ RECT f=r; if(id!=IDC_SEND) InflateRect(&f,-u,-u); fill_round(dc,f,scale_px(6),hot?P.rowsel:(id==IDC_SEND?T.card_bg:bg),id==IDC_SEND?P.rowselborder:(hot?P.rowselborder:P.stroke)); if(id==IDC_SEND){ RECT g=f; InflateRect(&g,-1,-1); { HBRUSH nb=(HBRUSH)GetStockObject(NULL_BRUSH); HPEN p2=CreatePen(PS_SOLID,1,P.fieldborder); op=SelectObject(dc,p2); ob=SelectObject(dc,nb); RoundRect(dc,g.left,g.top,g.right,g.bottom,scale_px(5),scale_px(5)); SelectObject(dc,op); SelectObject(dc,ob); DeleteObject(p2); } } }
+    pn=CreatePen(PS_SOLID,2,id==IDC_FILE?T.text_secondary:P.accenttext); op=SelectObject(dc,pn); ob=SelectObject(dc,GetStockObject(NULL_BRUSH));
+    cy=(r.top+r.bottom)/2;
+    if(id==IDC_FILE){ cx=(r.left+r.right)/2; /* paperclip: two nested rounded loops, tilted by drawing as a polyline */ { POINT p[]={{cx+3*u,cy-6*u},{cx+3*u,cy+5*u},{cx,cy+8*u},{cx-3*u,cy+5*u},{cx-3*u,cy-8*u},{cx-1*u,cy-10*u},{cx+1*u,cy-10*u},{cx+1*u+0,cy-8*u},{cx+1*u,cy+3*u}}; Polyline(dc,p,9); } }
+    else if(id==IDC_HDRSEARCH){ cx=(r.left+r.right)/2; Ellipse(dc,cx-6*u,cy-6*u,cx+3*u,cy+3*u); MoveToEx(dc,cx+2*u,cy+2*u,NULL); LineTo(dc,cx+6*u,cy+6*u); }
+    else { int ix=r.left+scale_px(10); RECT tr=r; GetWindowTextW(d->hwndItem,t,64);
+        if(id==IDC_SEND){ POINT p[4]={{ix,cy-6*u},{ix+13*u,cy},{ix,cy+6*u},{ix+3*u,cy}}; HBRUSH pb=CreateSolidBrush(P.accenttext); SelectObject(dc,pb); Polygon(dc,p,4); SelectObject(dc,GetStockObject(NULL_BRUSH)); DeleteObject(pb); }
+        else { Ellipse(dc,ix+1*u,cy-7*u,ix+7*u,cy-1*u); Arc(dc,ix-2*u,cy,ix+10*u,cy+12*u,ix+10*u,cy+6*u,ix-2*u,cy+6*u); MoveToEx(dc,ix+11*u,cy-1*u,NULL); LineTo(dc,ix+11*u,cy+6*u); MoveToEx(dc,ix+8*u,cy+3*u,NULL); LineTo(dc,ix+15*u,cy+3*u); }
+        tr.left=ix+scale_px(18); SelectObject(dc,fBody); SetTextColor(dc,T.text_primary); DrawTextW(dc,t,-1,&tr,DT_LEFT|DT_VCENTER|DT_SINGLELINE|((d->itemState&ODS_NOACCEL)?DT_HIDEPREFIX:0)); }
+    SelectObject(dc,op); SelectObject(dc,ob); DeleteObject(pn);
+    if((d->itemState&ODS_FOCUS) && id==IDC_SEND){ RECT f=r; InflateRect(&f,-4,-4); SetTextColor(dc,T.text_primary); SetBkColor(dc,T.card_bg); DrawFocusRect(dc,&f); } }
+/* LSM_UI_TEST: decorative icon rects (online dots, shields), relative to the window's top-left, for the colour audit's ignore list */
+static void ui_icons_dump(void){ static char last[4096]; char buf[4096]; int n=0, i, top, cnt; RECT wr, ir, av; POINT o; FILE *f;
+    if(!ui_icons_path[0] || !IsWindowVisible(hMain)) return; GetWindowRect(hMain,&wr); buf[0]=0;
+#define ADDR(hw,rc,nm) { POINT a={(rc).left,(rc).top}; ClientToScreen(hw,&a); n+=snprintf(buf+n,sizeof buf-n,"ICON %s %ld,%ld,%ld,%ld\n",nm,a.x-wr.left-3,a.y-wr.top-3,(rc).right-(rc).left+6,(rc).bottom-(rc).top+6); }
+    top=(int)SendMessageW(hList,LB_GETTOPINDEX,0,0); cnt=(int)SendMessageW(hList,LB_GETCOUNT,0,0);
+    for(i=top;i<cnt && i<nlist && n<3800;i++){ RECT d2; if(SendMessageW(hList,LB_GETITEMRECT,i,(LPARAM)&ir)==LB_ERR) break; { RECT cl; GetClientRect(hList,&cl); if(ir.top>cl.bottom) break; }
+        av.left=ir.left+scale_px(10); av.top=(ir.top+ir.bottom)/2-scale_px(18); av.right=av.left+scale_px(36); av.bottom=av.top+scale_px(36);
+        if(convs[i].online){ d2.left=av.right-scale_px(9); d2.top=av.bottom-scale_px(9); d2.right=av.right+scale_px(3); d2.bottom=av.bottom+scale_px(3); ADDR(hList,d2,"online-dot"); } }
+    if(hdr_on){ RECT c; GetClientRect(hTitle,&c); av=hdr_avatar_rect(c); if(hdr_online){ RECT d2={av.right-scale_px(9),av.bottom-scale_px(9),av.right+scale_px(3),av.bottom+scale_px(3)}; ADDR(hTitle,d2,"online-dot"); }
+        if(hdr_trust==1){ HDC dc=GetDC(hTitle); SIZE sz; HGDIOBJ of=SelectObject(dc,fBodyStrong); RECT s2; int lh=line_h(dc,fSubtitle); GetTextExtentPoint32W(dc,hdr_name,(int)wcslen(hdr_name),&sz); SelectObject(dc,of); ReleaseDC(hTitle,dc);
+            s2.left=av.right+scale_px(10)+sz.cx+scale_px(6); s2.top=c.top+scale_px(5)+lh/2-scale_px(7); s2.right=s2.left+scale_px(14); s2.bottom=s2.top+scale_px(14); ADDR(hTitle,s2,"shield"); } }
+    { RECT c, pn[4]; GetClientRect(hStatus,&c); InflateRect(&c,0,-2); status_panes(c,pn); { RECT s2; s2.left=pn[1].left+scale_px(6); s2.top=(pn[1].top+pn[1].bottom)/2-scale_px(6); s2.right=s2.left+scale_px(12); s2.bottom=s2.top+scale_px(12); ADDR(hStatus,s2,"shield"); } }
+#undef ADDR
+    (void)o; if(!strcmp(buf,last)) return; strcpy(last,buf); f=fopen(ui_icons_path,"w"); if(f){ fputs(buf,f); fclose(f); } }
+
 static WNDPROC oldInputProc, oldSearchProc;
 /* search placeholder in the theme's secondary text colour (EM_SETCUEBANNER uses a fixed system grey: 2.6:1 on the dark field) */
 static LRESULT CALLBACK SearchProc(HWND h, UINT m, WPARAM w, LPARAM l){ if(m==WM_PAINT && GetWindowTextLengthW(h)==0){ LRESULT r=CallWindowProcW(oldSearchProc,h,m,w,l); HDC dc=GetDC(h); RECT cr; GetClientRect(h,&cr); cr.left+=scale_px(3);
@@ -442,14 +528,16 @@ static void layout(int W_, int H_0){
     int T0=MENUBAR_H, H_=H_0-T0, sb=26, lw=W_/3<260?W_/3:260, ih=64, bw=96, i, x=4;
     for(i=0;i<5;i++){ wchar_t t[32]; RECT r={0,0,0,0}; HDC dc=GetDC(hMain); HGDIOBJ of=SelectObject(dc,fBody); GetWindowTextW(hMenuBtn[i],t,32); DrawTextW(dc,t,-1,&r,DT_CALCRECT|DT_SINGLELINE); SelectObject(dc,of); ReleaseDC(hMain,dc);
         MoveWindow(hMenuBtn[i],x,2,r.right+20,T0-4,TRUE); x+=r.right+22; }
-    MoveWindow(hSearch,7,T0+7,lw-2,24,TRUE);
-    MoveWindow(hList,6,T0+38,lw,H_-sb-44,TRUE);
-    MoveWindow(hTitle,lw+12,T0+6,W_-lw-18,22,TRUE); /* body_strong 14px */
-    MoveWindow(hChat,lw+12,T0+30,W_-lw-18,H_-sb-30-ih-14,TRUE);
-    MoveWindow(hInput,lw+12,T0+H_-sb-ih-6,W_-lw-18-bw-6,ih,TRUE);
-    MoveWindow(hSend,W_-bw-6,T0+H_-sb-ih-6,bw,30,TRUE);
-    MoveWindow(hFile,W_-bw-6,T0+H_-sb-ih+28,bw,30,TRUE);
-    MoveWindow(hStatus,8,T0+H_-sb,W_-16,sb,TRUE); }
+    { int ph=34, hh=50, cb=56, top=T0+6, rx=lw+12, rw=W_-lw-18, bot=T0+H_-sb;
+      MoveWindow(hAdd,lw-64,top+5,66,24,TRUE);                      /* 联系人与群组 pane header (text painted in WM_PAINT) */
+      MoveWindow(hSearch,7,top+ph+1,lw-2,24,TRUE);
+      MoveWindow(hList,6,top+ph+32,lw,bot-6-(top+ph+32),TRUE);
+      MoveWindow(hTitle,rx,top,rw-44,hh,TRUE); MoveWindow(hHdrSearch,rx+rw-40,top+(hh-30)/2,32,30,TRUE);
+      MoveWindow(hChat,rx,top+hh+1,rw,bot-cb-(top+hh+1)-6,TRUE);
+      MoveWindow(hFile,rx,bot-cb+(cb-30)/2-3,30,30,TRUE);
+      MoveWindow(hInput,rx+36,bot-cb,rw-36-98,cb-6,TRUE);
+      MoveWindow(hSend,rx+rw-92,bot-cb+(cb-30)/2-3,92,30,TRUE);
+      MoveWindow(hStatus,0,bot,W_,sb,TRUE); (void)ih; (void)bw; } }
 static void open_menu(int i){ RECT r; GetWindowRect(hMenuBtn[i],&r); SendMessageW(hMenuBtn[i],BM_SETSTATE,TRUE,0);
     TrackPopupMenu(GetSubMenu(hMenuTree,i),TPM_LEFTALIGN|TPM_TOPALIGN|TPM_LEFTBUTTON,r.left,r.bottom,0,hMain,NULL); SendMessageW(hMenuBtn[i],BM_SETSTATE,FALSE,0); }
 
@@ -508,35 +596,39 @@ static LRESULT CALLBACK MainProc(HWND h, UINT m, WPARAM w, LPARAM l){
           for(i=0;i<5;i++){ hMenuBtn[i]=CreateWindowW(L"BUTTON",mt[i],WS_CHILD|WS_VISIBLE|BS_OWNERDRAW,0,0,0,0,h,(HMENU)(INT_PTR)(IDC_MENUBTN+i),hInst,NULL); SendMessageW(hMenuBtn[i],WM_SETFONT,(WPARAM)fBody,1); } }
         hList=CreateWindowExW(es,L"LISTBOX",NULL,WS_CHILD|WS_VISIBLE|WS_VSCROLL|WS_TABSTOP|LBS_NOTIFY|LBS_NOINTEGRALHEIGHT|LBS_OWNERDRAWFIXED|LBS_HASSTRINGS,0,0,0,0,h,(HMENU)IDC_LIST,hInst,NULL);
         hSearch=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_VISIBLE|WS_TABSTOP|ES_AUTOHSCROLL,0,0,0,0,h,(HMENU)IDC_SEARCH,hInst,NULL); SendMessageW(hSearch,WM_SETFONT,(WPARAM)fBody,1); oldSearchProc=(WNDPROC)SetWindowLongPtrW(hSearch,GWLP_WNDPROC,(LONG_PTR)SearchProc);
-        hTitle=CreateWindowW(L"STATIC",L"",WS_CHILD|WS_VISIBLE|SS_LEFTNOWORDWRAP,0,0,0,0,h,(HMENU)IDC_TITLE,hInst,NULL);
+        hAdd=CreateWindowW(L"BUTTON",L"添加",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_OWNERDRAW,0,0,0,0,h,(HMENU)IDC_ADD,hInst,NULL); hHdrSearch=CreateWindowW(L"BUTTON",L"",WS_CHILD|BS_OWNERDRAW,0,0,0,0,h,(HMENU)IDC_HDRSEARCH,hInst,NULL);
+        hTitle=CreateWindowW(L"STATIC",L"",WS_CHILD|WS_VISIBLE|SS_OWNERDRAW,0,0,0,0,h,(HMENU)IDC_TITLE,hInst,NULL);
         hChat=CreateWindowExW(es,L"LISTBOX",NULL,WS_CHILD|WS_VISIBLE|WS_VSCROLL|WS_TABSTOP|LBS_NOTIFY|LBS_NOINTEGRALHEIGHT|LBS_OWNERDRAWVARIABLE,0,0,0,0,h,(HMENU)IDC_CHAT,hInst,NULL); /* owner-drawn bubbles */
         hInput=CreateWindowExW(es,L"EDIT",L"",WS_CHILD|WS_VISIBLE|WS_VSCROLL|WS_TABSTOP|ES_MULTILINE|ES_AUTOVSCROLL|ES_WANTRETURN,0,0,0,0,h,(HMENU)IDC_INPUT,hInst,NULL);
-        hSend=CreateWindowW(L"BUTTON",L"发送 (Enter)",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_OWNERDRAW,0,0,0,0,h,(HMENU)IDC_SEND,hInst,NULL);
-        hFile=CreateWindowW(L"BUTTON",L"发送文件...",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_OWNERDRAW,0,0,0,0,h,(HMENU)IDC_FILE,hInst,NULL);
-        hStatus=CreateWindowW(L"STATIC",L"",WS_CHILD|WS_VISIBLE|SS_LEFTNOWORDWRAP|SS_CENTERIMAGE,0,0,0,0,h,(HMENU)IDC_STATUS,hInst,NULL); /* themed static, not the system-coloured status bar */
+        hSend=CreateWindowW(L"BUTTON",L"发送(&S)",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_OWNERDRAW,0,0,0,0,h,(HMENU)IDC_SEND,hInst,NULL);
+        hFile=CreateWindowW(L"BUTTON",L"",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_OWNERDRAW,0,0,0,0,h,(HMENU)IDC_FILE,hInst,NULL);
+        hStatus=CreateWindowW(L"STATIC",L"",WS_CHILD|WS_VISIBLE|SS_OWNERDRAW,0,0,0,0,h,(HMENU)IDC_STATUS,hInst,NULL); /* themed static, not the system-coloured status bar */
         SendMessageW(hList,WM_SETFONT,(WPARAM)hFont,1); SendMessageW(hChat,WM_SETFONT,(WPARAM)hFont,1); SendMessageW(hInput,WM_SETFONT,(WPARAM)hFont,1);
         SendMessageW(hSend,WM_SETFONT,(WPARAM)hFont,1); SendMessageW(hFile,WM_SETFONT,(WPARAM)hFont,1); SendMessageW(hStatus,WM_SETFONT,(WPARAM)fBody,1); /* body: 12px caption CJK at wine/XP grayscale AA measured below 4.5:1 */ SendMessageW(hTitle,WM_SETFONT,(WPARAM)fBodyStrong,1);
-        SendMessageW(hInput,EM_LIMITTEXT,60000,0);
+        SendMessageW(hInput,EM_LIMITTEXT,60000,0); SendMessageW(hAdd,WM_SETFONT,(WPARAM)fBody,1);
         oldInputProc=(WNDPROC)SetWindowLongPtrW(hInput,GWLP_WNDPROC,(LONG_PTR)InputProc); oldChatProc=(WNDPROC)SetWindowLongPtrW(hChat,GWLP_WNDPROC,(LONG_PTR)ChatProc); ShowScrollBar(hInput,SB_VERT,FALSE);
         DragAcceptFiles(h,TRUE); /* drop files anywhere on the window: sent to the open chat */
         { HWND tt=CreateWindowExW(WS_EX_TOPMOST,TOOLTIPS_CLASSW,NULL,WS_POPUP|TTS_ALWAYSTIP|TTS_NOPREFIX,0,0,0,0,h,NULL,hInst,NULL);
-          add_tip(tt,hSend,L"发送 (Enter)；Shift+Enter 换行"); add_tip(tt,hFile,L"发送文件（也可以把文件拖到窗口里）"); add_tip(tt,hSearch,L"搜索联系人和群组 (Ctrl+F)"); add_tip(tt,hList,L"右键：信任、PIN 配对、复制指纹… · Ctrl+Tab 切换会话"); }
+          hTip=tt; SendMessageW(tt,TTM_SETDELAYTIME,TTDT_AUTOPOP,4000); /* hover-only, gone after 4 s or when the pointer leaves (TTF_SUBCLASS) */
+          add_tip(tt,hSend,L"发送 (Enter)；Shift+Enter 换行"); add_tip(tt,hFile,L"发送文件（也可以把文件拖到窗口里）"); add_tip(tt,hHdrSearch,L"搜索 (Ctrl+F)"); add_tip(tt,hAdd,L"按 IP 添加联系人 (Ctrl+N)"); }
         SetTimer(h,TIMER_POLL,300,NULL);
         return 0; }
     case WM_DROPFILES: drop_files((HDROP)w); return 0;
     case WM_CONTEXTMENU: if((HWND)w==hList){ contact_menu(l); return 0; } break;
-    case WM_SIZE: if(w!=SIZE_MINIMIZED){ layout(LOWORD(l),HIWORD(l)); if(C) refresh_chat(); fit_vscroll(hInput); InvalidateRect(h,NULL,TRUE); } else ShowWindow(h,SW_HIDE); return 0;
+    case WM_SIZE: if(w!=SIZE_MINIMIZED){ if(hTip) SendMessageW(hTip,TTM_POP,0,0); layout(LOWORD(l),HIWORD(l)); if(C) refresh_chat(); fit_vscroll(hInput); InvalidateRect(h,NULL,TRUE); } else ShowWindow(h,SW_HIDE); return 0;
     case WM_GETMINMAXINFO: ((MINMAXINFO*)l)->ptMinTrackSize.x=640; ((MINMAXINFO*)l)->ptMinTrackSize.y=420; return 0;
     case WM_SETFOCUS: SetFocus(hList); return 0; /* keyboard users land in the contact list */
-    case WM_TIMER: if(!tray_added) tray_add(); poll_events(); return 0;
+    case WM_TIMER: if(!tray_added) tray_add(); poll_events(); ui_icons_dump(); return 0;
     /* system colours only: readable in any theme incl. high-contrast */
     case WM_CTLCOLORSTATIC: case WM_CTLCOLORBTN: case WM_CTLCOLORDLG: return ctl_color((HDC)w,(HWND)l,0);
     case WM_CTLCOLOREDIT: return ctl_color((HDC)w,(HWND)l,1);
     case WM_CTLCOLORLISTBOX: return ctl_color((HDC)w,(HWND)l,2);
     case WM_ERASEBKGND: { RECT r; GetClientRect(h,&r); FillRect((HDC)w,&r,brWin); return 1; }
     case WM_MEASUREITEM: { MEASUREITEMSTRUCT *mi=(MEASUREITEMSTRUCT*)l; if(mi->CtlType==ODT_MENU){ measure_menu(mi); return TRUE; } if(mi->CtlType==ODT_LISTBOX && mi->CtlID==IDC_CHAT){ measure_chat(mi); return TRUE; } if(mi->CtlType==ODT_LISTBOX){ mi->itemHeight=scale_px(56); return TRUE; } break; }
-    case WM_DRAWITEM: { DRAWITEMSTRUCT *d=(DRAWITEMSTRUCT*)l; if(d->CtlType==ODT_MENU){ draw_menu(d); return TRUE; } if(d->CtlType==ODT_BUTTON && d->CtlID>=IDC_MENUBTN && d->CtlID<IDC_MENUBTN+5){ draw_menubtn(d); return TRUE; } if(d->CtlType==ODT_LISTBOX && d->CtlID==IDC_CHAT){ draw_chat_item(d); return TRUE; } if(d->CtlType==ODT_LISTBOX && d->CtlID==IDC_LIST){ draw_conv_item(d); return TRUE; } if(d->CtlType==ODT_LISTBOX){ draw_list_item(d); return TRUE; } if(d->CtlType==ODT_BUTTON){ draw_button(d); return TRUE; } break; }
-    case WM_PAINT: { PAINTSTRUCT ps; HDC dc=BeginPaint(h,&ps); frame_child(h,dc,hList); frame_child(h,dc,hSearch); frame_child(h,dc,hChat); frame_child(h,dc,hInput); { RECT cr; HBRUSH dv=CreateSolidBrush(T.divider); GetClientRect(h,&cr); cr.top=MENUBAR_H-1; cr.bottom=MENUBAR_H; FillRect(dc,&cr,dv); DeleteObject(dv); } EndPaint(h,&ps); return 0; }
+    case WM_DRAWITEM: { DRAWITEMSTRUCT *d=(DRAWITEMSTRUCT*)l; if(d->CtlType==ODT_MENU){ draw_menu(d); return TRUE; } if(d->CtlType==ODT_BUTTON && d->CtlID>=IDC_MENUBTN && d->CtlID<IDC_MENUBTN+5){ draw_menubtn(d); return TRUE; } if(d->CtlType==ODT_STATIC && d->CtlID==IDC_TITLE){ draw_header(d); return TRUE; } if(d->CtlType==ODT_STATIC && d->CtlID==IDC_STATUS){ draw_status(d); return TRUE; } if(d->CtlType==ODT_BUTTON && (d->CtlID==IDC_SEND||d->CtlID==IDC_FILE||d->CtlID==IDC_ADD||d->CtlID==IDC_HDRSEARCH)){ draw_icon_button(d); return TRUE; } if(d->CtlType==ODT_LISTBOX && d->CtlID==IDC_CHAT){ draw_chat_item(d); return TRUE; } if(d->CtlType==ODT_LISTBOX && d->CtlID==IDC_LIST){ draw_conv_item(d); return TRUE; } if(d->CtlType==ODT_LISTBOX){ draw_list_item(d); return TRUE; } if(d->CtlType==ODT_BUTTON){ draw_button(d); return TRUE; } break; }
+    case WM_PAINT: { PAINTSTRUCT ps; HDC dc=BeginPaint(h,&ps); { RECT lr, hb; GetWindowRect(hAdd,&lr); MapWindowPoints(NULL,h,(POINT*)&lr,2); lr.left=12; lr.right-=70; SetBkMode(dc,TRANSPARENT); SetTextColor(dc,T.text_primary); SelectObject(dc,fBodyStrong); DrawTextW(dc,L"联系人与群组",-1,&lr,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
+          GetWindowRect(hTitle,&hb); MapWindowPoints(NULL,h,(POINT*)&hb,2); hb.right+=44; { HBRUSH b=CreateSolidBrush(P.header); FillRect(dc,&hb,b); DeleteObject(b); } { RECT f=hb; InflateRect(&f,1,1); f.bottom=hb.bottom+1; { HBRUSH dv=CreateSolidBrush(T.divider); FrameRect(dc,&f,dv); DeleteObject(dv); } } }
+        frame_child(h,dc,hList); frame_child(h,dc,hSearch); frame_child(h,dc,hChat); frame_child(h,dc,hInput); { RECT cr; HBRUSH dv=CreateSolidBrush(T.divider); GetClientRect(h,&cr); cr.top=MENUBAR_H-1; cr.bottom=MENUBAR_H; FillRect(dc,&cr,dv); DeleteObject(dv); } EndPaint(h,&ps); return 0; }
     case WM_MENUCHAR: { HMENU mm=(HMENU)l; int i,n=GetMenuItemCount(mm); wchar_t ch=(wchar_t)towlower((wint_t)LOWORD(w)); /* mnemonics for owner-drawn items */
         for(i=0;i<n;i++){ MENUITEMINFOW ii; const wchar_t *t,*a; memset(&ii,0,sizeof ii); ii.cbSize=sizeof ii; ii.fMask=MIIM_DATA; if(!GetMenuItemInfoW(mm,i,TRUE,&ii)) continue; t=(const wchar_t*)ii.dwItemData; if(!t) continue; a=wcschr(t,L'&'); if(a && towlower(a[1])==ch) return MAKELRESULT(i,MNC_EXECUTE); }
         return MAKELRESULT(0,MNC_IGNORE); }
@@ -546,6 +638,8 @@ static LRESULT CALLBACK MainProc(HWND h, UINT m, WPARAM w, LPARAM l){
         if(LOWORD(w)==IDC_INPUT && HIWORD(w)==EN_CHANGE){ InvalidateRect(hInput,NULL,TRUE); fit_vscroll(hInput); return 0; }
         if(LOWORD(w)>=IDC_MENUBTN && LOWORD(w)<IDC_MENUBTN+5){ open_menu(LOWORD(w)-IDC_MENUBTN); return 0; }
         if(LOWORD(w)==IDC_SEND){ send_current(); return 0; }
+        if(LOWORD(w)==IDC_ADD){ do_command(IDM_ADDIP); return 0; }
+        if(LOWORD(w)==IDC_HDRSEARCH){ SetFocus(hSearch); SendMessageW(hSearch,EM_SETSEL,0,-1); return 0; }
         if(LOWORD(w)==IDC_FILE){ send_file_dlg(); return 0; }
         do_command(LOWORD(w)); return 0;
     case WM_TRAY:
@@ -572,6 +666,7 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE prev, LPWSTR cmd, int show){
       static char nm[300], tg[1024];
       for(i=1;i<argc;i++){ if(!wcscmp(av[i],L"--data")&&i+1<argc) wcsncpy(dw,av[++i],MAX_PATH-1); else if(!wcscmp(av[i],L"--name")&&i+1<argc){ U(av[++i],nm,sizeof nm); o.name=nm; } else if(!wcscmp(av[i],L"--theme")&&i+1<argc){ i++; theme_cli=!wcscmp(av[i],L"dark")?2:!wcscmp(av[i],L"light")?1:0; } else if(!wcscmp(av[i],L"--auto-trust")) o.auto_trust=1; else if(!wcscmp(av[i],L"--port")&&i+1<argc) o.listen_port=_wtoi(av[++i]); else if(!wcscmp(av[i],L"--disco-port")&&i+1<argc) o.discovery_port=_wtoi(av[++i]); else if(!wcscmp(av[i],L"--targets")&&i+1<argc){ U(av[++i],tg,sizeof tg); o.announce_targets=tg; } } }
     U(dw,data,sizeof data); o.data_dir=data;
+    if(GetEnvironmentVariableA("LSM_UI_TEST",NULL,0)) snprintf(ui_icons_path,sizeof ui_icons_path,"%s\\ui_icons.txt",data);
     if(!o.name){ static char cn[64]; wchar_t wn[64]; DWORD n=64; if(GetComputerNameW(wn,&n)){ U(wn,cn,sizeof cn); o.name=cn; } }
     (void)lf; (void)ncm;
     /* UI face: Microsoft YaHei UI (Windows Vista+ zh UI font), SimSun on XP; WenQuanYi/Noto only on wine/ReactOS test boxes.
