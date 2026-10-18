@@ -70,6 +70,32 @@ def resume_check(X, Y, interrupt, tag, max_latency=None):
     resent = (RESUME_SIZE - xs[3]) / RESUME_SIZE
     lat_ok = max_latency is None or (lat is not None and lat is not False and lat < max_latency)
     return bool(got) and resent < 0.7 and lat_ok, (f"resume after {lat:.1f}s " if lat else "never resumed ") + f"cut at {hit[1] * 100 // RESUME_SIZE}% resumed_from={xs[3] * 100 // RESUME_SIZE}% resent={resent:.0%} sha={'ok' if got else 'FAIL'}"
+def switch_check(X, Y, switch, want_path, tag):
+    """path switch MID-TRANSFER: send a big file X->Y over a throttled link (tbf 60 Mbit/s on both sides, so the
+    transfer takes ~16 s), switch the path at ~25%, require that both sides report the new path while the file is
+    still incomplete, then that it completes with the right sha256 and resumed instead of restarting. -> (ok, detail)"""
+    for ns in ("mxA", "mxB"): sh(f"ip netns exec {ns} tc qdisc replace dev eth0 root tbf rate 60mbit burst 64kb latency 400ms", False)
+    try:
+        name = f"switch_{tag}.bin"; src = f"{W}/{name}"
+        with open(src, "wb") as f:
+            for _ in range(RESUME_SIZE // 4_000_000): f.write(os.urandom(4_000_000))
+        want = sha(src); X.sendfile(Y.fp, src)
+        def got_bytes():
+            ps = glob.glob(f"{Y.dl}/.{name}*.part")
+            if ps: return os.path.getsize(ps[0])
+            x = Y.xfer(name, "in"); return x[1] if x else 0
+        if not wait(lambda: got_bytes() >= 0.25 * RESUME_SIZE, 120, 0.05): return False, "never reached 25%"
+        cut = got_bytes(); switch(); t0 = time.time()
+        switched = wait(lambda: X.via(Y.fp) == want_path and Y.via(X.fp) == want_path, 90, 0.2)
+        at = got_bytes(); mid = bool(switched) and not os.path.exists(Y.dlpath(name)) and at < RESUME_SIZE
+        dt = time.time() - t0
+        ok = wait(lambda: os.path.exists(Y.dlpath(name)) and os.path.getsize(Y.dlpath(name)) == RESUME_SIZE and sha(Y.dlpath(name)) == want, 240, 1)
+        xs = X.xfer(name, "out") or ("?", 0, RESUME_SIZE, 0); xi = Y.xfer(name, "in") or ("?",)
+        det = (f"switch to {want_path} after {dt:.1f}s at {cut * 100 // RESUME_SIZE}%->{at * 100 // RESUME_SIZE}% (mid-transfer={mid}) "
+               f"resumed_from={xs[3] * 100 // RESUME_SIZE}% sha={'ok' if ok else 'BAD/missing'} state={xi[0]}")
+        return bool(ok) and mid, det
+    finally:
+        for ns in ("mxA", "mxB"): sh(f"ip netns exec {ns} tc qdisc del dev eth0 root", False)
 details = {}
 
 def net_up():
@@ -291,6 +317,11 @@ for a, b in itertools.combinations_with_replacement(kinds, 2):
             checks["resume (sender killed+restarted at 40%, <10s)"] = ok; details[f"{pair} relay sender restart"] = det; print("   ", det, flush=True)
             srv = SRV[0]
             if not andr:  # LAN-path checks: the emulator has no LAN path to the host peers
+                # path switch MID-TRANSFER, both directions: the transfer pauses and resumes on the new link
+                ok, det = switch_check(A, B, lambda: block_direct(False), "direct", f"r2d_{tg}")
+                checks["transfer survives server->direct mid-transfer"] = ok; details[f"{pair} switch r->d"] = det; print("   ", det, flush=True)
+                ok, det = switch_check(B, A, lambda: block_direct(True), "relay", f"d2r_{tg}")
+                checks["transfer survives direct->server mid-transfer"] = ok; details[f"{pair} switch d->r"] = det; print("   ", det, flush=True)
                 # relay -> direct
                 block_direct(False)
                 checks["switch server->direct"] = bool(wait(lambda: A.via(B.fp) == "direct" and B.via(A.fp) == "direct", 60))

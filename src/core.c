@@ -745,7 +745,12 @@ static void on_link_up(lsm_core *c, conn *k){
     for(o=c->conns;o;o=o->next) if(o!=k && o->state==4 && !strcmp(o->fp,k->fp)) ex=o;
     if(ex && (ex->via_relay!=0)!=(k->via_relay!=0)){ /* LAN direct always beats the relay */
         conn *loser=k->via_relay?k:ex; logf_(c,"path %s: %s",k->fp,k->via_relay?"keeping direct link, relay link dropped":"direct link up, leaving relay");
-        if(loser==k){ link_drop(c,k); return; } link_drop(c,ex); ex=NULL; }
+        if(loser==k){ link_drop(c,k); return; }
+        /* relay -> direct mid-transfer: bytes queued on the relay link are lost with it, so pause the running
+         * transfers (CAP_RESUME) and let resend_offers below re-offer them on the direct link; the receiver
+         * resumes from its partial file (same as the Rust core, which pauses on every link replacement) */
+        fail_transfers_for(c,k->fp,"\xe8\xbf\x9e\xe6\x8e\xa5\xe8\xa2\xab\xe6\x9b\xbf\xe6\x8d\xa2"); /* 连接被替换 */
+        link_drop(c,ex); ex=NULL; }
     if(ex){ /* v0.5 tie-break: prefer links initiated by the smaller fingerprint */
         int me_small=strcmp(c->fp,k->fp)<0; int pref_ex=ex->initiator?me_small:!me_small, pref_new=k->initiator?me_small:!me_small, keep_new;
         if(mono_ms()-ex->last_rx>STALE_TIEBREAK) keep_new=1; else if(pref_ex==pref_new) keep_new=1; else keep_new=pref_new;
