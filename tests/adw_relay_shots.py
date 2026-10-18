@@ -54,7 +54,8 @@ def shot(name, theme, size="1024x694", g=None):
     print("shot", path, "windows", wid, flush=True); return path
 img = f"{W}/设计稿-v3.png"
 subprocess.run(["convert", "-size", "960x660", "gradient:#7aa7d8-#2b4f7e", "-fill", "#ffffff", "-draw", "roundrectangle 120,120 840,540 24,24", img])
-RPASS = "lsm-test-relay-pass"   # test-only passphrase for the throwaway local relay
+RPASS = "lsm-test-relay-pass"
+big = f"{W}/现场录像-完整版.mp4"; subprocess.run(["head", "-c", str(400 * 1024 * 1024), "/dev/urandom"], stdout=open(big, "wb"))   # test-only passphrase for the throwaway local relay
 def wait(f, t=60):
     end = time.time() + t
     while time.time() < end:
@@ -77,6 +78,14 @@ for i, theme in enumerate(["light", "dark"]):
     if cfp: Cc.cmd(f"trust {cfp[:12]}"); Cc.cmd(f"send {cfp[:12]} 我在外地出差，经服务器联系你。"); time.sleep(2)
     xdo("key", "ctrl+Tab"); time.sleep(1.5)
     shot("relay-chat", theme, g=g)
+    # in-transit + paused file card (progress bar) over the relay
+    if cfp:
+        Cc.cmd(f"sendfile {cfp[:12]} {big}")
+        act = wait(lambda: any("\tout\tactive\t" in l for l in Cc.lines) or None, 30); time.sleep(2.5)
+        shot("relay-transfer", theme, g=g); check(bool(act), f"[{theme}] relay transfer active (progress bar shot)")
+        relay.kill(); relay.wait()
+        paused = wait(lambda: any("连接中断" in l for l in Cc.lines) or None, 40); time.sleep(2)
+        shot("relay-paused", theme, g=g); check(bool(paused), f"[{theme}] transfer paused on relay loss")
     open(f"{out}/gui-relay-{theme}.log", "w").write("\n".join(g.lines))
     for p in (g, A, Cc): p.p.kill()
     relay.kill(); time.sleep(1)

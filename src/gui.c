@@ -46,7 +46,7 @@ static HWND hMain, hList, hChat, hInput, hSend, hFile, hStatus, hTitle, hAdd, hH
 #define IDC_ADD 109
 #define IDC_HDRSEARCH 110
 /* header + status-bar state (owner-drawn, xp-*-chat mockups) */
-static wchar_t hdr_name[160], hdr_ini[8], hdr_sub[160]; static int hdr_av, hdr_online, hdr_trust, hdr_group, hdr_on;
+static wchar_t hdr_name[160], hdr_ini[8], hdr_sub[160]; static int hdr_av, hdr_online, hdr_trust, hdr_group, hdr_on, hdr_via;
 static wchar_t st_conn[96], st_me[200], st_fp[96], st_tcp[32];
 static char ui_icons_path[MAX_PATH*4];
 static HFONT hFont, hFontBold;
@@ -224,6 +224,8 @@ static void refresh_list(void){
     lsm_unlock(C);
     if(sel>=0) SendMessageW(hList,LB_SETCURSEL,sel,0);
     SendMessageW(hList,WM_SETREDRAW,TRUE,0); InvalidateRect(hList,NULL,TRUE); }
+static void draw_cloud(HDC dc, int x, int y, COLORREF col){ /* 12x8 cloud glyph (WinUI/Android relay icon); x = left, y = vertical centre */ HBRUSH cb=CreateSolidBrush(col); HPEN cp=CreatePen(PS_SOLID,1,col); HGDIOBJ ob=SelectObject(dc,cb), op=SelectObject(dc,cp); int u=scale_px(1);
+    Ellipse(dc,x,y-u,x+5*u,y+4*u); Ellipse(dc,x+2*u,y-4*u,x+9*u,y+3*u); Ellipse(dc,x+6*u,y-2*u,x+12*u,y+4*u); Rectangle(dc,x+2*u,y+u,x+10*u,y+4*u); SelectObject(dc,ob); SelectObject(dc,op); DeleteObject(cb); DeleteObject(cp); }
 static void fill_round(HDC dc, RECT r, int rad, COLORREF fill, COLORREF edge){ HBRUSH br=CreateSolidBrush(fill); HPEN pn=CreatePen(PS_SOLID,1,edge); HGDIOBJ ob=SelectObject(dc,br), op=SelectObject(dc,pn); RoundRect(dc,r.left,r.top,r.right,r.bottom,rad,rad); SelectObject(dc,ob); SelectObject(dc,op); DeleteObject(br); DeleteObject(pn); }
 static void draw_conv_item(DRAWITEMSTRUCT *d){ RECT it=d->rcItem, r, av, tr; conv_t *c; HDC dc=d->hDC; int sel=(d->itemState&ODS_SELECTED)!=0, x, lh;
     FillRect(dc,&it,brSide); if(d->itemID>=(UINT)nlist) return; c=&convs[d->itemID]; SetBkMode(dc,TRANSPARENT);
@@ -241,8 +243,7 @@ static void draw_conv_item(DRAWITEMSTRUCT *d){ RECT it=d->rcItem, r, av, tr; con
     if(c->via){ /* 经服务器 badge (tooltip 经服务器中转): second line, before the preview, so the name keeps the first line */ SIZE bz; RECT bd;
         SelectObject(dc,fBody); GetTextExtentPoint32W(dc,L"经服务器",4,&bz);
         bd.left=tr.left; bd.right=bd.left+bz.cx+scale_px(24); bd.top=tr.top; bd.bottom=tr.top+scale_px(19);
-        fill_round(dc,bd,scale_px(6),P.chip,P.stroke); SelectObject(dc,fBody); SetBkMode(dc,TRANSPARENT); SetTextColor(dc,P.chipfg); { /* cloud glyph (WinUI/Android badge icon) */ HBRUSH cb=CreateSolidBrush(P.chipfg); HPEN cp=CreatePen(PS_SOLID,1,P.chipfg); HGDIOBJ ob=SelectObject(dc,cb), op=SelectObject(dc,cp); int x=bd.left+scale_px(5), y=(bd.top+bd.bottom)/2, u=scale_px(1);
-            Ellipse(dc,x,y-u,x+5*u,y+4*u); Ellipse(dc,x+2*u,y-4*u,x+9*u,y+3*u); Ellipse(dc,x+6*u,y-2*u,x+12*u,y+4*u); Rectangle(dc,x+2*u,y+u,x+10*u,y+4*u); SelectObject(dc,ob); SelectObject(dc,op); DeleteObject(cb); DeleteObject(cp); }
+        fill_round(dc,bd,scale_px(6),P.chip,P.stroke); SelectObject(dc,fBody); SetBkMode(dc,TRANSPARENT); SetTextColor(dc,P.chipfg); draw_cloud(dc,bd.left+scale_px(5),(bd.top+bd.bottom)/2,P.chipfg);
         { RECT tb=bd; tb.left+=scale_px(18); tb.right-=scale_px(4); DrawTextW(dc,L"经服务器",-1,&tb,DT_CENTER|DT_VCENTER|DT_SINGLELINE); } tr.left=bd.right+scale_px(6); }
     SelectObject(dc,fBody); SetTextColor(dc,sel?T.text_primary:T.text_secondary); DrawTextW(dc,c->preview,-1,&tr,DT_LEFT|DT_SINGLELINE|DT_NOPREFIX|DT_END_ELLIPSIS);
     if((d->itemState&ODS_FOCUS) && GetFocus()==hList){ RECT f=it; InflateRect(&f,-scale_px(4),-2); SetTextColor(dc,T.text_primary); SetBkColor(dc,T.sidebar_bg); DrawFocusRect(dc,&f); } }
@@ -266,7 +267,7 @@ static int thumb_get(const char *path, HBITMAP *bm, int *w, int *h){ int i; void
     if(nthumbs<32){ i=nthumbs++; strncpy(thumbs[i].path,path,519); thumbs[i].bm=b; thumbs[i].w=thumbs[i].h=0; if(b && GetObject(b,sizeof bi,&bi)){ thumbs[i].w=bi.bmWidth; thumbs[i].h=bi.bmHeight; } *bm=b; *w=thumbs[i].w; *h=thumbs[i].h; }
     return b!=NULL && *w>0; }
 static void thumb_fit(int w, int h, int maxw, int *ow, int *oh){ int mw=maxw<scale_px(300)?maxw:scale_px(300), mh=scale_px(200); double k=1.0; if(w>mw) k=(double)mw/w; if(h*k>mh) k=(double)mh/h; *ow=(int)(w*k); *oh=(int)(h*k); if(*ow<scale_px(60)) *ow=scale_px(60); if(*oh<scale_px(40)) *oh=scale_px(40); }
-typedef struct { int kind, out, status, tstate, pct, h, bw; char id[40]; char path[520]; wchar_t *text; wchar_t time[8]; wchar_t name[260]; wchar_t meta[96]; wchar_t ext[8]; int emph; } row_t;
+typedef struct { int kind, out, status, tstate, pct, h, bw; char id[40]; char path[520]; wchar_t *text; wchar_t time[8]; wchar_t name[260]; wchar_t meta[96]; wchar_t ext[8]; int emph, prog; } row_t;
 static row_t *rows; static int nrows, caprows;
 static int nchat;
 static void rows_clear(void){ int i; for(i=0;i<nrows;i++) free(rows[i].text); nrows=0; }
@@ -320,6 +321,8 @@ static void draw_chat_item(DRAWITEMSTRUCT *d){ RECT it=d->rcItem, b; row_t *r; H
         nr.left=tile.right+scale_px(10); nr.right=br.left-scale_px(6); nr.top=b.top+scale_px(9); nr.bottom=nr.top+line_h(dc,fBodyStrong);
         SelectObject(dc,fBodyStrong); SetTextColor(dc,fg); DrawTextW(dc,r->name,-1,&nr,DT_LEFT|DT_SINGLELINE|DT_NOPREFIX|DT_END_ELLIPSIS);
         nr.top=nr.bottom+scale_px(1); nr.bottom=nr.top+line_h(dc,fBody); SelectObject(dc,fBody); SetTextColor(dc,r->emph?(r->out?P.minefg:P.theirsfg):meta); /* paused/resumed state in the bubble text colour: meta grey on thin CJK strokes measured 3.5:1. 14px: 12px Latin at wine/XP grayscale AA measured < 4.5:1 */ DrawTextW(dc,r->meta,-1,&nr,DT_LEFT|DT_SINGLELINE|DT_NOPREFIX|DT_END_ELLIPSIS);
+        if(r->prog){ /* thin themed progress bar (in transit / paused / resumed), like WinUI/Android/GTK */ RECT pb, pf; HBRUSH tb=CreateSolidBrush(r->out?P.mineborder:P.stroke), fb=CreateSolidBrush(r->tstate==0?T.text_secondary:T.accent);
+            pb.left=nr.left; pb.right=b.right-scale_px(60); pb.top=b.bottom-scale_px(10); /* stops short of the time */ pb.bottom=pb.top+scale_px(3); FillRect(dc,&pb,tb); pf=pb; pf.right=pf.left+(pb.right-pb.left)*(r->pct<0?0:r->pct>100?100:r->pct)/100; FillRect(dc,&pf,fb); DeleteObject(tb); DeleteObject(fb); }
         if(r->path[0]){ /* open button: rounded square with a down-arrow into a tray */ HPEN pn=CreatePen(PS_SOLID,2,P.accenttext); HGDIOBJ op; int cx=(br.left+br.right)/2, cy=(br.top+br.bottom)/2, a=scale_px(6);
             bubble(dc,br,P.tile,P.stroke); op=SelectObject(dc,pn); { POINT s1[2]={{cx,cy-a},{cx,cy+a/2}}, s2[3]={{cx-a/2-1,cy},{cx,cy+a/2+1},{cx+a/2+1,cy}}, s3[2]={{cx-a,cy+a},{cx+a+1,cy+a}}; Polyline(dc,s1,2); Polyline(dc,s2,3); Polyline(dc,s3,2); } SelectObject(dc,op); DeleteObject(pn);
             { RECT lr=file_link_rect(b); SetTextColor(dc,P.accenttext); DrawTextW(dc,L"在文件夹中显示",-1,&lr,DT_LEFT|DT_VCENTER|DT_SINGLELINE); } }
@@ -333,6 +336,7 @@ static void refresh_chat(void){
     if(cur_conv[0]){ lsm_contact *k; lsm_group *g; int nk, j;
         hdr_on=0;
         if(!strncmp(cur_conv,"dm:",3)){ nk=lsm_contacts(C,&k); for(j=0;j<nk;j++) if(!strcmp(k[j].fp,cur_conv+3)){ char ini[8]; wcsncpy(peer,W(k[j].name),299); hdr_on=1; hdr_group=0; wcsncpy(hdr_name,W(k[j].name),159); lsm_initials(k[j].name,ini); wcsncpy(hdr_ini,W(ini),7); hdr_av=avatar_index(k[j].fp); hdr_online=k[j].online; hdr_trust=k[j].trust;
+            hdr_via=k[j].online && k[j].via_relay;
             if(k[j].trust==1) _snwprintf(hdr_sub,160,k[j].online?L"  ·  已验证身份  ·  %s":L"  ·  已验证身份",k[j].via_relay?L"经服务器":L"局域网直连"); else _snwprintf(hdr_sub,160,L"  ·  %s",k[j].trust==2?L"已屏蔽":L"未信任"); /* path only when online and not untrusted/blocked */ _snwprintf(title,400,L"%s    %s  ·  %s  ·  局域网直连",W(k[j].name),k[j].online?L"在线":L"离线",k[j].trust==1?L"已验证身份":k[j].trust==2?L"已屏蔽":L"未验证身份"); } }
         else { char u[37]; nk=lsm_groups(C,&g); for(j=0;j<nk;j++){ lsm_uuid_str(g[j].id,u); if(!strcmp(u,cur_conv+6)){ char ini[8]; _snwprintf(title,400,L"%s    %d 人  ·  群密钥版本 %llu",W(g[j].name),g[j].nmembers,(unsigned long long)g[j].key_epoch); hdr_on=1; hdr_group=1; hdr_online=0; hdr_trust=0; wcsncpy(hdr_name,W(g[j].name),159); lsm_initials(g[j].name,ini); wcsncpy(hdr_ini,W(ini),7); hdr_av=avatar_index(u); _snwprintf(hdr_sub,160,L"%d 位成员  ·  群密钥版本 %llu",g[j].nmembers,(unsigned long long)g[j].key_epoch); } } }
         title[399]=0; peer[299]=0;
@@ -353,10 +357,10 @@ static void refresh_chat(void){
                 if(!r->path[0] && m[i].file_path[0] && r->tstate==3) strncpy(r->path,m[i].file_path,519);
                 if(r->path[0] && (!wcscmp(r->ext,L"PNG")||!wcscmp(r->ext,L"JPG")||!wcscmp(r->ext,L"JPEG")||!wcscmp(r->ext,L"GIF")||!wcscmp(r->ext,L"BMP"))) r->kind=R_IMAGE;
                 { int j3; for(j3=0;j3<nt;j3++) if(!strcmp(t2[j3].msg_id,m[i].id)){ lsm_transfer *tx=&t2[j3]; wchar_t rb[32];
-                    if(tx->state==0 && tx->resumable && tx->error[0]){ _snwprintf(r->meta,96,L"%s  ·  连接中断，重连后自动续传",sz); r->meta[95]=0; r->tstate=100; r->emph=1; }
-                    else if(tx->state==1 && tx->resumed_from>0 && tx->size){ fmt_size(tx->resumed_from,rb,32); _snwprintf(r->meta,96,L"从 %d%%（%s）处续传  ·  %d%%",(int)(tx->resumed_from*100/tx->size),rb,r->pct); r->meta[95]=0; r->tstate=101; r->emph=1; } } }
+                    if(tx->state==0 && tx->resumable && tx->error[0]){ _snwprintf(r->meta,96,L"%s  ·  连接中断，重连后自动续传",sz); r->meta[95]=0; r->tstate=100; r->emph=1; r->prog=1; }
+                    else if(tx->state==1 && tx->resumed_from>0 && tx->size){ fmt_size(tx->resumed_from,rb,32); _snwprintf(r->meta,96,L"从 %d%%（%s）处续传  ·  %d%%",(int)(tx->resumed_from*100/tx->size),rb,r->pct); r->meta[95]=0; r->tstate=101; r->emph=1; r->prog=1; } } }
                 if(r->tstate>=100) r->tstate=r->tstate==100?0:1; else
-                if(r->tstate==1) _snwprintf(r->meta,96,L"%s  ·  %s %d%%",sz,TS[1],r->pct); else if(r->tstate==3) _snwprintf(r->meta,96,L"%s  ·  %s",sz,r->ext); else _snwprintf(r->meta,96,L"%s  ·  %s",sz,TS[r->tstate<7?r->tstate:4]); r->meta[95]=0; }
+                if(r->tstate==1){ r->prog=1; _snwprintf(r->meta,96,L"%s  ·  %s %d%%",sz,TS[1],r->pct); } else if(r->tstate==3) _snwprintf(r->meta,96,L"%s  ·  %s",sz,r->ext); else _snwprintf(r->meta,96,L"%s  ·  %s",sz,TS[r->tstate<7?r->tstate:4]); r->meta[95]=0; }
         } }
     lsm_unlock(C);
     if(!cur_conv[0]) hdr_on=0; SetWindowTextW(hTitle,cur_conv[0]?title:L""); InvalidateRect(hTitle,NULL,FALSE); ShowWindow(hHdrSearch,hdr_on?SW_SHOW:SW_HIDE);
@@ -594,6 +598,7 @@ static void draw_header(DRAWITEMSTRUCT *d){ RECT c=d->rcItem, av, t; HDC dc=d->h
     t.left=x; t.top=c.top+scale_px(5); t.right=c.right-scale_px(8); t.bottom=t.top+lh; SelectObject(dc,fBodyStrong); SetTextColor(dc,T.text_primary); DrawTextW(dc,hdr_name,-1,&t,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX|DT_END_ELLIPSIS);
     GetTextExtentPoint32W(dc,hdr_name,(int)wcslen(hdr_name),&sz); if(hdr_trust==1) draw_shield(dc,x+sz.cx+scale_px(6),(t.top+t.bottom)/2-scale_px(7),scale_px(14));
     t.top=t.bottom; t.bottom=c.bottom-scale_px(4); SelectObject(dc,fBody);
+    if(!hdr_group && hdr_via){ draw_cloud(dc,t.left,(t.top+t.bottom)/2,T.text_secondary); t.left+=scale_px(16); } /* relay peer: cloud before 在线 (WinUI) */
     if(!hdr_group){ const wchar_t *on=hdr_online?L"在线":L"离线"; SetTextColor(dc,hdr_online?(theme_mode==2?HX(0x8EE07F):T.online):T.text_secondary); /* onlinetext (xp.json): the dot green #6CCB5F is Lc 57 as 14px text on the dark header */ DrawTextW(dc,on,-1,&t,DT_LEFT|DT_VCENTER|DT_SINGLELINE); GetTextExtentPoint32W(dc,on,(int)wcslen(on),&sz); t.left+=sz.cx; }
     SetTextColor(dc,T.text_secondary); DrawTextW(dc,hdr_sub,-1,&t,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX|DT_END_ELLIPSIS); }
 static const int pane_w[4]={0,190,230,90}; /* 0 = takes the rest */
