@@ -130,11 +130,11 @@
                                 <TextBlock Text="{x:Bind FileSizeText, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource LsmMineMetaBrush}" />
                             </StackPanel>
                             <Button Grid.Column="2" Style="{StaticResource LsmIconButton}" Click="OpenFile_Click" ToolTipService.ToolTip="打开" Visibility="{x:Bind HasFilePath, Mode=OneWay}">
-                                <FontIcon Glyph="&#xE8E5;" FontSize="16" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                <FontIcon Glyph="&#xE8E5;" FontSize="16" Foreground="{ThemeResource LsmMineLinkBrush}" />
                             </Button>
                         </Grid>
                         <Grid>
-                            <HyperlinkButton Content="在文件夹中显示" Padding="0" FontSize="12" Click="RevealFile_Click" Visibility="{x:Bind HasFilePath, Mode=OneWay}" />
+                            <HyperlinkButton Content="在文件夹中显示" Padding="0" FontSize="12" Foreground="{ThemeResource LsmMineLinkBrush}" Click="RevealFile_Click" Visibility="{x:Bind HasFilePath, Mode=OneWay}" />
                             <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Bottom" HorizontalAlignment="Right"><TextBlock Text="{x:Bind ClockText, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource LsmMineMetaBrush}" /><TextBlock Text="{x:Bind local:B.Tick(Tick), Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource LsmMineMetaBrush}" ToolTipService.ToolTip="{x:Bind StatusText, Mode=OneWay}" /><FontIcon Glyph="&#xE783;" FontSize="12" Foreground="{ThemeResource StatusErrorTextBrush}" Visibility="{x:Bind IsFailed, Mode=OneWay}" /></StackPanel>
                         </Grid>
                     </StackPanel>
@@ -220,14 +220,14 @@
                                 <Ellipse Fill="{x:Bind local:B.Avatar(AvatarIndex), Mode=OneWay}" />
                                 <TextBlock Text="{x:Bind Initial, Mode=OneWay}" HorizontalAlignment="Center" VerticalAlignment="Center"
                                            Foreground="White" FontSize="16" FontWeight="SemiBold" />
-                                <Ellipse Width="14" Height="14" HorizontalAlignment="Right" VerticalAlignment="Bottom" Fill="{ThemeResource StatusOnlineBrush}"
+                                <Ellipse Tag="lsm-icon" Width="14" Height="14" HorizontalAlignment="Right" VerticalAlignment="Bottom" Fill="{ThemeResource StatusOnlineBrush}"
                                          Stroke="{ThemeResource LsmListBackgroundBrush}" StrokeThickness="2" Visibility="{x:Bind ShowOnlineDot, Mode=OneWay}" />
                             </Grid>
                             <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
                                 <StackPanel Orientation="Horizontal" Spacing="4">
                                     <FontIcon Glyph="&#xE716;" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{x:Bind IsGroup}" />
                                     <TextBlock Text="{x:Bind Title, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                    <FontIcon Foreground="{ThemeResource SystemFillColorSuccessBrush}" Glyph="&#xEA18;" FontSize="12" Visibility="{x:Bind IsTrusted, Mode=OneWay}" ToolTipService.ToolTip="已验证身份" AutomationProperties.Name="已验证身份" />
+                                    <FontIcon Tag="lsm-icon" Foreground="{ThemeResource SystemFillColorSuccessBrush}" Glyph="&#xEA18;" FontSize="12" Visibility="{x:Bind IsTrusted, Mode=OneWay}" ToolTipService.ToolTip="已验证身份" AutomationProperties.Name="已验证身份" />
                                     <FontIcon Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE74F;" FontSize="12" Visibility="{x:Bind Muted, Mode=OneWay}" ToolTipService.ToolTip="免打扰" />
                                 </StackPanel>
                                 <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" MaxLines="1" FontSize="13">
@@ -278,14 +278,14 @@
                 <Grid Width="40" Height="40" Tapped="Details_Tapped" ToolTipService.ToolTip="联系人详情">
                     <Ellipse Fill="{x:Bind local:B.Avatar(VM.SelectedConversation.AvatarIndex), Mode=OneWay}" />
                     <TextBlock Text="{x:Bind VM.SelectedConversation.Initial, Mode=OneWay}" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="White" FontWeight="SemiBold" />
-                    <Ellipse Width="12" Height="12" HorizontalAlignment="Right" VerticalAlignment="Bottom" Fill="{ThemeResource StatusOnlineBrush}"
+                    <Ellipse Tag="lsm-icon" Width="12" Height="12" HorizontalAlignment="Right" VerticalAlignment="Bottom" Fill="{ThemeResource StatusOnlineBrush}"
                              Stroke="{ThemeResource LsmListBackgroundBrush}" StrokeThickness="2" Visibility="{x:Bind VM.SelectedConversation.ShowOnlineDot, Mode=OneWay}" />
                 </Grid>
                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Tapped="Details_Tapped" Background="Transparent">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <TextBlock Text="{x:Bind VM.SelectedTitle, Mode=OneWay}" FontSize="18" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                         <!-- verified identity: green shield next to the name (mockup); the words are also in the subtitle -->
-                        <FontIcon x:Name="HeaderShield" Foreground="{ThemeResource SystemFillColorSuccessBrush}" Glyph="&#xEA18;" FontSize="13" VerticalAlignment="Center" Visibility="{x:Bind VM.SelectedTrusted, Mode=OneWay}" ToolTipService.ToolTip="已验证身份" AutomationProperties.Name="已验证身份" />
+                        <FontIcon x:Name="HeaderShield" Tag="lsm-icon" Foreground="{ThemeResource SystemFillColorSuccessBrush}" Glyph="&#xEA18;" FontSize="13" VerticalAlignment="Center" Visibility="{x:Bind VM.SelectedTrusted, Mode=OneWay}" ToolTipService.ToolTip="已验证身份" AutomationProperties.Name="已验证身份" />
                     </StackPanel>
                     <TextBlock Text="{x:Bind VM.SelectedSubtitle, Mode=OneWay}" Style="{StaticResource SecondaryCaptionStyle}" TextTrimming="CharacterEllipsis" />
                 </StackPanel>

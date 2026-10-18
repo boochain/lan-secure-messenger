@@ -214,7 +214,9 @@ jobs:
         run: |
           find ui-smoke -name '*.png' ! -name 'desktop*' | sort > shots.txt; cat shots.txt
           test -s shots.txt
-          python3 tools/ui_color_audit.py --palette tools/palettes/winui.json --ignore-file tools/ui_audit_ignore.json --content ui-winui/LanMessenger/Assets/app.png --out ui-audit $(cat shots.txt)
+          # merge the static ignore file with the app-reported hints (decorative icons, open dialog rectangles)
+          python3 -c "import json,glob; m=json.load(open('tools/ui_audit_ignore.json')); r=m.setdefault('_reasons',{}); [ (r.update(d.pop('_reasons',{})), m.update(d)) for d in (json.load(open(f, encoding='utf-8-sig')) for f in glob.glob('ui-smoke/**/audit_ignore.json', recursive=True)) ]; json.dump(m, open('ui-audit-ignore.json','w'), ensure_ascii=False, indent=1); print(len(m)-1, 'ignore entries')"
+          python3 tools/ui_color_audit.py --palette tools/palettes/winui.json --ignore-file ui-audit-ignore.json --content ui-winui/LanMessenger/Assets/app.png --out ui-audit $(cat shots.txt)
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: ui-audit, path: ui-audit }

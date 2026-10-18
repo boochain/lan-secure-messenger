@@ -321,6 +321,70 @@ public static class UiSmoke
             if (theme == ElementTheme.Light && luma < 0.55) Fail($"{name}: light theme but screenshot is dark (mean luma {luma:F2})");
         }
         CheckContrast(w, $"{name}-{label}", theme);
+        RecordAuditHints(w, dir, file);
+    }
+
+    // ---------------------------------------------------------------- colour-audit hints
+    // The app knows what is a decorative icon (Tag="lsm-icon": online dots, the verified shield, whose meaning is also
+    // given in text) and where an open ContentDialog is (the page behind its scrim is inactive UI, WCAG-exempt).
+    // Their screen-pixel rectangles go to audit_ignore.json next to the shots; CI merges it into the audit's ignore file.
+    private static readonly Dictionary<string, object> AuditHints = new();
+    private static readonly Dictionary<string, string> AuditReasons = new();
+
+    private static void RecordAuditHints(MainWindow w, string dir, string file)
+    {
+        try
+        {
+            if (w.Content is not FrameworkElement root || root.XamlRoot == null) return;
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(w);
+            if (DwmGetWindowAttribute(hwnd, 9 /* DWMWA_EXTENDED_FRAME_BOUNDS */, out RECT r, Marshal.SizeOf<RECT>()) != 0) GetWindowRect(hwnd, out r);
+            var origin = new POINT(); ClientToScreen(hwnd, ref origin);
+            double ox = origin.X - r.Left, oy = origin.Y - r.Top, sc = root.XamlRoot.RasterizationScale;
+            int[] Box(FrameworkElement fe, int pad)
+            {
+                var p = fe.TransformToVisual(null).TransformPoint(new Point(0, 0));
+                return new[] { (int)(ox + p.X * sc) - pad, (int)(oy + p.Y * sc) - pad, (int)(fe.ActualWidth * sc) + 2 * pad, (int)(fe.ActualHeight * sc) + 2 * pad };
+            }
+            var icons = new List<int[]>();
+            void Walk(DependencyObject d)
+            {
+                if (d is UIElement ue && ue.Visibility != Visibility.Visible) return;
+                if (d is FrameworkElement fe && fe.Tag as string == "lsm-icon" && fe.ActualWidth > 0 && fe.ActualHeight > 0) icons.Add(Box(fe, 2));
+                int n = VisualTreeHelper.GetChildrenCount(d);
+                for (int i = 0; i < n; i++) Walk(VisualTreeHelper.GetChild(d, i));
+            }
+            Walk(root);
+            int[]? only = null;
+            foreach (var pop in VisualTreeHelper.GetOpenPopupsForXamlRoot(root.XamlRoot))
+            {
+                var dlg = pop.Child as ContentDialog ?? FindDescendant<ContentDialog>(pop.Child);
+                if (dlg == null) continue;
+                if (FindNamed(dlg, "BackgroundElement") is FrameworkElement bg && bg.ActualWidth > 0) only = Box(bg, 0);
+            }
+            var key = Path.GetFileName(file);
+            if (only != null)
+            {
+                AuditHints[key] = new Dictionary<string, object> { ["ignore"] = icons, ["only"] = only };
+                AuditReasons[key] = "modal ContentDialog: only the dialog is audited (page behind the scrim is inactive UI, WCAG-exempt); decorative icons inside excluded";
+            }
+            else if (icons.Count > 0)
+            {
+                AuditHints[key] = icons;
+                AuditReasons[key] = "decorative icons only (Tag=lsm-icon): online dot and verified shield, whose meaning is also given as text; bounds reported by the app";
+            }
+            var all = new Dictionary<string, object>(AuditHints) { ["_reasons"] = AuditReasons };
+            File.WriteAllText(Path.Combine(dir, "audit_ignore.json"), System.Text.Json.JsonSerializer.Serialize(all));
+            Log.Add($"audit hints {key}: {icons.Count} icon(s){(only != null ? ", dialog only" : "")}");
+        }
+        catch (Exception e) { Log.Add("audit hints failed: " + e.Message); }
+    }
+
+    private static DependencyObject? FindNamed(DependencyObject root, string name)
+    {
+        if (root is FrameworkElement fe && fe.Name == name) return root;
+        int n = VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < n; i++) { var f = FindNamed(VisualTreeHelper.GetChild(root, i), name); if (f != null) return f; }
+        return null;
     }
 
     private static double MeanLuma(byte[] bgra)

@@ -107,15 +107,16 @@
                         <SolidColorBrush x:Key="LsmRowSelectedBrush" Color="#E0E0E0" />
                         <SolidColorBrush x:Key="LsmMineMetaBrush" Color="#4A5866" />
                         <SolidColorBrush x:Key="LsmMetaBrush" Color="#5C5C5C" />
-                        <SolidColorBrush x:Key="LsmChipBackgroundBrush" Color="#E6E6E6" />
+                        <SolidColorBrush x:Key="LsmChipBackgroundBrush" Color="#DEDEDE" />
                         <SolidColorBrush x:Key="LsmChipForegroundBrush" Color="#3D3D3D" />
-                        <SolidColorBrush x:Key="LsmTileBackgroundBrush" Color="#DCE8F5" />
-                        <SolidColorBrush x:Key="LsmTileForegroundBrush" Color="#005FB8" />
+                        <SolidColorBrush x:Key="LsmTileBackgroundBrush" Color="#C7DCF2" />
+                        <SolidColorBrush x:Key="LsmTileForegroundBrush" Color="#004A94" />
+                        <SolidColorBrush x:Key="LsmMineLinkBrush" Color="#004A94" />
                         <SolidColorBrush x:Key="StatusOnlineBrush" Color="#0F7B0F" />
                         <SolidColorBrush x:Key="StatusOfflineBrush" Color="#5C5C5C" />
                         <SolidColorBrush x:Key="StatusWarnBrush" Color="#9D5D00" />
                         <SolidColorBrush x:Key="StatusErrorTextBrush" Color="#C42B1C" />
-                        <SolidColorBrush x:Key="UnreadBadgeBackgroundBrush" Color="#C42B1C" />
+                        <SolidColorBrush x:Key="UnreadBadgeBackgroundBrush" Color="#005FB8" />
                         <SolidColorBrush x:Key="UnreadBadgeForegroundBrush" Color="#FFFFFF" />
                         <SolidColorBrush x:Key="WindowFallbackBackgroundBrush" Color="#F3F3F3" />
                         <SolidColorBrush x:Key="MediaBubbleBorderBrush" Color="#E5E5E5" />
@@ -220,11 +221,12 @@
                         <SolidColorBrush x:Key="LsmChipForegroundBrush" Color="#E0E0E0" />
                         <SolidColorBrush x:Key="LsmTileBackgroundBrush" Color="#103A5C" />
                         <SolidColorBrush x:Key="LsmTileForegroundBrush" Color="#9BD7FF" />
+                        <SolidColorBrush x:Key="LsmMineLinkBrush" Color="#A8DEFF" />
                         <SolidColorBrush x:Key="StatusOnlineBrush" Color="#6CCB5F" />
                         <SolidColorBrush x:Key="StatusOfflineBrush" Color="#CCCCCC" />
                         <SolidColorBrush x:Key="StatusWarnBrush" Color="#FCE100" />
                         <SolidColorBrush x:Key="StatusErrorTextBrush" Color="#FF99A4" />
-                        <SolidColorBrush x:Key="UnreadBadgeBackgroundBrush" Color="#FF99A4" />
+                        <SolidColorBrush x:Key="UnreadBadgeBackgroundBrush" Color="#60CDFF" />
                         <SolidColorBrush x:Key="UnreadBadgeForegroundBrush" Color="#000000" />
                         <SolidColorBrush x:Key="WindowFallbackBackgroundBrush" Color="#202020" />
                         <SolidColorBrush x:Key="MediaBubbleBorderBrush" Color="#323232" />
@@ -249,6 +251,7 @@
                         <SolidColorBrush x:Key="LsmChipBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
                         <SolidColorBrush x:Key="LsmChipForegroundBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
                         <SolidColorBrush x:Key="LsmTileBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                        <SolidColorBrush x:Key="LsmMineLinkBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
                         <SolidColorBrush x:Key="LsmTileForegroundBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
                         <SolidColorBrush x:Key="StatusOnlineBrush" Color="{ThemeResource SystemColorHighlightColor}" />
                         <SolidColorBrush x:Key="StatusOfflineBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
