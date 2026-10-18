@@ -790,7 +790,7 @@ static int CALLBACK font_found(const LOGFONTW *lf, const TEXTMETRICW *tm, DWORD 
 int WINAPI wWinMain(HINSTANCE hi, HINSTANCE prev, LPWSTR cmd, int show){
     int win_w=900, win_h=600, win_x=CW_USEDEFAULT, win_y=CW_USEDEFAULT; WNDCLASSEXW wc; MSG msg; lsm_opts o; char data[MAX_PATH*4], err[256]; INITCOMMONCONTROLSEX ic; wchar_t *sl, dw[MAX_PATH]; LOGFONTW lf; NONCLIENTMETRICSW ncm; HANDLE mtx;
     (void)prev; hInst=hi;
-    mtx=CreateMutexW(NULL,TRUE,L"LanSecureMessengerXP_Single"); if(mtx && GetLastError()==ERROR_ALREADY_EXISTS && !wcsstr(cmd,L"--data")){ HWND o2=FindWindowW(L"LsmMain",NULL); if(o2){ ShowWindow(o2,SW_SHOW); ShowWindow(o2,SW_RESTORE); SetForegroundWindow(o2);} return 0; }
+    mtx=CreateMutexW(NULL,TRUE,L"LanSecureMessengerXP_Single"); if(mtx && GetLastError()==ERROR_ALREADY_EXISTS && !wcsstr(cmd,L"--data")){ HWND o2=FindWindowW(L"LsmMain",NULL); if(o2){ AllowSetForegroundWindow(ASFW_ANY); PostMessageW(o2,WM_COMMAND,IDM_SHOW,0); } return 0; } /* the running copy shows itself (a cross-process ShowWindow of a hidden window did nothing under wine) */
     ic.dwSize=sizeof ic; ic.dwICC=ICC_BAR_CLASSES|ICC_STANDARD_CLASSES; InitCommonControlsEx(&ic);
     GetModuleFileNameW(NULL,exe_dir,MAX_PATH); sl=wcsrchr(exe_dir,L'\\'); if(sl) *sl=0;
     _snwprintf(dw,MAX_PATH,L"%s\\data",exe_dir); dw[MAX_PATH-1]=0;
