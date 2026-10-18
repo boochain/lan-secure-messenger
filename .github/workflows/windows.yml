@@ -178,43 +178,81 @@ jobs:
           path: ${{ env.ZIP }}
 
   winui-arm64:
-    name: WinUI 3 app + daemon, Windows arm64 (cross-built, packaging checks only)
-    runs-on: windows-latest
+    name: Windows arm64 native (windows-11-arm) - daemon, relay-server, WinUI smoke light + dark
+    runs-on: windows-11-arm
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-pc-windows-msvc
       - uses: Swatinem/rust-cache@v2
-        with: { key: arm64 }
+        with: { key: arm64-native }
       - uses: ilammy/msvc-dev-cmd@v1
-        with: { arch: amd64_arm64 }
+        with: { arch: arm64 }
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
-      - name: Build lan-daemon + lan-msg (aarch64)
-        run: cargo build --release --target aarch64-pc-windows-msvc -p lan-daemon -p lan-cli
+      - name: Build lan-daemon + lan-msg + relay-server (native aarch64)
+        shell: pwsh
+        run: |
+          rustc -vV | Select-String host
+          cargo build --release -p lan-daemon -p lan-cli
+          if ($LASTEXITCODE) { exit 1 }
+          cargo build --release --manifest-path relay-server/Cargo.toml --bin relay-server --bin relay-test-client
+          if ($LASTEXITCODE) { exit 1 }
+          Copy-Item relay-server\target\release\relay-server.exe, relay-server\target\release\relay-test-client.exe target\release\
+      - name: Machine type + daemon self-checks
+        shell: pwsh
+        run: |
+          foreach ($e in "lan-daemon.exe", "lan-msg.exe", "relay-server.exe") {
+            $h = dumpbin /nologo /headers "target\release\$e" | Select-String "machine \("
+            Write-Host "$e : $h"; if ("$h" -notmatch "ARM64") { throw "$e is not ARM64" }
+          }
+          target\release\lan-daemon.exe --version
+          target\release\lan-daemon.exe paths
+          target\release\lan-daemon.exe interfaces
+      - name: relay-server startup + round trip (arm64)
+        shell: pwsh
+        run: |
+          $b = 'target\release'
+          & "$b\relay-server.exe" --version
+          $s = Start-Process "$b\relay-server.exe" -ArgumentList '--port 19961 --password arm-pass' -PassThru
+          Start-Sleep 3
+          & "$b\relay-server.exe" --status --port 19961
+          if ($LASTEXITCODE) { exit 1 }
+          $e = Start-Process "$b\relay-test-client.exe" -ArgumentList '--addr 127.0.0.1:19961 --password arm-pass --name echo --echo --timeout 20' -PassThru
+          Start-Sleep 2
+          & "$b\relay-test-client.exe" --addr 127.0.0.1:19961 --password arm-pass --name send --to echo --count 20 --size 4096
+          if ($LASTEXITCODE) { exit 1 }
+          Stop-Process -Id $s.Id -Force -ErrorAction SilentlyContinue
+      - name: Two-daemon loopback smoke test (named pipes, arm64)
+        shell: pwsh
+        run: ./scripts/smoke_windows.ps1 -Bin target\release
       - name: Publish WinUI app (win-arm64, unpackaged, self-contained)
         shell: pwsh
         run: dotnet publish ui-winui/LanMessenger/LanMessenger.csproj -c Release -r win-arm64 -p:Platform=ARM64 -p:PlatformTarget=ARM64 -o publish-arm64
-      - name: Assemble, check machine type, zip
+      - name: Assemble LanMessenger/ (arm64)
         shell: pwsh
         run: |
           $ver = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}" } else { "v0.6.0-dev-" + "${{ github.sha }}".Substring(0,7) }
           $out = "dist\LanMessenger"
           New-Item -ItemType Directory -Force $out | Out-Null
           Copy-Item publish-arm64\* $out -Recurse
-          Copy-Item target\aarch64-pc-windows-msvc\release\lan-daemon.exe, target\aarch64-pc-windows-msvc\release\lan-msg.exe $out
+          Copy-Item target\release\lan-daemon.exe, target\release\lan-msg.exe $out
           Copy-Item packaging\windows\*.bat, packaging\windows\README.txt $out
           Get-ChildItem $out -Filter *.pdb -Recurse | Remove-Item
-          foreach ($e in "LanMessenger.exe", "lan-daemon.exe", "lan-msg.exe") {
-            $h = dumpbin /nologo /headers "$out\$e" | Select-String "machine \("
-            Write-Host "$e : $h"
-            if ("$h" -notmatch "ARM64") { throw "$e is not ARM64" }
-          }
-          $zip = "LanMessenger-$ver-win-arm64.zip"
-          Compress-Archive -Path $out -DestinationPath $zip -CompressionLevel Optimal
-          "ZIP=$zip" >> $env:GITHUB_ENV
+          $h = dumpbin /nologo /headers "$out\LanMessenger.exe" | Select-String "machine \("
+          Write-Host "LanMessenger.exe : $h"; if ("$h" -notmatch "ARM64") { throw "LanMessenger.exe is not ARM64" }
+          "ZIP=LanMessenger-$ver-win-arm64.zip" >> $env:GITHUB_ENV
+      - name: UI smoke in light + dark theme (arm64, with relay)
+        shell: pwsh
+        run: ./scripts/ui_smoke_windows.ps1 -Dist dist\LanMessenger -Out ui-smoke-arm64 -Relay target\release\relay-server.exe
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-smoke-screenshots-arm64
+          path: ui-smoke-arm64
+      - name: Zip
+        shell: pwsh
+        run: Compress-Archive -Path dist\LanMessenger -DestinationPath $env:ZIP -CompressionLevel Optimal
       - uses: actions/upload-artifact@v4
         with:
           name: LanMessenger-win-arm64

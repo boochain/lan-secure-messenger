@@ -170,7 +170,6 @@ jobs:
   windows-arm64:
     name: Windows 11 ARM64 native smoke
     runs-on: windows-11-arm
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
