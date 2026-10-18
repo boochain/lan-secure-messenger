@@ -126,15 +126,20 @@ def _ocr_boxes(img, cfg):
         if all(not (abs(b[0] - o[0]) < 4 and abs(b[1] - o[1]) < 4) for o in out): out.append(b)
     return out
 
-def text_check(arr, box):
+def text_check(arr, box, mask=None):
     x, y, w, h, t, conf = box; H, W = arr.shape[:2]
     x0, y0, x1, y1 = max(0, x - 2), max(0, y - 2), min(W, x + w + 2), min(H, y + h + 2)
-    patch = arr[y0:y1, x0:x1].reshape(-1, 3).astype(float)
+    border = np.zeros((y1 - y0, x1 - x0), bool); border[0, :] = border[-1, :] = border[:, 0] = border[:, -1] = True
+    keep = mask[y0:y1, x0:x1].reshape(-1) if mask is not None else np.ones((y1 - y0) * (x1 - x0), bool)
+    # pixels inside an --ignore rectangle are excluded from every gate, also inside a word box
+    # (an app-reported decorative online dot on an avatar must not become the "ink" of the avatar initial)
+    if keep.sum() < 9: return None
+    patch = arr[y0:y1, x0:x1].reshape(-1, 3).astype(float)[keep]; border = border.reshape(-1)[keep]
+    if not border.any(): return None
     lab = rgb_to_lab(patch); km = kmeans2(lab)
     if km is None: return None
     lbl, cent = km
-    border = np.zeros((y1 - y0, x1 - x0), bool); border[0, :] = border[-1, :] = border[:, 0] = border[:, -1] = True
-    bl = lbl[border.reshape(-1)]; bgk = int(np.bincount(bl, minlength=2).argmax()); fgk = 1 - bgk
+    bl = lbl[border]; bgk = int(np.bincount(bl, minlength=2).argmax()); fgk = 1 - bgk
     bgpix, fgpix = patch[lbl == bgk], patch[lbl == fgk]
     if len(fgpix) < 3: return None
     bg = np.median(bgpix, 0)
@@ -254,7 +259,7 @@ def audit(path, pal, theme="auto", out=None, ignore=(), strict_cvd=False, ocr=Tr
     passing = []
     for b in boxes:
         if not mask[min(H - 1, b[1] + b[3] // 2), min(W - 1, b[0] + b[2] // 2)]: continue
-        r = text_check(arr, b)
+        r = text_check(arr, b, mask)
         if not r: continue
         res["text"].append(r)
         if r["fail"]: res["text_fail"].append(r)
