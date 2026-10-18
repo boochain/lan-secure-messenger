@@ -220,8 +220,11 @@
                                 <Ellipse Fill="{x:Bind local:B.Avatar(AvatarIndex), Mode=OneWay}" />
                                 <TextBlock Text="{x:Bind Initial, Mode=OneWay}" HorizontalAlignment="Center" VerticalAlignment="Center"
                                            Foreground="White" FontSize="16" FontWeight="SemiBold" />
+                                <!-- online dot with a 2px ring in the colour behind the avatar (list background, or the selected-row colour) -->
                                 <Ellipse Tag="lsm-icon" Width="14" Height="14" HorizontalAlignment="Right" VerticalAlignment="Bottom" Fill="{ThemeResource StatusOnlineBrush}"
-                                         Stroke="{ThemeResource LsmListBackgroundBrush}" StrokeThickness="2" Visibility="{x:Bind ShowOnlineDot, Mode=OneWay}" />
+                                         Stroke="{ThemeResource LsmListBackgroundBrush}" StrokeThickness="2" Visibility="{x:Bind ShowOnlineDotIdle, Mode=OneWay}" />
+                                <Ellipse Tag="lsm-icon" Width="14" Height="14" HorizontalAlignment="Right" VerticalAlignment="Bottom" Fill="{ThemeResource StatusOnlineBrush}"
+                                         Stroke="{ThemeResource ListViewItemBackgroundSelected}" StrokeThickness="2" Visibility="{x:Bind ShowOnlineDotSelected, Mode=OneWay}" />
                             </Grid>
                             <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
                                 <StackPanel Orientation="Horizontal" Spacing="4">

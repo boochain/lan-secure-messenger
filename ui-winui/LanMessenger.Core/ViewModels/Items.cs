@@ -78,6 +78,12 @@ public partial class ConversationItem : ObservableObject
     public bool IsDm => !IsGroup;
     public bool ShowOfflineDot => false;                 // WhatsApp/Telegram: only online is marked
     public bool ShowOnlineDot => IsDm && Online;
+    /// <summary>Selected row in the conversation list: the online dot's 2px ring then takes the selected-row colour
+    /// (the ring always matches what is behind the avatar, WhatsApp/Telegram style).</summary>
+    [ObservableProperty] private bool _isSelected;
+    public bool ShowOnlineDotIdle => ShowOnlineDot && !IsSelected;
+    public bool ShowOnlineDotSelected => ShowOnlineDot && IsSelected;
+    partial void OnIsSelectedChanged(bool value) { OnPropertyChanged(nameof(ShowOnlineDotIdle)); OnPropertyChanged(nameof(ShowOnlineDotSelected)); }
     public string AvatarKey => IsGroup ? GroupId : PeerFingerprint;
     public int AvatarIndex => Fmt.AvatarIndex(AvatarKey);
 
@@ -103,6 +109,8 @@ public partial class ConversationItem : ObservableObject
         Initial = Fmt.Initials(c.Title);
         OnPropertyChanged(nameof(ShowOfflineDot));
         OnPropertyChanged(nameof(ShowOnlineDot));
+        OnPropertyChanged(nameof(ShowOnlineDotIdle));
+        OnPropertyChanged(nameof(ShowOnlineDotSelected));
     }
 }
 

@@ -469,8 +469,12 @@ public partial class MainViewModel : ObservableObject
     }
 
     // ------------------------------------------------------------ selection
+    private ConversationItem? _ringSel;
     partial void OnSelectedConversationChanged(ConversationItem? value)
     {
+        if (_ringSel != null && _ringSel != value) _ringSel.IsSelected = false;
+        if (value != null) value.IsSelected = true;
+        _ringSel = value;
         HasSelection = value != null;
         Messages.Clear();
         UpdateSelectionHeader();
