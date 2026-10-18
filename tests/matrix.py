@@ -322,10 +322,16 @@ for a, b in itertools.combinations_with_replacement(kinds, 2):
             srv = SRV[0]
             if not andr:  # LAN-path checks: the emulator has no LAN path to the host peers
                 # path switch MID-TRANSFER, both directions: the transfer pauses and resumes on the new link
-                ok, det = switch_check(A, B, lambda: block_direct(False), "direct", f"r2d_{tg}")
-                checks["transfer survives server->direct mid-transfer"] = ok; details[f"{pair} switch r->d"] = det; print("   ", det, flush=True)
-                ok, det = switch_check(B, A, lambda: block_direct(True), "relay", f"d2r_{tg}")
-                checks["transfer survives direct->server mid-transfer"] = ok; details[f"{pair} switch d->r"] = det; print("   ", det, flush=True)
+                # each switch direction with each side as the sender (mixed pairs: Rust->C and C->Rust)
+                for (X, Y, to_direct, nm, dtag) in ((A, B, True, "A->B", "ab"), (B, A, False, "B->A", "ba"),
+                                                    (B, A, True, "B->A", "ba"), (A, B, False, "A->B", "ab")):
+                    if to_direct:
+                        ok, det = switch_check(X, Y, lambda: block_direct(False), "direct", f"r2d{dtag}_{tg}")
+                        key = f"transfer survives server->direct mid-transfer {nm}"
+                    else:
+                        ok, det = switch_check(X, Y, lambda: block_direct(True), "relay", f"d2r{dtag}_{tg}")
+                        key = f"transfer survives direct->server mid-transfer {nm}"
+                    checks[key] = ok; details[f"{pair} {key}"] = det; print("   ", nm, det, flush=True)
                 # relay -> direct
                 block_direct(False)
                 checks["switch server->direct"] = bool(wait(lambda: A.via(B.fp) == "direct" and B.via(A.fp) == "direct", 60))
