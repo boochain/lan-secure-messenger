@@ -90,7 +90,12 @@ fun Chat(st: AppState, conv: String, back: () -> Unit) {
                         val s = MaterialTheme.typography.bodySmall
                         if (contact != null) {
                             Text(if (contact.online) "在线" else "离线", style = s, color = if (contact.online) p.online else p.fg2)
-                            Text(" · " + when (contact.trust) { 1 -> "局域网直连"; 2 -> "已屏蔽"; else -> "未信任 · 局域网直连" }, style = s, color = p.fg2, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            // 在线 · 已验证身份 · 经服务器 / 局域网直连 (switches live when the core changes the path)
+                            val via = contact.online && contact.via
+                            val path = if (!contact.online || contact.trust == 2) "" else if (via) " · 经服务器" else " · 局域网直连"
+                            Text(" · " + when (contact.trust) { 1 -> "已验证身份"; 2 -> "已屏蔽"; else -> "未信任" } + path, style = s, color = p.fg2, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, false))
+                            if (via) Ic(R.drawable.ms_via_server, "经服务器中转", p.fg2, 14.dp, Modifier.padding(start = 4.dp))
                         } else if (group != null) Text("${group.members.size} 位成员 · 密钥版本 ${group.epoch}", style = s, color = p.fg2, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }

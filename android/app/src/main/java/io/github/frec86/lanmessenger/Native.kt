@@ -24,4 +24,6 @@ object Native {
     @JvmStatic external fun deleteMessage(id: String): Boolean
     @JvmStatic external fun setName(name: String)
     @JvmStatic external fun cancelTransfer(tid: String): String
+    /** Relay server settings. [pass] null = keep the stored passphrase, "" = clear it. Write-only: read [RelayInfo.hasPassphrase]. */
+    @JvmStatic external fun relaySet(enabled: Boolean, host: String, port: Int, pass: String?): String
 }
