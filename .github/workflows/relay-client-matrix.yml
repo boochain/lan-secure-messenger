@@ -1,0 +1,52 @@
+# Client-side interop matrix: rust (lan-daemon) <-> native (C core CLI), direct LAN and through the relay
+# server, in Linux network namespaces (needs sudo). Same file in boochain/lan-secure-messenger and
+# boochain/lan-secure-messenger-xp; each checks out the other repo's feat/relay-client branch.
+name: relay-client-matrix
+on:
+  push:
+    branches: [feat/relay-client]
+  workflow_dispatch:
+concurrency:
+  group: relay-client-matrix-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [direct, relay]
+    steps:
+      - uses: actions/checkout@v4
+        with: { repository: boochain/lan-secure-messenger, ref: feat/relay-client, path: rust }
+      - uses: actions/checkout@v4
+        with: { repository: boochain/lan-secure-messenger-xp, ref: feat/relay-client, path: xp }
+      - name: Rust toolchain
+        run: cd rust && rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            rust
+            rust/relay-server
+      - name: Build lan-daemon / lan-msg / relay-server
+        run: |
+          cd rust && cargo build -p lan-daemon -p lan-cli
+          cd relay-server && cargo build --release --bin relay-server
+      - name: Build C core CLI
+        run: cd xp && make build/linux/lanmsg-cli
+      - name: Matrix (${{ matrix.mode }})
+        run: |
+          R=$GITHUB_WORKSPACE/rust; X=$GITHUB_WORKSPACE/xp
+          EXTRA=""; [ "${{ matrix.mode }}" = relay ] && EXTRA="--relay"
+          sudo -E python3 $X/tests/matrix.py $EXTRA --rust-bin $R/target/debug --native-cli $X/build/linux/lanmsg-cli \
+            --relay-bin $R/relay-server/target/release/relay-server --kinds rust,native --work /tmp/mx-${{ matrix.mode }}
+      - name: Collect logs
+        if: always()
+        run: sudo find /tmp/mx-${{ matrix.mode }} -name '*.bin' -delete; sudo chmod -R a+r /tmp/mx-${{ matrix.mode }} || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: matrix-${{ matrix.mode }}
+          path: /tmp/mx-${{ matrix.mode }}
+          if-no-files-found: ignore
