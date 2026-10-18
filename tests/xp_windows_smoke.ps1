@@ -14,10 +14,24 @@ public static class W {
   [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr h, int x, int y, int w, int hh, bool r);
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+  public delegate bool EnumProc(IntPtr h, IntPtr l);
+  [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc f, IntPtr l);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassName(IntPtr h, System.Text.StringBuilder s, int n);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, System.Text.StringBuilder s, int n);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindowEx(IntPtr p, IntPtr a, string c, string t);
+  public static string Dump(uint want) { var sb = new System.Text.StringBuilder();
+    EnumWindows((h, l) => { uint pid; GetWindowThreadProcessId(h, out pid); if (pid == want) { var c = new System.Text.StringBuilder(256); var t = new System.Text.StringBuilder(512); GetClassName(h, c, 256); GetWindowText(h, t, 512);
+      RECT r; GetWindowRect(h, out r); sb.AppendFormat("  hwnd={0} class={1} title='{2}' visible={3} rect={4},{5},{6},{7}\n", h, c, t, IsWindowVisible(h), r.L, r.T, r.R, r.B);
+      IntPtr s = IntPtr.Zero; while ((s = FindWindowEx(h, s, "Static", null)) != IntPtr.Zero) { var st = new System.Text.StringBuilder(1024); GetWindowText(s, st, 1024); if (st.Length > 0) sb.AppendFormat("    static: {0}\n", st); } } return true; }, IntPtr.Zero);
+    return sb.ToString(); }
 }
 '@
 $fails = @()
-function Check($ok, $what) { if ($ok) { Write-Host "PASS: $what" } else { Write-Host "FAIL: $what"; $script:fails += $what } }
+$shots = Join-Path (Get-Location) 'xp-windows-smoke'; New-Item -ItemType Directory -Force $shots | Out-Null
+function Shot($name) { Add-Type -AssemblyName System.Windows.Forms, System.Drawing; $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds; $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+  $g = [System.Drawing.Graphics]::FromImage($bmp); $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size); $bmp.Save((Join-Path $shots "$name.png")); $g.Dispose(); $bmp.Dispose() }
+function Check($ok, $what) { if ($ok) { Write-Host "PASS: $what" } else { Write-Host "FAIL: $what"; $script:fails += $what; if ($script:p -and -not $script:p.HasExited) { Write-Host ([W]::Dump([uint32]$script:p.Id)) }; Shot ("fail-" + $script:fails.Count) } }
 function WaitFor($cond, $sec) { $end = (Get-Date).AddSeconds($sec); while ((Get-Date) -lt $end) { $v = & $cond; if ($v) { return $v }; Start-Sleep -Milliseconds 250 }; return $null }
 $Exe = (Resolve-Path $Exe).Path; $dir = Split-Path $Exe
 $data = Join-Path $env:RUNNER_TEMP 'lsm-xp-smoke'; New-Item -ItemType Directory -Force $data | Out-Null

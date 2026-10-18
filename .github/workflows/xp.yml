@@ -260,3 +260,6 @@ jobs:
       - name: Smoke (X5 / X12 / X6)
         shell: pwsh
         run: pwsh tests/xp_windows_smoke.ps1 build/x86/LanMessenger.exe
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: xp-windows-smoke, path: xp-windows-smoke }
