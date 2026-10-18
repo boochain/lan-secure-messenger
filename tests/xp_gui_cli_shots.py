@@ -42,7 +42,7 @@ def shot(name, icons=None):
     subprocess.run(["import", "-window", "root", "-crop", f"{g['WIDTH']}x{g['HEIGHT']}+{g['X']}+{g['Y']}", "+repage", path], env=env); print("shot", path, flush=True)
     try: r = [[int(v) for v in l.split()[2].split(",")] for l in open(icons_file, encoding="utf-8") if l.startswith("ICON ")]
     except OSError: r = []
-    if r: ignore[os.path.basename(path)] = r; ignore["_reasons"][os.path.basename(path)] = "decorative icons only: avatar monogram tiles with their online dot (OCR merges the two; white-on-avatar colours come from the shared palette), photo thumbnails (user content), system scrollbars (OS theme colours), online presence ( is also spelled out as 在线 / N 人在线) and the trusted-identity shield (also spelled out as 已验证身份); bounds reported by the app (LSM_UI_TEST)"
+    if r: ignore[os.path.basename(path)] = r; ignore["_reasons"][os.path.basename(path)] = "decorative icons only: avatar monogram tiles with their online dot (OCR merges the two; white-on-avatar colours come from the shared palette), photo thumbnails (user content), system scrollbars and the window caption/frame (OS theme colours), online presence ( is also spelled out as 在线 / N 人在线) and the trusted-identity shield (also spelled out as 已验证身份); bounds reported by the app (LSM_UI_TEST)"
     return path
 def click(x, y, b="1"):
     g = {k: int(v) for k, v in (l.split("=") for l in xdo("getwindowgeometry", "--shell", wid).split())}; xdo("mousemove", str(g["X"] + x), str(g["Y"] + y), "click", b)

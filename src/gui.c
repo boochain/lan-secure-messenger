@@ -476,7 +476,7 @@ static void draw_header(DRAWITEMSTRUCT *d){ RECT c=d->rcItem, av, t; HDC dc=d->h
     t.left=x; t.top=c.top+scale_px(5); t.right=c.right-scale_px(8); t.bottom=t.top+lh; SelectObject(dc,fBodyStrong); SetTextColor(dc,T.text_primary); DrawTextW(dc,hdr_name,-1,&t,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX|DT_END_ELLIPSIS);
     GetTextExtentPoint32W(dc,hdr_name,(int)wcslen(hdr_name),&sz); if(hdr_trust==1) draw_shield(dc,x+sz.cx+scale_px(6),(t.top+t.bottom)/2-scale_px(7),scale_px(14));
     t.top=t.bottom; t.bottom=c.bottom-scale_px(4); SelectObject(dc,fBody);
-    if(!hdr_group){ const wchar_t *on=hdr_online?L"在线":L"离线"; SetTextColor(dc,hdr_online?T.online:T.text_secondary); DrawTextW(dc,on,-1,&t,DT_LEFT|DT_VCENTER|DT_SINGLELINE); GetTextExtentPoint32W(dc,on,(int)wcslen(on),&sz); t.left+=sz.cx; }
+    if(!hdr_group){ const wchar_t *on=hdr_online?L"在线":L"离线"; SetTextColor(dc,hdr_online?(theme_mode==2?HX(0x8EE07F):T.online):T.text_secondary); /* onlinetext (xp.json): the dot green #6CCB5F is Lc 57 as 14px text on the dark header */ DrawTextW(dc,on,-1,&t,DT_LEFT|DT_VCENTER|DT_SINGLELINE); GetTextExtentPoint32W(dc,on,(int)wcslen(on),&sz); t.left+=sz.cx; }
     SetTextColor(dc,T.text_secondary); DrawTextW(dc,hdr_sub,-1,&t,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX|DT_END_ELLIPSIS); }
 static const int pane_w[4]={0,190,230,90}; /* 0 = takes the rest */
 static void status_panes(RECT c, RECT out[4]){ int i, x=c.right; for(i=3;i>=1;i--){ out[i]=c; out[i].right=x; out[i].left=x-scale_px(pane_w[i]); x=out[i].left-scale_px(3); } out[0]=c; out[0].right=x; }
@@ -513,6 +513,7 @@ static void ui_icons_dump(void){ static char last[4096]; char buf[4096]; int n=0
     { RECT c, pn[4]; GetClientRect(hStatus,&c); InflateRect(&c,0,-2); status_panes(c,pn); { RECT s2; s2.left=pn[1].left+scale_px(6); s2.top=(pn[1].top+pn[1].bottom)/2-scale_px(6); s2.right=s2.left+scale_px(12); s2.bottom=s2.top+scale_px(12); ADDR(hStatus,s2,"shield"); } }
     { int ct=(int)SendMessageW(hChat,LB_GETTOPINDEX,0,0), cn=(int)SendMessageW(hChat,LB_GETCOUNT,0,0); RECT cl; GetClientRect(hChat,&cl); /* photo thumbnails: user content, not UI colours */
       for(i=ct;i<cn && i<nrows && n<3800;i++){ RECT b; if(SendMessageW(hChat,LB_GETITEMRECT,i,(LPARAM)&ir)==LB_ERR || ir.top>cl.bottom) break; if(rows[i].kind!=R_IMAGE) continue; b=row_bubble(&rows[i],ir); InflateRect(&b,-scale_px(4),-scale_px(4)); if(b.bottom>cl.bottom) b.bottom=cl.bottom; if(b.top<0) b.top=0; ADDR(hChat,b,"image"); } }
+    { RECT c; POINT a={0,0}; ClientToScreen(hMain,&a); if(a.y>wr.top){ n+=snprintf(buf+n,sizeof buf-n,"ICON system-frame 0,0,%ld,%ld\n",wr.right-wr.left,a.y-wr.top); } (void)c; } /* caption + frame: drawn by the OS / wine, not from the app palette */
     { HWND sc[2]={hChat,hList}; int q; for(q=0;q<2;q++) if(GetWindowLongW(sc[q],GWL_STYLE)&WS_VSCROLL){ RECT c, b; GetClientRect(sc[q],&c); b.left=c.right; b.right=c.right+GetSystemMetrics(SM_CXVSCROLL); b.top=c.top; b.bottom=c.bottom; ADDR(sc[q],b,"system-scrollbar"); } } /* drawn by the OS theme, not from the app palette */
 #undef ADDR
     (void)o; if(!strcmp(buf,last)) return; strcpy(last,buf); f=fopen(ui_icons_path,"w"); if(f){ fputs(buf,f); fclose(f); } }

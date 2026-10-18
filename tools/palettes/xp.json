@@ -46,7 +46,8 @@
    "avatar7": "#8A4B08",
    "white": "#FFFFFF",
    "warning": "#9D5D00",
-   "error": "#C42B1C"
+   "error": "#C42B1C",
+   "onlinetext": "#217A17"
   },
   "dark": {
    "window": "#202020",
@@ -94,7 +95,8 @@
    "avatar7": "#8A4B08",
    "white": "#FFFFFF",
    "warning": "#FCE100",
-   "error": "#FF99A4"
+   "error": "#FF99A4",
+   "onlinetext": "#8EE07F"
   }
  },
  "_source": "design/redesign/tokens.py (approved redesign, spec.md); avatarN = the 8 avatar colours (FNV-1a of the id mod 8)"

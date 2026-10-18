@@ -60,7 +60,7 @@ out = sys.argv[1]; ig = {"_reasons": {}}
 for f in glob.glob(f"{out}/*.icons"):
     r = [[int(v) for v in l.split()[2].split(",")] for l in open(f, encoding="utf-8") if l.startswith("ICON ")]
     n = os.path.basename(f)[:-6] + ".png"
-    if r: ig[n] = r; ig["_reasons"][n] = "decorative icons only: avatar monogram tiles with their online dot (OCR merges the two; white-on-avatar colours come from the shared palette), photo thumbnails (user content), system scrollbars (OS theme colours), online presence ( also spelled out as 在线 / N 人在线) and the trusted-identity shield (also 已验证身份); bounds reported by the app (LSM_UI_TEST)"
+    if r: ig[n] = r; ig["_reasons"][n] = "decorative icons only: avatar monogram tiles with their online dot (OCR merges the two; white-on-avatar colours come from the shared palette), photo thumbnails (user content), system scrollbars and the window caption/frame (OS theme colours), online presence ( also spelled out as 在线 / N 人在线) and the trusted-identity shield (also 已验证身份); bounds reported by the app (LSM_UI_TEST)"
     os.remove(f)
 json.dump(ig, open(f"{out}/audit_ignore.json", "w"), ensure_ascii=False, indent=1)
 PY
