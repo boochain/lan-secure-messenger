@@ -104,6 +104,9 @@ public static class UiSmoke
                             { var open = DialogOpen(w); await KeysAsync(VK_ESCAPE); await Task.Delay(600); Check(open && !DialogOpen(w), $"Esc closes the contact-details dialog (open before={open})"); }
                             await ContextMenuChecksAsync(w, cp, dir, label, theme);
                             await ComposerKeysCheckAsync(cp);
+                            await DropCheckAsync(cp);
+                            await DeleteConfirmCheckAsync(w, cp);
+                            TooltipCheck(w);
                         }
                     }
                     else Fail("no DM conversation with the peer");
@@ -137,6 +140,7 @@ public static class UiSmoke
             if (Environment.GetEnvironmentVariable("LSM_UI_SMOKE_LIVE_FLIP") == "1")
                 await LiveFlipAsync(w, dir, theme);
             await TrayCloseCheckAsync(w);
+            await ToastClickCheckAsync(w);
             await WindowMemoryCheckAsync(w);
 
             Log.Add($"peers={App.VM.Peers.Count} online={App.VM.OnlineCount} conversations={App.VM.Conversations.Count} messages={App.VM.Messages.Count}");
@@ -262,6 +266,77 @@ public static class UiSmoke
             Check(IsWindowVisible(hwnd), "tray: show restores the window");
         }
         catch (Exception e) { Check(false, "tray close: " + e.Message); }
+    }
+
+    /// <summary>W8: a DataPackage holding a real StorageFile goes through the same DropAsync as an Explorer drop -> an outgoing file message.</summary>
+    private static async Task DropCheckAsync(ChatPage cp)
+    {
+        try
+        {
+            var path = Path.Combine(Path.GetTempPath(), "拖放测试.txt"); File.WriteAllText(path, "drop test");
+            var file = await StorageFile.GetFileFromPathAsync(path);
+            var pkg = new Windows.ApplicationModel.DataTransfer.DataPackage(); pkg.SetStorageItems(new IStorageItem[] { file });
+            int before = App.VM.Messages.Count(m => m.IsOutgoing);
+            await cp.DropAsync(pkg.GetView());
+            for (int i = 0; i < 40 && App.VM.Messages.Count(m => m.IsOutgoing) == before; i++) await Task.Delay(250);
+            Check(App.VM.Messages.Count(m => m.IsOutgoing) == before + 1, $"drop: a dropped file is sent to the open chat (outgoing {before} -> {App.VM.Messages.Count(m => m.IsOutgoing)})");
+        }
+        catch (Exception e) { Check(false, "drop: " + e.Message); }
+    }
+
+    /// <summary>W13: message menu 删除（仅本机）… (invoked through its automation peer = a click) asks first; Esc cancels and nothing is deleted.</summary>
+    private static async Task DeleteConfirmCheckAsync(MainWindow w, ChatPage cp)
+    {
+        try
+        {
+            var msgRow = Descendants(cp.SmokeMessageList).OfType<ListViewItem>()
+                .FirstOrDefault(i => (i.Content ?? i.DataContext) is LanMessenger.Core.ViewModels.MessageItem m && m.IsText && !m.IsSystem && i.ActualHeight > 0 && Center(i).Y > 0);
+            if (msgRow == null) { Check(false, "delete confirm: no visible text message row"); return; }
+            int before = App.VM.Messages.Count;
+            await RightClickAsync(w, msgRow);
+            MenuFlyoutItem? del = null;
+            foreach (var pop in VisualTreeHelper.GetOpenPopupsForXamlRoot(w.Content.XamlRoot))
+                if (pop.Child != null) del ??= Descendants(pop.Child).OfType<MenuFlyoutItem>().FirstOrDefault(i => i.Text == "删除（仅本机）…");
+            if (del == null) { Check(false, "delete confirm: menu item 删除（仅本机）… not found"); await KeysAsync(VK_ESCAPE); return; }
+            ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)new Microsoft.UI.Xaml.Automation.Peers.MenuFlyoutItemAutomationPeer(del)).Invoke();
+            await Task.Delay(1500);
+            var open = DialogOpen(w);
+            await KeysAsync(VK_ESCAPE); await Task.Delay(800);
+            Check(open && !DialogOpen(w) && App.VM.Messages.Count == before, $"delete asks for confirmation, Esc cancels (dialog={open}, messages {before} -> {App.VM.Messages.Count})");
+        }
+        catch (Exception e) { Check(false, "delete confirm: " + e.Message); }
+    }
+
+    /// <summary>W11: every visible icon-only button (no text content) has a tooltip.</summary>
+    private static void TooltipCheck(MainWindow w)
+    {
+        try
+        {
+            var missing = new List<string>(); int n = 0;
+            foreach (var b in Descendants(w.Content).OfType<Microsoft.UI.Xaml.Controls.Primitives.ButtonBase>())
+            {
+                if (b.Visibility != Visibility.Visible || b.ActualWidth <= 0 || !(b.Content is IconElement || b.Content is Image)) continue;   // icon-only buttons
+                n++;
+                if (ToolTipService.GetToolTip(b) == null) missing.Add(b.Name is { Length: > 0 } nm ? nm : (Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(b) is { Length: > 0 } an ? an : b.GetType().Name));
+            }
+            Check(n > 0 && missing.Count == 0, $"tooltips on every icon-only button ({n} checked; missing: {string.Join(", ", missing)})");
+        }
+        catch (Exception e) { Check(false, "tooltips: " + e.Message); }
+    }
+
+    /// <summary>W17: a toast click (Toasts.Invoked, the NotificationInvoked handler body) shows the hidden window and opens that conversation.</summary>
+    private static async Task ToastClickCheckAsync(MainWindow w)
+    {
+        try
+        {
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(w);
+            var target = App.VM.Conversations.FirstOrDefault(c => !ReferenceEquals(c, App.VM.SelectedConversation));
+            if (target == null) { Check(false, "toast click: needs 2 conversations"); return; }
+            PostMessage(hwnd, 0x0010 /* WM_CLOSE */, IntPtr.Zero, IntPtr.Zero); await Task.Delay(1200);
+            Toasts.Invoked(target.Id); await Task.Delay(1500);
+            Check(IsWindowVisible(hwnd) && App.VM.SelectedConversation?.Id == target.Id, $"toast click shows the window and opens that conversation (visible={IsWindowVisible(hwnd)}, selected={App.VM.SelectedConversation?.Title})");
+        }
+        catch (Exception e) { Check(false, "toast click: " + e.Message); }
     }
 
     private static async Task RightClickAsync(MainWindow w, FrameworkElement fe)

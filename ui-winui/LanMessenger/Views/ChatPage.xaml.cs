@@ -272,10 +272,13 @@ public sealed partial class ChatPage : Page
         else e.AcceptedOperation = DataPackageOperation.None;
     }
 
-    private async void Conversation_Drop(object sender, DragEventArgs e)
+    private async void Conversation_Drop(object sender, DragEventArgs e) => await DropAsync(e.DataView);
+
+    /// <summary>Drop handling for a DataPackageView (Explorer drag & drop; the UI smoke hands in a package with a real StorageFile, W8).</summary>
+    internal async System.Threading.Tasks.Task DropAsync(DataPackageView dv)
     {
-        if (!VM.HasSelection || !e.DataView.Contains(StandardDataFormats.StorageItems)) return;
-        var items = await e.DataView.GetStorageItemsAsync();
+        if (!VM.HasSelection || !dv.Contains(StandardDataFormats.StorageItems)) return;
+        var items = await dv.GetStorageItemsAsync();
         var paths = items.OfType<StorageFile>().Select(f => f.Path).Where(p => !string.IsNullOrEmpty(p)).ToList();
         if (items.OfType<StorageFolder>().Any()) VM.ShowStatus("暂不支持直接发送文件夹，请先压缩", true);
         if (paths.Count > 0) await VM.SendFilesAsync(paths);

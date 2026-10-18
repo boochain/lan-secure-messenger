@@ -9,6 +9,13 @@ public static class Toasts
 {
     private static bool _ok;
 
+    /// <summary>A toast was clicked: show the window and open that conversation (also driven by the UI smoke, W17).</summary>
+    public static void Invoked(string? conv)
+    {
+        App.MainWin?.ShowAndFocus();
+        if (!string.IsNullOrEmpty(conv)) App.MainWin?.OpenConversation(conv);
+    }
+
     public static void Init(DispatcherQueue dq)
     {
         try
@@ -16,11 +23,7 @@ public static class Toasts
             AppNotificationManager.Default.NotificationInvoked += (_, args) =>
             {
                 args.Arguments.TryGetValue("conv", out var conv);
-                dq.TryEnqueue(() =>
-                {
-                    App.MainWin?.ShowAndFocus();
-                    if (!string.IsNullOrEmpty(conv)) App.MainWin?.OpenConversation(conv);
-                });
+                dq.TryEnqueue(() => Invoked(conv));
             };
             AppNotificationManager.Default.Register();
             _ok = true;

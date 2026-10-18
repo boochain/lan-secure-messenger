@@ -71,6 +71,11 @@ foreach ($theme in "light", "dark") {
   $FA = (Get-Content "$dir\ready.txt" -Raw).Trim()
   $portA = (& $M --json status | ConvertFrom-Json).me.listen_port
   Write-Host "[$theme] UI daemon $FA on port $portA"
+  # W12 single instance: a second start hands over to the running copy and exits; the first keeps running
+  $second = Start-Process $AppExe -PassThru
+  $secondExited = $second.WaitForExit(20000)
+  if ($secondExited -and -not $proc.HasExited) { Write-Host "[$theme] PASS: single instance: a second start exits (code $($second.ExitCode)), the running copy stays" }
+  else { if (-not $secondExited) { Stop-Process $second -Force -ErrorAction SilentlyContinue }; $problems += "[$theme] single instance: second start exited=$secondExited, first alive=$(-not $proc.HasExited)" }
 
   $bobPipe = "\\.\pipe\lsm-ci-bob-$theme"
   $bobData = Join-Path $env:RUNNER_TEMP "lsm-bob-$theme"
@@ -115,7 +120,8 @@ foreach ($theme in "light", "dark") {
                "right-click on a message", "right-click on a contact", "Esc closes the context menu",
                "window memory: saved", "window memory: restored", "window memory: an off-screen",
                "Esc closes the contact-details dialog", "Shift+Enter inserts a new line", "Enter sends and clears the composer",
-               "close hides to the tray, app keeps running", "tray: show restores the window")
+               "close hides to the tray, app keeps running", "tray: show restores the window",
+               "drop: a dropped file is sent", "delete asks for confirmation, Esc cancels", "tooltips on every icon-only button", "toast click shows the window")
   foreach ($r in $runtime) {
     if (-not (Select-String -Path "$dir\ui-smoke.txt" -Pattern ("PASS: " + [regex]::Escape($r)) -Quiet -ErrorAction SilentlyContinue)) { $problems += "[$theme] runtime check did not pass: $r" }
   }
