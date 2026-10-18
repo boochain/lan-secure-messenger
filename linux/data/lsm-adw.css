@@ -28,8 +28,9 @@ window, .sidebar-pane { background-color: @lsm_window; }
 .bubble.first { margin-top: 9px; }
 .bubble.theirs { background-color: @lsm_theirs; color: @lsm_theirsfg; box-shadow: 0 1px 1px alpha(black, 0.10); }
 .bubble.mine { background-color: @lsm_mine; color: @lsm_minefg; }
-.bubble.image { padding: 4px; }
-.bubble .thumb { border-radius: 9px; }
+/* image bubbles: the photo itself is the bubble - no grey mat, just a 1px edge (mockup) */
+.bubble.image, .bubble.image.theirs, .bubble.image.mine { padding: 0; background-color: transparent; box-shadow: none; border: 1px solid @lsm_stroke; border-radius: 12px; }
+.bubble .thumb { border-radius: 11px; }
 .bubble.file { min-width: 264px; }
 .bubble .sender { color: @lsm_accenttext; font-weight: 700; font-size: 0.85em; }
 .bubble.theirs .meta, .bubble.theirs .file-size { color: @lsm_meta; font-size: 12px; }

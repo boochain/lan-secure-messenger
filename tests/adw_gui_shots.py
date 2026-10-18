@@ -62,6 +62,7 @@ for i, theme in enumerate(["light", "dark"]):
              dict(env, LSM_THEME=theme, LSM_UI_TEST="1", LSM_QUIT_ON_CLOSE="1", LSM_WINDOW_SIZE="1024x694"))
     fp = (g.wait_for("LSM_FP", 20) or " ? ").split()[1]
     check(fp != "?", f"[{theme}] GUI started and reported its fingerprint")
+    time.sleep(1.5); shot("page-empty", theme, g=g)   # empty state: no content-header title (libadwaita style)
     for p in (A, B): p.cmd(f"add 127.0.0.1:{port}")
     time.sleep(2); A.cmd(f"trust {fp[:12]}"); B.cmd(f"trust {fp[:12]}")
     A.cmd(f"send {fp[:12]} 早上好，新版界面的设计稿我放到共享盘了。"); time.sleep(0.4)
