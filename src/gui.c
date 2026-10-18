@@ -429,7 +429,10 @@ static void send_file_dlg(void){
     if(lsm_send_file(C,cur_conv,U(path,u8,sizeof u8),err)) msgbox(err,MB_ICONWARNING); refresh_chat(); }
 
 static WNDPROC oldInputProc;
-static LRESULT CALLBACK InputProc(HWND h, UINT m, WPARAM w, LPARAM l){ if(m==WM_KEYDOWN && w==VK_TAB){ SetFocus(GetNextDlgTabItem(hMain,h,(GetKeyState(VK_SHIFT)&0x8000)?TRUE:FALSE)); return 0; } if(m==WM_CHAR && w=='\t') return 0; if(m==WM_KEYDOWN && w==VK_RETURN && !(GetKeyState(VK_SHIFT)&0x8000)){ send_current(); return 0; } if(m==WM_CHAR && w=='\r' && !(GetKeyState(VK_SHIFT)&0x8000)) return 0; return CallWindowProcW(oldInputProc,h,m,w,l); }
+static LRESULT CALLBACK InputProc(HWND h, UINT m, WPARAM w, LPARAM l){ if(m==WM_PAINT && GetWindowTextLengthW(h)==0){ LRESULT r=CallWindowProcW(oldInputProc,h,m,w,l); HDC dc=GetDC(h); RECT cr; GetClientRect(h,&cr); InflateRect(&cr,-scale_px(4),-scale_px(2)); SetBkMode(dc,TRANSPARENT); SetTextColor(dc,T.text_secondary);
+        SelectObject(dc,fBody); DrawTextW(dc,L"输入消息",-1,&cr,DT_LEFT|DT_TOP|DT_SINGLELINE|DT_NOPREFIX); SelectObject(dc,fCaption); DrawTextW(dc,L"Enter 发送 · Shift+Enter 换行",-1,&cr,DT_RIGHT|DT_TOP|DT_SINGLELINE|DT_NOPREFIX); ReleaseDC(h,dc); return r; }
+    if(m==WM_SETFOCUS||m==WM_KILLFOCUS) InvalidateRect(h,NULL,TRUE);
+    if(m==WM_KEYDOWN && w==VK_TAB){ SetFocus(GetNextDlgTabItem(hMain,h,(GetKeyState(VK_SHIFT)&0x8000)?TRUE:FALSE)); return 0; } if(m==WM_CHAR && w=='\t') return 0; if(m==WM_KEYDOWN && w==VK_RETURN && !(GetKeyState(VK_SHIFT)&0x8000)){ send_current(); return 0; } if(m==WM_CHAR && w=='\r' && !(GetKeyState(VK_SHIFT)&0x8000)) return 0; return CallWindowProcW(oldInputProc,h,m,w,l); }
 
 static void layout(int W_, int H_0){
     int T0=MENUBAR_H, H_=H_0-T0, sb=26, lw=W_/3<260?W_/3:260, ih=64, bw=96, i, x=4;
@@ -458,6 +461,41 @@ static HMENU build_menu(void){
     menu_bg(m);
     return m; }
 
+/* ---------------------------------------------------------------- XP basics: shortcuts, window memory, drag-drop, tooltips, contact menu */
+static void select_conv(int s){ if(s<0||s>=nlist) return; SendMessageW(hList,LB_SETCURSEL,s,0); strcpy(cur_conv,list_ids[s]); refresh_chat(); if(lsm_mark_read(C,cur_conv)) refresh_list(); }
+/* same keys as WinUI and GTK: Ctrl+F search, Ctrl+N add by IP, Ctrl+Tab / Ctrl+Shift+Tab next/previous chat, Esc clears the search
+ * (Enter / Shift+Enter live in InputProc). Returns 1 when the key was handled. */
+static int app_key(MSG *msg){ int ctrl=(GetKeyState(VK_CONTROL)&0x8000)!=0, shift=(GetKeyState(VK_SHIFT)&0x8000)!=0;
+    if(msg->message!=WM_KEYDOWN || !IsWindowEnabled(hMain) || (GetAncestor(msg->hwnd,GA_ROOT)!=hMain)) return 0;
+    if(ctrl && msg->wParam=='F'){ SetFocus(hSearch); SendMessageW(hSearch,EM_SETSEL,0,-1); return 1; }
+    if(ctrl && msg->wParam=='N'){ do_command(IDM_ADDIP); return 1; }
+    if(ctrl && msg->wParam==VK_TAB){ int s=(int)SendMessageW(hList,LB_GETCURSEL,0,0); if(nlist){ s=shift?(s<=0?nlist-1:s-1):(s+1)%nlist; select_conv(s); } return 1; }
+    if(msg->wParam==VK_ESCAPE && msg->hwnd==hSearch){ if(GetWindowTextLengthW(hSearch)) SetWindowTextW(hSearch,L""); else SetFocus(hList); return 1; }
+    return 0; }
+static void win_path(wchar_t *p){ _snwprintf(p,MAX_PATH,L"%s\\window.txt",exe_dir); p[MAX_PATH-1]=0; }
+static void win_save(void){ WINDOWPLACEMENT wp; wchar_t p[MAX_PATH]; FILE *f; memset(&wp,0,sizeof wp); wp.length=sizeof wp; if(!GetWindowPlacement(hMain,&wp)) return; win_path(p); f=_wfopen(p,L"w");
+    if(f){ fprintf(f,"%ld %ld %ld %ld %d\n",wp.rcNormalPosition.left,wp.rcNormalPosition.top,wp.rcNormalPosition.right,wp.rcNormalPosition.bottom,wp.showCmd==SW_SHOWMAXIMIZED); fclose(f); } }
+static int win_load(RECT *r, int *maxed){ wchar_t p[MAX_PATH]; FILE *f; long a,b,c,d; int mx=0, ok=0; win_path(p); f=_wfopen(p,L"r"); if(!f) return 0;
+    if(fscanf(f,"%ld %ld %ld %ld %d",&a,&b,&c,&d,&mx)>=4 && c-a>=640 && d-b>=420){ RECT t={a,b,c,d}; RECT wa; SystemParametersInfoW(SPI_GETWORKAREA,0,&wa,0); RECT x; /* only when it is still mostly on screen (resolution may have changed) */
+        if(IntersectRect(&x,&t,&wa) && (x.right-x.left)>=200 && (x.bottom-x.top)>=100){ *r=t; *maxed=mx; ok=1; } }
+    fclose(f); return ok; }
+static void drop_files(HDROP hd){ wchar_t path[MAX_PATH]; char u8[MAX_PATH*4], err[256]; UINT i, n=DragQueryFileW(hd,0xFFFFFFFF,NULL,0);
+    if(!cur_conv[0]) msgbox("请先在左侧选择联系人或群组，再把文件拖进来。",MB_ICONINFORMATION);
+    else for(i=0;i<n;i++){ if(DragQueryFileW(hd,i,path,MAX_PATH) && !(GetFileAttributesW(path)&FILE_ATTRIBUTE_DIRECTORY)){ if(lsm_send_file(C,cur_conv,U(path,u8,sizeof u8),err)){ msgbox(err,MB_ICONWARNING); break; } } }
+    DragFinish(hd); refresh_chat(); }
+static void add_tip(HWND tt, HWND ctl, const wchar_t *text){ TOOLINFOW ti; memset(&ti,0,sizeof ti); ti.cbSize=sizeof ti; ti.uFlags=TTF_IDISHWND|TTF_SUBCLASS; ti.hwnd=hMain; ti.uId=(UINT_PTR)ctl; ti.lpszText=(LPWSTR)text; SendMessageW(tt,TTM_ADDTOOLW,0,(LPARAM)&ti); }
+#define IDM_OPENCHAT 240
+#define IDM_COPYFP 241
+static void contact_menu(LPARAM l){ POINT pt; int s=-1, dm, cmd; HMENU pm;
+    if(l==(LPARAM)-1){ RECT ir; s=(int)SendMessageW(hList,LB_GETCURSEL,0,0); if(s<0) return; SendMessageW(hList,LB_GETITEMRECT,s,(LPARAM)&ir); pt.x=ir.left+scale_px(48); pt.y=ir.top+scale_px(28); ClientToScreen(hList,&pt); }
+    else { POINT c; DWORD r; pt.x=(short)LOWORD(l); pt.y=(short)HIWORD(l); c=pt; ScreenToClient(hList,&c); r=(DWORD)SendMessageW(hList,LB_ITEMFROMPOINT,0,MAKELPARAM(c.x,c.y)); if(HIWORD(r)) return; s=LOWORD(r); }
+    if(s<0||s>=nlist) return; select_conv(s); dm=!strncmp(cur_conv,"dm:",3);
+    pm=CreatePopupMenu(); AM(pm,MF_STRING,IDM_OPENCHAT,L"打开聊天(&O)"); AM(pm,MF_SEPARATOR,0,NULL);
+    if(dm){ AM(pm,MF_STRING,IDM_TRUST,L"信任(&T)"); AM(pm,MF_STRING,IDM_UNTRUST,L"取消信任(&U)"); AM(pm,MF_STRING,IDM_PINPAIR,L"输入 PIN 配对(&I)..."); AM(pm,MF_STRING,IDM_COPYFP,L"复制指纹(&F)"); AM(pm,MF_SEPARATOR,0,NULL); AM(pm,MF_STRING,IDM_BLOCK,L"屏蔽(&B)"); }
+    else { AM(pm,MF_STRING,IDM_GINVITE,L"邀请成员(&I)..."); AM(pm,MF_STRING,IDM_GREMOVE,L"移除成员(&R)..."); AM(pm,MF_SEPARATOR,0,NULL); AM(pm,MF_STRING,IDM_GLEAVE,L"退出群组(&L)"); }
+    menu_bg(pm); cmd=TrackPopupMenu(pm,TPM_RIGHTBUTTON|TPM_RETURNCMD|TPM_NONOTIFY,pt.x,pt.y,0,hMain,NULL); DestroyMenu(pm);
+    if(cmd==IDM_OPENCHAT) SetFocus(hInput); else if(cmd==IDM_COPYFP) copy_text(W(cur_conv+3)); else if(cmd) do_command(cmd); }
+
 static LRESULT CALLBACK MainProc(HWND h, UINT m, WPARAM w, LPARAM l){
     switch(m){
     case WM_CREATE: {
@@ -476,8 +514,13 @@ static LRESULT CALLBACK MainProc(HWND h, UINT m, WPARAM w, LPARAM l){
         SendMessageW(hSend,WM_SETFONT,(WPARAM)hFont,1); SendMessageW(hFile,WM_SETFONT,(WPARAM)hFont,1); SendMessageW(hStatus,WM_SETFONT,(WPARAM)fBody,1); /* body: 12px caption CJK at wine/XP grayscale AA measured below 4.5:1 */ SendMessageW(hTitle,WM_SETFONT,(WPARAM)fBodyStrong,1);
         SendMessageW(hInput,EM_LIMITTEXT,60000,0);
         oldInputProc=(WNDPROC)SetWindowLongPtrW(hInput,GWLP_WNDPROC,(LONG_PTR)InputProc); oldChatProc=(WNDPROC)SetWindowLongPtrW(hChat,GWLP_WNDPROC,(LONG_PTR)ChatProc); ShowScrollBar(hInput,SB_VERT,FALSE);
+        DragAcceptFiles(h,TRUE); /* drop files anywhere on the window: sent to the open chat */
+        { HWND tt=CreateWindowExW(WS_EX_TOPMOST,TOOLTIPS_CLASSW,NULL,WS_POPUP|TTS_ALWAYSTIP|TTS_NOPREFIX,0,0,0,0,h,NULL,hInst,NULL);
+          add_tip(tt,hSend,L"发送 (Enter)；Shift+Enter 换行"); add_tip(tt,hFile,L"发送文件（也可以把文件拖到窗口里）"); add_tip(tt,hSearch,L"搜索联系人和群组 (Ctrl+F)"); add_tip(tt,hList,L"右键：信任、PIN 配对、复制指纹… · Ctrl+Tab 切换会话"); }
         SetTimer(h,TIMER_POLL,300,NULL);
         return 0; }
+    case WM_DROPFILES: drop_files((HDROP)w); return 0;
+    case WM_CONTEXTMENU: if((HWND)w==hList){ contact_menu(l); return 0; } break;
     case WM_SIZE: if(w!=SIZE_MINIMIZED){ layout(LOWORD(l),HIWORD(l)); if(C) refresh_chat(); fit_vscroll(hInput); InvalidateRect(h,NULL,TRUE); } else ShowWindow(h,SW_HIDE); return 0;
     case WM_GETMINMAXINFO: ((MINMAXINFO*)l)->ptMinTrackSize.x=640; ((MINMAXINFO*)l)->ptMinTrackSize.y=420; return 0;
     case WM_SETFOCUS: SetFocus(hList); return 0; /* keyboard users land in the contact list */
@@ -496,7 +539,7 @@ static LRESULT CALLBACK MainProc(HWND h, UINT m, WPARAM w, LPARAM l){
     case WM_COMMAND:
         if(LOWORD(w)==IDC_LIST && HIWORD(w)==LBN_SELCHANGE){ int s=(int)SendMessageW(hList,LB_GETCURSEL,0,0); if(s>=0 && s<nlist){ strcpy(cur_conv,list_ids[s]); refresh_chat(); if(lsm_mark_read(C,cur_conv)) refresh_list(); SetFocus(hInput); } return 0; }
         if(LOWORD(w)==IDC_SEARCH && HIWORD(w)==EN_CHANGE){ refresh_list(); return 0; }
-        if(LOWORD(w)==IDC_INPUT && HIWORD(w)==EN_CHANGE){ fit_vscroll(hInput); return 0; }
+        if(LOWORD(w)==IDC_INPUT && HIWORD(w)==EN_CHANGE){ InvalidateRect(hInput,NULL,TRUE); fit_vscroll(hInput); return 0; }
         if(LOWORD(w)>=IDC_MENUBTN && LOWORD(w)<IDC_MENUBTN+5){ open_menu(LOWORD(w)-IDC_MENUBTN); return 0; }
         if(LOWORD(w)==IDC_SEND){ send_current(); return 0; }
         if(LOWORD(w)==IDC_FILE){ send_file_dlg(); return 0; }
@@ -505,8 +548,8 @@ static LRESULT CALLBACK MainProc(HWND h, UINT m, WPARAM w, LPARAM l){
         if(l==WM_LBUTTONDBLCLK||l==NIN_BALLOONUSERCLICK) do_command(IDM_SHOW);
         else if(l==WM_RBUTTONUP){ POINT pt; HMENU pm=CreatePopupMenu(); AM(pm,MF_STRING,IDM_SHOW,L"显示主窗口"); AM(pm,MF_SEPARATOR,0,NULL); AM(pm,MF_STRING,IDM_EXIT,L"退出"); menu_bg(pm); GetCursorPos(&pt); SetForegroundWindow(h); TrackPopupMenu(pm,TPM_RIGHTBUTTON,pt.x,pt.y,0,h,NULL); DestroyMenu(pm); }
         return 0;
-    case WM_CLOSE: ShowWindow(h,SW_HIDE); tray_balloon("局域网安全通讯","程序仍在后台运行，双击托盘图标可打开。"); return 0;
-    case WM_DESTROY: KillTimer(h,TIMER_POLL); Shell_NotifyIconW(NIM_DELETE,&nid); PostQuitMessage(0); return 0;
+    case WM_CLOSE: win_save(); ShowWindow(h,SW_HIDE); tray_balloon("局域网安全通讯","程序仍在后台运行，双击托盘图标可打开。"); return 0;
+    case WM_DESTROY: win_save(); KillTimer(h,TIMER_POLL); Shell_NotifyIconW(NIM_DELETE,&nid); PostQuitMessage(0); return 0;
     case WM_SYSCOLORCHANGE: theme_apply(); InvalidateRect(h,NULL,TRUE); return 0;
     }
     if(WM_TASKBARCREATED && m==WM_TASKBARCREATED){ tray_add(); return 0; }
@@ -544,12 +587,13 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE prev, LPWSTR cmd, int show){
     { RECT wa; if(SystemParametersInfoW(SPI_GETWORKAREA,0,&wa,0)){ if(win_w>wa.right-wa.left) win_w=wa.right-wa.left; if(win_h>wa.bottom-wa.top) win_h=wa.bottom-wa.top;
         win_x=wa.left+((wa.right-wa.left)-win_w)/2; win_y=wa.top+((wa.bottom-wa.top)-win_h)/2; } } /* 800x600 XP screens: fit and centre (CW_USEDEFAULT pushed it off-screen) */
     hMenuTree=build_menu(); /* not attached: the system menu bar ignores the app theme (wine/XP paint it with COLOR_MENU) */
+    { RECT wr; int mx=0; if(win_load(&wr,&mx)){ win_x=wr.left; win_y=wr.top; win_w=wr.right-wr.left; win_h=wr.bottom-wr.top; if(mx && show==SW_SHOWNORMAL) show=SW_SHOWMAXIMIZED; } } /* window memory */
     hMain=CreateWindowExW(0,L"LsmMain",L"局域网安全通讯 XP 版",WS_OVERLAPPEDWINDOW,win_x,win_y,win_w,win_h,NULL,NULL,hi,NULL);
     memset(&nid,0,sizeof nid); nid.cbSize=NOTIFYICONDATAW_V2_SIZE; nid.hWnd=hMain; nid.uID=1; nid.uFlags=NIF_ICON|NIF_MESSAGE|NIF_TIP; nid.uCallbackMessage=WM_TRAY; nid.hIcon=wc.hIcon?wc.hIcon:LoadIcon(NULL,IDI_APPLICATION);
     { HICON ic2=LoadIconW(hi,MAKEINTRESOURCEW(1)); if(ic2) nid.hIcon=ic2; }
     wcscpy(nid.szTip,L"局域网安全通讯 XP 版"); WM_TASKBARCREATED=RegisterWindowMessageW(L"TaskbarCreated"); tray_add();
     ShowWindow(hMain,show); UpdateWindow(hMain);
     refresh_list(); refresh_chat();
-    while(GetMessageW(&msg,NULL,0,0)>0){ if(IsDialogMessageW(hMain,&msg)) continue; /* Tab / Shift+Tab / Alt+mnemonics between controls */ TranslateMessage(&msg); DispatchMessageW(&msg); }
+    while(GetMessageW(&msg,NULL,0,0)>0){ if(app_key(&msg)) continue; if(IsDialogMessageW(hMain,&msg)) continue; /* Tab / Shift+Tab / Alt+mnemonics between controls */ TranslateMessage(&msg); DispatchMessageW(&msg); }
     lsm_stop(C);
     return 0; }

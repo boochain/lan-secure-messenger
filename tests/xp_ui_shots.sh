@@ -28,14 +28,14 @@ for TH in light dark; do
   shot "xp-$TH-01-welcome-empty"
   for i in $(seq 40); do $M peers 2>/dev/null | grep -q "XP" && break; sleep 0.5; done
   FX=$($M --json status | python3 -c 'import json,sys;d=json.load(sys.stdin);print([p["fingerprint"] for p in d["peers"] if "XP" in p["name"]][0])')
-  CL 80 45; sleep 1
+  CL 150 96; sleep 1
   if [ $TH = light ]; then menu c; xdotool key t; sleep 1
     $M send "$FX" "你好！这是来自 v0.5 的消息。下午三点评审会改到 302 会议室。" >/dev/null
     $M send "$FX" "Hello from v0.5 — 中文/English mixed text 测试" >/dev/null
     head -c 200000 /dev/urandom > "$T/示例文件.bin"; $M send-file "$FX" "$T/示例文件.bin" >/dev/null; sleep 3
-    CL 80 45; sleep 1; xdotool type --delay 30 "OK, 收到 thanks"; xdotool key Return; sleep 2
+    CL 150 96; sleep 1; xdotool type --delay 30 "OK, 收到 thanks"; xdotool key Return; sleep 2
   fi
-  CL 80 45; sleep 1.5; shot "xp-$TH-02-chat"
+  CL 150 96; sleep 1.5; shot "xp-$TH-02-chat"
   menu f; shot "xp-$TH-03-menu-file"; xdotool key Escape Escape; sleep 0.5
   menu c; shot "xp-$TH-04-menu-contacts"; xdotool key Escape Escape; sleep 0.5
   menu g; shot "xp-$TH-05-menu-groups"; xdotool key Escape Escape; sleep 0.5
