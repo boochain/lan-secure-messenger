@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Test-only window manager config: no WM decorations, so UI screenshots contain only application pixels. -->
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+  <applications><application class="*"><decor>no</decor></application></applications>
+</openbox_config>

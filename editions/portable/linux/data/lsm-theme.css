@@ -1,0 +1,148 @@
+/* LanMessenger GTK theme: design/palette.json (Fluent 2 values, identical on every platform).
+ * ONE file, two variants. The app loads the shared block plus the block matching
+ * gtk-application-prefer-dark-theme (XDG portal color-scheme / GNOME color-scheme / LSM_THEME),
+ * and reloads when that setting changes. Every rule that sets a background also sets the text colour.
+ * Type ramp (Fluent): caption 12px, body 14px, body-strong 14px/600, subtitle 20px/600, title 28px/600. */
+/*@shared*/
+* { font-family: "Noto Sans CJK SC", "Noto Sans SC", sans-serif; }
+window, dialog, messagedialog, .background { font-size: 14px; }
+.caption { font-size: 12px; }
+/* meta/status lines: body size. At caption size the thin CJK strokes rendered lighter than the token (measured APCA < 60 in dark) */
+.statusbar, .meta, .sysmsg { font-size: 14px; }
+.title, .body-strong, .section-header { font-size: 14px; font-weight: 600; }
+.subtitle-text { font-size: 20px; font-weight: 600; }
+.welcome-title { font-size: 20px; font-weight: 600; }
+.pin { font-size: 28px; font-weight: 600; font-family: monospace; }
+.bubble { border-radius: 8px; padding: 8px 12px; margin: 2px 12px; }
+.meta { margin: 6px 16px 0 16px; }
+.sysmsg { margin: 8px; }
+.drophint { border-radius: 12px; padding: 24px; font-size: 20px; font-weight: 600; }
+.statusbar { padding: 4px 10px; }
+.chatlist { padding: 8px 0; }
+button { border-radius: 4px; padding: 4px 12px; background-image: none; box-shadow: none; text-shadow: none; -gtk-icon-shadow: none; }
+headerbar { background-image: none; box-shadow: none; border-top: none; border-left: none; border-right: none; border-bottom-width: 1px; border-bottom-style: solid; }
+decoration, window.csd decoration, window.solid-csd decoration { box-shadow: none; border: none; margin: 0; border-radius: 0; }
+window.solid-csd, window.csd { margin: 0; padding: 0; border: none; box-shadow: none; }
+decoration { padding: 0; }
+window.csd, window.csd headerbar, headerbar.titlebar { border-radius: 0; }
+paned > separator { min-width: 1px; min-height: 1px; }
+scrolledwindow.frame { border-width: 1px; border-style: solid; }
+headerbar .title { font-size: 14px; font-weight: 600; }
+headerbar .subtitle { font-size: 12px; }
+scrolledwindow undershoot, scrolledwindow overshoot { background: none; border: none; box-shadow: none; }
+messagedialog .dialog-vbox, messagedialog > box { min-width: 320px; }
+messagedialog .dialog-vbox > box { margin: 16px 20px 8px 20px; }
+/*@light*/
+window, dialog, messagedialog, .background, popover { background-color: #F3F3F3; color: #1A1A1A; }
+headerbar, headerbar:backdrop { background-color: #F3F3F3; color: #1A1A1A; border-color: #E5E5E5; }
+headerbar .subtitle, .dim-label, .meta, .sysmsg, .statusbar, label.dim-label { color: #5C5C5C; opacity: 1; }
+.sidebar, .sidebar list, .sidebar list row, .sidebar scrolledwindow, .sidebar viewport { background-color: #EEEEEE; color: #1A1A1A; }
+.sidebar label { color: #1A1A1A; }
+.sidebar, separator.vertical { border-color: #E5E5E5; }
+list row:selected { background-color: #005FB8; color: #FFFFFF; }
+list row:selected label, list row:selected .online, list row:selected .offline { color: #FFFFFF; }
+list row:hover:not(:selected) { background-color: #E5E5E5; color: #1A1A1A; }
+overlay, .chatbg, .chatbg viewport, .chatbg > viewport > box { background-color: #F9F9F9; color: #1A1A1A; }
+.bubble.in { background-color: #FDFDFD; color: #1B1B1B; }
+.bubble.in label { color: #1B1B1B; }
+.bubble.in { border: 1px solid #E5E5E5; }
+.bubble.out { background-color: #005FB8; color: #FFFFFF; }
+.bubble.out label { color: #FFFFFF; }
+textview, textview text, entry, spinbutton { background-color: #FDFDFD; color: #1B1B1B; caret-color: #1B1B1B; }
+entry, scrolledwindow.frame, frame > border { border-color: #E5E5E5; }
+textview text selection, entry selection, label selection { background-color: #005FB8; color: #FFFFFF; }
+button { background-color: #FBFBFB; color: #1A1A1A; border-color: #E5E5E5; }
+button label { color: #1A1A1A; }
+button:hover { background-color: #F6F6F6; color: #1A1A1A; }
+button:hover label { color: #1A1A1A; }
+button.suggested-action, button.default { background-color: #005FB8; color: #FFFFFF; border-color: #005FB8; }
+button.suggested-action label, button.default label { color: #FFFFFF; }
+menu, .menu, menuitem, .context-menu { background-color: #FBFBFB; color: #1A1A1A; }
+menuitem label { color: #1A1A1A; }
+menuitem:hover { background-color: #005FB8; color: #FFFFFF; }
+menuitem:hover label { color: #FFFFFF; }
+separator, paned > separator { background-color: #E5E5E5; color: #E5E5E5; background-image: none; }
+tooltip, tooltip.background { background-color: #FBFBFB; color: #1A1A1A; border: 1px solid #E5E5E5; }
+tooltip label { color: #1A1A1A; }
+.online { color: #0F7B0F; } .offline { color: #5C5C5C; } .warning { color: #9D5D00; } .error { color: #C42B1C; }
+.badge { background-color: #C42B1C; color: #FFFFFF; border-radius: 8px; padding: 0 6px; }
+.drophint { background-color: #005FB8; color: #FFFFFF; }
+treeview, treeview.view, iconview, .view:not(textview):not(text) { background-color: #FBFBFB; color: #1A1A1A; }
+treeview:selected, .view:selected, iconview:selected, row:selected, *:selected { background-color: #005FB8; color: #FFFFFF; }
+treeview header button { background-color: #FBFBFB; color: #1A1A1A; border-color: #E5E5E5; }
+menu, .menu, .context-menu, popover { border-color: #E5E5E5; }
+decoration, window.solid-csd decoration, window.csd decoration { background-color: #F3F3F3; border-color: #F3F3F3; }
+menu, .menu, .context-menu, window.popup menu { border: 1px solid #E5E5E5; }
+progressbar trough { background-color: #E5E5E5; border: none; min-height: 4px; }
+progressbar progress { background-color: #005FB8; border: none; min-height: 4px; }
+scrolledwindow viewport, scrolledwindow list, scrolledwindow list row { background-color: #FBFBFB; color: #1A1A1A; }
+dialog scrolledwindow, filechooser scrolledwindow, filechooser placessidebar { border: 1px solid #E5E5E5; }
+dialog .dialog-action-area, dialog buttonbox, filechooser actionbar, dialog > box > box:last-child { border-top: 1px solid #E5E5E5; }
+placessidebar, placessidebar list, placessidebar row { background-color: #EEEEEE; color: #1A1A1A; }
+window.popup, window.popup decoration, .csd.popup decoration { border: 1px solid #E5E5E5; box-shadow: none; border-radius: 0; }
+.csd menu, .csd .menu, .csd .context-menu, menu, .menu, .context-menu { border: 1px solid #E5E5E5; box-shadow: none; }
+menu separator, .menu separator, .csd menu separator { background-color: #E5E5E5; min-height: 1px; margin: 4px 0; }
+paned > separator, paned.horizontal > separator, paned.vertical > separator { background-color: #E5E5E5; background-image: none; background-clip: content-box; }
+list row label.online, row label.online, label.online { color: #0F7B0F; }
+list row label.offline, row label.offline, label.offline { color: #5C5C5C; }
+popover, popover.menu, popover.background { border: 1px solid #E5E5E5; box-shadow: none; }
+popover separator, popover.menu separator { background-color: #E5E5E5; min-height: 1px; margin: 4px 0; }
+window.popup menu, .csd menu, menu { box-shadow: inset 0 0 0 1px #E5E5E5; border-radius: 0; }
+menu, .csd menu, window.popup menu { padding: 4px; margin: 0; }  /* GTK 3.24 skips the menu node border; the popup window's 1px border is only visible when items do not cover the edge */
+/*@dark*/
+window, dialog, messagedialog, .background, popover { background-color: #202020; color: #FFFFFF; }
+headerbar, headerbar:backdrop { background-color: #202020; color: #FFFFFF; border-color: #323232; }
+headerbar .subtitle, .dim-label, .meta, .sysmsg, .statusbar, label.dim-label { color: #CCCCCC; opacity: 1; }
+.sidebar, .sidebar list, .sidebar list row, .sidebar scrolledwindow, .sidebar viewport { background-color: #1C1C1C; color: #FFFFFF; }
+.sidebar label { color: #FFFFFF; }
+.sidebar, separator.vertical { border-color: #323232; }
+list row:selected { background-color: #60CDFF; color: #000000; }
+list row:selected label, list row:selected .online, list row:selected .offline { color: #000000; }
+list row:hover:not(:selected) { background-color: #2B2B2B; color: #FFFFFF; }
+overlay, .chatbg, .chatbg viewport, .chatbg > viewport > box { background-color: #282828; color: #FFFFFF; }
+.bubble.in { background-color: #333333; color: #FFFFFF; }
+.bubble.in label { color: #FFFFFF; }
+.bubble.in { border: 1px solid #323232; }
+.bubble.out { background-color: #60CDFF; color: #000000; }
+.bubble.out label { color: #000000; }
+textview, textview text, entry, spinbutton { background-color: #353535; color: #FFFFFF; caret-color: #FFFFFF; }
+entry, scrolledwindow.frame, frame > border { border-color: #323232; }
+textview text selection, entry selection, label selection { background-color: #60CDFF; color: #000000; }
+button { background-color: #2B2B2B; color: #FFFFFF; border-color: #323232; }
+button label { color: #FFFFFF; }
+button:hover { background-color: #333333; color: #FFFFFF; }
+button:hover label { color: #FFFFFF; }
+button.suggested-action, button.default { background-color: #60CDFF; color: #000000; border-color: #60CDFF; }
+button.suggested-action label, button.default label { color: #000000; }
+menu, .menu, menuitem, .context-menu { background-color: #2B2B2B; color: #FFFFFF; }
+menuitem label { color: #FFFFFF; }
+menuitem:hover { background-color: #60CDFF; color: #000000; }
+menuitem:hover label { color: #000000; }
+separator, paned > separator { background-color: #323232; color: #323232; background-image: none; }
+tooltip, tooltip.background { background-color: #2B2B2B; color: #FFFFFF; border: 1px solid #323232; }
+tooltip label { color: #FFFFFF; }
+.online { color: #6CCB5F; } .offline { color: #CCCCCC; } .warning { color: #FCE100; } .error { color: #FF99A4; }
+.badge { background-color: #FF99A4; color: #000000; border-radius: 8px; padding: 0 6px; }
+.drophint { background-color: #60CDFF; color: #000000; }
+treeview, treeview.view, iconview, .view:not(textview):not(text) { background-color: #2B2B2B; color: #FFFFFF; }
+treeview:selected, .view:selected, iconview:selected, row:selected, *:selected { background-color: #60CDFF; color: #000000; }
+treeview header button { background-color: #2B2B2B; color: #FFFFFF; border-color: #323232; }
+menu, .menu, .context-menu, popover { border-color: #323232; }
+decoration, window.solid-csd decoration, window.csd decoration { background-color: #202020; border-color: #202020; }
+menu, .menu, .context-menu, window.popup menu { border: 1px solid #323232; }
+progressbar trough { background-color: #323232; border: none; min-height: 4px; }
+progressbar progress { background-color: #60CDFF; border: none; min-height: 4px; }
+scrolledwindow viewport, scrolledwindow list, scrolledwindow list row { background-color: #2B2B2B; color: #FFFFFF; }
+dialog scrolledwindow, filechooser scrolledwindow, filechooser placessidebar { border: 1px solid #323232; }
+dialog .dialog-action-area, dialog buttonbox, filechooser actionbar, dialog > box > box:last-child { border-top: 1px solid #323232; }
+placessidebar, placessidebar list, placessidebar row { background-color: #1C1C1C; color: #FFFFFF; }
+window.popup, window.popup decoration, .csd.popup decoration { border: 1px solid #323232; box-shadow: none; border-radius: 0; }
+.csd menu, .csd .menu, .csd .context-menu, menu, .menu, .context-menu { border: 1px solid #323232; box-shadow: none; }
+menu separator, .menu separator, .csd menu separator { background-color: #323232; min-height: 1px; margin: 4px 0; }
+paned > separator, paned.horizontal > separator, paned.vertical > separator { background-color: #323232; background-image: none; background-clip: content-box; }
+list row label.online, row label.online, label.online { color: #6CCB5F; }
+list row label.offline, row label.offline, label.offline { color: #CCCCCC; }
+popover, popover.menu, popover.background { border: 1px solid #323232; box-shadow: none; }
+popover separator, popover.menu separator { background-color: #323232; min-height: 1px; margin: 4px 0; }
+window.popup menu, .csd menu, menu { box-shadow: inset 0 0 0 1px #323232; border-radius: 0; }
+menu, .csd menu, window.popup menu { padding: 4px; margin: 0; }  /* GTK 3.24 skips the menu node border; the popup window's 1px border is only visible when items do not cover the edge */

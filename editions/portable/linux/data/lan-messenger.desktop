@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=LAN Messenger
+Name[zh_CN]=局域网安全通讯
+Comment=Encrypted LAN chat and file transfer, compatible with Windows v0.5 and XP
+Comment[zh_CN]=局域网加密聊天与文件传输（与 Windows v0.5 / XP 版互通）
+Exec=lan-messenger-gtk
+Icon=lan-messenger
+Categories=Network;InstantMessaging;
+Terminal=false
+StartupWMClass=lan-messenger-gtk

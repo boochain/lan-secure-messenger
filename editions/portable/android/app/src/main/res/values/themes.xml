@@ -1,0 +1,12 @@
+<resources>
+    <!-- Light (default) – window_bg from design/palette.json. Was inverted before (dark theme in values/, light in values-night/). -->
+    <style name="Theme.Lsm" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/lsm_window_bg</item>
+        <item name="android:colorBackground">@color/lsm_window_bg</item>
+        <item name="android:textColorPrimary">@color/lsm_text_primary</item>
+        <item name="android:colorAccent">@color/lsm_accent</item>
+        <item name="android:statusBarColor">@color/lsm_window_bg</item>
+        <item name="android:navigationBarColor">@color/lsm_window_bg</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

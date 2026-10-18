@@ -1,0 +1,6 @@
+<resources>
+    <color name="ic_bg">#FF1565C0</color>
+    <color name="lsm_window_bg">#F9F9FF</color>
+    <color name="lsm_text_primary">#191C20</color>
+    <color name="lsm_accent">#3F5F90</color>
+</resources>

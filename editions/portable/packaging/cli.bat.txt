@@ -1,0 +1,4 @@
+@echo off
+rem 局域网安全通讯 XP 版 - 命令行版（输入 help 查看命令）
+cd /d "%~dp0"
+"%~dp0lanmsg-cli.exe" %*

@@ -1,0 +1,248 @@
+name: portable-c-edition (xp + linux)
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  linux-package:
+    runs-on: ubuntu-24.04
+    container: ubuntu:20.04   # oldest supported glibc (2.31) so the GUI runs on every newer distro
+    steps:
+      - name: Toolchain
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq && apt-get install -y -qq gcc make pkg-config libgtk-3-dev musl-tools curl file ca-certificates git
+      - uses: actions/checkout@v4
+      - name: Build GTK GUI + static CLI, AppImage + tarball
+        run: sh linux/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86_64
+          path: dist/linux/*
+
+  distro-launch:
+    needs: linux-package
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["ubuntu:20.04", "ubuntu:24.04", "debian:12", "fedora:40"]
+    container: ${{ matrix.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: linux-x86_64, path: dist/linux }
+      - name: Launch AppImage GUI under Xvfb + static CLI
+        run: |
+          ln -sfn "$GITHUB_WORKSPACE" /src
+          sh tests/distro_launch.sh
+
+  build-check-interop:
+    needs: linux-package
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchains (mingw-w64, wine32, pefile)
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq mingw-w64 wine wine32:i386 python3-pefile zip
+      - name: Cross build (i686 XP + x64) and native test build
+        run: make all
+      - name: XP SP3 import check (per function) + PE subsystem 5.01
+        run: |
+          python3 tools/xp_import_check.py build/x86/LanMessenger.exe build/x86/lanmsg-cli.exe build/x64/LanMessenger.exe build/x64/lanmsg-cli.exe
+          # negative control: the checker must reject Vista+ APIs
+          printf '#include <winsock2.h>\n#include <ws2tcpip.h>\n#include <windows.h>\nint main(){struct in_addr a; inet_pton(AF_INET,"1.2.3.4",&a); return (int)GetTickCount64();}\n' > /tmp/neg.c
+          i686-w64-mingw32-gcc -D_WIN32_WINNT=0x0600 /tmp/neg.c -o /tmp/neg.exe -lws2_32
+          if python3 tools/xp_import_check.py /tmp/neg.exe; then echo "checker failed to flag Vista APIs"; exit 1; fi
+      - name: Regression tests (wine x86 + native)
+        run: |
+          python3 tests/regress.py build/x86/lanmsg-cli.exe
+          python3 tests/regress.py build/linux/lanmsg-cli
+      - name: Build real v0.5 daemon (reference/v0.5 = v0.5.0-beta.2 source)
+        working-directory: reference/v0.5
+        run: cargo build --release -p lan-daemon -p lan-cli
+      - name: Interop under wine (x86 exe <-> v0.5 lan-daemon, netns bridge)
+        run: sudo -E env "PATH=$PATH" python3 tests/interop.py --rust-bin reference/v0.5/target/release --exe build/x86/lanmsg-cli.exe --work /tmp/lsm-interop
+      - name: Interop native (same core, Linux build)
+        run: sudo -E env "PATH=$PATH" python3 tests/interop.py --native --rust-bin reference/v0.5/target/release --exe build/linux/lanmsg-cli --work /tmp/lsm-interop-native
+      - uses: actions/download-artifact@v4
+        with: { name: linux-x86_64, path: dist/linux }
+      - name: Cross-platform interop matrix (v0.5 Rust, C native, XP exe under wine, Linux edition CLI; Android slot)
+        run: |
+          mkdir -p /tmp/lx && tar -C /tmp/lx -xzf dist/linux/lan-messenger-*-linux-x86_64.tar.gz
+          sudo -E env "PATH=$PATH" python3 tests/matrix.py --rust-bin reference/v0.5/target/release --native-cli build/linux/lanmsg-cli --wine-exe build/x86/lanmsg-cli.exe --linux-cli $(ls -d /tmp/lx/*/bin)/lanmsg-cli --work /tmp/lsm-matrix
+      - name: Batch-file encoding check (GBK, CRLF, no BOM) + package
+        run: |
+          python3 tools/package.py
+          python3 tests/check_bat_encoding.py dist/LanMessenger-XP
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: LanMessenger-XP
+          path: |
+            dist/*.zip
+            /tmp/lsm-interop/results.json
+            /tmp/lsm-interop/*.log
+            /tmp/lsm-matrix/matrix.json
+
+
+  ui-audit:
+    name: Screenshot colour audit, Linux GTK + XP Win32 (light + dark)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchains + X/wine + tesseract (chi_sim+eng) + Python deps
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq mingw-w64 wine wine32:i386 libgtk-3-dev pkg-config musl-tools file \
+            xvfb dbus-x11 openbox xdotool x11-utils stalonetray imagemagick fonts-noto-cjk language-pack-zh-hans \
+            tesseract-ocr tesseract-ocr-chi-sim python3-numpy python3-opencv python3-pil
+          pip install --break-system-packages -q pytesseract
+      - name: Checker self-test (must fail synthetic black-on-#202020 etc.)
+        run: python3 tools/ui_color_audit.py --self-test --out ui-audit/self-test
+      - name: Build GTK GUI, XP exe, v0.5 daemon
+        run: |
+          sh linux/build.sh || test -x build/linux-rel/lan-messenger-gtk
+          make build/x86/LanMessenger.exe
+          (cd reference/v0.5 && cargo build --release -p lan-daemon -p lan-cli)
+      - name: Linux GTK screenshots (every screen, light + dark)
+        run: python3 tests/linux_gui_shots.py --rust-bin reference/v0.5/target/release --gui build/linux-rel/lan-messenger-gtk --out shots/linux
+      - name: XP Win32 screenshots under wine (every screen, light + dark)
+        run: bash tests/xp_ui_shots.sh reference/v0.5/target/release shots/xp
+      - name: Audit (fails the job on any violation)
+        run: |
+          ls shots/linux/*.png shots/xp/*.png
+          python3 tools/ui_color_audit.py --content /tmp/lsm-gui/截图.png --content /tmp/lsm-gui/会议白板.png --out ui-audit/linux shots/linux/*.png
+          python3 tools/ui_color_audit.py --palette tools/palettes/xp.json --ignore-file shots/xp/audit_ignore.json --out ui-audit/xp shots/xp/*.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: ui-audit-linux-xp, path: "ui-audit\nshots" }
+
+  android:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "21" }
+      - name: SDK packages (NDK, CMake)
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" "ndk;26.3.11579264" "cmake;3.22.1" > /dev/null
+      - name: Build APK (arm64-v8a, armeabi-v7a, x86_64; debug-signed release)
+        working-directory: android
+        run: ./gradlew --no-daemon assembleRelease
+      - name: Android CLI from the same core (for the matrix)
+        run: sh android/build-cli.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: |
+            android/app/build/outputs/apk/release/app-release.apk
+            build/android/*
+
+  android-emulator-matrix:
+    needs: android
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: android, path: art }
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - name: Build v0.5 daemon + native C CLI
+        run: |
+          (cd reference/v0.5 && cargo build --release -p lan-daemon -p lan-cli)
+          sudo apt-get update -qq && sudo apt-get install -y -qq make && make build/linux/lanmsg-cli
+      - name: Screenshot + audit deps (Pillow, numpy, OpenCV, tesseract chi_sim)
+        run: |
+          sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tesseract-ocr tesseract-ocr-chi-sim python3-numpy python3-opencv python3-pil
+          python3 -m pip install --break-system-packages -q pytesseract pillow numpy opencv-python-headless
+          python3 -c "import PIL, numpy, cv2, pytesseract; print('audit deps ok')"
+      - name: AVD at the mockup size (412 x 892 dp @ 2x = 824 x 1784, like design/redesign/mockups/android-*)
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "emulator" "system-images;android-30;default;x86_64" > /dev/null
+          export ANDROID_AVD_HOME=$HOME/.android/avd; mkdir -p $ANDROID_AVD_HOME; echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> $GITHUB_ENV
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n lsm -k "system-images;android-30;default;x86_64" -d pixel_2 --force
+          C=$HOME/.android/avd/lsm.avd/config.ini; sed -i '/^hw.lcd.width\|^hw.lcd.height\|^hw.lcd.density\|^hw.ramSize/d' $C
+          printf 'hw.lcd.width=824\nhw.lcd.height=1784\nhw.lcd.density=320\nhw.ramSize=2048\n' >> $C
+      - name: Matrix on emulator (Android <-> v0.5 Rust, Android <-> C native) + APK install/launch
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: default
+          avd-name: lsm
+          force-avd-creation: false
+          disable-animations: true
+          script: |
+            for i in 1 2 3 4 5 6; do adb wait-for-device; adb shell pm path android >/dev/null 2>&1 && adb install -r art/android/app/build/outputs/apk/release/app-release.apk && break; echo "install retry $i (package service not ready)"; sleep 10; done
+            adb shell pm path io.github.frec86.lanmessenger && adb shell am start -W -n io.github.frec86.lanmessenger/.MainActivity && sleep 8 && adb shell pidof io.github.frec86.lanmessenger
+            adb push art/build/android/lanmsg-cli-x86_64 /data/local/tmp/lanmsg-cli && adb shell chmod 755 /data/local/tmp/lanmsg-cli
+            python3 tests/android_theme_shots.py --out shots/android
+            python3 -u tests/android_chat_shots.py --cli /data/local/tmp/lanmsg-cli --out shots/android
+            sudo -E env "PATH=$PATH" ADB=$(which adb) python3 tests/matrix.py --rust-bin reference/v0.5/target/release --native-cli build/linux/lanmsg-cli --android-cmd /data/local/tmp/lanmsg-cli --kinds rust,native,android --work /tmp/lsm-matrix-android
+      - name: Audit Android screenshots (light + dark)
+        run: |
+          python3 tools/ui_color_audit.py --self-test --out ui-audit/self-test
+          python3 tools/ui_color_audit.py --palette tools/palettes/android.json --ignore-file shots/android/audit_ignore.json --out ui-audit/android shots/android/*.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-audit-android
+          path: |
+            ui-audit
+            shots
+  linux-adw:
+    name: Linux GTK 4 + libadwaita GUI (build, shortcuts, light/dark shots, colour audit)
+    runs-on: ubuntu-24.04   # libadwaita 1.5; the GTK 4 edition needs >= 1.4 (Ubuntu 20.04 dropped, approved)
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain + X + Python deps
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libadwaita-1-dev libgtk-4-dev pkg-config xvfb xcompmgr dbus-x11 xdotool x11-utils imagemagick \
+            fonts-noto-cjk language-pack-zh-hans adwaita-icon-theme tesseract-ocr tesseract-ocr-chi-sim python3-numpy python3-opencv python3-pil
+          pip install --break-system-packages -q pytesseract
+      - name: Build lan-messenger-adw + lanmsg-cli
+        run: |
+          sh linux/build-adw.sh
+          cc -O2 -std=gnu99 -Isrc -DLSM_APP_VERSION='"ci"' -o build/linux-adw/lanmsg-cli src/cli.c src/core.c src/xcrypto.c src/third_party/monocypher.c src/third_party/monocypher-ed25519.c -lpthread
+      - name: Shortcut runtime checks + screenshots (light + dark)
+        run: python3 tests/adw_gui_shots.py build/linux-adw/lan-messenger-adw build/linux-adw/lanmsg-cli shots/adw
+      - name: Colour audit (gnome palette)
+        # dialog-* shots are left out: the modal scrim dims the page behind on purpose
+        run: python3 tools/ui_color_audit.py --palette tools/palettes/gnome.json --ignore-file shots/adw/audit_ignore.json --out ui-audit/adw shots/adw/page-*.png shots/adw/popup-*.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: linux-adw-screenshots, path: "shots/adw\nui-audit/adw" }
+  linux-adw-appimage:
+    name: GTK 4 AppImage (bundled glib/GTK 4.12/libadwaita 1.4, built on debian:12)
+    runs-on: ubuntu-24.04
+    container: debian:12
+    steps:
+      - run: apt-get update -qq && apt-get install -y -qq git ca-certificates
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with: { path: /opt/lsm-adw, key: lsm-adw-debian12-glib2.78.6-gtk4.12.5-adw1.4.7 }
+      - name: Build toolkit (cached) + AppImage
+        run: sh linux/adw-appimage/build.sh
+      - uses: actions/upload-artifact@v4
+        with: { name: linux-adw-appimage, path: dist/LanMessenger-adw-*.AppImage }
+  adw-appimage-debian12:
+    name: GTK 4 AppImage launches on stock debian:12 (Xvfb screenshot)
+    needs: linux-adw-appimage
+    runs-on: ubuntu-24.04
+    container: debian:12
+    steps:
+      - run: apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ca-certificates libgtk-4-1 xvfb dbus-x11 imagemagick fonts-noto-cjk adwaita-icon-theme
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: linux-adw-appimage, path: appimage }
+      - name: Launch + screenshot
+        run: sh tests/adw_appimage_launch.sh appimage/LanMessenger-adw-*.AppImage shots/appimage
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: adw-appimage-debian12-screenshot, path: shots/appimage }

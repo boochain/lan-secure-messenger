@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.18)
+project(lsmcore C)
+set(CORE ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../src)
+add_library(lsmcore SHARED jni.c ${CORE}/core.c ${CORE}/xcrypto.c ${CORE}/third_party/monocypher.c ${CORE}/third_party/monocypher-ed25519.c)
+target_include_directories(lsmcore PRIVATE ${CORE})
+target_compile_definitions(lsmcore PRIVATE LSM_APP_VERSION="0.5.0-android.1")
+target_compile_options(lsmcore PRIVATE -O2 -std=gnu99 -Wno-unused-function)
+target_link_libraries(lsmcore log)

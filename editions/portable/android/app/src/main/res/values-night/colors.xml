@@ -1,0 +1,5 @@
+<resources>
+    <color name="lsm_window_bg">#111318</color>
+    <color name="lsm_text_primary">#E2E2E9</color>
+    <color name="lsm_accent">#A8C8FF</color>
+</resources>

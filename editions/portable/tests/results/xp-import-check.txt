@@ -1,0 +1,4 @@
+PASS build/x86/LanMessenger.exe [x86/NT5.1 (XP SP3)] subsystem=5.01 imports=176 (all functions present on target)
+PASS build/x86/lanmsg-cli.exe [x86/NT5.1 (XP SP3)] subsystem=5.01 imports=118 (all functions present on target)
+PASS build/x64/LanMessenger.exe [x64/NT5.2] subsystem=5.02 imports=171 (all functions present on target)
+PASS build/x64/lanmsg-cli.exe [x64/NT5.2] subsystem=5.02 imports=113 (all functions present on target)

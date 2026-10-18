@@ -1,0 +1,4 @@
+PASS README.txt
+PASS cli.bat
+PASS firewall-setup.bat
+PASS start.bat
