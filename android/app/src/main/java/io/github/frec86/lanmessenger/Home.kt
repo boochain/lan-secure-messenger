@@ -154,7 +154,7 @@ fun ConnBanner(st: AppState) {
         st.error.isNotEmpty() -> false to "启动失败：" + st.error
         !st.running -> false to "正在启动…"
         net == null -> false to "未连接局域网 · 连上 Wi-Fi 后会自动发现联系人"
-        else -> true to "已连接 · 局域网 $net · ${st.contacts.size} 位联系人"
+        else -> true to "已连接 · 局域网 $net" + (if (st.relay.enabled && st.relay.state == "online") " · 中转服务器" else "") + " · ${st.contacts.size} 位联系人"
     }
     Row(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(p.chip).padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically) {

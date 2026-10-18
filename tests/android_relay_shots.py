@@ -50,6 +50,7 @@ P = ui_seed.Peer(PEER, [args.native_cli, "--data", d, "--name", PEER, "--no-disc
 P.cmd(f"relay 127.0.0.1 {RPORT} {RPASS}")
 try:
     sh("svc power stayon true; input keyevent 224; wm dismiss-keyguard; settings put system screen_off_timeout 1800000")
+    sh("cmd overlay enable com.android.internal.systemui.navbar.gestural")  # gesture navigation, as in android_chat_shots.py / the mockups
     for k in ("window_animation_scale", "transition_animation_scale", "animator_duration_scale"): sh(f"settings put global {k} 0")
     sh(f"pm clear {PKG}"); sh("cmd uimode night no"); sh(f"pm grant {PKG} android.permission.POST_NOTIFICATIONS")
     sh(f"am start -W -n {PKG}/.MainActivity"); time.sleep(10)
@@ -62,7 +63,7 @@ try:
     field("端口"); sh("input keyevent 123; " + "input keyevent 67; " * 6 + f"input text {RPORT}")
     field("网络口令"); sh(f"input text {RPASS}"); sh("input keyevent 66")   # IME Done (Enter) saves
     time.sleep(2)
-    check(ui_seed.wait(lambda: has("口令已设置"), 20, 2) is not None, "Enter saves; passphrase shows 口令已设置")
+    check(ui_seed.wait(lambda: has("口令已设置") and has("网络口令（已设置）"), 20, 2) is not None, "Enter saves; passphrase shows 已设置 (label + row)")
     check(not any(RPASS in ((n.get("text") or "") + (n.get("content-desc") or "")) for n in nodes()), "passphrase is write-only (never shown again)")
     tap_text("通过中转服务器连接")                                            # toggle on -> saves with the stored passphrase
     check(ui_seed.wait(lambda: has("已连接中转服务器"), 90, 2) is not None, "relay toggled on -> 已连接中转服务器")
