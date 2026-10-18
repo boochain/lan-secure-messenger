@@ -325,6 +325,9 @@ static void relay_dialog(void){ GtkWidget *tv, *hb, *pg, *grp, *grp2, *box, *btn
     g_signal_connect_swapped(rl_pass,"activate",G_CALLBACK(relay_save_cb),NULL);
     adw_window_set_content(ADW_WINDOW(rl_win),tv); relay_refresh(); gtk_window_present(GTK_WINDOW(rl_win)); if(getenv("LSM_UI_TEST")) g_timeout_add(600,test_log_later,(gpointer)"relay"); }
 
+static gboolean relay_test_fill(gpointer p){ /* LSM_UI_TEST_RELAY="host port pass": open the dialog, fill it and press 保存并连接 like a user */ char h[256], ps[256]; int port;
+    if(sscanf((const char*)p,"%255s %d %255s",h,&port,ps)!=3) return G_SOURCE_REMOVE; relay_dialog(); { char b[16]; snprintf(b,sizeof b,"%d",port); gtk_switch_set_active(GTK_SWITCH(rl_sw),TRUE); gtk_editable_set_text(GTK_EDITABLE(rl_host),h); gtk_editable_set_text(GTK_EDITABLE(rl_port),b); gtk_editable_set_text(GTK_EDITABLE(rl_pass),ps); }
+    relay_save_cb(NULL,NULL); return G_SOURCE_REMOVE; }
 static void win_act(GSimpleAction *a, GVariant *v, gpointer p){ const char *n=g_action_get_name(G_ACTION(a)); (void)v;(void)p;
     g_timeout_add(400,test_log_later,(gpointer)n);
     if(!strcmp(n,"search")){ adw_navigation_split_view_set_show_content(ADW_NAVIGATION_SPLIT_VIEW(split),FALSE); gtk_widget_grab_focus(search); }
@@ -417,6 +420,7 @@ static void activate(GtkApplication *a, gpointer p){
     C=lsm_start(&o,err,sizeof err); if(!C){ fprintf(stderr,"启动失败：%s\n",err); exit(1); }
     if(getenv("LSM_UI_TEST")){ lsm_lock(C); printf("LSM_FP %s\nLSM_TOOLKIT gtk %u.%u.%u adwaita %u.%u.%u\n",lsm_my_fp(C),gtk_get_major_version(),gtk_get_minor_version(),gtk_get_micro_version(),adw_get_major_version(),adw_get_minor_version(),adw_get_micro_version()); lsm_unlock(C); fflush(stdout); }
     load_palette();
+    if(getenv("LSM_UI_TEST") && getenv("LSM_UI_TEST_RELAY")) g_timeout_add(2500,relay_test_fill,(gpointer)getenv("LSM_UI_TEST_RELAY"));
     install_icons(); win=adw_application_window_new(a); gtk_window_set_title(GTK_WINDOW(win),"局域网安全通讯"); gtk_window_set_default_size(GTK_WINDOW(win),1024,694); gtk_window_set_icon_name(GTK_WINDOW(win),"lan-messenger");
     gtk_widget_set_size_request(win,360,400);
     for(size_t i=0;i<G_N_ELEMENTS(acts);i++){ GSimpleAction *sa=g_simple_action_new(acts[i],NULL); g_signal_connect(sa,"activate",G_CALLBACK(win_act),NULL); g_action_map_add_action(G_ACTION_MAP(win),G_ACTION(sa)); g_object_unref(sa); }
