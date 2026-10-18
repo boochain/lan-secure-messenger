@@ -51,3 +51,49 @@ jobs:
           name: matrix-${{ matrix.mode }}
           path: logs
           if-no-files-found: ignore
+
+  # Android <-> native / rust through the relay: relay server + host peers run on the runner; the emulator
+  # reaches the relay at 10.0.2.2 (emulator NAT, no LAN path). Includes resume (server kill, receiver and
+  # sender kill -9 + restart), server restart and wrong passphrase.
+  android-relay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with: { repository: boochain/lan-secure-messenger, ref: feat/relay-client, path: rust }
+      - uses: actions/checkout@v4
+        with: { repository: boochain/lan-secure-messenger-xp, ref: feat/relay-client, path: xp }
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            rust
+            rust/relay-server
+      - name: Build lan-daemon / lan-msg / relay-server, native CLI, Android CLI (NDK)
+        run: |
+          (cd rust && cargo build -p lan-daemon -p lan-cli && cd relay-server && cargo build --release --bin relay-server)
+          cd xp && make build/linux/lanmsg-cli && sh android/build-cli.sh
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - name: Relay matrix on the emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: default
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          script: |
+            adb wait-for-device && adb push xp/build/android/lanmsg-cli-x86_64 /data/local/tmp/lanmsg-cli && adb shell chmod 755 /data/local/tmp/lanmsg-cli
+            sudo -E env "PATH=$PATH" ADB=$(which adb) python3 xp/tests/matrix.py --relay --rust-bin $GITHUB_WORKSPACE/rust/target/debug --native-cli $GITHUB_WORKSPACE/xp/build/linux/lanmsg-cli --android-cmd /data/local/tmp/lanmsg-cli --relay-bin $GITHUB_WORKSPACE/rust/relay-server/target/release/relay-server --kinds rust,native,android --pairs native-android,rust-android --work /tmp/mx-android
+      - name: Collect logs
+        if: always()
+        run: |
+          mkdir -p logs && cd /tmp/mx-android 2>/dev/null && sudo find . -type f \( -name '*.log' -o -name '*.json' \) -exec cp --parents {} $GITHUB_WORKSPACE/logs/ \; ; sudo chown -R $(id -u) $GITHUB_WORKSPACE/logs || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: matrix-android-relay
+          path: logs
+          if-no-files-found: ignore

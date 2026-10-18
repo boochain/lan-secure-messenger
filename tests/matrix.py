@@ -290,24 +290,25 @@ for a, b in itertools.combinations_with_replacement(kinds, 2):
             ok, det = resume_check(A, B, lambda: A.restart_hard(), f"relaysrst_{tg}", 10)
             checks["resume (sender killed+restarted at 40%, <10s)"] = ok; details[f"{pair} relay sender restart"] = det; print("   ", det, flush=True)
             srv = SRV[0]
-            if andr: raise StopIteration
-            # relay -> direct
-            block_direct(False)
-            checks["switch server->direct"] = bool(wait(lambda: A.via(B.fp) == "direct" and B.via(A.fp) == "direct", 60))
-            t = f"直连消息 {pair}"; A.send(B.fp, t); checks["msg after ->direct"] = bool(wait(lambda: B.has(A.fp, t), 20))
-            # direct -> relay
-            block_direct(True)
-            checks["switch direct->server"] = bool(wait(lambda: A.via(B.fp) == "relay" and B.via(A.fp) == "relay", 90))
-            t = f"回到中转 {pair}"; B.send(A.fp, t); checks["msg after ->server"] = bool(wait(lambda: A.has(B.fp, t), 20))
+            if not andr:  # LAN-path checks: the emulator has no LAN path to the host peers
+                # relay -> direct
+                block_direct(False)
+                checks["switch server->direct"] = bool(wait(lambda: A.via(B.fp) == "direct" and B.via(A.fp) == "direct", 60))
+                t = f"直连消息 {pair}"; A.send(B.fp, t); checks["msg after ->direct"] = bool(wait(lambda: B.has(A.fp, t), 20))
+                # direct -> relay
+                block_direct(True)
+                checks["switch direct->server"] = bool(wait(lambda: A.via(B.fp) == "relay" and B.via(A.fp) == "relay", 90))
+                t = f"回到中转 {pair}"; B.send(A.fp, t); checks["msg after ->server"] = bool(wait(lambda: A.has(B.fp, t), 20))
             # server restart
-            relay_down(srv); time.sleep(1); srv = relay_up()
+            relay_down(srv); time.sleep(1); srv = relay_up(andr)
             checks["server restart"] = bool(wait(lambda: A.via(B.fp) == "relay" and B.via(A.fp) == "relay", 90))
             t = f"重启后 {pair}"; A.send(B.fp, t); checks["msg after restart"] = bool(wait(lambda: B.has(A.fp, t), 20))
-            # network drop on A
-            sh("ip netns exec mxA ip link set eth0 down"); time.sleep(8); sh("ip netns exec mxA ip link set eth0 up")
-            sh("ip netns exec mxA ip route add blackhole 10.78.0.2/32", False)
-            checks["network drop recovery"] = bool(wait(lambda: A.via(B.fp) == "relay" and B.via(A.fp) == "relay", 120))
-            t = f"断网恢复 {pair}"; B.send(A.fp, t); checks["msg after drop"] = bool(wait(lambda: A.has(B.fp, t), 20))
+            if not andr:
+                # network drop on A
+                sh("ip netns exec mxA ip link set eth0 down"); time.sleep(8); sh("ip netns exec mxA ip link set eth0 up")
+                sh("ip netns exec mxA ip route add blackhole 10.78.0.2/32", False)
+                checks["network drop recovery"] = bool(wait(lambda: A.via(B.fp) == "relay" and B.via(A.fp) == "relay", 120))
+                t = f"断网恢复 {pair}"; B.send(A.fp, t); checks["msg after drop"] = bool(wait(lambda: A.has(B.fp, t), 20))
             # wrong passphrase
             A.relay(RHOST, RPORT, "wrong-pass")
             checks["wrong passphrase rejected"] = bool(wait(lambda: A.relay_state() == "auth_failed", 30)) and bool(wait(lambda: B.via(A.fp) is None, 60))
@@ -338,7 +339,6 @@ for a, b in itertools.combinations_with_replacement(kinds, 2):
             checks["resume (receiver killed+restarted at 40%, <10s)"] = ok; details[f"{pair} LAN receiver restart"] = det; print("   ", det, flush=True)
             ok, det = resume_check(A, B, lambda: A.restart_hard(), f"lansrst_{tg}", 10)
             checks["resume (sender killed+restarted at 40%, <10s)"] = ok; details[f"{pair} LAN sender restart"] = det; print("   ", det, flush=True)
-    except StopIteration: pass  # android relay pair: remaining LAN-path checks do not apply
     except Exception as e:
         checks["harness"] = False; print("  exception:", repr(e)[:200])
     finally:
