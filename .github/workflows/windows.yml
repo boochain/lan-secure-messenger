@@ -1,14 +1,12 @@
 name: windows
 
+# Reusable: called by ci.yml (push/PR/tag) and the release job there collects the artifacts.
 on:
-  push:
-    branches: [main, "refactor/**", "feat/relay-client"]
-    tags: ["v*"]
-  pull_request:
+  workflow_call:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -123,7 +121,7 @@ jobs:
         id: pkg
         shell: pwsh
         run: |
-          $ver = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}" } else { "v0.5.0-dev-" + "${{ github.sha }}".Substring(0,7) }
+          $ver = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}" } else { "v0.6.0-dev-" + "${{ github.sha }}".Substring(0,7) }
           $out = "dist\LanMessenger"
           New-Item -ItemType Directory -Force $out | Out-Null
           Copy-Item publish\* $out -Recurse
@@ -179,26 +177,48 @@ jobs:
           name: LanMessenger-win-x64
           path: ${{ env.ZIP }}
 
-      - name: GitHub prerelease (tags only)
-        if: github.ref_type == 'tag'
+  winui-arm64:
+    name: WinUI 3 app + daemon, Windows arm64 (cross-built, packaging checks only)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with: { key: arm64 }
+      - uses: ilammy/msvc-dev-cmd@v1
+        with: { arch: amd64_arm64 }
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Build lan-daemon + lan-msg (aarch64)
+        run: cargo build --release --target aarch64-pc-windows-msvc -p lan-daemon -p lan-cli
+      - name: Publish WinUI app (win-arm64, unpackaged, self-contained)
         shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
+        run: dotnet publish ui-winui/LanMessenger/LanMessenger.csproj -c Release -r win-arm64 -p:Platform=ARM64 -o publish-arm64
+      - name: Assemble, check machine type, zip
+        shell: pwsh
         run: |
-          $tag = "${{ github.ref_name }}"
-          $notes = @"
-          ## LAN Secure Messenger $tag（预发布 / 测试版）
-
-          全新架构：Rust 后台服务 lan-daemon + WinUI 3 界面 LanMessenger.exe。
-          下载 **$env:ZIP**，解压整个文件夹后双击 LanMessenger.exe 即可（自带 .NET 与 Windows App SDK，无需安装）。
-          首次运行请点击「一键配置防火墙」。
-
-          - 每个联系人一条长连接（Noise XX 加密），心跳 + 自动重连
-          - 对称发现：任意一方发现/连上另一方，双方都显示在线
-          - 按网卡定向广播，自动跳过 Hyper-V/VMware/VirtualBox/WSL/VPN 虚拟网卡；支持按 IP 手动添加
-          - 诊断页：防火墙规则、网络类型（公用/专用）、网卡、每个联系人的连接状态
-          "@
-          gh release create $tag $env:ZIP --prerelease --title "LAN Secure Messenger $tag" --notes $notes --target ${{ github.sha }}
+          $ver = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}" } else { "v0.6.0-dev-" + "${{ github.sha }}".Substring(0,7) }
+          $out = "dist\LanMessenger"
+          New-Item -ItemType Directory -Force $out | Out-Null
+          Copy-Item publish-arm64\* $out -Recurse
+          Copy-Item target\aarch64-pc-windows-msvc\release\lan-daemon.exe, target\aarch64-pc-windows-msvc\release\lan-msg.exe $out
+          Copy-Item packaging\windows\*.bat, packaging\windows\README.txt $out
+          Get-ChildItem $out -Filter *.pdb -Recurse | Remove-Item
+          foreach ($e in "LanMessenger.exe", "lan-daemon.exe", "lan-msg.exe") {
+            $h = dumpbin /nologo /headers "$out\$e" | Select-String "machine \("
+            Write-Host "$e : $h"
+            if ("$h" -notmatch "ARM64") { throw "$e is not ARM64" }
+          }
+          $zip = "LanMessenger-$ver-win-arm64.zip"
+          Compress-Archive -Path $out -DestinationPath $zip -CompressionLevel Optimal
+          "ZIP=$zip" >> $env:GITHUB_ENV
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LanMessenger-win-arm64
+          path: ${{ env.ZIP }}
 
   ui-audit:
     name: Screenshot colour audit (OCR contrast, APCA, stroke scan, dE2000, palette)

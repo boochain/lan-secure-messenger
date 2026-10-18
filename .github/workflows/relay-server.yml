@@ -1,15 +1,7 @@
 name: relay-server
 on:
-  push:
-    branches: [feat/relay-server]
-    paths: ['relay-server/**', '.github/workflows/relay-server.yml']
-  pull_request:
-    paths: ['relay-server/**', '.github/workflows/relay-server.yml']
+  workflow_call:
   workflow_dispatch:
-
-concurrency:
-  group: relay-server-${{ github.ref }}
-  cancel-in-progress: true
 
 defaults:
   run:

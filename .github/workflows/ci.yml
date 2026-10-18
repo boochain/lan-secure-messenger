@@ -1,0 +1,56 @@
+# One CI for every edition. Push / PR / manual run builds and tests everything; a manually pushed v* tag
+# additionally runs the release job, which collects every shipped artifact into ONE GitHub Release.
+name: ci
+on:
+  push:
+    branches: [main, "unify/**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+permissions:
+  contents: read
+jobs:
+  windows:        # Rust core tests, lan-daemon/lan-msg, WinUI 3 x64 (+ light/dark UI smoke, colour audit), arm64 package
+    uses: ./.github/workflows/windows.yml
+  portable:       # C core: XP exe (i686/x64, wine interop), Linux GTK3 AppImage+tarball, GTK4 AppImage, Android APK + emulator, audits
+    uses: ./.github/workflows/portable.yml
+  relay-server:   # relay server: Linux musl x86_64/aarch64/armv7/i686/riscv64, Windows x64/arm64/x86, deploy scripts
+    uses: ./.github/workflows/relay-server.yml
+  relay-matrix:   # rust <-> C <-> Android, direct LAN + through the relay, resume, mid-transfer path switches
+    uses: ./.github/workflows/relay-client-matrix.yml
+
+  release:
+    name: Release (v* tag only, all artifacts in one Release)
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, portable, relay-server, relay-matrix]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: art }
+      - name: Collect shipped files
+        run: |
+          set -e
+          mkdir -p out
+          T="${GITHUB_REF_NAME}"
+          cp art/LanMessenger-win-x64/*.zip art/LanMessenger-win-arm64/*.zip out/
+          cp art/LanMessenger-XP/editions/portable/dist/*.zip out/ 2>/dev/null || cp $(find art/LanMessenger-XP -name '*.zip') out/
+          cp $(find art/linux-x86_64 -type f \( -name '*.AppImage' -o -name '*.tar.gz' \)) out/
+          cp $(find art/linux-adw-appimage -name '*.AppImage') out/
+          cp $(find art/android -name 'app-release.apk') "out/LanMessenger-$T-android.apk"
+          for d in art/relay-server-*; do find "$d" -type f \( -name '*.zip' -o -name '*.tar.gz' \) -exec cp {} out/ \; ; done
+          (cd out && sha256sum * > SHA256SUMS.txt)
+          ls -la out
+      - name: Create the Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          T="${GITHUB_REF_NAME}"
+          N="docs/release-notes-$T.md"; [ -f "$N" ] || { echo "## $T" > /tmp/notes.md; N=/tmp/notes.md; }
+          PRE=""; case "$T" in *-*) PRE="--prerelease";; esac
+          gh release create "$T" out/* $PRE --title "LAN Secure Messenger $T" --notes-file "$N" --target "$GITHUB_SHA"

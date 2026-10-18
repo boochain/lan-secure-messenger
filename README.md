@@ -6,6 +6,50 @@
 > “必须关闭防火墙才能用 / 界面乱码 / 消息发不出去 / 看不到对方 / 一方能看到另一方、另一方列表为空”等问题。
 > 旧的 egui 界面已移除。v0.3.x 代码保留在 `main` 分支的历史中。
 
+## 仓库结构（v0.6 起：所有版本在同一仓库）
+
+从 v0.6 开始，Windows（WinUI）版、Windows XP 版、Linux 版、Android 版和中转服务器都在本仓库中，
+每次发布在同一个 Release 里提供全部安装包。原 `lan-secure-messenger-xp` 仓库以 git subtree 方式并入
+`editions/portable/`，**完整保留提交历史**（`git log -- editions/portable`）。
+
+```
+.                         Rust 工作区（Windows 版的核心与后台服务）
+├── lan-core/             Rust 核心：发现、Noise XX 加密、存储、传输、续传、中转客户端
+├── lan-daemon/  lan-cli/ 后台服务 lan-daemon.exe 与命令行 lan-msg
+├── ui-winui/             WinUI 3 界面（Windows 10/11，x64 / arm64）
+├── relay-server/         中转服务器（Rust）+ 部署脚本 deploy.sh / deploy.ps1 / deploy.bat
+├── editions/
+│   └── portable/         C 语言核心与轻量版本（原 lan-secure-messenger-xp）
+│       ├── src/          共享 C 核心 core.c / relay.c / resume.c / xcrypto.c、CLI，以及 XP Win32 界面 gui.c
+│       ├── linux/        Linux：GTK 4 + libadwaita 界面（adw_gui.c，AppImage）与 GTK 3 兼容界面（gtk_gui.c）
+│       ├── android/      Android 应用（Kotlin / Compose，JNI 调用同一份 C 核心）
+│       ├── reference/v0.5  互通测试用的 v0.5 Rust 后台服务源码快照
+│       └── tests/  tools/  互通矩阵 matrix.py、截图与配色审计等
+├── tools/                配色审计、sync-from-xp.sh、gen-portable-workflow.py
+├── scripts/              Windows 冒烟测试
+└── docs/                 协议（protocol.md、relay-protocol.md）、IPC、发布说明
+```
+
+为什么 C 版本整体放在 `editions/portable/` 而不是拆成 `core-c/`、`editions/xp/`、`editions/linux/`……：
+XP、Linux、Android 三个版本共用同一份 C 核心和同一套 Makefile / 测试脚本，内部用相对路径互相引用；
+整体并入能保持构建脚本不变，并且在迁移期间可以用 `tools/sync-from-xp.sh` 一条命令把 xp 仓库的新提交
+（`git subtree pull`）同步过来。全部同步完成、旧仓库归档后，可以再按需细分目录。
+
+### CI
+
+`.github/workflows/ci.yml` 是唯一的入口（push / PR / 手动），依次调用：
+
+| 工作流 | 内容 |
+|------|------|
+| `windows.yml` | Rust 核心测试、lan-daemon / lan-msg、WinUI 3 x64（浅色 / 深色界面冒烟 + 配色审计）、arm64 打包 |
+| `portable.yml` | XP exe（i686 / x64，XP 导入检查，wine 互通）、Linux GTK 3 AppImage + tar 包（多发行版启动）、GTK 4 AppImage、Android APK（模拟器矩阵、截图审计） |
+| `relay-server.yml` | 中转服务器：Linux musl x86_64 / aarch64 / armv7 / i686 / riscv64，Windows x64 / arm64 / x86，部署脚本测试 |
+| `relay-client-matrix.yml` | Rust ↔ C ↔ Android 互通矩阵：局域网直连、经中转服务器、断点续传、传输中途切换线路 |
+
+`portable.yml` 由 `tools/gen-portable-workflow.py` 根据 `editions/portable/.github/workflows/xp.yml` 生成，请勿手改。
+只有手动推送的 `v*` 标签才会运行 `release` 任务，把以上所有安装包和 `SHA256SUMS.txt` 收进同一个 Release
+（说明取自 `docs/release-notes-<标签>.md`；标签带 `-` 时为预发布）。
+
 ## 下载即用（Windows 10 1809+ / 11，x64）
 
 1. 到 [Releases](https://github.com/boochain/lan-secure-messenger/releases) 下载 `LanMessenger-<版本>-win-x64.zip`

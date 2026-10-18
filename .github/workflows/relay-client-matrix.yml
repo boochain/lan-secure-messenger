@@ -1,14 +1,10 @@
 # Client-side interop matrix: rust (lan-daemon) <-> native (C core CLI), direct LAN and through the relay
-# server, in Linux network namespaces (needs sudo). Same file in boochain/lan-secure-messenger and
-# boochain/lan-secure-messenger-xp; each checks out the other repo's feat/relay-client branch.
+# server, in Linux network namespaces (needs sudo). Unified repo: the C core is editions/portable, linked as
+# ./xp so the steps read the same as in the old two-repo setup.
 name: relay-client-matrix
 on:
-  push:
-    branches: [feat/relay-client]
+  workflow_call:
   workflow_dispatch:
-concurrency:
-  group: relay-client-matrix-${{ github.ref }}
-  cancel-in-progress: false
 jobs:
   matrix:
     runs-on: ubuntu-latest
@@ -19,9 +15,8 @@ jobs:
         mode: [direct, relay]
     steps:
       - uses: actions/checkout@v4
-        with: { repository: boochain/lan-secure-messenger, ref: feat/relay-client, path: rust }
-      - uses: actions/checkout@v4
-        with: { repository: boochain/lan-secure-messenger-xp, ref: feat/relay-client, path: xp }
+        with: { path: rust }
+      - run: ln -s rust/editions/portable xp
       - name: Rust toolchain
         run: cd rust && rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@v2
@@ -60,9 +55,8 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-        with: { repository: boochain/lan-secure-messenger, ref: feat/relay-client, path: rust }
-      - uses: actions/checkout@v4
-        with: { repository: boochain/lan-secure-messenger-xp, ref: feat/relay-client, path: xp }
+        with: { path: rust }
+      - run: ln -s rust/editions/portable xp
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
@@ -104,9 +98,8 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-        with: { repository: boochain/lan-secure-messenger, ref: feat/relay-client, path: rust }
-      - uses: actions/checkout@v4
-        with: { repository: boochain/lan-secure-messenger-xp, ref: feat/relay-client, path: xp }
+        with: { path: rust }
+      - run: ln -s rust/editions/portable xp
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: "21" }
       - uses: Swatinem/rust-cache@v2
