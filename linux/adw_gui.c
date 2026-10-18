@@ -298,6 +298,7 @@ static void relay_save_cb(GtkButton *b, gpointer p){ (void)b;(void)p;
     gtk_label_set_text(GTK_LABEL(rl_status),en?"中转服务器设置已保存，正在连接…":"已关闭中转服务器"); toast(en?"中转服务器设置已保存，正在连接…":"已关闭中转服务器"); list_dirty=1;
 #endif
 }
+static void relay_sw_changed(GObject *o, GParamSpec *ps, gpointer r){ (void)ps; adw_action_row_set_subtitle(ADW_ACTION_ROW(r),gtk_switch_get_active(GTK_SWITCH(o))?"局域网直连不可用时经服务器中转":"关闭：只使用局域网直连"); }
 static void relay_closed(GtkWindow *w, gpointer p){ (void)w;(void)p; rl_win=rl_status=NULL; }
 static GtkWidget *rl_row(GtkWidget *grp, const char *title, const char *sub, GtkWidget *suffix){ GtkWidget *r=adw_action_row_new(); adw_preferences_row_set_title(ADW_PREFERENCES_ROW(r),title); if(sub) adw_action_row_set_subtitle(ADW_ACTION_ROW(r),sub);
     gtk_widget_set_valign(suffix,GTK_ALIGN_CENTER); adw_action_row_add_suffix(ADW_ACTION_ROW(r),suffix); adw_preferences_group_add(ADW_PREFERENCES_GROUP(grp),r); return r; }
@@ -313,7 +314,8 @@ static void relay_dialog(void){ GtkWidget *tv, *hb, *pg, *grp, *grp2, *box, *btn
     grp=adw_preferences_group_new(); adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(grp),"中转服务器（可选）");
     adw_preferences_group_set_description(ADW_PREFERENCES_GROUP(grp),"不在同一局域网时，可通过你自己部署的中转服务器联系对方。局域网直连始终优先；服务器只转发端到端加密的数据，无法看到消息内容。");
     rl_sw=gtk_switch_new(); gtk_switch_set_active(GTK_SWITCH(rl_sw),en); gtk_widget_set_tooltip_text(rl_sw,"关闭时只使用局域网直连");
-    { GtkWidget *r=rl_row(grp,"通过中转服务器连接",en?"局域网直连不可用时经服务器中转":"关闭：只使用局域网直连",rl_sw); adw_action_row_set_activatable_widget(ADW_ACTION_ROW(r),rl_sw); }
+    { GtkWidget *r=rl_row(grp,"通过中转服务器连接",en?"局域网直连不可用时经服务器中转":"关闭：只使用局域网直连",rl_sw); adw_action_row_set_activatable_widget(ADW_ACTION_ROW(r),rl_sw); g_signal_connect(rl_sw,"notify::active",G_CALLBACK(relay_sw_changed),r); }
+    { GtkEventController *ek=gtk_shortcut_controller_new(); gtk_shortcut_controller_add_shortcut(GTK_SHORTCUT_CONTROLLER(ek),gtk_shortcut_new(gtk_keyval_trigger_new(GDK_KEY_Escape,0),gtk_named_action_new("window.close"))); gtk_widget_add_controller(rl_win,ek); }
     rl_host=gtk_entry_new(); gtk_editable_set_text(GTK_EDITABLE(rl_host),host); gtk_entry_set_placeholder_text(GTK_ENTRY(rl_host),"relay.example.com"); gtk_widget_set_size_request(rl_host,240,-1); rl_row(grp,"服务器地址",NULL,rl_host);
     snprintf(ps,sizeof ps,"%d",port?port:9443); rl_port=gtk_entry_new(); gtk_editable_set_text(GTK_EDITABLE(rl_port),ps); gtk_entry_set_input_purpose(GTK_ENTRY(rl_port),GTK_INPUT_PURPOSE_DIGITS); gtk_editable_set_width_chars(GTK_EDITABLE(rl_port),6); rl_row(grp,"端口",NULL,rl_port);
     rl_pass=gtk_entry_new(); gtk_entry_set_visibility(GTK_ENTRY(rl_pass),FALSE); gtk_entry_set_input_purpose(GTK_ENTRY(rl_pass),GTK_INPUT_PURPOSE_PASSWORD); gtk_widget_set_size_request(rl_pass,240,-1); rl_row(grp,"网络口令",NULL,rl_pass);
