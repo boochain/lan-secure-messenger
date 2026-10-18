@@ -70,7 +70,7 @@ fun RelayScreen(st: AppState, back: () -> Unit) {
             OutlinedTextField(port, { port = it.filter(Char::isDigit).take(5) }, label = { Text("端口") }, singleLine = true, modifier = Modifier.width(104.dp),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next))
         }
-        OutlinedTextField(pass, { pass = it }, label = { Text("网络口令") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+        OutlinedTextField(pass, { pass = it }, label = { Text(if (r.hasPassphrase) "网络口令（已设置）" else "网络口令") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
             placeholder = { Text(if (r.hasPassphrase) "已设置（留空则保持不变）" else "未设置") },
             supportingText = { Text("与服务器管理员约定的口令；只用于验证，不会发送到网络，也不会再显示") },
             visualTransformation = PasswordVisualTransformation(),
