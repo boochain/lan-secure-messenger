@@ -223,9 +223,18 @@ Identical in lan-core (Rust) and the portable C core.
   mtime. That covers `.resume` sidecars with their `.part` files, bare `.<name>*.part` files
   with no sidecar, and `outgoing/*.out` records (the transfer is marked failed:
   `发送记录已过期 (30 天)`).
-* Fast redial: start-up connects the relay and dials the known peer addresses at once (no
-  first announce interval is awaited), so a restarted side resumes within seconds. The matrix
-  asserts < 10 s for receiver and sender kill -9 + restart; measured 0.3–3.2 s.
+* Fast redial (checked in the code of both cores):
+  - Rust: at start-up every contact's `next_attempt` is set to now. The 500 ms engine tick
+    fires at once, so trusted peers with remembered addresses are dialed on the first tick.
+    The relay client gets `Configure` before the engine loop starts, so it connects at once.
+    Every `PeerJoin` from the relay opens a session at once; the 2 s periodic `Open` is only
+    the retry path.
+  - C: trusted contacts with a remembered address are seeded into the redial table before the
+    first redial pass, so the first loop turn (≤ 50 ms) dials them. The relay's
+    `next_attempt` is 0, so it connects on the first tick. Relay peers start with
+    `next_try = 0`, so the first session open is immediate.
+  - The matrix asserts that resume starts < 10 s after a kill -9 + restart of the receiver or
+    the sender. Measured: 0.3–3.2 s.
 
 ## 9. PIN pairing
 1. Peer A calls `pin_offer`: random 6-digit PIN, valid 300 s, max 5 wrong tries.
