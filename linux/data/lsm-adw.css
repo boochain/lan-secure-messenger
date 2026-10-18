@@ -65,3 +65,4 @@ popover > contents { border: 1px solid @lsm_fieldborder; }
 /* entry placeholders (add-contact box, search) at the secondary token, not GTK's dimmed default */
 entry text placeholder { color: @lsm_fg2; opacity: 1; }
 popover entry { background-color: @lsm_field; border: 1px solid @lsm_fieldborder; color: @lsm_fg; }
+.relay-badge { background-color: @lsm_chip; color: @lsm_chipfg; border-radius: 6px; padding: 0 6px; font-size: 12px; font-weight: 600; }
