@@ -79,9 +79,10 @@ def net_up():
         sh(f"ip netns exec mxBR ip link set v{ns} master br0 up")
         sh(f"ip netns exec {ns} ip addr add 10.78.0.{i}/24 brd 10.78.0.255 dev eth0 && ip netns exec {ns} ip link set eth0 up && ip netns exec {ns} ip link set lo up")
 RHOST, RPORT, RPASS = "10.78.0.254", 29443, "matrix-relay-pass"
-def relay_up():
-    sh("ip netns exec mxBR ip addr add 10.78.0.254/24 dev br0", False)
-    return subprocess.Popen(["ip", "netns", "exec", "mxBR", args.relay_bin, "--port", str(RPORT), "--password", RPASS],
+def relay_up(host=False):
+    # host=True: android pairs; the relay runs in the root namespace so the emulator reaches it at 10.0.2.2
+    if not host: sh("ip netns exec mxBR ip addr add 10.78.0.254/24 dev br0", False)
+    return subprocess.Popen(([] if host else ["ip", "netns", "exec", "mxBR"]) + [args.relay_bin, "--port", str(RPORT), "--password", RPASS],
                             stdout=open(f"{W}/relay-server.log", "a"), stderr=subprocess.STDOUT)
 def relay_down(p):
     if p:
@@ -173,6 +174,7 @@ class CCli:
         """kill -9 mid-transfer (no quit), then start again on the same data dir"""
         s.p.kill(); s.p.wait()
         if s.kind == "wine": sh(f"WINEPREFIX={s.pfx} wineserver -k", False)
+        if s.kind == "android": subprocess.run([ADB, "shell", f"pkill -9 -f 'lanmsg-cli --data {s.dev}'"], capture_output=True)
         time.sleep(1); s.lines.clear(); s._spawn()
     def _rd(s):
         for raw in s.p.stdout:
@@ -249,13 +251,22 @@ for a, b in itertools.combinations_with_replacement(kinds, 2):
     try:
         tg = f"{a}-{b}"
         if args.relay:
-            if "android" in (a, b): raise RuntimeError("relay mode: android pairs need the emulator host network (not wired yet)")
-            srv = relay_up(); time.sleep(0.5); block_direct(True)
+            andr = "android" in (a, b)
+            if a == b == "android": raise RuntimeError("android<->android needs two devices")
+            # android: emulator behind NAT, relay in the root namespace (guest -> 10.0.2.2, host peer -> 127.0.0.1);
+            # no LAN path exists, so the relay is the only route (the direct-switch / netns-drop checks do not apply)
+            srv = relay_up(andr); time.sleep(0.5)
+            if not andr: block_direct(True)
             SRV = [srv]
             def restart_relay():
-                relay_down(SRV[0]); time.sleep(1); SRV[0] = relay_up()
-            A = mk(a, f"{tg}/{a}A", "mxA"); B = mk(b, f"{tg}/{b}B", "mxB")
-            A.relay(RHOST, RPORT, RPASS); B.relay(RHOST, RPORT, RPASS)
+                relay_down(SRV[0]); time.sleep(1); SRV[0] = relay_up(andr)
+            if andr:
+                other = b if a == "android" else a
+                A = mk("android", f"{tg}/androidA", None); B = mk(other, f"{tg}/{other}B", None, 47600 + 4 * kinds.index(other))
+                B.relay("127.0.0.1", RPORT, RPASS); A.relay(RHOST, RPORT, RPASS)
+            else:
+                A = mk(a, f"{tg}/{a}A", "mxA"); B = mk(b, f"{tg}/{b}B", "mxB")
+                A.relay(RHOST, RPORT, RPASS); B.relay(RHOST, RPORT, RPASS)
             checks["online via server"] = bool(wait(lambda: A.via(B.fp) == "relay" and B.via(A.fp) == "relay", 40))
             pin = A.pin_offer(); B.pin_pair(A.fp, pin)
             checks["PIN pairing"] = bool(wait(lambda: A.trusted(B.fp) and B.trusted(A.fp), 30))
@@ -279,6 +290,7 @@ for a, b in itertools.combinations_with_replacement(kinds, 2):
             ok, det = resume_check(A, B, lambda: A.restart_hard(), f"relaysrst_{tg}", 10)
             checks["resume (sender killed+restarted at 40%, <10s)"] = ok; details[f"{pair} relay sender restart"] = det; print("   ", det, flush=True)
             srv = SRV[0]
+            if andr: raise StopIteration
             # relay -> direct
             block_direct(False)
             checks["switch server->direct"] = bool(wait(lambda: A.via(B.fp) == "direct" and B.via(A.fp) == "direct", 60))
@@ -326,6 +338,7 @@ for a, b in itertools.combinations_with_replacement(kinds, 2):
             checks["resume (receiver killed+restarted at 40%, <10s)"] = ok; details[f"{pair} LAN receiver restart"] = det; print("   ", det, flush=True)
             ok, det = resume_check(A, B, lambda: A.restart_hard(), f"lansrst_{tg}", 10)
             checks["resume (sender killed+restarted at 40%, <10s)"] = ok; details[f"{pair} LAN sender restart"] = det; print("   ", det, flush=True)
+    except StopIteration: pass  # android relay pair: remaining LAN-path checks do not apply
     except Exception as e:
         checks["harness"] = False; print("  exception:", repr(e)[:200])
     finally:
