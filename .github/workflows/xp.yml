@@ -246,3 +246,17 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: adw-appimage-debian12-screenshot, path: shots/appimage }
+
+  xp-windows-smoke:
+    name: XP exe on real Windows (tray hide, single instance, window memory)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the i686 XP exe (MSYS2 mingw32)
+        uses: msys2/setup-msys2@v2
+        with: { msystem: MINGW32, install: "make mingw-w64-i686-gcc mingw-w64-i686-binutils" }
+      - shell: msys2 {0}
+        run: make CC32=gcc WINDRES32=windres build/x86/LanMessenger.exe
+      - name: Smoke (X5 / X12 / X6)
+        shell: pwsh
+        run: pwsh tests/xp_windows_smoke.ps1 build/x86/LanMessenger.exe
