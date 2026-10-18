@@ -198,6 +198,8 @@ public sealed partial class MainWindow : Window
         _ = ExitFullyAsync();
     }
 
+    internal bool SmokeHasTray => _tray != null;
+
     public void ShowAndFocus()
     {
         try

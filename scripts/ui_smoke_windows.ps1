@@ -113,7 +113,9 @@ foreach ($theme in "light", "dark") {
   # runtime checks done in the app with real SendInput keyboard/mouse input (UiSmoke.cs): each must report PASS
   $runtime = @("shortcut Ctrl+F", "shortcut Esc clears", "shortcut Ctrl+N opens", "chat header subtitle has no", "shortcut Ctrl+Tab", "shortcut Ctrl+Shift+Tab",
                "right-click on a message", "right-click on a contact", "Esc closes the context menu",
-               "window memory: saved", "window memory: restored", "window memory: an off-screen")
+               "window memory: saved", "window memory: restored", "window memory: an off-screen",
+               "Esc closes the contact-details dialog", "Shift+Enter inserts a new line", "Enter sends and clears the composer",
+               "close hides to the tray, app keeps running", "tray: show restores the window")
   foreach ($r in $runtime) {
     if (-not (Select-String -Path "$dir\ui-smoke.txt" -Pattern ("PASS: " + [regex]::Escape($r)) -Quiet -ErrorAction SilentlyContinue)) { $problems += "[$theme] runtime check did not pass: $r" }
   }

@@ -101,8 +101,9 @@ public static class UiSmoke
                             _ = cp.SmokeShowDetailsAsync(); await Task.Delay(1500);
                             await ShotAsync(w, dir, "dialog-details", label, theme);
                             Check(!App.VM.SelectedSubtitle.Contains("指纹") && !App.VM.SelectedSubtitle.Contains(" ms"), $"chat header subtitle has no fingerprint/latency ('{App.VM.SelectedSubtitle}')");
-                            await KeysAsync(VK_ESCAPE); await Task.Delay(600);
+                            { var open = DialogOpen(w); await KeysAsync(VK_ESCAPE); await Task.Delay(600); Check(open && !DialogOpen(w), $"Esc closes the contact-details dialog (open before={open})"); }
                             await ContextMenuChecksAsync(w, cp, dir, label, theme);
+                            await ComposerKeysCheckAsync(cp);
                         }
                     }
                     else Fail("no DM conversation with the peer");
@@ -135,6 +136,7 @@ public static class UiSmoke
 
             if (Environment.GetEnvironmentVariable("LSM_UI_SMOKE_LIVE_FLIP") == "1")
                 await LiveFlipAsync(w, dir, theme);
+            await TrayCloseCheckAsync(w);
             await WindowMemoryCheckAsync(w);
 
             Log.Add($"peers={App.VM.Peers.Count} online={App.VM.OnlineCount} conversations={App.VM.Conversations.Count} messages={App.VM.Messages.Count}");
@@ -193,7 +195,7 @@ public static class UiSmoke
         await Task.Delay(700);
     }
     private static INPUT Key(ushort vk, bool up) => new() { type = 1, U = new InputUnion { ki = new KEYBDINPUT { wVk = vk, dwFlags = up ? 2u : 0u } } };
-    private const ushort VK_CONTROL = 0x11, VK_SHIFT = 0x10, VK_TAB = 0x09, VK_ESCAPE = 0x1B, VK_F = 0x46, VK_N = 0x4E;
+    private const ushort VK_RETURN = 0x0D, VK_CONTROL = 0x11, VK_SHIFT = 0x10, VK_TAB = 0x09, VK_ESCAPE = 0x1B, VK_F = 0x46, VK_N = 0x4E;
 
     /// <summary>Ctrl+F → search box, Ctrl+N → add-peer box, Esc clears the search, Ctrl+Tab / Ctrl+Shift+Tab cycle conversations.</summary>
     private static async Task ShortcutChecksAsync(MainWindow w, ChatPage cp, string dir, string label, ElementTheme theme)
@@ -225,6 +227,41 @@ public static class UiSmoke
             await Task.Delay(1500);
         }
         catch (Exception e) { Check(false, "shortcuts: " + e.Message); }
+    }
+
+    private static bool DialogOpen(MainWindow w) =>
+        VisualTreeHelper.GetOpenPopupsForXamlRoot(w.Content.XamlRoot).Any(p => p.Child is ContentDialog || FindDescendant<ContentDialog>(p.Child) != null);
+
+    /// <summary>Shift+Enter inserts a new line (nothing sent); Enter sends and clears the composer.</summary>
+    private static async Task ComposerKeysCheckAsync(ChatPage cp)
+    {
+        try
+        {
+            cp.SmokeFocusComposer(); cp.SmokeComposerText = "smoke-enter"; await Task.Delay(300);
+            int before = App.VM.Messages.Count(m => m.IsOutgoing);
+            await KeysAsync(VK_SHIFT, VK_RETURN); await Task.Delay(500);
+            var t = cp.SmokeComposerText;
+            Check((t.Contains('\r') || t.Contains('\n')) && App.VM.Messages.Count(m => m.IsOutgoing) == before, "Shift+Enter inserts a new line, nothing sent");
+            await KeysAsync(VK_RETURN);
+            for (int i = 0; i < 20 && App.VM.Messages.Count(m => m.IsOutgoing) == before; i++) await Task.Delay(250);
+            Check(App.VM.Messages.Count(m => m.IsOutgoing) == before + 1 && string.IsNullOrEmpty(cp.SmokeComposerText), $"Enter sends and clears the composer (outgoing {before} -> {App.VM.Messages.Count(m => m.IsOutgoing)})");
+        }
+        catch (Exception e) { Check(false, "composer keys: " + e.Message); }
+    }
+
+    /// <summary>Close (WM_CLOSE, as the caption X) hides to the tray while the app keeps running; the tray restores it.</summary>
+    private static async Task TrayCloseCheckAsync(MainWindow w)
+    {
+        try
+        {
+            if (!w.SmokeHasTray) { Check(false, "close hides to the tray: no tray icon was created"); return; }
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(w);
+            PostMessage(hwnd, 0x0010 /* WM_CLOSE */, IntPtr.Zero, IntPtr.Zero); await Task.Delay(1500);
+            Check(!IsWindowVisible(hwnd) && App.VM.IsConnected, $"close hides to the tray, app keeps running (visible={IsWindowVisible(hwnd)}, connected={App.VM.IsConnected})");
+            w.ShowAndFocus(); await Task.Delay(1500);
+            Check(IsWindowVisible(hwnd), "tray: show restores the window");
+        }
+        catch (Exception e) { Check(false, "tray close: " + e.Message); }
     }
 
     private static async Task RightClickAsync(MainWindow w, FrameworkElement fe)
@@ -677,6 +714,8 @@ public static class UiSmoke
     [StructLayout(LayoutKind.Sequential)] private struct INPUT { public uint type; public InputUnion U; }
     [DllImport("user32.dll", SetLastError = true)] private static extern uint SendInput(uint n, INPUT[] inputs, int size);
     [DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr h);
     [DllImport("user32.dll")] private static extern bool ClientToScreen(IntPtr h, ref POINT p);
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr h);
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr h, out RECT r);
