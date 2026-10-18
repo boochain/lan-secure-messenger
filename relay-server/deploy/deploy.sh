@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# LSM 中继服务器 部署脚本 (LAN Secure Messenger relay-server deploy script) — Linux
+# LSM 中转服务器 部署脚本 (LAN Secure Messenger relay-server deploy script) — Linux
 # 交互菜单: ./deploy.sh        非交互: ./deploy.sh install --port 9443 --password xxx [--open-firewall]
 # 命令 (commands): menu run start install remove-autostart stop config status uninstall version
 # 选项 (options): --port N --password P --gen-password --bind ADDR --open-firewall --yes --dry-run --no-start
@@ -101,7 +101,7 @@ write_config() {
   if [ "$DRY" = 1 ]; then say "[dry-run] write $CONF (port=$PORT bind=$BIND)"; return; fi
   local tmp="$CONF.tmp.$$"
   ( umask 077; cat > "$tmp" <<TOML
-# LSM 中继服务器配置 (relay-server config) — 由 deploy.sh 生成
+# LSM 中转服务器配置 (relay-server config) — 由 deploy.sh 生成
 [server]
 bind = $(toml_str "$BIND")
 port = $PORT
@@ -334,7 +334,7 @@ install_autostart() {
     if [ "$DRY" = 1 ]; then say "[dry-run] write $UNIT; systemctl enable --now $SVC"; return; fi
     cat > "$UNIT" <<UNITEOF
 [Unit]
-Description=LSM Relay Server (LAN Secure Messenger 中继服务器)
+Description=LSM Relay Server (LAN Secure Messenger 中转服务器)
 After=network-online.target
 Wants=network-online.target
 
@@ -394,7 +394,7 @@ remove_autostart() {
 # ---------------- 状态 (status) ----------------
 json_field() { sed -n "s/^ *\"$1\": *\"\{0,1\}\([^\",]*\)\"\{0,1\},\{0,1\}\$/\1/p" | head -1; }
 show_status() {
-  say "${c_b}==== LSM 中继服务器状态 (status) ====${c_0}"
+  say "${c_b}==== LSM 中转服务器状态 (status) ====${c_0}"
   say "安装目录 (install dir): $INSTALL_DIR  配置 (config): $CONF"
   say "已安装版本 (installed): $(bin_version "$BIN")   本包版本 (bundled): $(nb="$(find_new_bin)" && bin_version "$nb" || echo -)   CPU: $(detect_arch)"
   local port; port="$(toml_get "$CONF" server port)"
@@ -442,8 +442,8 @@ menu() {
   INTERACTIVE=1
   while true; do
     say ""
-    say "${c_b}===== LSM 中继服务器 部署工具 v$SCRIPT_VERSION (relay-server deploy) =====${c_0}"
-    say "中继仅转发端到端加密数据，看不到明文 (relay only forwards end-to-end encrypted data)"
+    say "${c_b}===== LSM 中转服务器 部署工具 v$SCRIPT_VERSION (relay-server deploy) =====${c_0}"
+    say "中转仅转发端到端加密数据，看不到明文 (relay only forwards end-to-end encrypted data)"
     say "  1. 临时运行 (run in foreground, Ctrl+C 停止)"
     say "  2. 持久运行 (run in background, 关闭终端后继续)"
     say "  3. 安装开机自启服务 (install autostart service)"

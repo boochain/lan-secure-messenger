@@ -346,7 +346,7 @@ async fn session(
         Ok(Ok((T_AUTH_FAIL, b))) => {
             let code = b.first().copied().unwrap_or(0);
             return match code {
-                1 => fail("auth_failed", "口令错误 (wrong passphrase)".into()),
+                1 => fail("auth_failed", "网络口令错误".into()),
                 5 => fail("auth_failed", "尝试次数过多，请稍后再试".into()),
                 4 => fail("error", "服务器已满".into()),
                 2 => fail("error", "协议版本不兼容".into()),

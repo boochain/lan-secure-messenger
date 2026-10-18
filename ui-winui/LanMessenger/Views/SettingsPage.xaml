@@ -64,13 +64,10 @@
                 </StackPanel>
             </Border>
 
-            <!-- 中继服务器（可选）: off by default; LAN direct is always preferred, the server only forwards E2E-encrypted data -->
+            <!-- 中转服务器（可选）: off by default; LAN direct is always preferred, the server only forwards E2E-encrypted data -->
             <Border x:Name="RelayCard" Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <FontIcon Glyph="&#xE753;" FontSize="18" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <TextBlock Text="中继服务器（可选）" Style="{StaticResource SubtitleTextBlockStyle}" />
-                    </StackPanel>
+                    <TextBlock Text="中转服务器（可选）" Style="{StaticResource SubtitleTextBlockStyle}" />
                     <TextBlock Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap"
                                Text="不在同一局域网时，可通过你自己部署的中转服务器联系对方。局域网直连始终优先；服务器只转发端到端加密的数据，无法看到消息内容。" />
                     <ToggleSwitch x:Name="RelayToggle" Header="通过中转服务器连接" IsOn="{x:Bind VM.EditRelayEnabled, Mode=TwoWay}" OnContent="开" OffContent="关"

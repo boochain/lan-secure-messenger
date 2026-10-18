@@ -1,6 +1,6 @@
-# relay-server — LSM 中继服务器 (optional relay)
+# relay-server — LSM 中转服务器 (optional relay)
 
-可选的中继服务器：帮助不在同一网络的客户端互相连接。它**只转发端到端 Noise 加密的数据**，看不到明文。
+可选的中转服务器：帮助不在同一网络的客户端互相连接。它**只转发端到端 Noise 加密的数据**，看不到明文。
 Optional relay that only forwards end-to-end Noise-encrypted blobs. Protocol: [`docs/relay-protocol.md`](../docs/relay-protocol.md).
 
 ## 快速开始 (quick start)

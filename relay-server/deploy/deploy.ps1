@@ -1,4 +1,4 @@
-﻿# LSM 中继服务器 部署脚本 (relay-server deploy script) — Windows 10/11, Windows Server 2016/2019/2022/2025 (含 Server Core)
+﻿# LSM 中转服务器 部署脚本 (relay-server deploy script) — Windows 10/11, Windows Server 2016/2019/2022/2025 (含 Server Core)
 # 交互菜单: deploy.bat     非交互: deploy.ps1 install -Port 9443 -Password xxx [-OpenFirewall]
 # 命令 (commands): menu run start install upgrade remove-autostart stop config status uninstall version
 param(
@@ -99,7 +99,7 @@ function Write-Config {
   New-Item -ItemType Directory -Force -Path $DataDir, $LogDir | Out-Null
   $logf = Join-Path $LogDir 'relay.log'
   $txt = @"
-# LSM 中继服务器配置 (relay-server config) — 由 deploy.ps1 生成
+# LSM 中转服务器配置 (relay-server config) — 由 deploy.ps1 生成
 [server]
 bind = $(Toml-Str $script:Bind)
 port = $($script:Port)
@@ -291,7 +291,7 @@ function Install-Autostart {
     $bp = "`"$Bin`" --service --config `"$Conf`""
     Do-It "sc.exe create $SvcName binPath= $bp start= auto" {
       if (Get-Svc $SvcName) { & sc.exe config $SvcName binPath= $bp start= auto | Out-Null }
-      else { New-Service -Name $SvcName -BinaryPathName $bp -DisplayName 'LSM Relay Server (中继服务器)' -StartupType Automatic -Description 'LAN Secure Messenger relay: forwards end-to-end encrypted traffic only' | Out-Null }
+      else { New-Service -Name $SvcName -BinaryPathName $bp -DisplayName 'LSM Relay Server (中转服务器)' -StartupType Automatic -Description 'LAN Secure Messenger relay: forwards end-to-end encrypted traffic only' | Out-Null }
       & sc.exe failure $SvcName reset= 86400 actions= restart/3000/restart/3000/restart/10000 | Out-Null
       Start-Service -Name $SvcName; (Get-Svc $SvcName).WaitForStatus('Running', '00:00:20')
     }
@@ -317,7 +317,7 @@ function Remove-Autostart {
 
 # ---------------- 状态 (status) ----------------
 function Show-Status {
-  Say '==== LSM 中继服务器状态 (status) ===='
+  Say '==== LSM 中转服务器状态 (status) ===='
   Say "安装目录 (install dir): $InstallDir  配置 (config): $Conf"
   $nb = Find-NewBin
   Say "已安装版本 (installed): $(Get-BinVersion $Bin)   本包版本 (bundled): $(if ($nb) { Get-BinVersion $nb } else { '-' })   CPU: $(Get-Arch)"
@@ -360,8 +360,8 @@ function Show-Menu {
   $script:Interactive = $true; Set-Variable -Name Interactive -Value $true -Scope Script
   while ($true) {
     Say ''
-    Say "===== LSM 中继服务器 部署工具 v$ScriptVersion (relay-server deploy, Windows) ====="
-    Say '中继仅转发端到端加密数据，看不到明文 (relay only forwards end-to-end encrypted data)'
+    Say "===== LSM 中转服务器 部署工具 v$ScriptVersion (relay-server deploy, Windows) ====="
+    Say '中转仅转发端到端加密数据，看不到明文 (relay only forwards end-to-end encrypted data)'
     if (-not $IsAdmin) { Warn '当前非管理员：安装服务/防火墙规则需"以管理员身份运行" (run as Administrator for service/firewall)' }
     Say '  1. 临时运行 (run in foreground, Ctrl+C 停止)'
     Say '  2. 持久运行 (run in background, 关闭窗口后继续)'

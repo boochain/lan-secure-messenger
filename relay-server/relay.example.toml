@@ -1,4 +1,4 @@
-# LSM 中继服务器配置示例 (relay-server example config)
+# LSM 中转服务器配置示例 (relay-server example config)
 [server]
 bind = "0.0.0.0"          # 监听地址 (bind address); "::" for IPv4+IPv6
 port = 9443               # TCP 端口 (port)

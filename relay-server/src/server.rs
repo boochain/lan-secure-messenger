@@ -239,7 +239,7 @@ pub async fn start(cfg: Config) -> Result<Running> {
         }
     }
     info!(
-        "中继服务器已启动 (relay started) v{VERSION} 监听 {addr} 状态接口 {:?} 最大帧 {} 最大连接 {}",
+        "中转服务器已启动 (relay started) v{VERSION} 监听 {addr} 状态接口 {:?} 最大帧 {} 最大连接 {}",
         status_addr, cfg.limits.max_frame, cfg.limits.max_connections
     );
     let handle = tokio::spawn(accept_loop(listener, hub, rx));
@@ -289,7 +289,7 @@ async fn accept_loop(listener: TcpListener, hub: Arc<Hub>, mut shutdown: watch::
             _ = shutdown.changed() => break,
         }
     }
-    info!("中继服务器正在停止 (shutting down), 断开 {} 个连接", tasks.len());
+    info!("中转服务器正在停止 (shutting down), 断开 {} 个连接", tasks.len());
     drop(listener);
     // Each connection watches the shutdown channel too; give them a moment.
     let deadline = tokio::time::sleep(Duration::from_secs(3));

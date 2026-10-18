@@ -1,4 +1,4 @@
-//! relay-server — LSM 中继服务器 (optional relay for LAN Secure Messenger).
+//! relay-server — LSM 中转服务器 (optional relay for LAN Secure Messenger).
 use anyhow::Result;
 use clap::Parser;
 use relay::config::Config;
@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 #[derive(Parser, Debug, Clone)]
 #[command(name = "relay-server", disable_version_flag = true,
-    about = "LSM 中继服务器：仅转发端到端 Noise 加密数据 (relay for end-to-end encrypted traffic only)")]
+    about = "LSM 中转服务器：仅转发端到端 Noise 加密数据 (relay for end-to-end encrypted traffic only)")]
 struct Cli {
     /// 监听端口 (TCP port)
     #[arg(long)]

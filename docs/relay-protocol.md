@@ -1,8 +1,8 @@
-# LSM 中继协议 v1 (LSM Relay Protocol v1)
+# LSM 中转协议 v1 (LSM Relay Protocol v1)
 
 状态 (status): 草案，随 `relay-server` 0.1.0 发布 (draft, implemented by `relay-server/` 0.1.0).
 
-中继服务器是**可选**组件：客户端默认关闭，开启后填写服务器地址、端口和网络口令。局域网直连优先，中继只是后备。
+中转服务器是**可选**组件：客户端默认关闭，开启后填写服务器地址、端口和网络口令。局域网直连优先，中转只是后备。
 The relay is **optional** and off by default. LAN direct is preferred; the relay is the fallback.
 
 ## 1. 安全模型 (security model)
