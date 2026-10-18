@@ -109,6 +109,8 @@ static HFONT mkfont(const wchar_t *face, int px, int weight){ LOGFONTW lf; HDC d
     memset(&lf,0,sizeof lf); lf.lfHeight=-MulDiv(px,dpi,96); lf.lfWeight=weight; lf.lfCharSet=DEFAULT_CHARSET; lf.lfQuality=CLEARTYPE_QUALITY; wcsncpy(lf.lfFaceName,face,31); return CreateFontIndirectW(&lf); }
 static int scale_px(int px){ HDC dc=GetDC(NULL); int v=MulDiv(px,GetDeviceCaps(dc,LOGPIXELSY),96); ReleaseDC(NULL,dc); return v; }
 /* flat 1px divider frame around a child (WS_EX_CLIENTEDGE draws a system-coloured 3D bevel) */
+/* edit fields: 1px themed border (Luna field blue), accent when focused */
+static void frame_field(HWND parent, HDC dc, HWND c){ RECT r; HBRUSH b; if(!c||!IsWindowVisible(c)) return; GetWindowRect(c,&r); MapWindowPoints(NULL,parent,(POINT*)&r,2); InflateRect(&r,1,1); b=CreateSolidBrush(GetFocus()==c?T.accent:P.fieldborder); FrameRect(dc,&r,b); DeleteObject(b); }
 static void frame_child(HWND parent, HDC dc, HWND c){ RECT r; HBRUSH b; if(!c||!IsWindowVisible(c)) return; GetWindowRect(c,&r); MapWindowPoints(NULL,parent,(POINT*)&r,2); InflateRect(&r,1,1); b=CreateSolidBrush(T.divider); FrameRect(dc,&r,b); DeleteObject(b); }
 /* owner-drawn menus: the system menu colours (COLOR_MENU/COLOR_MENUTEXT) would put black text on the dark menu bar */
 static void AM(HMENU m, UINT f, UINT_PTR id, const wchar_t *t){ AppendMenuW(m,f|MF_OWNERDRAW,id,(LPCWSTR)t); }
@@ -353,6 +355,39 @@ static void refresh_chat(void){
 static void copy_text(const wchar_t *t){ size_t n=(wcslen(t)+1)*sizeof(wchar_t); HGLOBAL g; if(!OpenClipboard(hMain)) return; EmptyClipboard(); g=GlobalAlloc(GMEM_MOVEABLE,n); if(g){ memcpy(GlobalLock(g),t,n); GlobalUnlock(g); SetClipboardData(CF_UNICODETEXT,g); } CloseClipboard(); }
 static void show_in_folder(const char *path){ wchar_t a[1200]; _snwprintf(a,1200,L"/select,\"%s\"",W(path)); a[1199]=0; ShellExecuteW(hMain,L"open",L"explorer.exe",a,NULL,SW_SHOWNORMAL); }
 /* right-click (or Shift+F10 / menu key) on a bubble: 复制 / 打开 / 在文件夹中显示 / 删除这条消息（仅本机）; left-click on the file card's button or link */
+/* ---------------------------------------------------------------- slim themed scrollbar for the owner-drawn lists
+ * The system scrollbar ignores the app theme (white in dark mode). Both lists are created without WS_VSCROLL; the
+ * listbox still scrolls with the wheel, keyboard and WM_VSCROLL, and this 10 px overlay (a sibling above the list's
+ * right edge) shows the position and supports thumb drag + page clicks. Hidden when everything fits. */
+#define SCROLLTHUMB_LIGHT HX(0xACA899)
+#define SCROLLTHUMB_DARK  HX(0x6A6A6A)
+static HWND hChatSb, hListSb; static WNDPROC oldListProc;
+static void sb_metrics(HWND lb, int *total, int *page, int *pos){ RECT c; int i, top=(int)SendMessageW(lb,LB_GETTOPINDEX,0,0), n=(int)SendMessageW(lb,LB_GETCOUNT,0,0); GetClientRect(lb,&c); *page=c.bottom; *total=0; *pos=0;
+    for(i=0;i<n;i++){ int h=(int)SendMessageW(lb,LB_GETITEMHEIGHT,i,0); if(h<0) h=0; if(i<top) *pos+=h; *total+=h; } }
+static int sb_thumb(HWND sb, RECT *th){ HWND lb=(HWND)GetWindowLongPtrW(sb,GWLP_USERDATA); RECT c; int total,page,pos,hh; GetClientRect(sb,&c); sb_metrics(lb,&total,&page,&pos);
+    if(total<=page||page<=0) return 0; hh=c.bottom*page/total; if(hh<scale_px(28)) hh=scale_px(28); if(pos>total-page) pos=total-page;
+    th->left=c.left+scale_px(2); th->right=c.right-scale_px(2); th->top=(c.bottom-hh)*pos/(total-page); th->bottom=th->top+hh; return 1; }
+static void sb_update(HWND lb){ HWND sb=lb==hChat?hChatSb:lb==hList?hListSb:NULL; int total,page,pos; if(!sb) return; sb_metrics(lb,&total,&page,&pos);
+    ShowWindow(sb,total>page?SW_SHOWNA:SW_HIDE); if(total>page){ SetWindowPos(sb,HWND_TOP,0,0,0,0,SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE); InvalidateRect(sb,NULL,TRUE); } }
+static void sb_place(HWND lb, HWND sb){ RECT r; GetWindowRect(lb,&r); MapWindowPoints(NULL,GetParent(lb),(POINT*)&r,2); MoveWindow(sb,r.right-scale_px(10),r.top,scale_px(10),r.bottom-r.top,TRUE); sb_update(lb); }
+static void sb_scroll_to(HWND lb, int px){ int i, n=(int)SendMessageW(lb,LB_GETCOUNT,0,0), acc=0; for(i=0;i<n;i++){ int h=(int)SendMessageW(lb,LB_GETITEMHEIGHT,i,0); if(acc+h/2>px) break; acc+=h; } SendMessageW(lb,LB_SETTOPINDEX,i<n?i:n-1,0); sb_update(lb); }
+static LRESULT CALLBACK ScrollProc(HWND h, UINT m, WPARAM w, LPARAM l){ static int drag_off=-1; HWND lb=(HWND)GetWindowLongPtrW(h,GWLP_USERDATA); RECT th, c;
+    switch(m){
+    case WM_ERASEBKGND: return 1;
+    case WM_PAINT: { PAINTSTRUCT ps; HDC dc=BeginPaint(h,&ps); HBRUSH bg=lb==hChat?brChat:brSide; GetClientRect(h,&c); FillRect(dc,&c,bg);
+        if(sb_thumb(h,&th)){ HBRUSH b=CreateSolidBrush(theme_mode==2?SCROLLTHUMB_DARK:SCROLLTHUMB_LIGHT); HPEN pn=(HPEN)GetStockObject(NULL_PEN); HGDIOBJ ob=SelectObject(dc,b), op=SelectObject(dc,pn); RoundRect(dc,th.left,th.top,th.right+1,th.bottom+1,scale_px(6),scale_px(6)); SelectObject(dc,ob); SelectObject(dc,op); DeleteObject(b); }
+        EndPaint(h,&ps); return 0; }
+    case WM_LBUTTONDOWN: { POINT p={(short)LOWORD(l),(short)HIWORD(l)}; if(!sb_thumb(h,&th)) return 0;
+        if(PtInRect(&th,p)){ drag_off=p.y-th.top; SetCapture(h); } else { SendMessageW(lb,WM_VSCROLL,p.y<th.top?SB_PAGEUP:SB_PAGEDOWN,0); sb_update(lb); } return 0; }
+    case WM_MOUSEMOVE: if(drag_off>=0 && GetCapture()==h){ int total,page,pos, y=(short)HIWORD(l)-drag_off, span; GetClientRect(h,&c); sb_metrics(lb,&total,&page,&pos); sb_thumb(h,&th); span=c.bottom-(th.bottom-th.top);
+            if(span>0){ if(y<0) y=0; if(y>span) y=span; sb_scroll_to(lb,(int)((long long)(total-page)*y/span)); } } return 0;
+    case WM_LBUTTONUP: case WM_CAPTURECHANGED: drag_off=-1; if(GetCapture()==h) ReleaseCapture(); return 0;
+    case WM_MOUSEWHEEL: return SendMessageW(lb,m,w,l);
+    case WM_SETCURSOR: SetCursor(LoadCursor(NULL,IDC_ARROW)); return TRUE;
+    }
+    return DefWindowProcW(h,m,w,l); }
+static LRESULT list_after(HWND h, UINT m, LRESULT r){ if(m==WM_MOUSEWHEEL||m==WM_KEYDOWN||m==WM_VSCROLL||m==WM_LBUTTONDOWN||m==WM_MOUSEMOVE||m==WM_SIZE||m==LB_SETTOPINDEX||m==LB_SETCURSEL||m==LB_RESETCONTENT||m==LB_ADDSTRING||m==WM_SETREDRAW) sb_update(h); return r; }
+static LRESULT CALLBACK ListProc(HWND h, UINT m, WPARAM w, LPARAM l){ return list_after(h,m,CallWindowProcW(oldListProc,h,m,w,l)); }
 static WNDPROC oldChatProc;
 static int chat_hit(LPARAM l, RECT *ir){ DWORD r=(DWORD)SendMessageW(hChat,LB_ITEMFROMPOINT,0,l); int i=(int)LOWORD(r); if(HIWORD(r) || i<0 || i>=nrows) return -1; SendMessageW(hChat,LB_GETITEMRECT,i,(LPARAM)ir); return i; }
 static LRESULT CALLBACK ChatProc(HWND h, UINT m, WPARAM w, LPARAM l){
@@ -377,7 +412,7 @@ static LRESULT CALLBACK ChatProc(HWND h, UINT m, WPARAM w, LPARAM l){
         else if(cmd==3 && r){ char id[40]; memcpy(id,r->id,40); if(tmsg(L"删除消息",L"只会从本机删除这条消息，对方仍保留。此操作无法撤销。确定删除？",1)==1){ if(lsm_delete_message(C,id)) msgbox("删除失败：消息不存在。",MB_ICONWARNING); refresh_chat(); } }
         return 0; }
     if(m==WM_KEYDOWN && w=='C' && (GetKeyState(VK_CONTROL)&0x8000)){ int k=(int)SendMessageW(h,LB_GETCARETINDEX,0,0); if(k>=0 && k<nrows && rows[k].kind>=R_TEXT) copy_text(rows[k].kind==R_TEXT?rows[k].text:rows[k].name); return 0; }
-    return CallWindowProcW(oldChatProc,h,m,w,l); }
+    return list_after(h,m,CallWindowProcW(oldChatProc,h,m,w,l)); }
 
 /* Edit controls with WS_VSCROLL always show a (system-coloured) scrollbar; show it only when the text overflows. */
 static void fit_vscroll(HWND e){ RECT r; TEXTMETRICW tm; HDC dc; HGDIOBJ of; int lines, vis, need; LONG st=GetWindowLongW(e,GWL_STYLE);
@@ -522,10 +557,10 @@ static WNDPROC oldInputProc, oldSearchProc;
 /* search placeholder in the theme's secondary text colour (EM_SETCUEBANNER uses a fixed system grey: 2.6:1 on the dark field) */
 static LRESULT CALLBACK SearchProc(HWND h, UINT m, WPARAM w, LPARAM l){ if(m==WM_PAINT && GetWindowTextLengthW(h)==0){ LRESULT r=CallWindowProcW(oldSearchProc,h,m,w,l); HDC dc=GetDC(h); RECT cr; GetClientRect(h,&cr); cr.left+=scale_px(3);
         SetBkMode(dc,TRANSPARENT); SetTextColor(dc,T.text_secondary); SelectObject(dc,fBody); DrawTextW(dc,L"搜索联系人和群组 (Ctrl+F)",-1,&cr,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX); ReleaseDC(h,dc); return r; }
-    if(m==WM_SETFOCUS||m==WM_KILLFOCUS) InvalidateRect(h,NULL,TRUE); return CallWindowProcW(oldSearchProc,h,m,w,l); }
+    if(m==WM_SETFOCUS||m==WM_KILLFOCUS){ RECT r; InvalidateRect(h,NULL,TRUE); GetWindowRect(h,&r); MapWindowPoints(NULL,hMain,(POINT*)&r,2); InflateRect(&r,2,2); InvalidateRect(hMain,&r,FALSE); } return CallWindowProcW(oldSearchProc,h,m,w,l); }
 static LRESULT CALLBACK InputProc(HWND h, UINT m, WPARAM w, LPARAM l){ if(m==WM_PAINT && GetWindowTextLengthW(h)==0){ LRESULT r=CallWindowProcW(oldInputProc,h,m,w,l); HDC dc=GetDC(h); RECT cr; GetClientRect(h,&cr); InflateRect(&cr,-scale_px(4),-scale_px(2)); SetBkMode(dc,TRANSPARENT); SetTextColor(dc,T.text_secondary);
         SelectObject(dc,fBody); DrawTextW(dc,L"输入消息",-1,&cr,DT_LEFT|DT_TOP|DT_SINGLELINE|DT_NOPREFIX); SelectObject(dc,fCaption); DrawTextW(dc,L"Enter 发送 · Shift+Enter 换行",-1,&cr,DT_RIGHT|DT_TOP|DT_SINGLELINE|DT_NOPREFIX); ReleaseDC(h,dc); return r; }
-    if(m==WM_SETFOCUS||m==WM_KILLFOCUS) InvalidateRect(h,NULL,TRUE);
+    if(m==WM_SETFOCUS||m==WM_KILLFOCUS){ RECT r; InvalidateRect(h,NULL,TRUE); GetWindowRect(h,&r); MapWindowPoints(NULL,hMain,(POINT*)&r,2); InflateRect(&r,2,2); InvalidateRect(hMain,&r,FALSE); }
     if(m==WM_KEYDOWN && w==VK_TAB){ SetFocus(GetNextDlgTabItem(hMain,h,(GetKeyState(VK_SHIFT)&0x8000)?TRUE:FALSE)); return 0; } if(m==WM_CHAR && w=='\t') return 0; if(m==WM_KEYDOWN && w==VK_RETURN && !(GetKeyState(VK_SHIFT)&0x8000)){ send_current(); return 0; } if(m==WM_CHAR && w=='\r' && !(GetKeyState(VK_SHIFT)&0x8000)) return 0; return CallWindowProcW(oldInputProc,h,m,w,l); }
 
 static void layout(int W_, int H_0){
@@ -541,7 +576,7 @@ static void layout(int W_, int H_0){
       MoveWindow(hFile,rx,bot-cb+(cb-30)/2-3,30,30,TRUE);
       MoveWindow(hInput,rx+36,bot-cb,rw-36-98,cb-6,TRUE);
       MoveWindow(hSend,rx+rw-92,bot-cb+(cb-30)/2-3,92,30,TRUE);
-      MoveWindow(hStatus,0,bot,W_,sb,TRUE); (void)ih; (void)bw; } }
+      MoveWindow(hStatus,0,bot,W_,sb,TRUE); (void)ih; (void)bw; if(hChatSb){ sb_place(hChat,hChatSb); sb_place(hList,hListSb); } } }
 static void open_menu(int i){ RECT r; GetWindowRect(hMenuBtn[i],&r); SendMessageW(hMenuBtn[i],BM_SETSTATE,TRUE,0);
     TrackPopupMenu(GetSubMenu(hMenuTree,i),TPM_LEFTALIGN|TPM_TOPALIGN|TPM_LEFTBUTTON,r.left,r.bottom,0,hMain,NULL); SendMessageW(hMenuBtn[i],BM_SETSTATE,FALSE,0); }
 
@@ -598,11 +633,11 @@ static LRESULT CALLBACK MainProc(HWND h, UINT m, WPARAM w, LPARAM l){
         DWORD es=0; /* flat: 1px divider frame painted in WM_PAINT */
         { static const wchar_t *mt[5]={L"文件(&F)",L"联系人(&C)",L"群组(&G)",L"设置(&S)",L"帮助(&H)"}; int i;
           for(i=0;i<5;i++){ hMenuBtn[i]=CreateWindowW(L"BUTTON",mt[i],WS_CHILD|WS_VISIBLE|BS_OWNERDRAW,0,0,0,0,h,(HMENU)(INT_PTR)(IDC_MENUBTN+i),hInst,NULL); SendMessageW(hMenuBtn[i],WM_SETFONT,(WPARAM)fBody,1); } }
-        hList=CreateWindowExW(es,L"LISTBOX",NULL,WS_CHILD|WS_VISIBLE|WS_VSCROLL|WS_TABSTOP|LBS_NOTIFY|LBS_NOINTEGRALHEIGHT|LBS_OWNERDRAWFIXED|LBS_HASSTRINGS,0,0,0,0,h,(HMENU)IDC_LIST,hInst,NULL);
+        hList=CreateWindowExW(es,L"LISTBOX",NULL,WS_CHILD|WS_VISIBLE|WS_CLIPSIBLINGS|WS_TABSTOP|LBS_NOTIFY|LBS_NOINTEGRALHEIGHT|LBS_OWNERDRAWFIXED|LBS_HASSTRINGS,0,0,0,0,h,(HMENU)IDC_LIST,hInst,NULL);
         hSearch=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_VISIBLE|WS_TABSTOP|ES_AUTOHSCROLL,0,0,0,0,h,(HMENU)IDC_SEARCH,hInst,NULL); SendMessageW(hSearch,WM_SETFONT,(WPARAM)fBody,1); oldSearchProc=(WNDPROC)SetWindowLongPtrW(hSearch,GWLP_WNDPROC,(LONG_PTR)SearchProc);
         hAdd=CreateWindowW(L"BUTTON",L"添加",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_OWNERDRAW,0,0,0,0,h,(HMENU)IDC_ADD,hInst,NULL); hHdrSearch=CreateWindowW(L"BUTTON",L"",WS_CHILD|BS_OWNERDRAW,0,0,0,0,h,(HMENU)IDC_HDRSEARCH,hInst,NULL);
         hTitle=CreateWindowW(L"STATIC",L"",WS_CHILD|WS_VISIBLE|SS_OWNERDRAW,0,0,0,0,h,(HMENU)IDC_TITLE,hInst,NULL);
-        hChat=CreateWindowExW(es,L"LISTBOX",NULL,WS_CHILD|WS_VISIBLE|WS_VSCROLL|WS_TABSTOP|LBS_NOTIFY|LBS_NOINTEGRALHEIGHT|LBS_OWNERDRAWVARIABLE,0,0,0,0,h,(HMENU)IDC_CHAT,hInst,NULL); /* owner-drawn bubbles */
+        hChat=CreateWindowExW(es,L"LISTBOX",NULL,WS_CHILD|WS_VISIBLE|WS_CLIPSIBLINGS|WS_TABSTOP|LBS_NOTIFY|LBS_NOINTEGRALHEIGHT|LBS_OWNERDRAWVARIABLE,0,0,0,0,h,(HMENU)IDC_CHAT,hInst,NULL); /* owner-drawn bubbles */
         hInput=CreateWindowExW(es,L"EDIT",L"",WS_CHILD|WS_VISIBLE|WS_VSCROLL|WS_TABSTOP|ES_MULTILINE|ES_AUTOVSCROLL|ES_WANTRETURN,0,0,0,0,h,(HMENU)IDC_INPUT,hInst,NULL);
         hSend=CreateWindowW(L"BUTTON",L"发送(&S)",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_OWNERDRAW,0,0,0,0,h,(HMENU)IDC_SEND,hInst,NULL);
         hFile=CreateWindowW(L"BUTTON",L"",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_OWNERDRAW,0,0,0,0,h,(HMENU)IDC_FILE,hInst,NULL);
@@ -610,7 +645,8 @@ static LRESULT CALLBACK MainProc(HWND h, UINT m, WPARAM w, LPARAM l){
         SendMessageW(hList,WM_SETFONT,(WPARAM)hFont,1); SendMessageW(hChat,WM_SETFONT,(WPARAM)hFont,1); SendMessageW(hInput,WM_SETFONT,(WPARAM)hFont,1);
         SendMessageW(hSend,WM_SETFONT,(WPARAM)hFont,1); SendMessageW(hFile,WM_SETFONT,(WPARAM)hFont,1); SendMessageW(hStatus,WM_SETFONT,(WPARAM)fBody,1); /* body: 12px caption CJK at wine/XP grayscale AA measured below 4.5:1 */ SendMessageW(hTitle,WM_SETFONT,(WPARAM)fBodyStrong,1);
         SendMessageW(hInput,EM_LIMITTEXT,60000,0); SendMessageW(hAdd,WM_SETFONT,(WPARAM)fBody,1);
-        oldInputProc=(WNDPROC)SetWindowLongPtrW(hInput,GWLP_WNDPROC,(LONG_PTR)InputProc); oldChatProc=(WNDPROC)SetWindowLongPtrW(hChat,GWLP_WNDPROC,(LONG_PTR)ChatProc); ShowScrollBar(hInput,SB_VERT,FALSE);
+        oldInputProc=(WNDPROC)SetWindowLongPtrW(hInput,GWLP_WNDPROC,(LONG_PTR)InputProc); oldChatProc=(WNDPROC)SetWindowLongPtrW(hChat,GWLP_WNDPROC,(LONG_PTR)ChatProc); oldListProc=(WNDPROC)SetWindowLongPtrW(hList,GWLP_WNDPROC,(LONG_PTR)ListProc);
+        hChatSb=CreateWindowExW(0,L"LsmScroll",NULL,WS_CHILD,0,0,0,0,h,NULL,hInst,NULL); SetWindowLongPtrW(hChatSb,GWLP_USERDATA,(LONG_PTR)hChat); hListSb=CreateWindowExW(0,L"LsmScroll",NULL,WS_CHILD,0,0,0,0,h,NULL,hInst,NULL); SetWindowLongPtrW(hListSb,GWLP_USERDATA,(LONG_PTR)hList); ShowScrollBar(hInput,SB_VERT,FALSE);
         DragAcceptFiles(h,TRUE); /* drop files anywhere on the window: sent to the open chat */
         { HWND tt=CreateWindowExW(WS_EX_TOPMOST,TOOLTIPS_CLASSW,NULL,WS_POPUP|TTS_ALWAYSTIP|TTS_NOPREFIX,0,0,0,0,h,NULL,hInst,NULL);
           hTip=tt; SendMessageW(tt,TTM_SETDELAYTIME,TTDT_AUTOPOP,4000); /* hover-only, gone after 4 s or when the pointer leaves (TTF_SUBCLASS) */
@@ -632,7 +668,7 @@ static LRESULT CALLBACK MainProc(HWND h, UINT m, WPARAM w, LPARAM l){
     case WM_DRAWITEM: { DRAWITEMSTRUCT *d=(DRAWITEMSTRUCT*)l; if(d->CtlType==ODT_MENU){ draw_menu(d); return TRUE; } if(d->CtlType==ODT_BUTTON && d->CtlID>=IDC_MENUBTN && d->CtlID<IDC_MENUBTN+5){ draw_menubtn(d); return TRUE; } if(d->CtlType==ODT_STATIC && d->CtlID==IDC_TITLE){ draw_header(d); return TRUE; } if(d->CtlType==ODT_STATIC && d->CtlID==IDC_STATUS){ draw_status(d); return TRUE; } if(d->CtlType==ODT_BUTTON && (d->CtlID==IDC_SEND||d->CtlID==IDC_FILE||d->CtlID==IDC_ADD||d->CtlID==IDC_HDRSEARCH)){ draw_icon_button(d); return TRUE; } if(d->CtlType==ODT_LISTBOX && d->CtlID==IDC_CHAT){ draw_chat_item(d); return TRUE; } if(d->CtlType==ODT_LISTBOX && d->CtlID==IDC_LIST){ draw_conv_item(d); return TRUE; } if(d->CtlType==ODT_LISTBOX){ draw_list_item(d); return TRUE; } if(d->CtlType==ODT_BUTTON){ draw_button(d); return TRUE; } break; }
     case WM_PAINT: { PAINTSTRUCT ps; HDC dc=BeginPaint(h,&ps); { RECT lr, hb; GetWindowRect(hAdd,&lr); MapWindowPoints(NULL,h,(POINT*)&lr,2); lr.left=12; lr.right-=70; SetBkMode(dc,TRANSPARENT); SetTextColor(dc,T.text_primary); SelectObject(dc,fBodyStrong); DrawTextW(dc,L"联系人与群组",-1,&lr,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
           GetWindowRect(hTitle,&hb); MapWindowPoints(NULL,h,(POINT*)&hb,2); hb.right+=44; { HBRUSH b=CreateSolidBrush(P.header); FillRect(dc,&hb,b); DeleteObject(b); } { RECT f=hb; InflateRect(&f,1,1); f.bottom=hb.bottom+1; { HBRUSH dv=CreateSolidBrush(T.divider); FrameRect(dc,&f,dv); DeleteObject(dv); } } }
-        frame_child(h,dc,hList); frame_child(h,dc,hSearch); frame_child(h,dc,hChat); frame_child(h,dc,hInput); { RECT cr; HBRUSH dv=CreateSolidBrush(T.divider); GetClientRect(h,&cr); cr.top=MENUBAR_H-1; cr.bottom=MENUBAR_H; FillRect(dc,&cr,dv); DeleteObject(dv); } EndPaint(h,&ps); return 0; }
+        frame_child(h,dc,hList); frame_field(h,dc,hSearch); frame_child(h,dc,hChat); frame_field(h,dc,hInput); { RECT cr; HBRUSH dv=CreateSolidBrush(T.divider); GetClientRect(h,&cr); cr.top=MENUBAR_H-1; cr.bottom=MENUBAR_H; FillRect(dc,&cr,dv); DeleteObject(dv); } EndPaint(h,&ps); return 0; }
     case WM_MENUCHAR: { HMENU mm=(HMENU)l; int i,n=GetMenuItemCount(mm); wchar_t ch=(wchar_t)towlower((wint_t)LOWORD(w)); /* mnemonics for owner-drawn items */
         for(i=0;i<n;i++){ MENUITEMINFOW ii; const wchar_t *t,*a; memset(&ii,0,sizeof ii); ii.cbSize=sizeof ii; ii.fMask=MIIM_DATA; if(!GetMenuItemInfoW(mm,i,TRUE,&ii)) continue; t=(const wchar_t*)ii.dwItemData; if(!t) continue; a=wcschr(t,L'&'); if(a && towlower(a[1])==ch) return MAKELRESULT(i,MNC_EXECUTE); }
         return MAKELRESULT(0,MNC_IGNORE); }
@@ -686,6 +722,7 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE prev, LPWSTR cmd, int show){
     if(!C){ MessageBoxW(NULL,W(err),L"启动失败",MB_ICONSTOP); return 1; }
     memset(&wc,0,sizeof wc); wc.cbSize=sizeof wc; wc.lpfnWndProc=MainProc; wc.hInstance=hi; wc.hIcon=LoadIconW(hi,MAKEINTRESOURCEW(1)); wc.hIconSm=wc.hIcon; wc.hCursor=LoadCursor(NULL,IDC_ARROW); wc.hbrBackground=NULL; /* WM_ERASEBKGND paints window_bg */ wc.lpszClassName=L"LsmMain";
     RegisterClassExW(&wc);
+    wc.lpfnWndProc=ScrollProc; wc.lpszClassName=L"LsmScroll"; RegisterClassExW(&wc);
     wc.lpfnWndProc=PromptProc; wc.lpszClassName=L"LsmPrompt"; wc.style|=0x00020000 /* CS_DROPSHADOW (XP+): lifts the borderless dialog off a same-colour page */; wc.hIcon=NULL; wc.hIconSm=NULL; RegisterClassExW(&wc);
     { RECT wa; if(SystemParametersInfoW(SPI_GETWORKAREA,0,&wa,0)){ if(win_w>wa.right-wa.left) win_w=wa.right-wa.left; if(win_h>wa.bottom-wa.top) win_h=wa.bottom-wa.top;
         win_x=wa.left+((wa.right-wa.left)-win_w)/2; win_y=wa.top+((wa.bottom-wa.top)-win_h)/2; } } /* 800x600 XP screens: fit and centre (CW_USEDEFAULT pushed it off-screen) */

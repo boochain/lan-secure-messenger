@@ -79,6 +79,9 @@ for i, theme in enumerate(themes):
     click(200, 160); time.sleep(1.5)   # first conversation (window coords incl. the wine-drawn frame)
     xdo("type", "--delay", "40", "OK, see you at 3 pm."); xdo("key", "Return"); time.sleep(2.5)
     shot(f"xp-{theme}-chat")
+    g2 = {k: int(v) for k, v in (l.split("=") for l in xdo("getwindowgeometry", "--shell", wid).split())}
+    xdo("mousemove", str(g2["X"] + 600), str(g2["Y"] + 300)); [xdo("click", "4") for _ in range(3)]; time.sleep(0.8); shot(f"xp-{theme}-chat-wheel-up")   # themed scrollbar follows the wheel
+    xdo("mousemove", str(g2["X"] + 600), str(g2["Y"] + 300)); [xdo("click", "5") for _ in range(6)]; time.sleep(0.5)
     click(600, 300, "3"); time.sleep(1); shot(f"xp-{theme}-chat-menu"); xdo("key", "Escape"); time.sleep(0.5)
     click(200, 160, "3"); time.sleep(1); shot(f"xp-{theme}-contact-menu"); xdo("key", "Escape"); time.sleep(0.5)
     xdo("key", "ctrl+Tab"); time.sleep(1.2); shot(f"xp-{theme}-ctrl-tab")
