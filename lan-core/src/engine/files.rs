@@ -363,6 +363,59 @@ fn remove_part_and_sidecar(part: &std::path::Path, keep_part: bool) {
     let _ = std::fs::remove_file(sidecar_path(part));
 }
 
+/// Abandoned partial downloads / outgoing records older than this are expired at start-up.
+const EXPIRE_AFTER: Duration = Duration::from_secs(30 * 24 * 3600);
+
+fn older_than(p: &std::path::Path, d: Duration) -> bool {
+    std::fs::metadata(p).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).map(|e| e > d).unwrap_or(false)
+}
+
+fn mtime_secs(p: &std::path::Path) -> Option<u64> {
+    std::fs::metadata(p).and_then(|m| m.modified()).ok()?.duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_secs())
+}
+
+/// Outgoing record `<data>/outgoing/<tid>.out` (format identical to the C core):
+/// `LSMOUT 1` then `tid/peer/msg/conv/size/sha/mime/mtime/offer_ts/path/name <value>` lines.
+/// Written once the file is hashed, removed when the transfer finishes. After a restart the
+/// transfer is re-offered (same tid) and resumes from the receiver's offset.
+fn out_record_path(paths: &ConfigPaths, tid: &Uuid) -> PathBuf {
+    paths.data.join("outgoing").join(format!("{tid}.out"))
+}
+
+fn write_out_record(paths: &ConfigPaths, t: &TransferRt) {
+    let Some(src) = t.path.as_ref() else { return };
+    let dir = paths.data.join("outgoing");
+    let _ = std::fs::create_dir_all(&dir);
+    let body = format!(
+        "LSMOUT 1\ntid {}\npeer {}\nmsg {}\nconv {}\nsize {}\nsha {}\nmime {}\nmtime {}\noffer_ts {}\npath {}\nname {}\n",
+        t.id,
+        t.peer_fp,
+        t.msg_id,
+        t.conversation,
+        t.size,
+        hex::encode(t.sha256.unwrap_or_default()),
+        t.mime,
+        mtime_secs(src).unwrap_or(0),
+        t.offer_ts,
+        src.display(),
+        t.name
+    );
+    let p = out_record_path(paths, &t.id);
+    let tmp = p.with_extension("tmp");
+    if std::fs::write(&tmp, body).is_ok() {
+        let _ = std::fs::rename(&tmp, &p);
+    }
+}
+
+fn read_kv(path: &std::path::Path, magic: &str) -> Option<HashMap<String, String>> {
+    let raw = std::fs::read_to_string(path).ok()?;
+    let mut it = raw.lines();
+    if it.next()? != magic {
+        return None;
+    }
+    Some(it.filter_map(|l| l.split_once(' ').map(|(k, v)| (k.to_string(), v.to_string()))).collect())
+}
+
 pub(crate) struct Sidecar {
     pub part: PathBuf,
     pub tid: Uuid,
@@ -408,11 +461,23 @@ impl Engine {
     /// Start-up: re-create paused downloads from their sidecars; the .part is re-hashed off the
     /// engine loop, then the transfer waits for the sender's re-offer and resumes.
     pub(crate) fn restore_partials(&mut self) {
+        self.restore_outgoing();
         let dir = self.settings.download_dir(&self.paths);
         let Ok(rd) = std::fs::read_dir(&dir) else { return };
         for e in rd.flatten() {
             let p = e.path();
-            if !p.to_string_lossy().ends_with(".part.resume") {
+            let ps = p.to_string_lossy().to_string();
+            let fname = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            // Expire abandoned partial downloads (sidecar or bare .part) after 30 days.
+            if fname.starts_with('.') && (ps.ends_with(".part") || ps.ends_with(".part.resume")) && older_than(&p, EXPIRE_AFTER) {
+                let part = PathBuf::from(ps.strip_suffix(".resume").unwrap_or(&ps));
+                if older_than(&part, EXPIRE_AFTER) || !part.exists() {
+                    tracing::info!(path = %ps, "expiring abandoned partial download");
+                    remove_part_and_sidecar(&part, false);
+                    continue;
+                }
+            }
+            if !ps.ends_with(".part.resume") {
                 continue;
             }
             let Some(sc) = read_sidecar(&p) else { continue };
@@ -467,7 +532,90 @@ impl Engine {
         }
     }
 
+    /// Start-up: re-create outgoing transfers from their records. A missing or changed source
+    /// file fails the transfer with a clear reason; otherwise it is re-offered on the next link
+    /// and continues from the receiver's offset.
+    fn restore_outgoing(&mut self) {
+        let dir = self.paths.data.join("outgoing");
+        let Ok(rd) = std::fs::read_dir(&dir) else { return };
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.extension().map(|x| x != "out").unwrap_or(true) {
+                continue;
+            }
+            let Some(kv) = read_kv(&p, "LSMOUT 1") else {
+                let _ = std::fs::remove_file(&p);
+                continue;
+            };
+            let g = |k: &str| kv.get(k).cloned().unwrap_or_default();
+            let (Ok(tid), Ok(size), Ok(mtime)) = (Uuid::parse_str(&g("tid")), g("size").parse::<u64>(), g("mtime").parse::<u64>()) else {
+                let _ = std::fs::remove_file(&p);
+                continue;
+            };
+            let mut sha = [0u8; 32];
+            if hex::decode_to_slice(g("sha"), &mut sha).is_err() || self.transfers.contains_key(&tid) {
+                continue;
+            }
+            let src = PathBuf::from(g("path"));
+            let (msg, conv, peer) = (g("msg"), g("conv"), g("peer"));
+            let expired = older_than(&p, EXPIRE_AFTER);
+            let problem = if expired {
+                Some("发送记录已过期 (30 天)".to_string())
+            } else {
+                match std::fs::metadata(&src) {
+                    Err(_) => Some(format!("源文件不存在: {}", src.display())),
+                    Ok(m) if m.len() != size || mtime_secs(&src) != Some(mtime) => Some(format!("源文件已更改: {}", src.display())),
+                    Ok(_) => None,
+                }
+            };
+            let t = TransferRt {
+                id: tid,
+                msg_id: msg.clone(),
+                conversation: conv.clone(),
+                peer_name: self.peer_name(&peer),
+                peer_fp: peer.clone(),
+                direction: Direction::Out,
+                name: g("name"),
+                size,
+                mime: g("mime"),
+                path: Some(src.clone()),
+                sha256: Some(sha),
+                group_id: conv.strip_prefix("group:").and_then(|x| Uuid::parse_str(x).ok()),
+                transferred: 0,
+                state: if problem.is_some() { TransferState::Failed } else { TransferState::Offered },
+                error: problem.clone().unwrap_or_else(|| "等待对方上线以续传".into()),
+                started_ms: now_ms(),
+                cancel: Arc::new(AtomicBool::new(false)),
+                credit: None,
+                chunk_tx: None,
+                offer_ts: g("offer_ts").parse().unwrap_or(0),
+                resumable: true,
+                accepted: false,
+                resume_part: None,
+                resumed_from: 0,
+                resume_loading: false,
+                reoffer_pending: false,
+                rate_mark: (Instant::now(), 0),
+                bps: 0,
+                last_emit: Instant::now(),
+            };
+            self.transfers.insert(tid, t);
+            if let Some(why) = problem {
+                tracing::warn!(%tid, %why, "outgoing transfer cannot be resumed");
+                let _ = std::fs::remove_file(&p);
+                self.mark_file_msg_failed(tid);
+            } else {
+                tracing::info!(%tid, src = %src.display(), "restored outgoing transfer");
+            }
+        }
+    }
+
     fn emit_transfer(&mut self, tid: Uuid, force: bool) {
+        if let Some(t) = self.transfers.get(&tid) {
+            if t.direction == Direction::Out && t.finished() {
+                let _ = std::fs::remove_file(out_record_path(&self.paths, &tid));
+            }
+        }
         if let Some(t) = self.transfers.get_mut(&tid) {
             if force || t.last_emit.elapsed() >= Duration::from_millis(200) || t.finished() {
                 t.last_emit = Instant::now();
@@ -964,6 +1112,7 @@ impl Engine {
                 match result {
                     Ok(h) => {
                         t.sha256 = Some(h);
+                        write_out_record(&self.paths, t);
                         self.send_offer(tid);
                     }
                     Err(e) => {
