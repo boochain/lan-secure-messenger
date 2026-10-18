@@ -52,6 +52,7 @@ try:
     for k in ("window_animation_scale", "transition_animation_scale", "animator_duration_scale"): sh(f"settings put global {k} 0")
     sh(f"pm clear {PKG}"); sh("cmd uimode night no"); sh(f"pm grant {PKG} android.permission.POST_NOTIFICATIONS")
     sh(f"am start -W -n {PKG}/.MainActivity"); time.sleep(10)
+    check(bool(sh(f"pidof {PKG}").strip()), "app running after launch")
     # ---- 设置 › 中继服务器（可选）: off by default
     tap_text("设置"); tap_text("中继服务器（可选）")
     check(has("未启用") and has("保存并连接"), "relay screen opens, off by default (未启用)")
@@ -88,7 +89,11 @@ try:
     tap_text("设置"); tap_text("中继服务器（可选）"); tap_text("通过中转服务器连接")
     check(ui_seed.wait(lambda: has("未启用"), 30, 2) is not None, "relay toggled off -> 未启用"); back(); tap_text("聊天")
     check(ui_seed.wait(lambda: not has("经服务器中转"), 60, 3) is not None, "badge gone after relay off")
+except Exception as ex:
+    FAILS.append(f"exception: {ex}"); print("EXCEPTION", ex, flush=True)
+    shot("failure-screen"); sh("uiautomator dump /sdcard/ui.xml"); open(f"{args.out}/failure-ui.xml", "w").write(sh("cat /sdcard/ui.xml"))
 finally:
+    open(f"{args.out}/logcat.txt", "w").write(adb("logcat", "-d", "-v", "time", t=60))
     sh("cmd uimode night no"); P.stop(); relay.terminate()
 json.dump({"fails": FAILS}, open(f"{args.out}/relay-ui-checks.json", "w"), ensure_ascii=False)
 print("RELAY UI:", "OK" if not FAILS else "FAILED " + ", ".join(FAILS)); sys.exit(1 if FAILS else 0)
