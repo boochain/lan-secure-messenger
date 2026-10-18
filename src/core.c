@@ -1,3 +1,4 @@
+#include <signal.h>
 /* LAN Secure Messenger XP edition — engine.
  * Single network thread running a select() loop; all state behind one lock.
  * XP-safe APIs only: Winsock 2.2 (select, inet_addr, inet_ntoa, gethostbyname), CreateThread,
@@ -911,6 +912,9 @@ lsm_core *lsm_start(const lsm_opts *o, char *err, size_t errn){
     lsm_core *c=(lsm_core*)calloc(1,sizeof(lsm_core)); struct sockaddr_in a; int one=1; char p[600];
 #ifdef _WIN32
     WSADATA w; if(WSAStartup(MAKEWORD(2,2),&w)){ scpy(err,"WSAStartup failed",errn); free(c); return NULL; }
+#else
+    /* a peer or the relay server closing mid-send must surface as EPIPE, not kill the process */
+    signal(SIGPIPE, SIG_IGN);
 #endif
     mu_init(&c->mu); c->o=*o; if(!c->o.discovery_port) c->o.discovery_port=41234; if(!c->o.listen_port) c->o.listen_port=41235; if(!c->o.announce_ms) c->o.announce_ms=3000;
     scpy(c->data_dir,o->data_dir,sizeof c->data_dir); umkdir(c->data_dir); path_join(c->dl_dir,sizeof c->dl_dir,c->data_dir,"downloads"); umkdir(c->dl_dir);
