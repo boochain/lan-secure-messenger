@@ -236,8 +236,10 @@ static void draw_conv_item(DRAWITEMSTRUCT *d){ RECT it=d->rcItem, r, av, tr; con
     SelectObject(dc,fCaption); SetTextColor(dc,c->unread?P.accenttext:sel?T.text_primary:P.meta); DrawTextW(dc,c->time,-1,&tr,DT_RIGHT|DT_SINGLELINE); { SIZE s; GetTextExtentPoint32W(dc,c->time,(int)wcslen(c->time),&s); tr.right-=s.cx+scale_px(8); }
     if(c->via){ /* 经服务器 badge (tooltip 经服务器中转): pill right after the name, name ellipsized first */ SIZE nz, bz; RECT bd; int room;
         SelectObject(dc,fBody); GetTextExtentPoint32W(dc,L"经服务器",4,&bz); SelectObject(dc,fBodyStrong); GetTextExtentPoint32W(dc,c->name,(int)wcslen(c->name),&nz);
-        room=tr.right-tr.left-bz.cx-scale_px(16); if(nz.cx>room) nz.cx=room; bd.left=tr.left+nz.cx+scale_px(6); bd.right=bd.left+bz.cx+scale_px(10); bd.top=tr.top+scale_px(1); bd.bottom=tr.top+scale_px(19);
-        fill_round(dc,bd,scale_px(6),P.chip,P.stroke); SelectObject(dc,fBody); SetBkMode(dc,TRANSPARENT); SetTextColor(dc,P.chipfg); DrawTextW(dc,L"经服务器",-1,&bd,DT_CENTER|DT_VCENTER|DT_SINGLELINE); tr.right=bd.left-scale_px(4); }
+        room=tr.right-tr.left-bz.cx-scale_px(30); if(nz.cx>room) nz.cx=room; bd.left=tr.left+nz.cx+scale_px(6); bd.right=bd.left+bz.cx+scale_px(24); bd.top=tr.top+scale_px(1); bd.bottom=tr.top+scale_px(19);
+        fill_round(dc,bd,scale_px(6),P.chip,P.stroke); SelectObject(dc,fBody); SetBkMode(dc,TRANSPARENT); SetTextColor(dc,P.chipfg); { /* cloud glyph (WinUI/Android badge icon) */ HBRUSH cb=CreateSolidBrush(P.chipfg); HPEN cp=CreatePen(PS_SOLID,1,P.chipfg); HGDIOBJ ob=SelectObject(dc,cb), op=SelectObject(dc,cp); int x=bd.left+scale_px(5), y=(bd.top+bd.bottom)/2, u=scale_px(1);
+            Ellipse(dc,x,y-u,x+5*u,y+4*u); Ellipse(dc,x+2*u,y-4*u,x+9*u,y+3*u); Ellipse(dc,x+6*u,y-2*u,x+12*u,y+4*u); Rectangle(dc,x+2*u,y+u,x+10*u,y+4*u); SelectObject(dc,ob); SelectObject(dc,op); DeleteObject(cb); DeleteObject(cp); }
+        { RECT tb=bd; tb.left+=scale_px(18); tb.right-=scale_px(4); DrawTextW(dc,L"经服务器",-1,&tb,DT_CENTER|DT_VCENTER|DT_SINGLELINE); } tr.right=bd.left-scale_px(4); }
     SelectObject(dc,fBodyStrong); SetTextColor(dc,T.text_primary); DrawTextW(dc,c->name,-1,&tr,DT_LEFT|DT_SINGLELINE|DT_NOPREFIX|DT_END_ELLIPSIS);
     tr.right=it.right-scale_px(10); tr.top=tr.bottom+scale_px(2); tr.bottom=tr.top+line_h(dc,fBody);
     if(c->unread){ wchar_t b[8]; SIZE s; RECT bd; _snwprintf(b,8,c->unread>99?L"99+":L"%d",c->unread); b[7]=0; SelectObject(dc,fCaption); GetTextExtentPoint32W(dc,b,(int)wcslen(b),&s);
@@ -264,7 +266,7 @@ static int thumb_get(const char *path, HBITMAP *bm, int *w, int *h){ int i; void
     if(nthumbs<32){ i=nthumbs++; strncpy(thumbs[i].path,path,519); thumbs[i].bm=b; thumbs[i].w=thumbs[i].h=0; if(b && GetObject(b,sizeof bi,&bi)){ thumbs[i].w=bi.bmWidth; thumbs[i].h=bi.bmHeight; } *bm=b; *w=thumbs[i].w; *h=thumbs[i].h; }
     return b!=NULL && *w>0; }
 static void thumb_fit(int w, int h, int maxw, int *ow, int *oh){ int mw=maxw<scale_px(300)?maxw:scale_px(300), mh=scale_px(200); double k=1.0; if(w>mw) k=(double)mw/w; if(h*k>mh) k=(double)mh/h; *ow=(int)(w*k); *oh=(int)(h*k); if(*ow<scale_px(60)) *ow=scale_px(60); if(*oh<scale_px(40)) *oh=scale_px(40); }
-typedef struct { int kind, out, status, tstate, pct, h, bw; char id[40]; char path[520]; wchar_t *text; wchar_t time[8]; wchar_t name[260]; wchar_t meta[96]; wchar_t ext[8]; } row_t;
+typedef struct { int kind, out, status, tstate, pct, h, bw; char id[40]; char path[520]; wchar_t *text; wchar_t time[8]; wchar_t name[260]; wchar_t meta[96]; wchar_t ext[8]; int emph; } row_t;
 static row_t *rows; static int nrows, caprows;
 static int nchat;
 static void rows_clear(void){ int i; for(i=0;i<nrows;i++) free(rows[i].text); nrows=0; }
@@ -317,7 +319,7 @@ static void draw_chat_item(DRAWITEMSTRUCT *d){ RECT it=d->rcItem, b; row_t *r; H
         bubble(dc,tile,P.tile,P.stroke); SelectObject(dc,fCaptionStrong); SetTextColor(dc,P.tilefg); /* bold: regular 12px Latin measured 4.50:1 / Lc 57 after grayscale AA */ DrawTextW(dc,r->ext,-1,&tile,DT_CENTER|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX);
         nr.left=tile.right+scale_px(10); nr.right=br.left-scale_px(6); nr.top=b.top+scale_px(9); nr.bottom=nr.top+line_h(dc,fBodyStrong);
         SelectObject(dc,fBodyStrong); SetTextColor(dc,fg); DrawTextW(dc,r->name,-1,&nr,DT_LEFT|DT_SINGLELINE|DT_NOPREFIX|DT_END_ELLIPSIS);
-        nr.top=nr.bottom+scale_px(1); nr.bottom=nr.top+line_h(dc,fBody); SelectObject(dc,fBody); SetTextColor(dc,meta); /* 14px: 12px Latin at wine/XP grayscale AA measured < 4.5:1 */ DrawTextW(dc,r->meta,-1,&nr,DT_LEFT|DT_SINGLELINE|DT_NOPREFIX|DT_END_ELLIPSIS);
+        nr.top=nr.bottom+scale_px(1); nr.bottom=nr.top+line_h(dc,fBody); SelectObject(dc,fBody); SetTextColor(dc,r->emph?(r->out?P.minefg:P.theirsfg):meta); /* paused/resumed state in the bubble text colour: meta grey on thin CJK strokes measured 3.5:1. 14px: 12px Latin at wine/XP grayscale AA measured < 4.5:1 */ DrawTextW(dc,r->meta,-1,&nr,DT_LEFT|DT_SINGLELINE|DT_NOPREFIX|DT_END_ELLIPSIS);
         if(r->path[0]){ /* open button: rounded square with a down-arrow into a tray */ HPEN pn=CreatePen(PS_SOLID,2,P.accenttext); HGDIOBJ op; int cx=(br.left+br.right)/2, cy=(br.top+br.bottom)/2, a=scale_px(6);
             bubble(dc,br,P.tile,P.stroke); op=SelectObject(dc,pn); { POINT s1[2]={{cx,cy-a},{cx,cy+a/2}}, s2[3]={{cx-a/2-1,cy},{cx,cy+a/2+1},{cx+a/2+1,cy}}, s3[2]={{cx-a,cy+a},{cx+a+1,cy+a}}; Polyline(dc,s1,2); Polyline(dc,s2,3); Polyline(dc,s3,2); } SelectObject(dc,op); DeleteObject(pn);
             { RECT lr=file_link_rect(b); SetTextColor(dc,P.accenttext); DrawTextW(dc,L"在文件夹中显示",-1,&lr,DT_LEFT|DT_VCENTER|DT_SINGLELINE); } }
@@ -351,8 +353,8 @@ static void refresh_chat(void){
                 if(!r->path[0] && m[i].file_path[0] && r->tstate==3) strncpy(r->path,m[i].file_path,519);
                 if(r->path[0] && (!wcscmp(r->ext,L"PNG")||!wcscmp(r->ext,L"JPG")||!wcscmp(r->ext,L"JPEG")||!wcscmp(r->ext,L"GIF")||!wcscmp(r->ext,L"BMP"))) r->kind=R_IMAGE;
                 { int j3; for(j3=0;j3<nt;j3++) if(!strcmp(t2[j3].msg_id,m[i].id)){ lsm_transfer *tx=&t2[j3]; wchar_t rb[32];
-                    if(tx->state==0 && tx->resumable && tx->error[0]){ _snwprintf(r->meta,96,L"%s  ·  连接中断，重连后自动续传",sz); r->meta[95]=0; r->tstate=100; }
-                    else if(tx->state==1 && tx->resumed_from>0 && tx->size){ fmt_size(tx->resumed_from,rb,32); _snwprintf(r->meta,96,L"从 %d%%（%s）处续传  ·  %d%%",(int)(tx->resumed_from*100/tx->size),rb,r->pct); r->meta[95]=0; r->tstate=101; } } }
+                    if(tx->state==0 && tx->resumable && tx->error[0]){ _snwprintf(r->meta,96,L"%s  ·  连接中断，重连后自动续传",sz); r->meta[95]=0; r->tstate=100; r->emph=1; }
+                    else if(tx->state==1 && tx->resumed_from>0 && tx->size){ fmt_size(tx->resumed_from,rb,32); _snwprintf(r->meta,96,L"从 %d%%（%s）处续传  ·  %d%%",(int)(tx->resumed_from*100/tx->size),rb,r->pct); r->meta[95]=0; r->tstate=101; r->emph=1; } } }
                 if(r->tstate>=100) r->tstate=r->tstate==100?0:1; else
                 if(r->tstate==1) _snwprintf(r->meta,96,L"%s  ·  %s %d%%",sz,TS[1],r->pct); else if(r->tstate==3) _snwprintf(r->meta,96,L"%s  ·  %s",sz,r->ext); else _snwprintf(r->meta,96,L"%s  ·  %s",sz,TS[r->tstate<7?r->tstate:4]); r->meta[95]=0; }
         } }
@@ -479,9 +481,10 @@ static int pick_peers(const wchar_t *title, const wchar_t *label, int trusted_on
 #define IDC_R_STATUS 306
 #define IDC_R_PASSROW 307
 static HWND hRelayDlg, hRelayStatus;
-static int relay_clear_pending;
+static int relay_clear_pending; static char relay_state[16]="off";
 static void relay_status_text(wchar_t *o, int n){ char det[256]="", host[256]=""; const char *st; int en=0, port=0, hp=0, peers=0; const wchar_t *t;
     lsm_relay_get(C,&en,host,sizeof host,&port,&hp); lsm_lock(C); st=lsm_relay_status(C,det,sizeof det); peers=lsm_relay_peers(C); lsm_unlock(C);
+    snprintf(relay_state,sizeof relay_state,"%s",st); if(hRelayDlg) InvalidateRect(hRelayDlg,NULL,FALSE);
     t=!strcmp(st,"online")?L"已连接中转服务器":!strcmp(st,"connecting")?L"正在连接中转服务器…":!strcmp(st,"auth_failed")?L"网络口令错误":!strcmp(st,"error")?L"无法连接中转服务器":L"未启用";
     if(!strcmp(st,"online")) _snwprintf(o,n,L"%s  ·  %s:%d · 服务器上 %d 人",t,W(host),port,peers); else if(det[0] && strcmp(st,"off")) _snwprintf(o,n,L"%s  ·  %s",t,W(det)); else _snwprintf(o,n,L"%s",t); o[n-1]=0; }
 static LRESULT CALLBACK RelayProc(HWND h, UINT m, WPARAM w, LPARAM l){
@@ -504,10 +507,11 @@ static LRESULT CALLBACK RelayProc(HWND h, UINT m, WPARAM w, LPARAM l){
     case WM_CTLCOLOREDIT: return ctl_color((HDC)w,(HWND)l,1);
     case WM_ERASEBKGND: { RECT r; GetClientRect(h,&r); FillRect((HDC)w,&r,brWin); return 1; }
     case WM_PAINT: { PAINTSTRUCT ps; HDC dc=BeginPaint(h,&ps); RECT cr, tr; HBRUSH dv=CreateSolidBrush(T.divider); GetClientRect(h,&cr);
-        tr=cr; tr.bottom=TITLE_H; FillRect(dc,&tr,brCard); tr.top=TITLE_H-1; FillRect(dc,&tr,dv); FrameRect(dc,&cr,dv); DeleteObject(dv);
-        tr=cr; tr.left=12; tr.bottom=TITLE_H; SetBkMode(dc,TRANSPARENT); SetTextColor(dc,T.text_primary); SelectObject(dc,fBodyStrong); DrawTextW(dc,L"中转服务器（可选）",-1,&tr,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
+        DeleteObject(dv); tr=cr; tr.left=scale_px(14); tr.top=scale_px(10); tr.bottom=tr.top+scale_px(22); SetBkMode(dc,TRANSPARENT); SetTextColor(dc,T.text_primary); SelectObject(dc,fBodyStrong); DrawTextW(dc,L"中转服务器（可选）",-1,&tr,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
+        if(hRelayStatus){ RECT sr; COLORREF dc2=!strcmp(relay_state,"online")?T.online:!strcmp(relay_state,"connecting")?RGB(0xE0,0x9A,0x10):(!strcmp(relay_state,"auth_failed")||!strcmp(relay_state,"error"))?RGB(0xD0,0x30,0x20):T.text_secondary;
+            HBRUSH db=CreateSolidBrush(dc2); HPEN dp=CreatePen(PS_SOLID,1,dc2); HGDIOBJ ob2=SelectObject(dc,db), op2=SelectObject(dc,dp); int d=scale_px(10), cy;
+            GetWindowRect(hRelayStatus,&sr); MapWindowPoints(NULL,h,(POINT*)&sr,2); cy=sr.top+scale_px(11); Ellipse(dc,scale_px(14),cy-d/2,scale_px(14)+d,cy-d/2+d); SelectObject(dc,ob2); SelectObject(dc,op2); DeleteObject(db); DeleteObject(dp); }
         frame_field(h,dc,GetDlgItem(h,IDC_R_HOST)); frame_field(h,dc,GetDlgItem(h,IDC_R_PORT)); frame_field(h,dc,GetDlgItem(h,IDC_R_PASS)); EndPaint(h,&ps); return 0; }
-    case WM_NCHITTEST: { POINT pt={(short)LOWORD(l),(short)HIWORD(l)}; ScreenToClient(h,&pt); if(pt.y<TITLE_H) return HTCAPTION; break; }
     case WM_DRAWITEM: { DRAWITEMSTRUCT *d=(DRAWITEMSTRUCT*)l; if(d->CtlID==IDC_R_CLEAR){ wchar_t t[32]; FillRect(d->hDC,&d->rcItem,brWin); SetBkMode(d->hDC,TRANSPARENT); SetTextColor(d->hDC,P.accenttext); SelectObject(d->hDC,fBody); GetWindowTextW(d->hwndItem,t,32); DrawTextW(d->hDC,t,-1,&d->rcItem,DT_LEFT|DT_VCENTER|DT_SINGLELINE); if(d->itemState&ODS_FOCUS){ RECT f=d->rcItem; DrawFocusRect(d->hDC,&f); } return TRUE; }
         if(d->CtlType==ODT_BUTTON){ draw_button(d); return TRUE; } break; }
     case WM_SETCURSOR: if((HWND)w==GetDlgItem(h,IDC_R_CLEAR)){ SetCursor(LoadCursor(NULL,IDC_HAND)); return TRUE; } break;
@@ -517,10 +521,11 @@ static WNDPROC oldPassProc;
 static LRESULT CALLBACK PassProc(HWND h, UINT m, WPARAM w, LPARAM l){ if(m==WM_PAINT && GetWindowTextLengthW(h)==0){ int en,port,hp; char host[256]; LRESULT r=CallWindowProcW(oldPassProc,h,m,w,l); HDC dc=GetDC(h); RECT cr; GetClientRect(h,&cr); cr.left+=3;
         lsm_relay_get(C,&en,host,sizeof host,&port,&hp); if(relay_clear_pending) hp=0; SetBkMode(dc,TRANSPARENT); SetTextColor(dc,T.text_secondary); SelectObject(dc,fBody); DrawTextW(dc,hp?L"已设置（留空则保持不变）":L"未设置",-1,&cr,DT_LEFT|DT_VCENTER|DT_SINGLELINE); ReleaseDC(h,dc); return r; }
     if(m==WM_SETFOCUS||m==WM_KILLFOCUS){ InvalidateRect(h,NULL,TRUE); InvalidateRect(GetParent(h),NULL,FALSE); } return CallWindowProcW(oldPassProc,h,m,w,l); }
-static void relay_dialog(void){ RECT r; HWND h, c; int y=TITLE_H+10, en=0, port=9443, hp=0; char host[256]=""; wchar_t ps[16], st[300];
+static void relay_dialog(void){ RECT r; HWND h, c; int y=scale_px(40), en=0, port=9443, hp=0; char host[256]=""; wchar_t ps[16], st[300];
     if(hRelayDlg){ SetForegroundWindow(hRelayDlg); return; }
     lsm_relay_get(C,&en,host,sizeof host,&port,&hp); relay_clear_pending=0; GetWindowRect(hMain,&r);
-    h=hRelayDlg=CreateWindowExW(WS_EX_TOOLWINDOW,L"LsmRelay",L"中转服务器（可选）",WS_POPUP,r.left+90,r.top+70,460,380,hMain,NULL,hInst,NULL);
+    h=hRelayDlg=CreateWindowExW(WS_EX_DLGMODALFRAME|WS_EX_CONTROLPARENT,L"LsmRelay",L"中转服务器",WS_POPUP|WS_CAPTION|WS_SYSMENU|WS_CLIPCHILDREN,r.left,r.top,460,380,hMain,NULL,hInst,NULL);
+    { HMENU sm=GetSystemMenu(h,FALSE); if(sm){ DeleteMenu(sm,SC_SIZE,MF_BYCOMMAND); DeleteMenu(sm,SC_MAXIMIZE,MF_BYCOMMAND); DeleteMenu(sm,SC_MINIMIZE,MF_BYCOMMAND); DeleteMenu(sm,SC_RESTORE,MF_BYCOMMAND); } }
 #define CTL(cls,txt,st2,x,yy,w,hh,id) c=CreateWindowW(cls,txt,WS_CHILD|WS_VISIBLE|(st2),x,yy,w,hh,h,(HMENU)(INT_PTR)(id),hInst,NULL); SendMessageW(c,WM_SETFONT,(WPARAM)fBody,1);
     CTL(L"STATIC",L"不在同一局域网时，可通过你自己部署的中转服务器联系对方。局域网直连始终优先；服务器只转发端到端加密的数据，无法看到消息内容。",0,14,y,430,62,0) y+=66;
     CTL(L"BUTTON",L"通过中转服务器连接",WS_TABSTOP|BS_AUTOCHECKBOX,14,y,300,24,IDC_R_EN) SendMessageW(c,BM_SETCHECK,en?BST_CHECKED:BST_UNCHECKED,0); y+=32;
@@ -528,10 +533,12 @@ static void relay_dialog(void){ RECT r; HWND h, c; int y=TITLE_H+10, en=0, port=
     CTL(L"STATIC",L"端口",0,356,y+3,34,22,0) _snwprintf(ps,16,L"%d",port?port:9443); CTL(L"EDIT",ps,WS_TABSTOP|ES_NUMBER,392,y,52,24,IDC_R_PORT) y+=34;
     CTL(L"STATIC",L"网络口令",0,14,y+3,90,22,0) CTL(L"EDIT",L"",WS_TABSTOP|ES_PASSWORD|ES_AUTOHSCROLL,110,y,334,24,IDC_R_PASS) oldPassProc=(WNDPROC)SetWindowLongPtrW(c,GWLP_WNDPROC,(LONG_PTR)PassProc); y+=30;
     CTL(L"STATIC",L"口令已设置",0,110,y+2,80,22,IDC_R_PASSROW) CTL(L"BUTTON",L"清除口令",WS_TABSTOP|BS_OWNERDRAW,192,y,70,24,IDC_R_CLEAR) if(!hp){ ShowWindow(GetDlgItem(h,IDC_R_PASSROW),SW_HIDE); ShowWindow(c,SW_HIDE); } y+=32;
-    relay_status_text(st,300); CTL(L"STATIC",st,SS_LEFTNOWORDWRAP,14,y,430,22,IDC_R_STATUS) hRelayStatus=c; y+=36;
+    relay_status_text(st,300); CTL(L"STATIC",st,SS_LEFTNOWORDWRAP|SS_ENDELLIPSIS,32,y,412,22,IDC_R_STATUS) hRelayStatus=c; y+=36;
     CTL(L"BUTTON",L"保存并连接",WS_TABSTOP|BS_OWNERDRAW,254,y,100,28,IDOK) CTL(L"BUTTON",L"关闭",WS_TABSTOP|BS_OWNERDRAW,360,y,84,28,IDCANCEL)
 #undef CTL
-    SetWindowPos(h,NULL,0,0,460,y+44,SWP_NOMOVE|SWP_NOZORDER); EnableWindow(hMain,FALSE); ShowWindow(h,SW_SHOW); SetFocus(GetDlgItem(h,IDC_R_EN)); }
+    { RECT wr={0,0,460,y+44}, mr; AdjustWindowRectEx(&wr,WS_POPUP|WS_CAPTION|WS_SYSMENU,FALSE,WS_EX_DLGMODALFRAME); GetWindowRect(hMain,&mr);
+      SetWindowPos(h,NULL,(mr.left+mr.right-(wr.right-wr.left))/2,(mr.top+mr.bottom-(wr.bottom-wr.top))/2,wr.right-wr.left,wr.bottom-wr.top,SWP_NOZORDER); } /* centred on the owner */
+    EnableWindow(hMain,FALSE); ShowWindow(h,SW_SHOW); SetFocus(GetDlgItem(h,IDC_R_EN)); }
 static void relay_dialog_refresh(void){ wchar_t st[300]; if(!hRelayStatus) return; relay_status_text(st,300); SetWindowTextW(hRelayStatus,st); }
 
 static void do_command(int id){
@@ -595,7 +602,7 @@ static void draw_status(DRAWITEMSTRUCT *d){ RECT c=d->rcItem, pn[4]; const wchar
     InflateRect(&c,0,-2); status_panes(c,pn);
     for(i=0;i<4;i++){ RECT t=pn[i]; HPEN sh=CreatePen(PS_SOLID,1,T.divider), hi=CreatePen(PS_SOLID,1,theme_mode==2?RGB(0x40,0x40,0x40):RGB(255,255,255)); HGDIOBJ op=SelectObject(dc,sh); /* sunken pane: shadow top/left, highlight bottom/right */
         MoveToEx(dc,t.left,t.bottom-1,NULL); LineTo(dc,t.left,t.top); LineTo(dc,t.right-1,t.top); SelectObject(dc,hi); LineTo(dc,t.right-1,t.bottom-1); LineTo(dc,t.left,t.bottom-1); SelectObject(dc,op); DeleteObject(sh); DeleteObject(hi);
-        t.left+=scale_px(6); t.right-=scale_px(4); if(i==1) { draw_shield(dc,t.left,(t.top+t.bottom)/2-scale_px(6),scale_px(12)); t.left+=scale_px(18); } DrawTextW(dc,tx[i],-1,&t,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX|DT_END_ELLIPSIS); } }
+        t.left+=scale_px(6); t.right-=scale_px(4); if(i==1) { draw_shield(dc,t.left,(t.top+t.bottom)/2-scale_px(6),scale_px(12)); t.left+=scale_px(18); } SelectObject(dc,i==1?fBodyStrong:fBody); /* identity pane in semibold: regular 14px i/l stems straddle pixels under grayscale AA (ink ~#817F76, 3.3:1) */ DrawTextW(dc,tx[i],-1,&t,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX|DT_END_ELLIPSIS); } }
 /* icon buttons: paperclip (attach), magnifier (header search), person+ (添加), paper plane + 发送(S) (default button, Luna-style blue edge) */
 static void draw_icon_button(DRAWITEMSTRUCT *d){ RECT r=d->rcItem; HDC dc=d->hDC; int id=d->CtlID, hot=(d->itemState&ODS_SELECTED)!=0, cx, cy, u=scale_px(1); wchar_t t[64]; HPEN pn; HGDIOBJ op, ob;
     COLORREF bg=id==IDC_HDRSEARCH?P.header:T.window_bg; HBRUSH b=CreateSolidBrush(bg); FillRect(dc,&r,b); DeleteObject(b); SetBkMode(dc,TRANSPARENT);
@@ -626,6 +633,9 @@ static void ui_icons_dump(void){ static char last[4096]; char buf[4096]; int n=0
       for(i=ct;i<cn && i<nrows && n<3800;i++){ RECT b; if(SendMessageW(hChat,LB_GETITEMRECT,i,(LPARAM)&ir)==LB_ERR || ir.top>cl.bottom) break; if(rows[i].kind!=R_IMAGE) continue; b=row_bubble(&rows[i],ir); InflateRect(&b,-scale_px(4),-scale_px(4)); if(b.bottom>cl.bottom) b.bottom=cl.bottom; if(b.top<0) b.top=0; ADDR(hChat,b,"image"); } }
     { RECT c; POINT a={0,0}; ClientToScreen(hMain,&a); if(a.y>wr.top){ n+=snprintf(buf+n,sizeof buf-n,"ICON system-frame 0,0,%ld,%ld\n",wr.right-wr.left,a.y-wr.top); } (void)c; } /* caption + frame: drawn by the OS / wine, not from the app palette */
     { HWND sc[2]={hChat,hList}; int q; for(q=0;q<2;q++) if(GetWindowLongW(sc[q],GWL_STYLE)&WS_VSCROLL){ RECT c, b; GetClientRect(sc[q],&c); b.left=c.right; b.right=c.right+GetSystemMetrics(SM_CXVSCROLL); b.top=c.top; b.bottom=c.bottom; ADDR(sc[q],b,"system-scrollbar"); } } /* drawn by the OS theme, not from the app palette */
+    if(hRelayDlg && IsWindowVisible(hRelayDlg)){ RECT dr, sr, d2; POINT a={0,0}; GetWindowRect(hRelayDlg,&dr); ClientToScreen(hRelayDlg,&a); /* relay dialog: OS caption, and the status dot (state is spelled out next to it) */
+        n+=snprintf(buf+n,sizeof buf-n,"ICON system-frame %ld,%ld,%ld,%ld\n",dr.left-wr.left,dr.top-wr.top,dr.right-dr.left,a.y-dr.top);
+        if(hRelayStatus){ GetWindowRect(hRelayStatus,&sr); MapWindowPoints(NULL,hRelayDlg,(POINT*)&sr,2); d2.left=scale_px(14); d2.top=sr.top+scale_px(6); d2.right=d2.left+scale_px(10); d2.bottom=d2.top+scale_px(10); ADDR(hRelayDlg,d2,"relay-status-dot"); } }
 #undef ADDR
     (void)o; if(!strcmp(buf,last)) return; strcpy(last,buf); f=fopen(ui_icons_path,"w"); if(f){ fputs(buf,f); fclose(f); } }
 
