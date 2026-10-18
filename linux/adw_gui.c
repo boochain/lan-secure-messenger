@@ -62,8 +62,10 @@ static GtkWidget *avatar(const char *name, const char *key, int size, int online
     if(online){ GtkWidget *d=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,0); cls(d,"online-dot"); if(icon_widgets) g_ptr_array_add(icon_widgets,g_object_ref(d)); gtk_widget_set_size_request(d,6,6); gtk_widget_set_halign(d,GTK_ALIGN_END); gtk_widget_set_valign(d,GTK_ALIGN_END); gtk_overlay_add_overlay(GTK_OVERLAY(o),d); }
     return o; }
 static void toast(const char *t){ (void)t; /* status line for now */ if(status_lbl) gtk_label_set_text(GTK_LABEL(status_lbl),t); }
-static void notify(const char *title, const char *body){ GNotification *n=g_notification_new(title); g_notification_set_body(n,body);
+static void notify_conv(const char *title, const char *body, const char *conv){ GNotification *n=g_notification_new(title); g_notification_set_body(n,body);
+    if(conv&&*conv) g_notification_set_default_action_and_target(n,"app.open-conv","s",conv);   /* click opens that chat (G17) */
     g_application_send_notification(G_APPLICATION(app),"msg",n); g_object_unref(n); }
+static void notify(const char *title, const char *body){ notify_conv(title,body,NULL); }
 
 /* ---------------------------------------------------------------- dialogs (AdwAlertDialog on 1.5+, AdwMessageDialog on 1.4) */
 typedef void (*confirm_cb)(gpointer data);
@@ -348,7 +350,7 @@ static gboolean ui_state_tick(gpointer p){ /* LSM_UI_TEST: open dialogs / popove
 #if ADW_CHECK_VERSION(1,5,0)
     if(adw_application_window_get_visible_dialog(ADW_APPLICATION_WINDOW(win))) nd++;
 #endif
-    printf("UISTATE dialogs=%d addpop=%d size=%dx%d\n",nd,add_popover&&gtk_widget_get_visible(add_popover),gtk_widget_get_width(win),gtk_widget_get_height(win)); fflush(stdout); return G_SOURCE_CONTINUE; }
+    printf("UISTATE dialogs=%d addpop=%d size=%dx%d visible=%d conv=%s\n",nd,add_popover&&gtk_widget_get_visible(add_popover),gtk_widget_get_width(win),gtk_widget_get_height(win),gtk_widget_get_visible(win),cur_conv[0]?cur_conv:"-"); fflush(stdout); return G_SOURCE_CONTINUE; }
 static void win_act(GSimpleAction *a, GVariant *v, gpointer p){ const char *n=g_action_get_name(G_ACTION(a)); (void)v;(void)p;
     g_timeout_add(400,test_log_later,(gpointer)n);
     if(!strcmp(n,"search")){ adw_navigation_split_view_set_show_content(ADW_NAVIGATION_SPLIT_VIEW(split),FALSE); gtk_widget_grab_focus(search); }
@@ -389,7 +391,7 @@ static gboolean poll_cb(gpointer p){ char e[4096]; (void)p;
     while(lsm_poll_event(C,e,sizeof e)){
         if(!strncmp(e,"msg\t",4)||!strncmp(e,"msg_update\t",11)){ char *f[8]; int n=0; char *q=e; f[n++]=q; while(*q&&n<8){ if(*q=='\t'){ *q=0; f[n++]=q+1; } q++; }
             if(n>=7){ if(!strcmp(f[2],cur_conv)) chat_dirty=1; list_dirty=1;
-                if(!strcmp(f[0],"msg")&&!strcmp(f[3],"in")&&strcmp(f[5],"system")&&(strcmp(f[2],cur_conv)||!gtk_window_is_active(GTK_WINDOW(win)))) notify("新消息",!strcmp(f[5],"file")?"收到文件":f[6]); } }
+                if(!strcmp(f[0],"msg")&&!strcmp(f[3],"in")&&strcmp(f[5],"system")&&(strcmp(f[2],cur_conv)||!gtk_window_is_active(GTK_WINDOW(win)))) notify_conv("新消息",!strcmp(f[5],"file")?"收到文件":f[6],f[2]); } }
         else if(!strncmp(e,"transfer\t",9)) chat_dirty=1;
         else if(!strncmp(e,"relay\t",6)){ relay_refresh(); list_dirty=1; }
         else if(!strncmp(e,"peer\t",5) && strstr(e,"\tpath\t")) list_dirty=chat_dirty=1;
@@ -531,6 +533,9 @@ static void activate(GtkApplication *a, gpointer p){
     { const char *ws=getenv("LSM_WINDOW_SIZE"); int w,h; if(ws && sscanf(ws,"%dx%d",&w,&h)==2) gtk_window_set_default_size(GTK_WINDOW(win),w,h); }  /* tests: fixed size beats window.ini */
     g_timeout_add(300,poll_cb,NULL); }
 
+/* app.open-conv(s): default action of a message notification -> show the window and open that chat */
+static void open_conv_act(GSimpleAction *a, GVariant *v, gpointer p){ (void)a; (void)p; if(!win) g_application_activate(G_APPLICATION(app)); if(!win) return;
+    gtk_widget_set_visible(win,TRUE); gtk_window_present(GTK_WINDOW(win)); select_conv(g_variant_get_string(v,NULL)); list_dirty=1; }
 int main(int argc, char **argv){
     int i, st; const char *xdg=getenv("XDG_DATA_HOME"), *home=getenv("HOME");
     if(xdg&&*xdg) snprintf(data_dir,sizeof data_dir,"%s/lan-messenger",xdg); else snprintf(data_dir,sizeof data_dir,"%s/.local/share/lan-messenger",home?home:".");
@@ -546,6 +551,7 @@ int main(int argc, char **argv){
     if(!g_name){ static char hn[256]; if(gethostname(hn,sizeof hn)==0) g_name=hn; }
     { char id[256]; snprintf(id,sizeof id,APP_ID "%s",getenv("LSM_INSTANCE")?getenv("LSM_INSTANCE"):""); app=adw_application_new(id,G_APPLICATION_DEFAULT_FLAGS); }
     g_signal_connect(app,"activate",G_CALLBACK(activate),NULL);
+    { GSimpleAction *oc=g_simple_action_new("open-conv",G_VARIANT_TYPE_STRING); g_signal_connect(oc,"activate",G_CALLBACK(open_conv_act),NULL); g_action_map_add_action(G_ACTION_MAP(app),G_ACTION(oc)); g_object_unref(oc); }
     { char *av[]={argv[0],NULL}; st=g_application_run(G_APPLICATION(app),1,av); }
     if(C) lsm_stop(C);
     return st; }

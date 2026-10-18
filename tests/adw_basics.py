@@ -72,7 +72,8 @@ def start(extra=None):
     return Proc([gui, "--data", f"{W}/gui", "--name", "Bill", "--no-discovery", "--port", str(port), "--disco-port", str(port + 1), "--auto-trust"], e)
 g = start({"LSM_WINDOW_SIZE": "1024x694"}); fp = (g.wait_for("LSM_FP", 20) or " ? ").split()[1]; check(fp != "?", "GUI started")
 A.cmd(f"add 127.0.0.1:{port}"); time.sleep(2); A.cmd(f"trust {fp[:12]}"); A.cmd(f"send {fp[:12]} 基础检查：请回复。"); time.sleep(3)
-xdo("mousemove", "130", "140", "click", "1"); time.sleep(1)
+B = peer("b", "陈静", port + 4); B.cmd(f"add 127.0.0.1:{port}"); time.sleep(2); B.cmd(f"trust {fp[:12]}"); B.cmd(f"send {fp[:12]} 第二个会话。"); time.sleep(3)
+xdo("mousemove", "130", "220", "click", "1"); time.sleep(1)   # second row = 王工 (陈静 wrote last)
 # G1 Esc closes: Ctrl+I details dialog, Ctrl+N add popover
 xdo("key", "ctrl+i"); time.sleep(1.2); d = fresh(g, "dialogs"); xdo("key", "Escape"); time.sleep(1); d2 = fresh(g, "dialogs")
 check(d == "1" and d2 == "0", f"G1 Ctrl+I opens the details dialog, Esc closes it (dialogs {d} -> {d2})")
@@ -84,7 +85,7 @@ check(not any("line-one" in l for l in A.lines), "G2 Shift+Enter does not send")
 xdo("key", "Return"); r2 = wait(lambda: next((l for l in A.lines if "\tin\t" in l and "line-two" in l), None), 10)
 check(bool(r2), f"G2 Enter sends one message with both lines ({(r2 or '')[-30:]!r})")
 # G9 right-click a bubble opens its menu; G10 复制 copies (pasted back and received by the peer)
-xdo("mousemove", "380", "166", "click", "3"); time.sleep(1.2); snap("adw-basics-msg-menu"); xdo("key", "Return"); time.sleep(0.8)
+xdo("mousemove", "428", "167", "click", "3"); time.sleep(1.2); snap("adw-basics-msg-menu"); xdo("key", "Return"); time.sleep(0.8)
 xdo("mousemove", "600", "663", "click", "1"); time.sleep(0.4); xdo("key", "ctrl+v"); time.sleep(0.4); xdo("key", "Return")
 check(bool(wait(lambda: any("\tin\t" in l and "基础检查：请回复。" in l for l in A.lines), 8)), "G10 bubble menu 复制 copies the text (pasted with Ctrl+V and received by the peer)")
 # G11 tooltip on the send button
@@ -94,6 +95,14 @@ check(bool(tn), f"G11 hovering the send button shows a tooltip surface ({len(tn)
 # G5 close hides and keeps running; G12 a second launch exits and re-presents the one window
 n = len(g.lines); xdo("key", "ctrl+w"); time.sleep(1.5); vis = subprocess.run(["xdotool", "search", "--onlyvisible", "--name", "局域网安全通讯"], env=env, capture_output=True, text=True).stdout.split()
 check(not vis and g.p.poll() is None, f"G5 close hides the window and the app keeps running (visible={len(vis)}, running={g.p.poll() is None})")
+# G17 a message notification's default action (app.open-conv, what the desktop calls on click) shows the window and opens that chat
+conv0 = fresh(g, "conv"); target = "dm:" + B.fp   # DM conversation ids are dm:<fingerprint>
+subprocess.run(["gdbus", "call", "--session", "--dest", "io.github.frec86.LanMessenger.basics", "--object-path", "/io/github/frec86/LanMessenger/basics",
+                "--method", "org.freedesktop.Application.ActivateAction", "open-conv", f"[<'{target}'>]", "{}"], env=env, capture_output=True, timeout=10); time.sleep(1.5)
+vis1, conv1 = fresh(g, "visible"), state(g).get("conv")
+check(vis1 == "1" and conv1 == target and conv0 != target, f"G17 notification click (app.open-conv) shows the hidden window and opens that chat ({conv0[:8] if conv0 else conv0} -> {(conv1 or '')[:8]}, visible={vis1})")
+snap("adw-basics-notification-open")
+n = len(g.lines); xdo("key", "ctrl+w"); time.sleep(1.5)
 p2 = subprocess.Popen([gui], env=dict(env, LSM_INSTANCE=".basics"), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); ended = wait(lambda: p2.poll() is not None, 15); time.sleep(1.5)
 vis = subprocess.run(["xdotool", "search", "--onlyvisible", "--name", "局域网安全通讯"], env=env, capture_output=True, text=True).stdout.split()
 check(bool(ended) and len(vis) >= 1 and g.p.poll() is None, f"G12 second launch exits and re-presents the running window (exited={bool(ended)}, visible={len(vis)})")
@@ -103,5 +112,5 @@ xdo("key", "ctrl+q"); ex = wait(lambda: g.p.poll() is not None, 10); check(bool(
 g = start(); g.wait_for("LSM_FP", 20); time.sleep(2); have = fresh(g, "size")
 check(bool(want) and want == have, f"G6 window size restored after restart ({want} -> {have})")
 open(f"{out}/gui-basics.log", "w").write("\n".join(g.lines) + "\n--- peer\n" + "\n".join(A.lines))
-for q in (g, A): q.p.kill()
+for q in (g, A, B): q.p.kill()
 xv.kill(); compp and compp.kill(); print("RESULT", "FAIL" if fails else "PASS", len(fails))
