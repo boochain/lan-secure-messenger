@@ -50,6 +50,8 @@ XP、Linux、Android 三个版本共用同一份 C 核心和同一套 Makefile /
 只有手动推送的 `v*` 标签才会运行 `release` 任务，把以上所有安装包和 `SHA256SUMS.txt` 收进同一个 Release
 （说明取自 `docs/release-notes-<标签>.md`；标签带 `-` 时为预发布）。
 
+迁移说明：旧的 `lan-secure-messenger-xp` 仓库归档前，在其 README 顶部放入 `docs/xp-repo-readme-pointer.md` 中的说明。
+
 ## 下载即用（Windows 10 1809+ / 11，x64）
 
 1. 到 [Releases](https://github.com/boochain/lan-secure-messenger/releases) 下载 `LanMessenger-<版本>-win-x64.zip`
