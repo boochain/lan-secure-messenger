@@ -35,3 +35,6 @@ linux: build/linux/lanmsg-cli build/linux/lan-messenger-gtk
 clean:
 	rm -rf build dist
 .PHONY: all clean linux
+
+# relay.c and resume.c are #included by core.c
+build/x86/LanMessenger.exe build/x86/lanmsg-cli.exe build/x64/LanMessenger.exe build/x64/lanmsg-cli.exe build/linux/lanmsg-cli: src/relay.c src/resume.c

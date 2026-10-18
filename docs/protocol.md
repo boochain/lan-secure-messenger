@@ -69,10 +69,15 @@ length must be 1..=65539.
 ### Hello (first transport message in each direction)
 ```
 Hello { proto: u16 (=5), app_version: String, name: String, ed25519_pk: [u8;32],
-        listen_port: u16 }
+        listen_port: u16 }   ‖ caps: u32 LE  (optional trailer)
 ```
 `proto != 5` ⇒ close. The remote fingerprint comes from the Noise remote static key, the
 Ed25519 key from Hello (stored in the contact, used to verify group signatures).
+
+**Capabilities.** After the bincode `Hello` a peer may append `caps: u32` (little-endian).
+Older peers ignore trailing bytes (bincode `allow_trailing_bytes`) and send no trailer, so a
+missing trailer means `caps = 0`. Bits: `CAP_RESUME = 1` (byte-offset file resume, §8.1).
+A frame that needs a capability is only ever sent to a peer that announced it.
 
 ### Frames (all subsequent transport messages): `enum Frame`
 | idx | variant | fields |
@@ -93,6 +98,7 @@ Ed25519 key from Hello (stored in the contact, used to verify group signatures).
 | 13 | PinPair | pin: String |
 | 14 | PinResult | ok: bool |
 | 15 | Bye | — |
+| 16 | FileResume | tid, offset: u64, prefix_sha256: [u8;32] — only to CAP_RESUME peers (§8.1) |
 
 `enum Payload` (inside `Msg`):
 | idx | variant | fields |
@@ -155,8 +161,80 @@ Ed25519 key from Hello (stored in the contact, used to verify group signatures).
 * Receiver: out-of-order offset ⇒ fail. Sends `FileProgress{received}` every 256 KiB and at
   the end; on `FileEnd` checks size + SHA-256, renames to a unique name in the download dir,
   replies `FileComplete{ok, error}`.
-* `FileCancel` from either side aborts. Pending offers are re-sent after reconnect; a known
-  `tid` re-offered is ignored.
+* `FileCancel` from either side aborts. Pending offers are re-sent after reconnect. A known
+  `tid` re-offered is ignored by old peers; CAP_RESUME peers handle it as in §8.1.
+
+### 8.1 Resume (CAP_RESUME, both peers)
+Identical in lan-core (Rust) and the portable C core.
+* **Link loss** (either path, LAN or relay, or link replaced): an active transfer is *paused*
+  instead of failed — state goes back to `offered`, error text `连接中断，重连后自动续传`.
+  The receiver keeps its `.part` file and its running SHA-256 state; the chat message is not
+  marked failed.
+* **Reconnect**: the sender re-sends `FileOffer` with the same `tid` for every paused
+  outgoing transfer (as for any pending offer).
+* **Receiver**, on a re-offer of a `tid` it accepted before:
+  * already `done` → reply `FileComplete{ok:true}` again (the first one may have been lost);
+  * has `n` bytes (0 < n < size) → reply `FileResume{tid, offset:n, prefix_sha256: SHA-256(first n bytes)}`
+    and keep appending;
+  * otherwise → `FileAccept` (restart from 0, fresh `.part`).
+* **Sender**, on `FileResume`: hashes the first `offset` bytes of its file; if equal to
+  `prefix_sha256` it continues with `FileChunk` at `offset` (flow-control credit starts at
+  `offset`), else it restarts at 0. A receiver that sees a first chunk at offset 0 while
+  holding data truncates its `.part` and restarts.
+* The final check is unchanged: size + SHA-256 of the whole file vs `FileOffer.sha256`.
+* **Old peers** (no CAP_RESUME): never receive `FileResume`; link loss fails the transfer as
+  before and a manual retry restarts from 0.
+* Implementations expose the offset the last (re)start continued from (`Transfer.resumed_from`
+  in lan-core, `lsm_transfer.resumed_from` / CLI `XFER … resumed=<n>` in the C core).
+* **Receiver restart.** Every resumable download has a sidecar `<part>.resume` next to its
+  `.part` (written on accept, removed on done/fail/cancel), identical in both cores:
+  ```
+  LSMRESUME 1
+  tid <uuid>
+  peer <fingerprint>
+  msg <chat message id>
+  conv <dm:… | group:…>
+  size <u64>
+  sha <hex SHA-256 of the whole file>
+  mime <mime>
+  name <file name>
+  ```
+  The offset and hash state are not stored. On start-up the receiver re-creates the transfer
+  (state `offered`, accepted) and re-hashes the `.part`, which takes its length as the offset.
+  It does this off the network path: Rust uses a blocking-pool task, C a chunked job of
+  2 MiB per loop turn. A re-offer that arrives before the hash finishes is deferred. Then
+  the receiver resumes with `FileResume` as after a link loss.
+* The sender's prefix check runs off the network path too: Rust in the async send task, C as
+  a chunked job.
+* Sender restart is persisted too. When an offer is created, the sender writes
+  `<data>/outgoing/<tid>.out`; it removes the file once the transfer is finished (done, failed or
+  cancelled). The format is the same in Rust and C:
+  ```
+  LSMOUT 1
+  tid <hex>   peer <fp>   msg <id>   conv <…>   size <u64>   sha <hex>   mime <mime>
+  mtime <unix secs of the source file>   offer_ts <unix secs>   path <absolute source path>   name <file name>
+  ```
+  There is one key/value per line; the inline layout above is only for brevity. On start-up
+  each record re-creates the transfer (state `offered`, out). If the source is missing, the
+  transfer fails with `源文件不存在: <path>`. If its size or mtime differs, it fails with
+  `源文件已更改: <path>`. Otherwise the sender re-offers the same tid as soon as the peer's link
+  comes up, and the receiver answers with `FileResume` from its own `.part`.
+* Expiry: at start-up both cores delete anything abandoned for more than 30 days, judged by
+  mtime. That covers `.resume` sidecars with their `.part` files, bare `.<name>*.part` files
+  with no sidecar, and `outgoing/*.out` records (the transfer is marked failed:
+  `发送记录已过期 (30 天)`).
+* Fast redial (checked in the code of both cores):
+  - Rust: at start-up every contact's `next_attempt` is set to now. The 500 ms engine tick
+    fires at once, so trusted peers with remembered addresses are dialed on the first tick.
+    The relay client gets `Configure` before the engine loop starts, so it connects at once.
+    Every `PeerJoin` from the relay opens a session at once; the 2 s periodic `Open` is only
+    the retry path.
+  - C: trusted contacts with a remembered address are seeded into the redial table before the
+    first redial pass, so the first loop turn (≤ 50 ms) dials them. The relay's
+    `next_attempt` is 0, so it connects on the first tick. Relay peers start with
+    `next_try = 0`, so the first session open is immediate.
+  - The matrix asserts that resume starts < 10 s after a kill -9 + restart of the receiver or
+    the sender. Measured: 0.3–3.2 s.
 
 ## 9. PIN pairing
 1. Peer A calls `pin_offer`: random 6-digit PIN, valid 300 s, max 5 wrong tries.
