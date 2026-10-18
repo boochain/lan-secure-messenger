@@ -61,8 +61,15 @@ static void msgbox(const char *t, UINT f){ (void)f; tmsg(L"局域网安全通讯
  * Mode: 0 = system (GetSysColor pairs, keeps high-contrast working), 1 = light, 2 = dark. */
 typedef struct { COLORREF window_bg, sidebar_bg, card_bg, chat_bg, text_primary, text_secondary, accent, button_bg, button_fg, input_bg, input_fg, divider, online, warning, error; } theme_t;
 #define HX(v) RGB(((v)>>16)&255,((v)>>8)&255,(v)&255)
-static const theme_t THEME_LIGHT={HX(0xF3F3F3),HX(0xEEEEEE),HX(0xFBFBFB),HX(0xF9F9F9),HX(0x1A1A1A),HX(0x5C5C5C),HX(0x005FB8),HX(0x005FB8),HX(0xFFFFFF),HX(0xFDFDFD),HX(0x1B1B1B),HX(0xE5E5E5),HX(0x0F7B0F),HX(0x9D5D00),HX(0xC42B1C)};
-static const theme_t THEME_DARK ={HX(0x202020),HX(0x1C1C1C),HX(0x2B2B2B),HX(0x282828),HX(0xFFFFFF),HX(0xCCCCCC),HX(0x60CDFF),HX(0x60CDFF),HX(0x000000),HX(0x353535),HX(0xFFFFFF),HX(0x323232),HX(0x6CCB5F),HX(0xFCE100),HX(0xFF99A4)};
+static const theme_t THEME_LIGHT={HX(0xECE9D8),HX(0xFFFFFF),HX(0xFFFFFF),HX(0xFFFFFF),HX(0x000000),HX(0x55534A),HX(0x316AC5),HX(0x316AC5),HX(0xFFFFFF),HX(0xFFFFFF),HX(0x000000),HX(0xACA899),HX(0x217A17),HX(0x9D5D00),HX(0xC42B1C)}; /* Luna (tools/palettes/xp.json) */
+static const theme_t THEME_DARK ={HX(0x202020),HX(0x262626),HX(0x2B2B2B),HX(0x1E1E1E),HX(0xFFFFFF),HX(0xCCCCCC),HX(0x3C78C3),HX(0x3C78C3),HX(0xFFFFFF),HX(0x2B2B2B),HX(0xFFFFFF),HX(0x3C3C3C),HX(0x6CCB5F),HX(0xFCE100),HX(0xFF99A4)};
+/* Luna palette for the redesigned views (tools/palettes/xp.json) */
+typedef struct { COLORREF rowsel, rowselborder, rowhover, accenttext, mine, mineborder, minefg, minemeta, theirs, theirsborder, theirsfg, meta, stroke, badge, badgefg, field, fieldborder, chip, chipfg, service, servicefg, read, tile, tilefg, header, av[8]; } xpal_t;
+static const xpal_t PAL_LIGHT={HX(0xC1D2EE),HX(0x316AC5),HX(0xEEF3FB),HX(0x0B4AA8),HX(0xDCE9FA),HX(0xA7C1E6),HX(0x000000),HX(0x4A5568),HX(0xF4F3EE),HX(0xD6D3C4),HX(0x000000),HX(0x55534A),HX(0xD6D3C4),HX(0x316AC5),HX(0xFFFFFF),HX(0xFFFFFF),HX(0x7F9DB9),HX(0xECE9D8),HX(0x3B3A33),HX(0xF1EFE2),HX(0x3B3A33),HX(0x0B4AA8),HX(0xFFFFFF),HX(0x316AC5),HX(0xF6F5EF),
+    {HX(0x6D4FC2),HX(0x1F6FB2),HX(0x0F7A6C),HX(0xB4471B),HX(0x2E6B2F),HX(0x9C2F55),HX(0x5A5F14),HX(0x8A4B08)}};
+static const xpal_t PAL_DARK={HX(0x1F3A5F),HX(0x3C78C3),HX(0x2C2F35),HX(0x8EC1FF),HX(0x1F3A5A),HX(0x2F5A8A),HX(0xFFFFFF),HX(0xC9D9EC),HX(0x2E2E2E),HX(0x444444),HX(0xFFFFFF),HX(0xC5C5C5),HX(0x3C3C3C),HX(0x2F6AB8),HX(0xFFFFFF),HX(0x2B2B2B),HX(0x5A7AA0),HX(0x333333),HX(0xE0E0E0),HX(0x2B2B2B),HX(0xD6D6D6),HX(0x8EC1FF),HX(0x2B2B2B),HX(0x8EC1FF),HX(0x262626),
+    {HX(0x6D4FC2),HX(0x1F6FB2),HX(0x0F7A6C),HX(0xB4471B),HX(0x2E6B2F),HX(0x9C2F55),HX(0x5A5F14),HX(0x8A4B08)}};
+static xpal_t P;
 static theme_t T; static int theme_mode, theme_cli=-1; /* 0 system,1 light,2 dark */
 static HBRUSH brWin, brSide, brChat, brInput, brCard;
 static HMENU hMenuTree; static HWND hMenuBtn[5];
@@ -74,6 +81,7 @@ static HFONT fCaption, fBody, fBodyStrong, fSubtitle, fTitle;
 #define IDM_THEME_LIGHT 231
 #define IDM_THEME_DARK 232
 static void theme_apply(void){
+    P=theme_mode==2?PAL_DARK:PAL_LIGHT;
     if(theme_mode==1) T=THEME_LIGHT; else if(theme_mode==2) T=THEME_DARK;
     else { T.window_bg=GetSysColor(COLOR_BTNFACE); T.sidebar_bg=GetSysColor(COLOR_WINDOW); T.card_bg=GetSysColor(COLOR_WINDOW); T.chat_bg=GetSysColor(COLOR_WINDOW);
         T.text_primary=GetSysColor(COLOR_WINDOWTEXT); T.text_secondary=GetSysColor(COLOR_WINDOWTEXT); T.accent=GetSysColor(COLOR_HIGHLIGHT); T.button_bg=GetSysColor(COLOR_HIGHLIGHT); T.button_fg=GetSysColor(COLOR_HIGHLIGHTTEXT);
@@ -191,31 +199,122 @@ static void refresh_list(void){
     if(sel>=0) SendMessageW(hList,LB_SETCURSEL,sel,0);
     SendMessageW(hList,WM_SETREDRAW,TRUE,0); InvalidateRect(hList,NULL,TRUE); }
 
-static const wchar_t *status_txt(int s){ switch(s){ case 0: return L"排队中"; case 1: return L"已发送"; case 2: return L"已送达"; case 3: return L"已读"; case 5: return L"失败"; default: return L""; } }
-/* char offset where each message starts in hChat, for the per-message context menu */
-static int *chat_off, nchat, capchat; static char (*chat_ids)[40];
+/* ---------------------------------------------------------------- chat view: owner-drawn bubble list (xp-*-chat mockups)
+ * LISTBOX + LBS_OWNERDRAWVARIABLE: one item per row (day chip, service notice, text bubble, file card). Rounded bubbles
+ * with the time (and ticks on outgoing) inside the bubble, file cards with a type tile, open button and folder link.
+ * Plain GDI only (RoundRect/Polyline/DrawText): XP SP3 without GDI+. */
+enum { R_DAY, R_NOTICE, R_TEXT, R_FILE };
+typedef struct { int kind, out, status, tstate, pct, h, bw; char id[40]; char path[520]; wchar_t *text; wchar_t time[8]; wchar_t name[260]; wchar_t meta[96]; wchar_t ext[8]; } row_t;
+static row_t *rows; static int nrows, caprows;
+static int nchat;
+static void rows_clear(void){ int i; for(i=0;i<nrows;i++) free(rows[i].text); nrows=0; }
+static row_t *row_add(int kind){ row_t *r; if(nrows==caprows){ caprows=caprows?caprows*2:64; rows=(row_t*)realloc(rows,caprows*sizeof *rows); } r=&rows[nrows++]; memset(r,0,sizeof *r); r->kind=kind; return r; }
+static wchar_t *wdup(const wchar_t *s){ size_t n=wcslen(s)+1; wchar_t *d=(wchar_t*)malloc(n*sizeof(wchar_t)); memcpy(d,s,n*sizeof(wchar_t)); return d; }
+static void fmt_size(uint64_t b, wchar_t *o, int n){ if(b>=1048576) _snwprintf(o,n,L"%.1f MB",b/1048576.0); else if(b>=1024) _snwprintf(o,n,L"%.0f KB",b/1024.0); else _snwprintf(o,n,L"%u B",(unsigned)b); o[n-1]=0; }
+#define PADX 10
+#define PADY 6
+static int chat_maxw(void){ RECT r; GetClientRect(hChat,&r); int w=(r.right-r.left)-GetSystemMetrics(SM_CXVSCROLL)-scale_px(24); w=w*68/100; if(w>scale_px(520)) w=scale_px(520); if(w<scale_px(160)) w=scale_px(160); return w; }
+static int line_h(HDC dc, HFONT f){ TEXTMETRICW tm; HGDIOBJ o=SelectObject(dc,f); GetTextMetricsW(dc,&tm); SelectObject(dc,o); return tm.tmHeight; }
+static int time_w(HDC dc, row_t *r){ SIZE s; HGDIOBJ o=SelectObject(dc,fCaption); GetTextExtentPoint32W(dc,r->time,(int)wcslen(r->time),&s); SelectObject(dc,o); return s.cx+(r->out?scale_px(20):0); }
+/* text bubble geometry: returns bubble width, fills height; time goes on the last line when it fits, else on its own line */
+static void text_geom(HDC dc, row_t *r, int maxw, int *bw, int *bh, int *tw_inline){ RECT tr={0,0,maxw-2*PADX,0}; HGDIOBJ o=SelectObject(dc,fBody); int lh=line_h(dc,fBody), tw=time_w(dc,r), gap=scale_px(10);
+    DrawTextW(dc,r->text,-1,&tr,DT_CALCRECT|DT_WORDBREAK|DT_EDITCONTROL|DT_NOPREFIX); SelectObject(dc,o);
+    if(tr.bottom<=lh+1 && tr.right+gap+tw<=maxw-2*PADX){ *bw=tr.right+gap+tw+2*PADX; *bh=lh+2*PADY; *tw_inline=1; }
+    else { *bw=(tr.right>tw?tr.right:tw)+2*PADX; *bh=tr.bottom+line_h(dc,fCaption)+2*PADY; *tw_inline=0; } }
+static void measure_chat(MEASUREITEMSTRUCT *mi){ row_t *r; HDC dc; int bw,bh,inl; if(mi->itemID>=(UINT)nrows){ mi->itemHeight=1; return; } r=&rows[mi->itemID]; dc=GetDC(hChat);
+    if(r->kind==R_DAY||r->kind==R_NOTICE) mi->itemHeight=line_h(dc,fCaption)+scale_px(r->kind==R_DAY?20:14);
+    else if(r->kind==R_TEXT){ text_geom(dc,r,chat_maxw(),&bw,&bh,&inl); r->bw=bw; mi->itemHeight=bh+scale_px(6); }
+    else { r->bw=scale_px(272); mi->itemHeight=scale_px(r->path[0]?86:66)+scale_px(6); }
+    r->h=mi->itemHeight; ReleaseDC(hChat,dc); }
+static void bubble(HDC dc, RECT b, COLORREF fill, COLORREF edge){ HBRUSH br=CreateSolidBrush(fill); HPEN pn=CreatePen(PS_SOLID,1,edge); HGDIOBJ ob=SelectObject(dc,br), op=SelectObject(dc,pn);
+    RoundRect(dc,b.left,b.top,b.right,b.bottom,scale_px(14),scale_px(14)); SelectObject(dc,ob); SelectObject(dc,op); DeleteObject(br); DeleteObject(pn); }
+/* delivery ticks drawn as strokes (SimSun has no U+2713): 1 = sent, 2 = delivered, 3 = read (accent), 0 = queued (dot), 5 = failed (!) */
+static void ticks(HDC dc, int x, int ymid, int st){ COLORREF c=st==3?P.read:st==5?T.error:P.minemeta; HPEN pn=CreatePen(PS_SOLID,scale_px(2)>1?2:1,c); HGDIOBJ op=SelectObject(dc,pn); int s=scale_px(4), k, n=st>=2&&st!=5?2:1;
+    if(st==5||st==0){ RECT r={x,ymid-8,x+scale_px(16),ymid+8}; SetTextColor(dc,c); DrawTextW(dc,st==5?L"!":L"\x2026",-1,&r,DT_CENTER|DT_VCENTER|DT_SINGLELINE); }
+    else for(k=0;k<n;k++){ int dx=k*scale_px(5); POINT p[3]={{x+dx-s,ymid},{x+dx,ymid+s},{x+dx+2*s,ymid-s}}; Polyline(dc,p,3); }
+    SelectObject(dc,op); DeleteObject(pn); }
+static RECT file_btn_rect(RECT b){ RECT r; r.right=b.right-scale_px(10); r.left=r.right-scale_px(28); r.top=b.top+scale_px(12); r.bottom=r.top+scale_px(28); return r; }
+static RECT file_link_rect(RECT b){ RECT r; r.left=b.left+scale_px(10); r.right=b.left+scale_px(140); r.bottom=b.bottom-scale_px(6); r.top=r.bottom-scale_px(20); return r; }
+static RECT row_bubble(row_t *r, RECT it){ RECT b=it; int m=scale_px(12); b.bottom-=scale_px(6); if(r->out){ b.right-=m; b.left=b.right-r->bw; } else { b.left+=m; b.right=b.left+r->bw; } return b; }
+static void draw_chat_item(DRAWITEMSTRUCT *d){ RECT it=d->rcItem, b; row_t *r; HDC dc=d->hDC; HBRUSH bg=brChat; int lh;
+    FillRect(dc,&it,bg); if(d->itemID>=(UINT)nrows) return; r=&rows[d->itemID]; SetBkMode(dc,TRANSPARENT);
+    if(r->kind==R_DAY||r->kind==R_NOTICE){ SIZE s; HGDIOBJ o=SelectObject(dc,fCaption); int w; GetTextExtentPoint32W(dc,r->text,(int)wcslen(r->text),&s); w=s.cx+scale_px(r->kind==R_DAY?24:20);
+        b.left=(it.left+it.right-w)/2; b.right=b.left+w; b.top=it.top+scale_px(r->kind==R_DAY?7:3); b.bottom=it.bottom-scale_px(r->kind==R_DAY?7:5);
+        bubble(dc,b,r->kind==R_DAY?P.chip:P.service,P.stroke); SetTextColor(dc,r->kind==R_DAY?P.chipfg:P.servicefg); DrawTextW(dc,r->text,-1,&b,DT_CENTER|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX); SelectObject(dc,o); return; }
+    b=row_bubble(r,it); bubble(dc,b,r->out?P.mine:P.theirs,r->out?P.mineborder:P.theirsborder);
+    if(r->kind==R_TEXT){ int bw,bh,inl; RECT tr=b, tm; text_geom(dc,r,chat_maxw(),&bw,&bh,&inl); lh=line_h(dc,fBody);
+        InflateRect(&tr,-PADX,-PADY); SelectObject(dc,fBody); SetTextColor(dc,r->out?P.minefg:P.theirsfg); DrawTextW(dc,r->text,-1,&tr,DT_WORDBREAK|DT_EDITCONTROL|DT_NOPREFIX);
+        tm=tr; tm.top=tm.bottom-(inl?lh:line_h(dc,fCaption)); if(r->out) tm.right-=scale_px(20); SelectObject(dc,fCaption); SetTextColor(dc,r->out?P.minemeta:P.meta); DrawTextW(dc,r->time,-1,&tm,DT_RIGHT|DT_BOTTOM|DT_SINGLELINE);
+        if(r->out) ticks(dc,tr.right-scale_px(16),(tm.top+tm.bottom)/2+1,r->status); }
+    else { RECT tile={b.left+scale_px(10),b.top+scale_px(10),b.left+scale_px(46),b.top+scale_px(46)}, nr, br=file_btn_rect(b), tm; COLORREF fg=r->out?P.minefg:P.theirsfg, meta=r->out?P.minemeta:P.meta;
+        bubble(dc,tile,P.tile,P.stroke); SelectObject(dc,fCaption); SetTextColor(dc,P.tilefg); DrawTextW(dc,r->ext,-1,&tile,DT_CENTER|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX);
+        nr.left=tile.right+scale_px(10); nr.right=br.left-scale_px(6); nr.top=b.top+scale_px(9); nr.bottom=nr.top+line_h(dc,fBodyStrong);
+        SelectObject(dc,fBodyStrong); SetTextColor(dc,fg); DrawTextW(dc,r->name,-1,&nr,DT_LEFT|DT_SINGLELINE|DT_NOPREFIX|DT_END_ELLIPSIS);
+        nr.top=nr.bottom+scale_px(2); nr.bottom=nr.top+line_h(dc,fCaption); SelectObject(dc,fCaption); SetTextColor(dc,meta); DrawTextW(dc,r->meta,-1,&nr,DT_LEFT|DT_SINGLELINE|DT_NOPREFIX|DT_END_ELLIPSIS);
+        if(r->path[0]){ /* open button: rounded square with a down-arrow into a tray */ HPEN pn=CreatePen(PS_SOLID,2,P.accenttext); HGDIOBJ op; int cx=(br.left+br.right)/2, cy=(br.top+br.bottom)/2, a=scale_px(6);
+            bubble(dc,br,P.tile,P.stroke); op=SelectObject(dc,pn); { POINT s1[2]={{cx,cy-a},{cx,cy+a/2}}, s2[3]={{cx-a/2-1,cy},{cx,cy+a/2+1},{cx+a/2+1,cy}}, s3[2]={{cx-a,cy+a},{cx+a+1,cy+a}}; Polyline(dc,s1,2); Polyline(dc,s2,3); Polyline(dc,s3,2); } SelectObject(dc,op); DeleteObject(pn);
+            { RECT lr=file_link_rect(b); SetTextColor(dc,P.accenttext); DrawTextW(dc,L"在文件夹中显示",-1,&lr,DT_LEFT|DT_VCENTER|DT_SINGLELINE); } }
+        tm=b; InflateRect(&tm,-PADX,-PADY); if(r->out) tm.right-=scale_px(20); SetTextColor(dc,meta); DrawTextW(dc,r->time,-1,&tm,DT_RIGHT|DT_BOTTOM|DT_SINGLELINE);
+        if(r->out) ticks(dc,b.right-PADX-scale_px(16),tm.bottom-line_h(dc,fCaption)/2,r->status); }
+    if((d->itemState&ODS_FOCUS) && GetFocus()==hChat){ RECT f=b; InflateRect(&f,2,2); SetTextColor(dc,T.text_primary); SetBkColor(dc,T.chat_bg); DrawFocusRect(dc,&f); } }
 static void refresh_chat(void){
-    lsm_msg *m; int n,i; size_t cap=65536, len=0; wchar_t *buf=(wchar_t*)malloc(cap*sizeof(wchar_t)); wchar_t title[400]=L"";
-    buf[0]=0; nchat=0;
+    lsm_msg *m; int n,i, lastday=-1; wchar_t title[400]=L"", peer[300]=L"";
+    SendMessageW(hChat,WM_SETREDRAW,FALSE,0); SendMessageW(hChat,LB_RESETCONTENT,0,0); rows_clear(); nchat=0;
     lsm_lock(C);
     if(cur_conv[0]){ lsm_contact *k; lsm_group *g; int nk, j;
-        if(!strncmp(cur_conv,"dm:",3)){ nk=lsm_contacts(C,&k); for(j=0;j<nk;j++) if(!strcmp(k[j].fp,cur_conv+3)) _snwprintf(title,400,L"%s    %s    %s%s%s",W(k[j].name),W(k[j].fp),k[j].online?L"在线":L"离线",k[j].app_version[0]?L"  ":L"",W(k[j].app_version)); }
-        else { char u[37]; nk=lsm_groups(C,&g); for(j=0;j<nk;j++){ lsm_uuid_str(g[j].id,u); if(!strcmp(u,cur_conv+6)) _snwprintf(title,400,L"群组「%s」  %d 人  密钥版本 %llu",W(g[j].name),g[j].nmembers,(unsigned long long)g[j].key_epoch); } }
-        title[399]=0;
-        n=lsm_messages(C,&m); nchat=0;
-        if(n>capchat){ capchat=n+64; chat_off=(int*)realloc(chat_off,capchat*sizeof *chat_off); chat_ids=realloc(chat_ids,capchat*sizeof *chat_ids); }
-        for(i=0;i<n;i++){ wchar_t line[9000]; time_t t; struct tm *tm; wchar_t ts[32]=L""; size_t ll; if(strcmp(m[i].conv,cur_conv)) continue;
-            t=(time_t)(m[i].ts_ms/1000); tm=localtime(&t); if(tm) wcsftime(ts,32,L"%m-%d %H:%M",tm);
-            if(m[i].kind==K_SYSTEM) _snwprintf(line,9000,L"[%s] —— %s ——\r\n",ts,W(m[i].body));
-            else if(m[i].kind==K_FILE){ lsm_transfer *t2; int nt=lsm_transfers(C,&t2), j2; const wchar_t *fs=L""; wchar_t prog[64]=L"";
-                for(j2=0;j2<nt;j2++){ char u[37]; lsm_uuid_str(t2[j2].tid,u); if(!strcmp(t2[j2].msg_id,m[i].id)){ static const wchar_t *TS[]={L"等待接收",L"传输中",L"校验中",L"完成",L"失败",L"被拒收",L"已取消"}; fs=TS[t2[j2].state]; if(t2[j2].size) _snwprintf(prog,64,L" %d%%",(int)(t2[j2].transferred*100/t2[j2].size)); } }
-                _snwprintf(line,9000,L"[%s] %s: [文件] %s (%llu 字节) %s%s %s\r\n",ts,m[i].out?L"我":W(m[i].sender_name),W(m[i].file_name),(unsigned long long)m[i].file_size,fs,prog,m[i].out?status_txt(m[i].status):L""); }
-            else _snwprintf(line,9000,L"[%s] %s: %s   %s\r\n",ts,m[i].out?L"我":W(m[i].sender_name),W(m[i].body),m[i].out?status_txt(m[i].status):L"");
-            line[8999]=0; ll=wcslen(line); if(len+ll+1>cap){ cap=(cap+ll)*2; buf=(wchar_t*)realloc(buf,cap*sizeof(wchar_t)); } wcscpy(buf+len,line); chat_off[nchat]=(int)len; memcpy(chat_ids[nchat],m[i].id,40); nchat++; len+=ll; } }
+        if(!strncmp(cur_conv,"dm:",3)){ nk=lsm_contacts(C,&k); for(j=0;j<nk;j++) if(!strcmp(k[j].fp,cur_conv+3)){ wcsncpy(peer,W(k[j].name),299); _snwprintf(title,400,L"%s    %s  ·  %s  ·  局域网直连",W(k[j].name),k[j].online?L"在线":L"离线",k[j].trust==1?L"已验证身份":k[j].trust==2?L"已屏蔽":L"未验证身份"); } }
+        else { char u[37]; nk=lsm_groups(C,&g); for(j=0;j<nk;j++){ lsm_uuid_str(g[j].id,u); if(!strcmp(u,cur_conv+6)) _snwprintf(title,400,L"%s    %d 人  ·  群密钥版本 %llu",W(g[j].name),g[j].nmembers,(unsigned long long)g[j].key_epoch); } }
+        title[399]=0; peer[299]=0;
+        n=lsm_messages(C,&m);
+        for(i=0;i<n;i++){ time_t t; struct tm *tm; row_t *r; if(strcmp(m[i].conv,cur_conv)) continue;
+            t=(time_t)(m[i].ts_ms/1000); tm=localtime(&t);
+            if(tm && tm->tm_yday+tm->tm_year*400!=lastday){ time_t now=time(NULL); struct tm nw=*localtime(&now); wchar_t dl[32]; lastday=tm->tm_yday+tm->tm_year*400;
+                if(tm->tm_year==nw.tm_year && tm->tm_yday==nw.tm_yday) wcscpy(dl,L"今天"); else if(tm->tm_year==nw.tm_year && tm->tm_yday==nw.tm_yday-1) wcscpy(dl,L"昨天"); else wcsftime(dl,32,L"%m月%d日",tm);
+                row_add(R_DAY)->text=wdup(dl);
+                if(nrows==1 && peer[0]){ wchar_t nt[400]; _snwprintf(nt,400,L"消息已端到端加密，只有你和%s能看到",peer); nt[399]=0; row_add(R_NOTICE)->text=wdup(nt); } }
+            if(m[i].kind==K_SYSTEM){ row_add(R_NOTICE)->text=wdup(W(m[i].body)); continue; }
+            r=row_add(m[i].kind==K_FILE?R_FILE:R_TEXT); r->out=m[i].out; r->status=m[i].status; memcpy(r->id,m[i].id,40); if(tm) wcsftime(r->time,8,L"%H:%M",tm);
+            if(r->kind==R_TEXT) r->text=wdup(W(m[i].body));
+            else { lsm_transfer *t2; int nt=lsm_transfers(C,&t2), j2; const wchar_t *dot; wchar_t sz[32]; static const wchar_t *TS[]={L"等待接收",L"传输中",L"校验中",L"",L"失败",L"被拒收",L"已取消"};
+                wcsncpy(r->name,W(m[i].file_name),259); dot=wcsrchr(r->name,L'.'); if(dot && wcslen(dot+1)<=4){ int q; for(q=0;dot[1+q];q++) r->ext[q]=(wchar_t)towupper(dot[1+q]); } else wcscpy(r->ext,L"FILE");
+                fmt_size(m[i].file_size,sz,32); r->tstate=3;
+                for(j2=0;j2<nt;j2++) if(!strcmp(t2[j2].msg_id,m[i].id)){ r->tstate=t2[j2].state; if(t2[j2].size) r->pct=(int)(t2[j2].transferred*100/t2[j2].size); if(t2[j2].state==3) strncpy(r->path,t2[j2].path,519); }
+                if(!r->path[0] && m[i].file_path[0] && r->tstate==3) strncpy(r->path,m[i].file_path,519);
+                if(r->tstate==1) _snwprintf(r->meta,96,L"%s  ·  %s %d%%",sz,TS[1],r->pct); else if(r->tstate==3) _snwprintf(r->meta,96,L"%s  ·  %s",sz,r->ext); else _snwprintf(r->meta,96,L"%s  ·  %s",sz,TS[r->tstate<7?r->tstate:4]); r->meta[95]=0; }
+        } }
     lsm_unlock(C);
-    SetWindowTextW(hTitle,cur_conv[0]?title:L"← 从左侧选择联系人或群组");
-    SetWindowTextW(hChat,buf); fit_vscroll(hChat); SendMessageW(hChat,EM_SETSEL,(WPARAM)len,(LPARAM)len); SendMessageW(hChat,EM_SCROLLCARET,0,0);
-    free(buf); }
+    SetWindowTextW(hTitle,cur_conv[0]?title:L"");
+    for(i=0;i<nrows;i++) SendMessageW(hChat,LB_ADDSTRING,0,(LPARAM)i);
+    if(nrows){ RECT cr; int top=nrows-1, acc; GetClientRect(hChat,&cr); acc=rows[top].h; while(top>0 && acc+rows[top-1].h<=cr.bottom){ top--; acc+=rows[top].h; } SendMessageW(hChat,LB_SETTOPINDEX,top,0); } /* newest at the bottom, scrolled to the end */
+    SendMessageW(hChat,WM_SETREDRAW,TRUE,0); InvalidateRect(hChat,NULL,TRUE); InvalidateRect(hMain,NULL,FALSE); }
+
+static void copy_text(const wchar_t *t){ size_t n=(wcslen(t)+1)*sizeof(wchar_t); HGLOBAL g; if(!OpenClipboard(hMain)) return; EmptyClipboard(); g=GlobalAlloc(GMEM_MOVEABLE,n); if(g){ memcpy(GlobalLock(g),t,n); GlobalUnlock(g); SetClipboardData(CF_UNICODETEXT,g); } CloseClipboard(); }
+static void show_in_folder(const char *path){ wchar_t a[1200]; _snwprintf(a,1200,L"/select,\"%s\"",W(path)); a[1199]=0; ShellExecuteW(hMain,L"open",L"explorer.exe",a,NULL,SW_SHOWNORMAL); }
+/* right-click (or Shift+F10 / menu key) on a bubble: 复制 / 打开 / 在文件夹中显示 / 删除这条消息（仅本机）; left-click on the file card's button or link */
+static WNDPROC oldChatProc;
+static int chat_hit(LPARAM l, RECT *ir){ DWORD r=(DWORD)SendMessageW(hChat,LB_ITEMFROMPOINT,0,l); int i=(int)LOWORD(r); if(HIWORD(r) || i<0 || i>=nrows) return -1; SendMessageW(hChat,LB_GETITEMRECT,i,(LPARAM)ir); return i; }
+static LRESULT CALLBACK ChatProc(HWND h, UINT m, WPARAM w, LPARAM l){
+    if(m==WM_LBUTTONUP){ RECT ir; int i=chat_hit(l,&ir); POINT p={(short)LOWORD(l),(short)HIWORD(l)};
+        if(i>=0 && rows[i].kind==R_FILE && rows[i].path[0]){ RECT b=row_bubble(&rows[i],ir), br=file_btn_rect(b), lr=file_link_rect(b);
+            if(PtInRect(&br,p)) ShellExecuteW(hMain,L"open",W(rows[i].path),NULL,NULL,SW_SHOWNORMAL); else if(PtInRect(&lr,p)) show_in_folder(rows[i].path); } }
+    if(m==WM_SETCURSOR){ POINT p; RECT ir; int i; GetCursorPos(&p); ScreenToClient(h,&p); i=chat_hit(MAKELPARAM(p.x,p.y),&ir);
+        if(i>=0 && rows[i].kind==R_FILE && rows[i].path[0]){ RECT b=row_bubble(&rows[i],ir), br=file_btn_rect(b), lr=file_link_rect(b); if(PtInRect(&br,p)||PtInRect(&lr,p)){ SetCursor(LoadCursor(NULL,IDC_HAND)); return TRUE; } } }
+    if(m==WM_CONTEXTMENU){ POINT pt; RECT ir; int k=-1, cmd; HMENU pm; row_t *r=NULL;
+        if(l==(LPARAM)-1){ k=(int)SendMessageW(h,LB_GETCARETINDEX,0,0); if(k>=0 && k<nrows){ SendMessageW(h,LB_GETITEMRECT,k,(LPARAM)&ir); pt.x=ir.left+scale_px(40); pt.y=ir.top+scale_px(10); ClientToScreen(h,&pt); } else { pt.x=pt.y=0; ClientToScreen(h,&pt); } }
+        else { POINT c; pt.x=(short)LOWORD(l); pt.y=(short)HIWORD(l); c=pt; ScreenToClient(h,&c); k=chat_hit(MAKELPARAM(c.x,c.y),&ir); if(k>=0) SendMessageW(h,LB_SETCURSEL,k,0); }
+        if(k>=0 && k<nrows && (rows[k].kind==R_TEXT||rows[k].kind==R_FILE)) r=&rows[k];
+        pm=CreatePopupMenu();
+        AM(pm,MF_STRING|(r?0:MF_GRAYED),1,L"复制(&C)\tCtrl+C");
+        if(r && r->kind==R_FILE){ AM(pm,MF_STRING|(r->path[0]?0:MF_GRAYED),4,L"打开(&O)"); AM(pm,MF_STRING|(r->path[0]?0:MF_GRAYED),5,L"在文件夹中显示(&S)"); }
+        AM(pm,MF_SEPARATOR,0,NULL); AM(pm,MF_STRING|(r?0:MF_GRAYED),3,L"删除这条消息（仅本机）(&D)…"); menu_bg(pm);
+        cmd=TrackPopupMenu(pm,TPM_RIGHTBUTTON|TPM_RETURNCMD|TPM_NONOTIFY,pt.x,pt.y,0,h,NULL); DestroyMenu(pm);
+        if(cmd==1 && r) copy_text(r->kind==R_TEXT?r->text:r->name);
+        else if(cmd==4 && r) ShellExecuteW(hMain,L"open",W(r->path),NULL,NULL,SW_SHOWNORMAL);
+        else if(cmd==5 && r) show_in_folder(r->path);
+        else if(cmd==3 && r){ char id[40]; memcpy(id,r->id,40); if(tmsg(L"删除消息",L"只会从本机删除这条消息，对方仍保留。此操作无法撤销。确定删除？",1)==1){ if(lsm_delete_message(C,id)) msgbox("删除失败：消息不存在。",MB_ICONWARNING); refresh_chat(); } }
+        return 0; }
+    if(m==WM_KEYDOWN && w=='C' && (GetKeyState(VK_CONTROL)&0x8000)){ int k=(int)SendMessageW(h,LB_GETCARETINDEX,0,0); if(k>=0 && k<nrows && rows[k].kind>=R_TEXT) copy_text(rows[k].kind==R_TEXT?rows[k].text:rows[k].name); return 0; }
+    return CallWindowProcW(oldChatProc,h,m,w,l); }
 
 /* Edit controls with WS_VSCROLL always show a (system-coloured) scrollbar; show it only when the text overflows. */
 static void fit_vscroll(HWND e){ RECT r; TEXTMETRICW tm; HDC dc; HGDIOBJ of; int lines, vis, need; LONG st=GetWindowLongW(e,GWL_STYLE);
@@ -298,27 +397,6 @@ static void send_file_dlg(void){
     if(!GetOpenFileNameW(&of)) return;
     if(lsm_send_file(C,cur_conv,U(path,u8,sizeof u8),err)) msgbox(err,MB_ICONWARNING); refresh_chat(); }
 
-/* right-click (or Shift+F10 / menu key) on the chat: 复制 / 全选 / 删除这条消息（仅本机）… */
-static WNDPROC oldChatProc;
-static LRESULT CALLBACK ChatProc(HWND h, UINT m, WPARAM w, LPARAM l){
-    if(m==WM_CONTEXTMENU){ POINT pt; DWORD a=0,b=0; int ch=-1, k=-1, j, cmd; HMENU pm; char id[40]="";
-        SendMessageW(h,EM_GETSEL,(WPARAM)&a,(LPARAM)&b);
-        if(l==(LPARAM)-1){ ch=(int)a; GetCaretPos(&pt); ClientToScreen(h,&pt); }
-        else { POINT c; pt.x=(short)LOWORD(l); pt.y=(short)HIWORD(l); c=pt; ScreenToClient(h,&c);
-            { LRESULT r=SendMessageW(h,EM_CHARFROMPOS,0,MAKELPARAM(c.x,c.y)); ch=(int)SendMessageW(h,EM_LINEINDEX,HIWORD(r),0); } }
-        for(j=0;j<nchat;j++) if(chat_off[j]<=ch) k=j;
-        if(k>=0) memcpy(id,chat_ids[k],40);
-        pm=CreatePopupMenu();
-        AM(pm,MF_STRING|(a!=b?0:MF_GRAYED),1,L"复制(&C)"); AM(pm,MF_STRING,2,L"全选(&A)"); AM(pm,MF_SEPARATOR,0,NULL);
-        AM(pm,MF_STRING|(id[0]?0:MF_GRAYED),3,L"删除这条消息（仅本机）(&D)…"); menu_bg(pm);
-        cmd=TrackPopupMenu(pm,TPM_RIGHTBUTTON|TPM_RETURNCMD|TPM_NONOTIFY,pt.x,pt.y,0,h,NULL); DestroyMenu(pm);
-        if(cmd==1) SendMessageW(h,WM_COPY,0,0);
-        else if(cmd==2) SendMessageW(h,EM_SETSEL,0,-1);
-        else if(cmd==3 && tmsg(L"删除消息",L"只会从本机删除这条消息，对方仍保留。此操作无法撤销。确定删除？",1)==1){
-            if(lsm_delete_message(C,id)) msgbox("删除失败：消息不存在。",MB_ICONWARNING); refresh_chat(); }
-        return 0; }
-    if(m==WM_KEYDOWN && w=='A' && (GetKeyState(VK_CONTROL)&0x8000)){ SendMessageW(h,EM_SETSEL,0,-1); return 0; }
-    return CallWindowProcW(oldChatProc,h,m,w,l); }
 static WNDPROC oldInputProc;
 static LRESULT CALLBACK InputProc(HWND h, UINT m, WPARAM w, LPARAM l){ if(m==WM_KEYDOWN && w==VK_TAB){ SetFocus(GetNextDlgTabItem(hMain,h,(GetKeyState(VK_SHIFT)&0x8000)?TRUE:FALSE)); return 0; } if(m==WM_CHAR && w=='\t') return 0; if(m==WM_KEYDOWN && w==VK_RETURN && !(GetKeyState(VK_SHIFT)&0x8000)){ send_current(); return 0; } if(m==WM_CHAR && w=='\r' && !(GetKeyState(VK_SHIFT)&0x8000)) return 0; return CallWindowProcW(oldInputProc,h,m,w,l); }
 
@@ -356,7 +434,7 @@ static LRESULT CALLBACK MainProc(HWND h, UINT m, WPARAM w, LPARAM l){
           for(i=0;i<5;i++){ hMenuBtn[i]=CreateWindowW(L"BUTTON",mt[i],WS_CHILD|WS_VISIBLE|BS_OWNERDRAW,0,0,0,0,h,(HMENU)(INT_PTR)(IDC_MENUBTN+i),hInst,NULL); SendMessageW(hMenuBtn[i],WM_SETFONT,(WPARAM)fBody,1); } }
         hList=CreateWindowExW(es,L"LISTBOX",NULL,WS_CHILD|WS_VISIBLE|WS_VSCROLL|WS_TABSTOP|LBS_NOTIFY|LBS_NOINTEGRALHEIGHT|LBS_OWNERDRAWFIXED|LBS_HASSTRINGS,0,0,0,0,h,(HMENU)IDC_LIST,hInst,NULL);
         hTitle=CreateWindowW(L"STATIC",L"",WS_CHILD|WS_VISIBLE|SS_LEFTNOWORDWRAP,0,0,0,0,h,(HMENU)IDC_TITLE,hInst,NULL);
-        hChat=CreateWindowExW(es,L"EDIT",L"",WS_CHILD|WS_VISIBLE|WS_VSCROLL|WS_TABSTOP|ES_MULTILINE|ES_READONLY|ES_AUTOVSCROLL,0,0,0,0,h,(HMENU)IDC_CHAT,hInst,NULL);
+        hChat=CreateWindowExW(es,L"LISTBOX",NULL,WS_CHILD|WS_VISIBLE|WS_VSCROLL|WS_TABSTOP|LBS_NOTIFY|LBS_NOINTEGRALHEIGHT|LBS_OWNERDRAWVARIABLE,0,0,0,0,h,(HMENU)IDC_CHAT,hInst,NULL); /* owner-drawn bubbles */
         hInput=CreateWindowExW(es,L"EDIT",L"",WS_CHILD|WS_VISIBLE|WS_VSCROLL|WS_TABSTOP|ES_MULTILINE|ES_AUTOVSCROLL|ES_WANTRETURN,0,0,0,0,h,(HMENU)IDC_INPUT,hInst,NULL);
         hSend=CreateWindowW(L"BUTTON",L"发送 (Enter)",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_OWNERDRAW,0,0,0,0,h,(HMENU)IDC_SEND,hInst,NULL);
         hFile=CreateWindowW(L"BUTTON",L"发送文件...",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_OWNERDRAW,0,0,0,0,h,(HMENU)IDC_FILE,hInst,NULL);
@@ -364,10 +442,10 @@ static LRESULT CALLBACK MainProc(HWND h, UINT m, WPARAM w, LPARAM l){
         SendMessageW(hList,WM_SETFONT,(WPARAM)hFont,1); SendMessageW(hChat,WM_SETFONT,(WPARAM)hFont,1); SendMessageW(hInput,WM_SETFONT,(WPARAM)hFont,1);
         SendMessageW(hSend,WM_SETFONT,(WPARAM)hFont,1); SendMessageW(hFile,WM_SETFONT,(WPARAM)hFont,1); SendMessageW(hStatus,WM_SETFONT,(WPARAM)fBody,1); /* body: 12px caption CJK at wine/XP grayscale AA measured below 4.5:1 */ SendMessageW(hTitle,WM_SETFONT,(WPARAM)fBodyStrong,1);
         SendMessageW(hInput,EM_LIMITTEXT,60000,0);
-        oldInputProc=(WNDPROC)SetWindowLongPtrW(hInput,GWLP_WNDPROC,(LONG_PTR)InputProc); oldChatProc=(WNDPROC)SetWindowLongPtrW(hChat,GWLP_WNDPROC,(LONG_PTR)ChatProc); ShowScrollBar(hChat,SB_VERT,FALSE); ShowScrollBar(hInput,SB_VERT,FALSE);
+        oldInputProc=(WNDPROC)SetWindowLongPtrW(hInput,GWLP_WNDPROC,(LONG_PTR)InputProc); oldChatProc=(WNDPROC)SetWindowLongPtrW(hChat,GWLP_WNDPROC,(LONG_PTR)ChatProc); ShowScrollBar(hInput,SB_VERT,FALSE);
         SetTimer(h,TIMER_POLL,300,NULL);
         return 0; }
-    case WM_SIZE: if(w!=SIZE_MINIMIZED){ layout(LOWORD(l),HIWORD(l)); fit_vscroll(hChat); fit_vscroll(hInput); InvalidateRect(h,NULL,TRUE); } else ShowWindow(h,SW_HIDE); return 0;
+    case WM_SIZE: if(w!=SIZE_MINIMIZED){ layout(LOWORD(l),HIWORD(l)); if(C) refresh_chat(); fit_vscroll(hInput); InvalidateRect(h,NULL,TRUE); } else ShowWindow(h,SW_HIDE); return 0;
     case WM_GETMINMAXINFO: ((MINMAXINFO*)l)->ptMinTrackSize.x=640; ((MINMAXINFO*)l)->ptMinTrackSize.y=420; return 0;
     case WM_SETFOCUS: SetFocus(hList); return 0; /* keyboard users land in the contact list */
     case WM_TIMER: if(!tray_added) tray_add(); poll_events(); return 0;
@@ -376,8 +454,8 @@ static LRESULT CALLBACK MainProc(HWND h, UINT m, WPARAM w, LPARAM l){
     case WM_CTLCOLOREDIT: return ctl_color((HDC)w,(HWND)l,1);
     case WM_CTLCOLORLISTBOX: return ctl_color((HDC)w,(HWND)l,2);
     case WM_ERASEBKGND: { RECT r; GetClientRect(h,&r); FillRect((HDC)w,&r,brWin); return 1; }
-    case WM_MEASUREITEM: { MEASUREITEMSTRUCT *mi=(MEASUREITEMSTRUCT*)l; if(mi->CtlType==ODT_MENU){ measure_menu(mi); return TRUE; } if(mi->CtlType==ODT_LISTBOX){ mi->itemHeight=scale_px(32); return TRUE; } break; }
-    case WM_DRAWITEM: { DRAWITEMSTRUCT *d=(DRAWITEMSTRUCT*)l; if(d->CtlType==ODT_MENU){ draw_menu(d); return TRUE; } if(d->CtlType==ODT_BUTTON && d->CtlID>=IDC_MENUBTN && d->CtlID<IDC_MENUBTN+5){ draw_menubtn(d); return TRUE; } if(d->CtlType==ODT_LISTBOX){ draw_list_item(d); return TRUE; } if(d->CtlType==ODT_BUTTON){ draw_button(d); return TRUE; } break; }
+    case WM_MEASUREITEM: { MEASUREITEMSTRUCT *mi=(MEASUREITEMSTRUCT*)l; if(mi->CtlType==ODT_MENU){ measure_menu(mi); return TRUE; } if(mi->CtlType==ODT_LISTBOX && mi->CtlID==IDC_CHAT){ measure_chat(mi); return TRUE; } if(mi->CtlType==ODT_LISTBOX){ mi->itemHeight=scale_px(32); return TRUE; } break; }
+    case WM_DRAWITEM: { DRAWITEMSTRUCT *d=(DRAWITEMSTRUCT*)l; if(d->CtlType==ODT_MENU){ draw_menu(d); return TRUE; } if(d->CtlType==ODT_BUTTON && d->CtlID>=IDC_MENUBTN && d->CtlID<IDC_MENUBTN+5){ draw_menubtn(d); return TRUE; } if(d->CtlType==ODT_LISTBOX && d->CtlID==IDC_CHAT){ draw_chat_item(d); return TRUE; } if(d->CtlType==ODT_LISTBOX){ draw_list_item(d); return TRUE; } if(d->CtlType==ODT_BUTTON){ draw_button(d); return TRUE; } break; }
     case WM_PAINT: { PAINTSTRUCT ps; HDC dc=BeginPaint(h,&ps); frame_child(h,dc,hList); frame_child(h,dc,hChat); frame_child(h,dc,hInput); { RECT cr; HBRUSH dv=CreateSolidBrush(T.divider); GetClientRect(h,&cr); cr.top=MENUBAR_H-1; cr.bottom=MENUBAR_H; FillRect(dc,&cr,dv); DeleteObject(dv); } EndPaint(h,&ps); return 0; }
     case WM_MENUCHAR: { HMENU mm=(HMENU)l; int i,n=GetMenuItemCount(mm); wchar_t ch=(wchar_t)towlower((wint_t)LOWORD(w)); /* mnemonics for owner-drawn items */
         for(i=0;i<n;i++){ MENUITEMINFOW ii; const wchar_t *t,*a; memset(&ii,0,sizeof ii); ii.cbSize=sizeof ii; ii.fMask=MIIM_DATA; if(!GetMenuItemInfoW(mm,i,TRUE,&ii)) continue; t=(const wchar_t*)ii.dwItemData; if(!t) continue; a=wcschr(t,L'&'); if(a && towlower(a[1])==ch) return MAKELRESULT(i,MNC_EXECUTE); }
@@ -411,7 +489,7 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE prev, LPWSTR cmd, int show){
     _snwprintf(dw,MAX_PATH,L"%s\\data",exe_dir); dw[MAX_PATH-1]=0;
     { int argc; wchar_t **av=CommandLineToArgvW(GetCommandLineW(),&argc); int i; memset(&o,0,sizeof o);
       static char nm[300], tg[1024];
-      for(i=1;i<argc;i++){ if(!wcscmp(av[i],L"--data")&&i+1<argc) wcsncpy(dw,av[++i],MAX_PATH-1); else if(!wcscmp(av[i],L"--name")&&i+1<argc){ U(av[++i],nm,sizeof nm); o.name=nm; } else if(!wcscmp(av[i],L"--theme")&&i+1<argc){ i++; theme_cli=!wcscmp(av[i],L"dark")?2:!wcscmp(av[i],L"light")?1:0; } else if(!wcscmp(av[i],L"--port")&&i+1<argc) o.listen_port=_wtoi(av[++i]); else if(!wcscmp(av[i],L"--disco-port")&&i+1<argc) o.discovery_port=_wtoi(av[++i]); else if(!wcscmp(av[i],L"--targets")&&i+1<argc){ U(av[++i],tg,sizeof tg); o.announce_targets=tg; } } }
+      for(i=1;i<argc;i++){ if(!wcscmp(av[i],L"--data")&&i+1<argc) wcsncpy(dw,av[++i],MAX_PATH-1); else if(!wcscmp(av[i],L"--name")&&i+1<argc){ U(av[++i],nm,sizeof nm); o.name=nm; } else if(!wcscmp(av[i],L"--theme")&&i+1<argc){ i++; theme_cli=!wcscmp(av[i],L"dark")?2:!wcscmp(av[i],L"light")?1:0; } else if(!wcscmp(av[i],L"--auto-trust")) o.auto_trust=1; else if(!wcscmp(av[i],L"--port")&&i+1<argc) o.listen_port=_wtoi(av[++i]); else if(!wcscmp(av[i],L"--disco-port")&&i+1<argc) o.discovery_port=_wtoi(av[++i]); else if(!wcscmp(av[i],L"--targets")&&i+1<argc){ U(av[++i],tg,sizeof tg); o.announce_targets=tg; } } }
     U(dw,data,sizeof data); o.data_dir=data;
     if(!o.name){ static char cn[64]; wchar_t wn[64]; DWORD n=64; if(GetComputerNameW(wn,&n)){ U(wn,cn,sizeof cn); o.name=cn; } }
     (void)lf; (void)ncm;
