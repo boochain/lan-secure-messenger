@@ -139,7 +139,8 @@ int lsm_drop_links(lsm_core *c);
  *   "relay_peer\t<fp>\t<join|leave>\t<name>"                      peer seen on the relay
  *   "peer\t<fp>\tpath\t<direct|relay>"                           live link path changed (badge) */
 int lsm_relay_set(lsm_core *c, int enabled, const char *host, int port, const char *pass, char *err);
-int lsm_relay_get(lsm_core *c, int *enabled, char *host, size_t hn, int *port, char *pass, size_t pn);
+/* the passphrase is write-only: lsm_relay_set takes it (NULL = keep, "" = clear); reads only report *has_pass */
+int lsm_relay_get(lsm_core *c, int *enabled, char *host, size_t hn, int *port, int *has_pass);
 const char *lsm_relay_status(lsm_core *c, char *detail, size_t dn); /* call under lsm_lock */
 int lsm_relay_peers(lsm_core *c); /* test hook: abort all TCP links without Bye */
 

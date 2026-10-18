@@ -839,6 +839,9 @@ static void on_tick(lsm_core *c){
         if(k->state==4){ if(now-k->last_rx>=DEAD_AFTER){ conn_close(c,k,"heartbeat timeout",0); continue; }
             if(now-k->last_ping>=PING_EVERY){ buf_t f={0}; k->last_ping=now; b_u32(&f,0); b_u64(&f,(uint64_t)wall_ms()); send_frame(k,&f); b_free(&f); } }
         else if(k->state!=9 && now-k->started>HS_TIMEOUT) conn_close(c,k,"handshake timeout",0); }
+    /* trusted contacts never seen in this run: seed rt entries first, so the very first tick after
+       start-up already dials their remembered addresses (fast resume after a restart) */
+    for(i=0;i<c->ncontacts;i++) if(c->contacts[i].trust==TRUST_TRUSTED && c->contacts[i].addr[0]) rt_entry(c,c->contacts[i].fp);
     /* redial peers: trusted, recently announced, or with pending outbox */
     for(i=0;i<c->nrt;i++){ peer_rt *r=&c->rt[i]; lsm_contact *ct=contact_get(c,r->fp); int trusted=ct&&ct->trust==TRUST_TRUSTED, recent=r->last_announce&&now-r->last_announce<60000, has_out=0, j; struct sockaddr_in a; char key[80];
         if(conn_direct_by_fp(c,r->fp) || r->dialing) continue; if(ct && ct->trust==TRUST_BLOCKED) continue;
@@ -850,8 +853,6 @@ static void on_tick(lsm_core *c){
         /* simultaneous-dial damping: the larger fingerprint waits briefly so the preferred link wins */
         r->dialing=1; r->next_attempt=now+10000; snprintf(key,sizeof key,"fp:%s",r->fp); dial(c,&a,key);
         { conn *x; int started=0; for(x=c->conns;x;x=x->next) if(x->state!=9 && !strcmp(x->dial_key,key)) started=1; if(!started) r->dialing=0; } }
-    /* trusted contacts never seen in this run: seed rt entries */
-    for(i=0;i<c->ncontacts;i++) if(c->contacts[i].trust==TRUST_TRUSTED && c->contacts[i].addr[0]) rt_entry(c,c->contacts[i].fp);
     for(i=0;i<c->nmanual;i++){ manual_rt *m=&c->manual[i]; char key[80];
         if(m->dialing) continue; if(m->fp[0] && conn_by_fp(c,m->fp)){ m->next_attempt=now+5000; continue; }
         if(m->next_attempt && now<m->next_attempt) continue;

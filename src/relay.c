@@ -215,9 +215,9 @@ int lsm_relay_set(lsm_core *c, int enabled, const char *host, int port, const ch
     r->has_key=0; r->fails=0; r->st=r->enabled?RS_IDLE:RS_OFF; r->next_attempt=0;
     rl_save(c); rl_set_status(c,r->enabled?"connecting":"off","");
     mu_unlock(&c->mu); return 0; }
-int lsm_relay_get(lsm_core *c, int *enabled, char *host, size_t hn, int *port, char *pass, size_t pn){
+int lsm_relay_get(lsm_core *c, int *enabled, char *host, size_t hn, int *port, int *has_pass){
     struct relay_cl *r; mu_lock(&c->mu); r=c->rl;
-    if(enabled) *enabled=r->enabled; if(host) scpy(host,r->host,hn); if(port) *port=r->port; if(pass) scpy(pass,r->pass,pn);
+    if(enabled) *enabled=r->enabled; if(host) scpy(host,r->host,hn); if(port) *port=r->port; if(has_pass) *has_pass=r->pass[0]!=0;
     mu_unlock(&c->mu); return 0; }
 const char *lsm_relay_status(lsm_core *c, char *detail, size_t dn){ /* locked by caller or not: plain reads */
     struct relay_cl *r=c->rl; if(detail) scpy(detail,r->detail,dn); return r->status; }

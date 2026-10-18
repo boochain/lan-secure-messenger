@@ -94,10 +94,10 @@ static int run_cmd(char *line){
     if(!strcmp(cmd,"name")){ lsm_set_name(C,s); outf("OK name\n"); return 0; }
     if(!strcmp(cmd,"cancel")){ if(lsm_transfer_cancel(C,s,err)) outf("ERR %s\n",err); else outf("OK cancel\n"); return 0; }
     if(!strcmp(cmd,"relay")){ /* relay <host> <port> <passphrase> | relay off | relay status */
-        char *a=next_tok(&s), *pt=next_tok(&s), host[256], pass[256], det[256]; int en, port;
+        char *a=next_tok(&s), *pt=next_tok(&s), host[256], det[256]; int en, port, hp=0;
         if(a && !strcmp(a,"off")){ lsm_relay_set(C,0,NULL,0,NULL,err); outf("OK relay off\n"); return 0; }
         if(a && strcmp(a,"status") && pt){ while(s&&*s==' ') s++; if(lsm_relay_set(C,1,a,atoi(pt),s?s:"",err)) outf("ERR %s\n",err); else outf("OK relay %s:%d\n",a,atoi(pt)); return 0; }
-        lsm_relay_get(C,&en,host,sizeof host,&port,pass,sizeof pass); lsm_lock(C); { const char *st=lsm_relay_status(C,det,sizeof det); outf("OK relay %s %s enabled=%d server=%s:%d peers=%d\n",st,det[0]?det:"-",en,host,port,lsm_relay_peers(C)); } lsm_unlock(C); return 0; }
+        lsm_relay_get(C,&en,host,sizeof host,&port,&hp); lsm_lock(C); { const char *st=lsm_relay_status(C,det,sizeof det); outf("OK relay %s %s enabled=%d server=%s:%d peers=%d passphrase=%s\n",st,det[0]?det:"-",en,host,port,lsm_relay_peers(C),hp?"set":"none"); } lsm_unlock(C); return 0; }
     if(!strcmp(cmd,"drop-links")){ outf("OK dropped %d\n",lsm_drop_links(C)); return 0; }
     if(!strcmp(cmd,"sleep")){ sleep_ms(atoi(s)); outf("OK sleep\n"); return 0; }
     if(!strcmp(cmd,"firewall-setup")){ char rep[2048], exe[1024]="";
