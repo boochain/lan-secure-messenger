@@ -74,7 +74,7 @@ public static class Fmt
         foreach (var b in System.Text.Encoding.UTF8.GetBytes(id ?? "")) { h ^= b; h *= 16777619; }
         return (int)(h % 8);
     }
-    public static readonly string[] AvatarColors = { "#6D4FC2", "#1F6FB2", "#0F7A6C", "#B4471B", "#2E6B2F", "#9C2F55", "#5A5F14", "#8A4B08" };
+    public static readonly string[] AvatarColors = { "#7C61C8", "#2176BC", "#108172", "#C24D1D", "#378139", "#C6406F", "#727819", "#AC5E0A" };
 
     static readonly string[] Week = { "周日", "周一", "周二", "周三", "周四", "周五", "周六" };
     static int DaysAgo(DateTime t, DateTime now) => (int)Math.Round((now.Date - t.Date).TotalDays);

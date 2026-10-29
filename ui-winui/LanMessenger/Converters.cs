@@ -33,9 +33,10 @@ public static class B
     public static Visibility Both(bool a, bool b) => a && b ? Visibility.Visible : Visibility.Collapsed;
 
     // shared avatar palette (same 8 colours and FNV-1a index on every platform; white initials >= 4.5:1 on each)
+    // avatar discs: >= 3:1 against the dark list background (#202020/#272727, WCAG 1.4.11) and white initials >= 4.5:1
     private static readonly Windows.UI.Color[] AvatarColors =
     {
-        Rgb(0x6D4FC2), Rgb(0x1F6FB2), Rgb(0x0F7A6C), Rgb(0xB4471B), Rgb(0x2E6B2F), Rgb(0x9C2F55), Rgb(0x5A5F14), Rgb(0x8A4B08),
+        Rgb(0x7C61C8), Rgb(0x2176BC), Rgb(0x108172), Rgb(0xC24D1D), Rgb(0x378139), Rgb(0xC6406F), Rgb(0x727819), Rgb(0xAC5E0A),
     };
     private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush[] AvatarBrushes = AvatarColors.Select(c => new Microsoft.UI.Xaml.Media.SolidColorBrush(c)).ToArray();
     private static Windows.UI.Color Rgb(int v) => Windows.UI.Color.FromArgb(255, (byte)(v >> 16), (byte)(v >> 8), (byte)v);

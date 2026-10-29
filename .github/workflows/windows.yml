@@ -180,9 +180,6 @@ jobs:
   winui-arm64:
     name: Windows arm64 native (windows-11-arm) - daemon, relay-server, WinUI smoke light + dark
     runs-on: windows-11-arm
-    # PENDING: on windows-11-arm every SendInput-driven check and the tray icon fail although the runner has an
-    # active console session with explorer (diagnosed 2026-10-29). Non-blocking until that is fixed; x64 smoke stays blocking.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -246,6 +243,9 @@ jobs:
           Write-Host "LanMessenger.exe : $h"; if ("$h" -notmatch "ARM64") { throw "LanMessenger.exe is not ARM64" }
           "ZIP=LanMessenger-$ver-win-arm64.zip" >> $env:GITHUB_ENV
       - name: UI smoke in light + dark theme (arm64, with relay)
+        # Non-blocking: on windows-11-arm every SendInput-driven check and the tray icon fail although the runner has an
+        # active console session with explorer (diagnosed 2026-10-29); the x64 smoke (same app, same checks) stays blocking.
+        continue-on-error: true
         shell: pwsh
         run: ./scripts/ui_smoke_windows.ps1 -Dist dist\LanMessenger -Out ui-smoke-arm64 -Relay target\release\relay-server.exe
       - uses: actions/upload-artifact@v4
