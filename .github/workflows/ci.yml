@@ -7,6 +7,11 @@ on:
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      jobs:
+        description: "Comma list of parts to run (windows,portable,relay-server,relay-matrix); empty = all"
+        required: false
+        default: ""
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -14,12 +19,16 @@ permissions:
   contents: read
 jobs:
   windows:        # Rust core tests, lan-daemon/lan-msg, WinUI 3 x64 (+ light/dark UI smoke, colour audit), arm64 package
+    if: github.event_name != 'workflow_dispatch' || inputs.jobs == '' || contains(format(',{0},', inputs.jobs), ',windows,')
     uses: ./.github/workflows/windows.yml
   portable:       # C core: XP exe (i686/x64, wine interop), Linux GTK3 AppImage+tarball, GTK4 AppImage, Android APK + emulator, audits
+    if: github.event_name != 'workflow_dispatch' || inputs.jobs == '' || contains(format(',{0},', inputs.jobs), ',portable,')
     uses: ./.github/workflows/portable.yml
   relay-server:   # relay server: Linux musl x86_64/aarch64/armv7/i686/riscv64, Windows x64/arm64/x86, deploy scripts
+    if: github.event_name != 'workflow_dispatch' || inputs.jobs == '' || contains(format(',{0},', inputs.jobs), ',relay-server,')
     uses: ./.github/workflows/relay-server.yml
   relay-matrix:   # rust <-> C <-> Android, direct LAN + through the relay, resume, mid-transfer path switches
+    if: github.event_name != 'workflow_dispatch' || inputs.jobs == '' || contains(format(',{0},', inputs.jobs), ',relay-matrix,')
     uses: ./.github/workflows/relay-client-matrix.yml
 
   release:
