@@ -1160,6 +1160,7 @@ void lsm_initials(const char *name, char out[8]){
 }
 
 #include "resume.c"
+#include "backup.c"
 
 /* ------------------------------------------------------------ diagnostics (诊断) */
 size_t lsm_diagnostics(lsm_core *c, char *out, size_t n){ buf_t b={0}; int i, act=0; char det[300]; const char *rs; size_t len;

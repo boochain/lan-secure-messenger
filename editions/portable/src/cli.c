@@ -52,7 +52,7 @@ static char *next_tok(char **s){ char *p=*s, *st; while(*p==' ') p++; if(!*p) re
 static const char *STS[]={"queued","sent","delivered","read","received","failed"};
 static const char *TST[]={"offered","active","verifying","done","failed","rejected","cancelled"};
 
-static void help(void){ outf("commands: id | peers | add <ip[:port]> | trust/untrust/block <peer> | mute/unmute <peer> | diag | send <peer> <text> | sendgroup <group> <text> |\n"
+static void help(void){ outf("commands: id | peers | add <ip[:port]> | trust/untrust/block <peer> | mute/unmute <peer> | diag | backup <password> <file> | send <peer> <text> | sendgroup <group> <text> |\n"
     " sendfile <peer|group> <path> | pin-offer | pin-pair <peer> <pin> | group-create <name> <peer,peer..> | group-invite <group> <peer,..> |\n"
     " group-remove <group> <peer> | group-leave <group> | groups | history <peer|group> [n] | read <peer|group> | transfers | name <new name> |\n"
     " firewall-setup | drop-links | sleep <ms> | quit\n"); }
@@ -67,6 +67,7 @@ static int run_cmd(char *line){
     if(!strcmp(cmd,"peers")){ lsm_contact *k; int n,i; lsm_lock(C); n=lsm_contacts(C,&k); for(i=0;i<n;i++) outf("PEER %s\t%s\t%s\t%s\trtt=%d\t%s",k[i].fp,k[i].online?"online":"offline",k[i].trust==1?"trusted":k[i].trust==2?"blocked":"unknown",k[i].name,k[i].rtt_ms,k[i].addr), outf("%s%s",k[i].muted?"\tmuted":"",k[i].online?(k[i].via_relay?"\tvia=relay\n":"\tvia=direct\n"):"\n"); lsm_unlock(C); outf("OK peers %d\n",n); return 0; }
     if(!strcmp(cmd,"add")){ if(lsm_add_addr(C,s,err)) outf("ERR %s\n",err); else outf("OK add %s\n",s); return 0; }
     if(!strcmp(cmd,"diag")){ size_t need=lsm_diagnostics(C,NULL,0); char *d=(char*)malloc(need+1); if(!d){ outf("ERR oom\n"); return 0; } lsm_diagnostics(C,d,need+1); { char *l=d, *e; while(*l){ e=strchr(l,'\n'); if(e) *e=0; outf("DIAG %s\n",l); if(!e) break; l=e+1; } } free(d); outf("OK diag\n"); return 0; }
+    if(!strcmp(cmd,"backup")){ char *pw=next_tok(&s); while(s&&*s==' ') s++; if(!pw||!s||!*s){ outf("ERR usage: backup <password> <file>\n"); return 0; } if(lsm_backup_export(C,pw,s,err)) outf("ERR %s\n",err); else outf("OK backup %s\n",s); return 0; }
     if(!strcmp(cmd,"mute")||!strcmp(cmd,"unmute")){ if(peer_of(s,fp)){ outf("ERR no peer matches '%s'\n",s); return 0; } lsm_set_muted(C,fp,cmd[0]=='m',err); outf("OK %s %s\n",cmd,fp); return 0; }
     if(!strcmp(cmd,"trust")||!strcmp(cmd,"untrust")||!strcmp(cmd,"block")){ if(peer_of(s,fp)){ outf("ERR no peer matches '%s'\n",s); return 0; } lsm_set_trust(C,fp,cmd[0]=='t'?1:cmd[0]=='b'?2:0,err); outf("OK %s %s\n",cmd,fp); return 0; }
     if(!strcmp(cmd,"send")||!strcmp(cmd,"sendgroup")){ char *who=next_tok(&s), id[40]; const char *cv; while(s&&*s==' ') s++; if(!who||!(cv=conv_of(who,buf))){ outf("ERR unknown target\n"); return 0; }
@@ -126,7 +127,7 @@ static int read_line(char *b, size_t n){
     { char *e=strpbrk(b,"\r\n"); if(e) *e=0; } return 1; }
 
 int main(int argc, char **argv){
-    lsm_opts o; char err[256], data[1024]=""; static char line[300000]; int i;
+    lsm_opts o; char err[256], data[1024]="", *restore=NULL, *password=NULL; static char line[300000]; int i;
     memset(&o,0,sizeof o);
 #ifdef _WIN32
     { wchar_t **wa; int wn; DWORD mode; InitializeCriticalSection(&out_mu); hout=GetStdHandle(STD_OUTPUT_HANDLE); hin=GetStdHandle(STD_INPUT_HANDLE);
@@ -145,9 +146,13 @@ int main(int argc, char **argv){
         else if(!strcmp(argv[i],"--announce-ms")&&i+1<argc) o.announce_ms=atoi(argv[++i]);
         else if(!strcmp(argv[i],"--no-discovery")) o.no_discovery=1;
         else if(!strcmp(argv[i],"--auto-trust")) o.auto_trust=1;
+        else if(!strcmp(argv[i],"--restore")&&i+1<argc) restore=argv[++i];
+        else if(!strcmp(argv[i],"--password")&&i+1<argc) password=argv[++i];
         else if(!strcmp(argv[i],"--version")){ printf("lanmsg-cli %s (protocol v5)\n",LSM_APP_VERSION); return 0; }
-        else { printf("usage: lanmsg-cli [--data DIR] [--name NAME] [--port 41235] [--disco-port 41234] [--targets ip,ip] [--no-discovery] [--auto-trust]\n"); return 2; } }
+        else { printf("usage: lanmsg-cli [--data DIR] [--name NAME] [--port 41235] [--disco-port 41234] [--targets ip,ip] [--no-discovery] [--auto-trust] [--restore FILE --password PW]\n"); return 2; } }
     o.data_dir=data;
+    if(restore){ char rfp[FP_LEN]=""; /* offline restore into --data, then exit; start normally afterwards */
+        if(lsm_backup_import(data,password?password:"",restore,err,rfp)){ outf("ERR restore: %s\n",err); return 1; } outf("OK restore %s\n",rfp); return 0; }
     C=lsm_start(&o,err,sizeof err);
     if(!C){ outf("ERR start: %s\n",err); return 1; }
 #ifdef _WIN32

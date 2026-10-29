@@ -126,6 +126,11 @@ int lsm_set_muted(lsm_core *c, const char *fp, int muted, char *err);
 /* 诊断 (diagnostics) snapshot as "key\tvalue..." lines (same facts as the WinUI 诊断 page: listen/discovery sockets,
    interfaces, relay, per-peer link state). Writes at most n-1 bytes + NUL into buf; returns the full length. Takes the lock. */
 size_t lsm_diagnostics(lsm_core *c, char *buf, size_t n);
+/* Encrypted backup, same file format as the Rust edition (LSMBAK02, Argon2id + ChaCha20-Poly1305).
+ * Export: identity, contacts, manual addresses, display name. Import writes into data_dir (the core must NOT be
+ * running on it; restart afterwards). fp_out (FP_LEN, may be NULL) receives the restored identity fingerprint. */
+int lsm_backup_export(lsm_core *c, const char *password, const char *path, char *err);
+int lsm_backup_import(const char *data_dir, const char *password, const char *path, char *err, char *fp_out);
 int lsm_pin_offer(lsm_core *c, char pin_out[8]);
 int lsm_pin_pair(lsm_core *c, const char *fp, const char *pin, char *err); /* async: event pin_result */
 int lsm_group_create(lsm_core *c, const char *name, const char **fps, int n, char *gid_out, char *err);

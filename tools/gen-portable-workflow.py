@@ -66,6 +66,14 @@ s = s.replace("(cd reference/v0.5 && cargo build --release -p lan-daemon -p lan-
               "(cd reference/v0.5 && cargo build --release -p lan-daemon -p lan-cli) && (cd $GITHUB_WORKSPACE && cargo build --release -p lan-daemon -p lan-cli)")
 s = re.sub(r"(working-directory: editions/portable/reference/v0.5\n(\s+)run: cargo build --release -p lan-daemon -p lan-cli)",
            r"\1 && (cd $GITHUB_WORKSPACE && cargo build --release -p lan-daemon -p lan-cli)", s)
+# Encrypted-backup interop (C core <-> current Rust lan-core, LSMBAK02); only meaningful in the unified repo.
+_anchor = "      - name: Interop under wine (x86 exe <-> v0.5 lan-daemon, netns bridge)\n"
+assert s.count(_anchor) == 1, "backup interop anchor"
+s = s.replace(_anchor, """      - name: Backup interop (C core <-> Rust lan-core, LSMBAK02)
+        run: |
+          (cd $GITHUB_WORKSPACE && cargo build --release -p lan-core --example backup_tool)
+          python3 tests/backup_interop.py --cli build/linux/lanmsg-cli --rust-tool $GITHUB_WORKSPACE/target/release/examples/backup_tool
+""" + _anchor)
 s = "\n".join(l.replace("--no-resume-kinds rust ", "").replace("--rust-bin reference/v0.5/target/release", "--rust-bin $GITHUB_WORKSPACE/target/release") if "tests/matrix.py" in l else l
               for l in s.split("\n"))
 open(DST, "w", encoding="utf-8").write(s)

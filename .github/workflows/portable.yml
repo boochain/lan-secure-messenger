@@ -67,6 +67,10 @@ jobs:
       - name: Build real v0.5 daemon (reference/v0.5 = v0.5.0-beta.2 source)
         working-directory: editions/portable/reference/v0.5
         run: cargo build --release -p lan-daemon -p lan-cli && (cd $GITHUB_WORKSPACE && cargo build --release -p lan-daemon -p lan-cli)
+      - name: Backup interop (C core <-> Rust lan-core, LSMBAK02)
+        run: |
+          (cd $GITHUB_WORKSPACE && cargo build --release -p lan-core --example backup_tool)
+          python3 tests/backup_interop.py --cli build/linux/lanmsg-cli --rust-tool $GITHUB_WORKSPACE/target/release/examples/backup_tool
       - name: Interop under wine (x86 exe <-> v0.5 lan-daemon, netns bridge)
         run: sudo -E env "PATH=$PATH" python3 tests/interop.py --rust-bin reference/v0.5/target/release --exe build/x86/lanmsg-cli.exe --work /tmp/lsm-interop
       - name: Interop native (same core, Linux build)
