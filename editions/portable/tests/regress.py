@@ -99,6 +99,13 @@ A.quit(); A = Node("RA", base)
 gone = not any("delete-me" in l for l in A.cmd(f"history {B.fp}"))
 kept = any("delete-me" in l for l in B.cmd(f"history {A.fp}"))
 check("delete message (this device only) survives restart, peer keeps it", okd and gone and kept, (mid, did, okd, gone, kept))
+# 6. 免打扰 (mute) is local, persisted, and leaves trust alone
+okm = any(l.startswith("OK mute") for l in A.cmd(f"mute {B.fp}"))
+A.quit(); A = Node("RA", base)
+pa = [l for l in A.cmd("peers") if l.startswith("PEER " + B.fp)]
+muted_after_restart = bool(pa) and "\tmuted" in pa[0] and "trusted" in pa[0]
+A.cmd(f"unmute {B.fp}"); pb = [l for l in A.cmd("peers") if l.startswith("PEER " + B.fp)]
+check("mute survives restart, unmute clears it, trust unchanged", okm and muted_after_restart and bool(pb) and "\tmuted" not in pb[0], (pa[:1], pb[:1]))
 want = {"王工": "王", "Alice Chen": "AC", "CI 测试群": "C", "bob": "B", "Bob Miller Jr": "BM", "李 Bob": "李", "  ": "?"}
 got = {k: next((l.split()[2] if len(l.split()) > 2 else "") for l in A.cmd(f"initials {k}") if l.startswith("OK initials")) for k in want if k.strip()}
 check("avatar initials rule (CJK -> 1 char, Latin -> up to 2, never mixed)", all(got[k] == v for k, v in want.items() if k.strip()), got)

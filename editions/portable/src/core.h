@@ -26,6 +26,7 @@ typedef struct {
     char app_version[64];   /* runtime */
     int64_t last_announce;  /* runtime mono ms, 0 = never */
     int via_relay;          /* runtime: 1 = the live link goes through the relay server (UI badge 经服务器) */
+    int muted;              /* 免打扰: UI shows no notification for this peer (persisted; messages still arrive) */
 } lsm_contact;
 
 typedef struct {
@@ -120,6 +121,8 @@ int lsm_send_text(lsm_core *c, const char *conv, const char *text, char *msgid_o
 int lsm_send_file(lsm_core *c, const char *conv, const char *path, char *err);
 int lsm_add_addr(lsm_core *c, const char *addr, char *err);
 int lsm_set_trust(lsm_core *c, const char *fp, int trust, char *err);
+/* 免打扰 on/off for a peer (local only, like the Rust core's contact.muted); emits "peer\t<fp>\tmuted\t0|1" */
+int lsm_set_muted(lsm_core *c, const char *fp, int muted, char *err);
 int lsm_pin_offer(lsm_core *c, char pin_out[8]);
 int lsm_pin_pair(lsm_core *c, const char *fp, const char *pin, char *err); /* async: event pin_result */
 int lsm_group_create(lsm_core *c, const char *name, const char **fps, int n, char *gid_out, char *err);

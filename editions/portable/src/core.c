@@ -273,10 +273,10 @@ static lsm_contact *contact_entry(lsm_core *c, const char *fp){ lsm_contact *k=c
 static int trust_of(lsm_core *c, const char *fp){ lsm_contact *k=contact_get(c,fp); return k?k->trust:TRUST_UNKNOWN; }
 static void save_contacts(lsm_core *c){ buf_t b={0}; int i; char ed[65];
     for(i=0;i<c->ncontacts;i++){ lsm_contact *k=&c->contacts[i]; if(k->has_ed) hex_enc(k->ed,32,ed); else ed[0]=0;
-        bfmt(&b,"%s\t",k->fp); esc_put(&b,k->name); bfmt(&b,"\t%s\t%d\t%s\t%lld\n",ed,k->trust,k->addr,(long long)k->last_seen_ms); }
+        bfmt(&b,"%s\t",k->fp); esc_put(&b,k->name); bfmt(&b,"\t%s\t%d\t%s\t%lld\t%d\n",ed,k->trust,k->addr,(long long)k->last_seen_ms,k->muted); } /* 7th column (muted) is ignored by older versions */
     save_sealed(c,"contacts.dat",&b); b_free(&b); }
 static void load_contacts(lsm_core *c){ char *t=load_sealed(c,"contacts.dat"), *line, *nx; if(!t) return;
-    for(line=t; line && *line; line=nx){ char *f[8]; int n; nx=strchr(line,'\n'); if(nx) *nx++=0; n=split_tabs(line,f,8); if(n>=6){ lsm_contact *k=contact_entry(c,f[0]); scpy(k->name,f[1],sizeof k->name); if(strlen(f[2])==64 && !hex_dec(f[2],k->ed,32)) k->has_ed=1; k->trust=atoi(f[3]); scpy(k->addr,f[4],sizeof k->addr); k->last_seen_ms=atoll(f[5]); } }
+    for(line=t; line && *line; line=nx){ char *f[8]; int n; nx=strchr(line,'\n'); if(nx) *nx++=0; n=split_tabs(line,f,8); if(n>=6){ lsm_contact *k=contact_entry(c,f[0]); scpy(k->name,f[1],sizeof k->name); if(strlen(f[2])==64 && !hex_dec(f[2],k->ed,32)) k->has_ed=1; k->trust=atoi(f[3]); scpy(k->addr,f[4],sizeof k->addr); k->last_seen_ms=atoll(f[5]); if(n>=7) k->muted=atoi(f[6])!=0; } }
     free(t); }
 
 static lsm_group *group_get(lsm_core *c, const uint8_t id[16]){ int i; for(i=0;i<c->ngroups;i++) if(!memcmp(c->groups[i].id,id,16)) return &c->groups[i]; return NULL; }
@@ -1065,6 +1065,8 @@ int lsm_add_addr(lsm_core *c, const char *addr, char *err){ struct sockaddr_in a
     c->manual=(manual_rt*)xrealloc(c->manual,sizeof(manual_rt)*(c->nmanual+1)); c->manual[c->nmanual++]=m;
     { buf_t b={0}; for(i=0;i<c->nmanual;i++) bfmt(&b,"%s\n",c->manual[i].addr); save_sealed(c,"manual.dat",&b); b_free(&b); } /* persisted like v0.5 contacts.manual */
     mu_unlock(&c->mu); return 0; }
+int lsm_set_muted(lsm_core *c, const char *fp, int muted, char *err){ lsm_contact *k; (void)err; mu_lock(&c->mu); k=contact_entry(c,fp); k->muted=muted!=0; save_contacts(c);
+    emit(c,"peer\t%s\tmuted\t%d",fp,k->muted); mu_unlock(&c->mu); return 0; }
 int lsm_set_trust(lsm_core *c, const char *fp, int trust, char *err){ lsm_contact *k; (void)err; mu_lock(&c->mu); k=contact_entry(c,fp); k->trust=trust; save_contacts(c);
     if(trust==TRUST_BLOCKED){ conn *x=conn_by_fp(c,fp); if(x) conn_close(c,x,"blocked",1); }
     emit(c,"peer\t%s\ttrust\t%s",fp,trust==1?"trusted":trust==2?"blocked":"unknown"); mu_unlock(&c->mu); return 0; }
