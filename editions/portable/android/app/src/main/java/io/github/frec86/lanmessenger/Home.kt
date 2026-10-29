@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -34,6 +35,7 @@ fun Home(st: AppState, open: (String) -> Unit) {
     val p = LocalPalette.current
     var tab by rememberSaveable { mutableIntStateOf(0) }; var filter by rememberSaveable { mutableIntStateOf(0) }
     var menu by remember { mutableStateOf(false) }; var dlg by remember { mutableStateOf("") }
+    var upd by remember { mutableStateOf(Triple(2, "", "")) }
     var searching by rememberSaveable { mutableStateOf(false) }; var q by rememberSaveable { mutableStateOf("") }
     // system Back at the root: close search, then go to the 聊天 tab, then double-press within 2 s to exit
     val act = LocalContext.current as? android.app.Activity
@@ -66,6 +68,8 @@ fun Home(st: AppState, open: (String) -> Unit) {
                     DropdownMenuItem({ Text("生成 PIN（让对方输入）") }, { menu = false; dlg = "pin" }, leadingIcon = { Ic(R.drawable.ms_lock) })
                     DropdownMenuItem({ Text("创建群组") }, { menu = false; dlg = "group" }, leadingIcon = { Ic(R.drawable.ms_groups) })
                     DropdownMenuItem({ Text("修改昵称") }, { menu = false; dlg = "name" }, leadingIcon = { Ic(R.drawable.ms_edit) })
+                    DropdownMenuItem({ Text("诊断信息") }, { menu = false; dlg = "diag" }, leadingIcon = { Ic(R.drawable.ms_info) })
+                    DropdownMenuItem({ Text("检查更新") }, { menu = false; upd = Triple(2, "正在检查…", Updates.RELEASES); dlg = "update"; Updates.check(st.me.version) { n, m, u -> upd = Triple(n, m, u) } }, leadingIcon = { Ic(R.drawable.ms_info) })
                     DropdownMenuItem({ Text("关于") }, { menu = false; dlg = "about" }, leadingIcon = { Ic(R.drawable.ms_info) })
                 }
             }
@@ -121,6 +125,12 @@ fun Home(st: AppState, open: (String) -> Unit) {
             LsmAlertDialog(onDismissRequest = { dlg = "" }, title = { Text("PIN 配对") }, text = { Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                 Text(pin, style = MaterialTheme.typography.displayMedium, fontFamily = FontFamily.Monospace, letterSpacing = 6.sp, color = p.fg)
                 Spacer(Modifier.height(8.dp)); Text("请让对方在“输入 PIN 配对”中输入（5 分钟内有效）。") } }, confirmButton = { TextButton({ dlg = "" }) { Text("好") } }) }
+        "diag" -> LsmAlertDialog(onDismissRequest = { dlg = "" }, title = { Text("诊断信息") },
+            text = { Text(Native.diagnostics(), fontSize = 11.sp, modifier = Modifier.verticalScroll(rememberScrollState())) },
+            confirmButton = { TextButton({ dlg = "" }) { Text("关闭") } })
+        "update" -> LsmAlertDialog(onDismissRequest = { dlg = "" }, title = { Text("检查更新") }, text = { Text(upd.second) },
+            confirmButton = { if (upd.first == 1 || upd.first == -1) TextButton({ dlg = ""; try { act?.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(upd.third))) } catch (_: Exception) {} }) { Text(if (upd.first == 1) "打开下载页" else "打开发布页") } else TextButton({ dlg = "" }) { Text("好") } },
+            dismissButton = { if (upd.first == 1 || upd.first == -1) TextButton({ dlg = "" }) { Text("取消") } })
         "about" -> LsmAlertDialog(onDismissRequest = { dlg = "" }, title = { Text("关于") }, text = { Text("局域网安全通讯 Android 版 ${st.me.version}\n\n与 Windows v0.5、XP 版和 Linux 版完全互通（协议 v5）：Noise_XX_25519_ChaChaPoly_BLAKE2s 加密、自动发现、按 IP 添加、PIN 配对、群组、文件传输、送达/已读回执。\n\n本机端口 TCP ${st.me.port}") }, confirmButton = { TextButton({ dlg = "" }) { Text("好") } })
     }
 }
