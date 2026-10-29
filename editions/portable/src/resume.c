@@ -26,12 +26,12 @@ static void rs_sidecar_write(lsm_core *c, lsm_transfer *t){ char p[600], tmp[620
 
 /* start a receiver re-hash of an existing .part (restored download) */
 static void rs_start_rehash(lsm_transfer *t){
-    t->fp_handle=ufopen(t->part,"rb"); free(t->hash); t->hash=malloc(sizeof(sha256_ctx)); sha256_init((sha256_ctx*)t->hash);
+    t->fp_handle=ufopen(t->part,"rb"); free(t->hash); t->hash=xmalloc(sizeof(sha256_ctx)); sha256_init((sha256_ctx*)t->hash);
     t->hashing=2; t->hash_done=0; t->transferred=0; }
 
 /* start the sender's prefix check for a FileResume (t->fp_handle open at 0) */
 static void rs_start_prefix(lsm_transfer *t, uint64_t off, const uint8_t pre[32]){
-    free(t->hctx); t->hctx=malloc(sizeof(sha256_ctx)); sha256_init((sha256_ctx*)t->hctx);
+    free(t->hctx); t->hctx=xmalloc(sizeof(sha256_ctx)); sha256_init((sha256_ctx*)t->hctx);
     memcpy(t->hpre,pre,32); t->hash_want=off; t->hash_done=0; t->hashing=1; }
 
 static int accept_transfer(lsm_core *c, lsm_transfer *t);
@@ -46,7 +46,7 @@ static void rs_finish_prefix(lsm_core *c, lsm_transfer *t, int ok){
 static int rs_pump(lsm_core *c){ int i, busy=0; uint8_t *b=NULL;
     for(i=0;i<c->nxfers;i++){ lsm_transfer *t=&c->xfers[i]; size_t n; uint64_t budget=CHUNK_HASH;
         if(!t->hashing) continue;
-        if(!b && !(b=(uint8_t*)malloc(CHUNK))) break;
+        if(!b && !(b=(uint8_t*)xmalloc(CHUNK))) break;
         if(!t->fp_handle){ if(t->hashing==1) rs_finish_prefix(c,t,0); else { t->hashing=0; t->state=TS_FAILED; scpy(t->error,"partial file missing",sizeof t->error); emit_xfer(c,t); rs_sidecar_remove(t); } continue; }
         if(t->hashing==1){
             while(budget>0 && t->hash_done<t->hash_want){ uint64_t w=t->hash_want-t->hash_done; if(w>CHUNK) w=CHUNK; if(w>budget) w=budget;
@@ -112,7 +112,7 @@ static void rs_out_restore_one(lsm_core *c, const char *dir, const char *fname){
     else if(cur!=nt.size || cm!=mt){ snprintf(wbuf,sizeof wbuf,"\xe6\xba\x90\xe6\x96\x87\xe4\xbb\xb6\xe5\xb7\xb2\xe6\x9b\xb4\xe6\x94\xb9: %s",nt.path); why=wbuf; } /* 源文件已更改 */
     nt.state=why?TS_FAILED:TS_OFFERED;
     scpy(nt.error,why?why:"\xe7\xad\x89\xe5\xbe\x85\xe5\xaf\xb9\xe6\x96\xb9\xe4\xb8\x8a\xe7\xba\xbf\xe4\xbb\xa5\xe7\xbb\xad\xe4\xbc\xa0",sizeof nt.error); /* 等待对方上线以续传 */
-    c->xfers=(lsm_transfer*)realloc(c->xfers,sizeof(lsm_transfer)*(c->nxfers+1)); c->xfers[c->nxfers++]=nt;
+    c->xfers=(lsm_transfer*)xrealloc(c->xfers,sizeof(lsm_transfer)*(c->nxfers+1)); c->xfers[c->nxfers++]=nt;
     if(why){ uremove(sp); mark_file_failed(c,&c->xfers[c->nxfers-1]); } }
 
 /* ---- restore sidecars at start-up */
@@ -137,7 +137,7 @@ static void rs_restore_one(lsm_core *c, const char *dir, const char *fname){
     if(!strncmp(nt.conv,"group:",6)){ nt.has_group=!lsm_uuid_parse(nt.conv+6,nt.group_id); }
     scpy(nt.part,part,sizeof nt.part); nt.state=TS_OFFERED; nt.accepted=1; nt.resumable=1;
     scpy(nt.error,"\xe7\xad\x89\xe5\xbe\x85\xe5\xaf\xb9\xe6\x96\xb9\xe9\x87\x8d\xe5\x8f\x91\xe4\xbb\xa5\xe7\xbb\xad\xe4\xbc\xa0",sizeof nt.error); /* 等待对方重发以续传 */
-    c->xfers=(lsm_transfer*)realloc(c->xfers,sizeof(lsm_transfer)*(c->nxfers+1)); c->xfers[c->nxfers++]=nt;
+    c->xfers=(lsm_transfer*)xrealloc(c->xfers,sizeof(lsm_transfer)*(c->nxfers+1)); c->xfers[c->nxfers++]=nt;
     rs_start_rehash(&c->xfers[c->nxfers-1]); }
 
 /* bare .part (no sidecar) older than 30 days: abandoned non-resumable download */

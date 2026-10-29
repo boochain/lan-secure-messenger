@@ -48,7 +48,7 @@ static void rl_load(lsm_core *c){ struct relay_cl *r=c->rl; char *t=load_sealed(
     if(n>=4){ r->enabled=atoi(f[0]); scpy(r->host,f[1],sizeof r->host); r->port=atoi(f[2])>0?atoi(f[2]):9443; scpy(r->pass,f[3],sizeof r->pass); }
     crypto_wipe(t,strlen(t)); free(t); }
 
-static void rl_init(lsm_core *c){ struct relay_cl *r=(struct relay_cl*)calloc(1,sizeof *r); c->rl=r; r->s=BADSOCK;
+static void rl_init(lsm_core *c){ struct relay_cl *r=(struct relay_cl*)xcalloc(1,sizeof *r); c->rl=r; r->s=BADSOCK;
     sha256(r->myid,c->x_pk,32); rl_load(c); r->st=r->enabled?RS_IDLE:RS_OFF; scpy(r->status,"off",sizeof r->status); }
 
 static void rl_disconnect(lsm_core *c, const char *why, int64_t retry_ms){
@@ -77,7 +77,7 @@ static int rl_key(struct relay_cl *r, const uint8_t salt[16], uint32_t m, uint32
     void *work; crypto_argon2_config cfg; crypto_argon2_inputs in;
     if(r->has_key && !memcmp(r->key_salt,salt,16) && !strcmp(r->key_pass,r->pass)) return 0;
     if(m<8 || m>262144 || t<1 || t>16) return -1;
-    work=malloc((size_t)m*1024); if(!work) return -1;
+    work=xmalloc((size_t)m*1024); if(!work) return -1;
     cfg.algorithm=CRYPTO_ARGON2_ID; cfg.nb_blocks=m; cfg.nb_passes=t; cfg.nb_lanes=1;
     in.pass=(const uint8_t*)r->pass; in.pass_size=(uint32_t)strlen(r->pass); in.salt=salt; in.salt_size=16;
     crypto_argon2(r->key,32,work,cfg,in,crypto_argon2_no_extras); free(work);
@@ -94,7 +94,7 @@ static void rl_peer_upsert(lsm_core *c, const uint8_t id[32], const uint8_t *inf
     q=tmp; f[n++]=q; while(*q && n<4){ if(*q=='\t'){ *q=0; f[n++]=q+1; } q++; }
     if(n<3 || strcmp(f[0],"LSM5") || strlen(f[1])!=FP_LEN-1) return;
     p=rl_peer_by_id(r,id);
-    if(!p){ r->peers=(rl_peer*)realloc(r->peers,sizeof(rl_peer)*(r->npeers+1)); p=&r->peers[r->npeers++]; memset(p,0,sizeof *p); memcpy(p->id,id,32); }
+    if(!p){ r->peers=(rl_peer*)xrealloc(r->peers,sizeof(rl_peer)*(r->npeers+1)); p=&r->peers[r->npeers++]; memset(p,0,sizeof *p); memcpy(p->id,id,32); }
     scpy(p->fp,f[1],FP_LEN); sanitize_name(f[2],p->name,sizeof p->name); p->next_try=0; p->fails=0;
     if(!strcmp(p->fp,c->fp)){ r->npeers--; return; }
     emit(c,"relay_peer\t%s\tjoin\t%s",p->fp,p->name); }
@@ -104,7 +104,7 @@ static void rl_peer_remove(lsm_core *c, const uint8_t id[32]){ struct relay_cl *
 
 static void conn_parse(lsm_core *c, conn *k);
 static conn *rl_new_conn(lsm_core *c, const uint8_t peer[32], uint32_t sid, int initiator){
-    conn *k=(conn*)calloc(1,sizeof(conn)); struct relay_cl *r=c->rl;
+    conn *k=(conn*)xcalloc(1,sizeof(conn)); struct relay_cl *r=c->rl;
     k->s=BADSOCK; k->via_relay=1; k->rsid=sid; memcpy(k->rpeer,peer,32); k->initiator=initiator;
     k->started=mono_ms(); k->last_rx=k->started; k->last_ping=k->started; k->state=2;
     noise_init(&k->hs,initiator,c->x_sk); k->next=c->conns; c->conns=k; (void)r; return k; }
@@ -165,7 +165,7 @@ static void rl_readable(lsm_core *c){
     while(r->s!=BADSOCK && r->in.n>=4){ size_t l=rl_rd32(r->in.p); uint8_t *m;
         if(l==0 || l>16u*1024*1024){ rl_fail(c,"error","bad frame"); return; }
         if(r->in.n<4+l) break;
-        m=(uint8_t*)malloc(l); memcpy(m,r->in.p+4,l); b_consume(&r->in,4+l);
+        m=(uint8_t*)xmalloc(l); memcpy(m,r->in.p+4,l); b_consume(&r->in,4+l);
         rl_on_frame(c,m[0],m+1,l-1); free(m); } }
 
 static void rl_writable(lsm_core *c){

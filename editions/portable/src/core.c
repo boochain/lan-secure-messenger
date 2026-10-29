@@ -80,7 +80,7 @@ static int64_t mono_ms(void){ /* GetTickCount64 is Vista+: extend 32-bit tick ou
     static DWORD last; static int64_t hi; static int init; DWORD t=GetTickCount();
     if(init && t<last) hi+=((int64_t)1<<32); init=1; last=t; return hi+t; }
 static int64_t wall_ms(void){FILETIME f; ULARGE_INTEGER u; GetSystemTimeAsFileTime(&f); u.LowPart=f.dwLowDateTime; u.HighPart=f.dwHighDateTime; return (int64_t)((u.QuadPart-116444736000000000ULL)/10000);} 
-static wchar_t *widen(const char *s){int n=MultiByteToWideChar(CP_UTF8,0,s,-1,NULL,0); wchar_t *w=(wchar_t*)malloc(sizeof(wchar_t)*(n+1)); MultiByteToWideChar(CP_UTF8,0,s,-1,w,n); return w;}
+static wchar_t *widen(const char *s){int n=MultiByteToWideChar(CP_UTF8,0,s,-1,NULL,0); wchar_t *w=(wchar_t*)xmalloc(sizeof(wchar_t)*(n+1)); MultiByteToWideChar(CP_UTF8,0,s,-1,w,n); return w;}
 static FILE *ufopen(const char *p, const char *mode){wchar_t *w=widen(p), *m=widen(mode); FILE *f=_wfopen(w,m); free(w); free(m); return f;}
 static int uremove(const char *p){wchar_t *w=widen(p); int r=_wremove(w); free(w); return r;}
 static int urename(const char *a, const char *b){wchar_t *wa=widen(a),*wb=widen(b); int r=MoveFileExW(wa,wb,MOVEFILE_REPLACE_EXISTING)?0:-1; free(wa); free(wb); return r;}
@@ -105,7 +105,11 @@ static void set_nonblock(sock_t s){fcntl(s,F_SETFL,fcntl(s,F_GETFL)|O_NONBLOCK);
 #endif
 
 static void oom(void){ fputs("lan-messenger: out of memory\n",stderr); abort(); }
-static char *xstrdup(const char *s){size_t n=strlen(s)+1; char *d=(char*)malloc(n); if(!d) oom(); memcpy(d,s,n); return d;}
+/* every allocation goes through these: out of memory aborts instead of a NULL dereference later (audit v0.6) */
+static void *xmalloc(size_t n){ void *p=malloc(n?n:1); if(!p) oom(); return p; }
+static void *xrealloc(void *o, size_t n){ void *p=realloc(o,n?n:1); if(!p) oom(); return p; }
+static void *xcalloc(size_t a, size_t b){ void *p=calloc(a?a:1,b?b:1); if(!p) oom(); return p; }
+static char *xstrdup(const char *s){size_t n=strlen(s)+1; char *d=(char*)xmalloc(n); if(!d) oom(); memcpy(d,s,n); return d;}
 static void scpy(char *d, const char *s, size_t n){ if(!n) return; strncpy(d,s?s:"",n-1); d[n-1]=0; }
 /* UTF-8 safe truncate: never cut a multibyte sequence */
 static void utf8_trunc(char *s, size_t max){ size_t n=strlen(s); if(n<=max) return; while(max>0 && ((unsigned char)s[max]&0xC0)==0x80) max--; s[max]=0; }
@@ -113,8 +117,8 @@ static void utf8_trunc(char *s, size_t max){ size_t n=strlen(s); if(n<=max) retu
 /* ------------------------------------------------------------ growable buffer + bincode */
 typedef struct { uint8_t *p; size_t n, cap; } buf_t;
 static void b_res(buf_t *b, size_t add){ if(add>((size_t)1<<30)-b->n) oom(); /* frames are <= 1 MiB; never wrap */
-    if(b->n+add>b->cap){ size_t c=b->cap?b->cap:256; uint8_t *np; while(c<b->n+add) c*=2; np=(uint8_t*)realloc(b->p,c); if(!np) oom(); b->p=np; b->cap=c; } }
-static void b_put(buf_t *b, const void *d, size_t n){ b_res(b,n); memcpy(b->p+b->n,d,n); b->n+=n; }
+    if(b->n+add>b->cap){ size_t c=b->cap?b->cap:256; uint8_t *np; while(c<b->n+add) c*=2; np=(uint8_t*)xrealloc(b->p,c); if(!np) oom(); b->p=np; b->cap=c; } }
+static void b_put(buf_t *b, const void *d, size_t n){ if(!n) return; b_res(b,n); memcpy(b->p+b->n,d,n); b->n+=n; }
 static void b_u8(buf_t *b, uint8_t v){ b_put(b,&v,1); }
 static void b_u16(buf_t *b, uint16_t v){ uint8_t x[2]={(uint8_t)v,(uint8_t)(v>>8)}; b_put(b,x,2); }
 static void b_u32(buf_t *b, uint32_t v){ uint8_t x[4]; int i; for(i=0;i<4;i++) x[i]=(uint8_t)(v>>(8*i)); b_put(b,x,4); }
@@ -133,7 +137,7 @@ static uint32_t r_u32(rd_t *r){ const uint8_t *q=r_take(r,4); uint32_t v=0; int 
 static uint64_t r_u64(rd_t *r){ const uint8_t *q=r_take(r,8); uint64_t v=0; int i; if(q) for(i=7;i>=0;i--) v=(v<<8)|q[i]; return v; }
 static const uint8_t *r_bytes(rd_t *r, size_t *n){ uint64_t l; *n=0; l=r_u64(r); if(r->err||l>(1u<<20)){ r->err=1; return NULL; } *n=(size_t)l; return r_take(r,(size_t)l); }
 /* returns malloc'd NUL-terminated string */
-static char *r_str(rd_t *r){ size_t n; const uint8_t *q=r_bytes(r,&n); char *s; if(!q) return xstrdup(""); s=(char*)malloc(n+1); if(!s) oom(); memcpy(s,q,n); s[n]=0; return s; }
+static char *r_str(rd_t *r){ size_t n; const uint8_t *q=r_bytes(r,&n); char *s; if(!q) return xstrdup(""); s=(char*)xmalloc(n+1); if(!s) oom(); memcpy(s,q,n); s[n]=0; return s; }
 static void r_uuid(rd_t *r, uint8_t u[16]){ size_t n; const uint8_t *q=r_bytes(r,&n); if(!q||n!=16){ r->err=1; memset(u,0,16); return; } memcpy(u,q,16); }
 static void r_fix(rd_t *r, uint8_t *d, size_t n){ const uint8_t *q=r_take(r,n); if(q) memcpy(d,q,n); else memset(d,0,n); }
 
@@ -258,13 +262,13 @@ static void unesc(char *s){ char *o=s; for(;*s;s++){ if(*s=='\\'&&s[1]){ s++; *o
 static int split_tabs(char *line, char **f, int max){ int n=0; f[n++]=line; while(*line && n<max){ if(*line=='\t'){ *line=0; f[n++]=line+1; } line++; } { int i; for(i=0;i<n;i++) unesc(f[i]); } return n; }
 static void bfmt(buf_t *b, const char *fmt, ...){ char t[1024]; va_list ap; va_start(ap,fmt); vsnprintf(t,sizeof t,fmt,ap); va_end(ap); b_put(b,t,strlen(t)); }
 
-static uint8_t *read_file(const char *p, size_t *n){ FILE *f=ufopen(p,"rb"); uint8_t *d; long l; if(!f) return NULL; fseek(f,0,SEEK_END); l=ftell(f); fseek(f,0,SEEK_SET); d=(uint8_t*)malloc(l+1); if(fread(d,1,l,f)!=(size_t)l){fclose(f);free(d);return NULL;} fclose(f); d[l]=0; *n=(size_t)l; return d; }
+static uint8_t *read_file(const char *p, size_t *n){ FILE *f=ufopen(p,"rb"); uint8_t *d; long l; if(!f) return NULL; fseek(f,0,SEEK_END); l=ftell(f); fseek(f,0,SEEK_SET); d=(uint8_t*)xmalloc(l+1); if(fread(d,1,l,f)!=(size_t)l){fclose(f);free(d);return NULL;} fclose(f); d[l]=0; *n=(size_t)l; return d; }
 static int write_atomic(const char *p, const void *d, size_t n){ char tmp[600]; FILE *f; snprintf(tmp,sizeof tmp,"%s.tmp",p); f=ufopen(tmp,"wb"); if(!f) return -1; if(fwrite(d,1,n,f)!=n){fclose(f);return -1;} fflush(f); fclose(f); return urename(tmp,p); }
 static int save_sealed(lsm_core *c, const char *fname, buf_t *plain){ char p[600]; size_t sn; uint8_t *s=seal_rand(c->store_key,plain->p?plain->p:(const uint8_t*)"",plain->n,&sn); int r; path_join(p,sizeof p,c->data_dir,fname); r=write_atomic(p,s,sn); free(s); return r; }
 static char *load_sealed(lsm_core *c, const char *fname){ char p[600]; size_t n,pn; uint8_t *d,*pl; path_join(p,sizeof p,c->data_dir,fname); d=read_file(p,&n); if(!d) return NULL; pl=open_rand(c->store_key,d,n,&pn); free(d); return (char*)pl; }
 
 static lsm_contact *contact_get(lsm_core *c, const char *fp){ int i; for(i=0;i<c->ncontacts;i++) if(!strcmp(c->contacts[i].fp,fp)) return &c->contacts[i]; return NULL; }
-static lsm_contact *contact_entry(lsm_core *c, const char *fp){ lsm_contact *k=contact_get(c,fp); if(k) return k; c->contacts=(lsm_contact*)realloc(c->contacts,sizeof(lsm_contact)*(c->ncontacts+1)); k=&c->contacts[c->ncontacts++]; memset(k,0,sizeof *k); scpy(k->fp,fp,FP_LEN); k->rtt_ms=-1; return k; }
+static lsm_contact *contact_entry(lsm_core *c, const char *fp){ lsm_contact *k=contact_get(c,fp); if(k) return k; c->contacts=(lsm_contact*)xrealloc(c->contacts,sizeof(lsm_contact)*(c->ncontacts+1)); k=&c->contacts[c->ncontacts++]; memset(k,0,sizeof *k); scpy(k->fp,fp,FP_LEN); k->rtt_ms=-1; return k; }
 static int trust_of(lsm_core *c, const char *fp){ lsm_contact *k=contact_get(c,fp); return k?k->trust:TRUST_UNKNOWN; }
 static void save_contacts(lsm_core *c){ buf_t b={0}; int i; char ed[65];
     for(i=0;i<c->ncontacts;i++){ lsm_contact *k=&c->contacts[i]; if(k->has_ed) hex_enc(k->ed,32,ed); else ed[0]=0;
@@ -289,18 +293,18 @@ static void load_groups(lsm_core *c){ char *t=load_sealed(c,"groups.dat"), *line
     for(line=t; line && *line; line=nx){ char *f[8]; int n; lsm_group g; nx=strchr(line,'\n'); if(nx) *nx++=0; n=split_tabs(line,f,8); memset(&g,0,sizeof g);
         if(n>=7 && !lsm_uuid_parse(f[0],g.id) && !hex_dec(f[3],g.key,32)){ char *m=f[6], *cm; scpy(g.name,f[1],sizeof g.name); scpy(g.creator_fp,f[2],FP_LEN); g.created_ms=atoll(f[4]); g.key_epoch=strtoull(f[5],NULL,10);
             while(m && *m && g.nmembers<64){ cm=strchr(m,','); if(cm) *cm++=0; scpy(g.members[g.nmembers++],m,FP_LEN); m=cm; }
-            c->groups=(lsm_group*)realloc(c->groups,sizeof(lsm_group)*(c->ngroups+1)); c->groups[c->ngroups++]=g; } }
+            c->groups=(lsm_group*)xrealloc(c->groups,sizeof(lsm_group)*(c->ngroups+1)); c->groups[c->ngroups++]=g; } }
     free(t); }
 
 static void save_outbox(lsm_core *c){ buf_t b={0}; int i; char u[37]; char *hx;
-    for(i=0;i<c->noutbox;i++){ outgoing *o=&c->outbox[i]; lsm_uuid_str(o->id,u); hx=(char*)malloc(o->payload.n*2+1); hex_enc(o->payload.p,o->payload.n,hx);
+    for(i=0;i<c->noutbox;i++){ outgoing *o=&c->outbox[i]; lsm_uuid_str(o->id,u); hx=(char*)xmalloc(o->payload.n*2+1); hex_enc(o->payload.p,o->payload.n,hx);
         bfmt(&b,"%s\t%s\t%s\t",o->fp,u,o->msg_ref[0]?o->msg_ref:"-"); b_put(&b,hx,strlen(hx)); b_u8(&b,'\n'); free(hx); }
     save_sealed(c,"outbox.dat",&b); b_free(&b); }
 static void load_outbox(lsm_core *c){ char *t=load_sealed(c,"outbox.dat"), *line, *nx; if(!t) return;
     for(line=t; line && *line; line=nx){ char *f[5]; int n; nx=strchr(line,'\n'); if(nx) *nx++=0; n=split_tabs(line,f,5);
         if(n>=4){ outgoing o; size_t pl=strlen(f[3])/2; memset(&o,0,sizeof o); scpy(o.fp,f[0],FP_LEN); if(lsm_uuid_parse(f[1],o.id)) continue; if(strcmp(f[2],"-")) scpy(o.msg_ref,f[2],40);
             b_res(&o.payload,pl+1); if(hex_dec(f[3],o.payload.p,pl)){ b_free(&o.payload); continue; } o.payload.n=pl;
-            c->outbox=(outgoing*)realloc(c->outbox,sizeof(outgoing)*(c->noutbox+1)); c->outbox[c->noutbox++]=o; } }
+            c->outbox=(outgoing*)xrealloc(c->outbox,sizeof(outgoing)*(c->noutbox+1)); c->outbox[c->noutbox++]=o; } }
     free(t); }
 
 /* history: append-only file of [u32 LE len][sealed record] */
@@ -321,7 +325,7 @@ static void hist_rec_msg(lsm_core *c, lsm_msg *m){ buf_t b={0};
     bfmt(&b,"\t%lld\t%d\t%s\t",(long long)m->ts_ms,m->status,m->file_tid); esc_put(&b,m->file_name); bfmt(&b,"\t%llu\t",(unsigned long long)m->file_size); esc_put(&b,m->file_path);
     hist_append(c,&b); b_free(&b); }
 static void hist_rec_upd(lsm_core *c, lsm_msg *m){ buf_t b={0}; bfmt(&b,"S\t%s\t%d\t%d\t",m->id,m->status,m->unread); esc_put(&b,m->file_path); hist_append(c,&b); b_free(&b); }
-static lsm_msg *msg_push(lsm_core *c){ lsm_msg *m; c->msgs=(lsm_msg*)realloc(c->msgs,sizeof(lsm_msg)*(c->nmsgs+1)); m=&c->msgs[c->nmsgs++]; memset(m,0,sizeof *m); return m; }
+static lsm_msg *msg_push(lsm_core *c){ lsm_msg *m; c->msgs=(lsm_msg*)xrealloc(c->msgs,sizeof(lsm_msg)*(c->nmsgs+1)); m=&c->msgs[c->nmsgs++]; memset(m,0,sizeof *m); return m; }
 static void tomb_add(lsm_core *c, const char *id); static int msg_unlink(lsm_core *c, const char *id);
 static void load_history(lsm_core *c){ char p[600]; size_t n,off=0; uint8_t *d; path_join(p,sizeof p,c->data_dir,"history.dat"); d=read_file(p,&n); if(!d) return;
     while(off+4<=n){ size_t l=d[off]|(d[off+1]<<8)|(d[off+2]<<16)|((size_t)d[off+3]<<24), pn; char *pl, *f[16]; int k; off+=4; if(off+l>n) break;
@@ -336,7 +340,7 @@ static void load_history(lsm_core *c){ char p[600]; size_t n,off=0; uint8_t *d; 
 static int tomb_has(lsm_core *c, const char *id){ int i; for(i=c->ntomb-1;i>=0;i--) if(!strcmp(c->tomb[i],id)) return 1; return 0; }
 static void tomb_add(lsm_core *c, const char *id){ if(tomb_has(c,id)) return;
     if(c->ntomb>=20000){ memmove(c->tomb,c->tomb+1,sizeof(c->tomb[0])*(c->ntomb-1)); c->ntomb--; }
-    c->tomb=(char(*)[40])realloc(c->tomb,sizeof(c->tomb[0])*(c->ntomb+1)); scpy(c->tomb[c->ntomb++],id,40); }
+    c->tomb=(char(*)[40])xrealloc(c->tomb,sizeof(c->tomb[0])*(c->ntomb+1)); scpy(c->tomb[c->ntomb++],id,40); }
 static int msg_unlink(lsm_core *c, const char *id){ int i; for(i=c->nmsgs-1;i>=0;i--) if(!strcmp(c->msgs[i].id,id)){ free(c->msgs[i].body);
         memmove(&c->msgs[i],&c->msgs[i+1],sizeof(lsm_msg)*(c->nmsgs-i-1)); c->nmsgs--; return 1; } return 0; }
 static int seen_has(lsm_core *c, const uint8_t id[16]){ int i; char s[37]; for(i=0;i<c->nseen;i++) if(!memcmp(c->seen[i],id,16)) return 1; lsm_uuid_str(id,s); return tomb_has(c,s) || msg_get(c,s)!=NULL; }
@@ -366,7 +370,7 @@ static int load_identity(lsm_core *c){ char p[600]; size_t n; uint8_t *d; path_j
 static conn *conn_by_fp(lsm_core *c, const char *fp){ conn *k; for(k=c->conns;k;k=k->next) if(k->state==4 && !strcmp(k->fp,fp)) return k; return NULL; }
 static void raw_send(conn *k, const uint8_t *d, size_t n){ uint8_t l[4]={(uint8_t)(n>>24),(uint8_t)(n>>16),(uint8_t)(n>>8),(uint8_t)n}; b_put(&k->out,l,4); b_put(&k->out,d,n); }
 static void send_plain(conn *k, const uint8_t *p, size_t n){
-    uint8_t *ct; if(n>65535-16) return; ct=(uint8_t*)malloc(n+16);
+    uint8_t *ct; if(n>65535-16) return; ct=(uint8_t*)xmalloc(n+16);
     noise_enc(k->tx,k->txn++,p,n,ct); raw_send(k,ct,n+16); free(ct); }
 static void send_frame(conn *k, buf_t *f){ send_plain(k,f->p,f->n); }
 static int send_to_fp(lsm_core *c, const char *fp, buf_t *f){ conn *k=conn_by_fp(c,fp); if(!k) return 0; send_frame(k,f); return 1; }
@@ -382,11 +386,11 @@ static int resolve(const char *s, int defport, struct sockaddr_in *out){
     else out->sin_addr.s_addr=ip;
     return port>0&&port<65536?0:-1; }
 
-static peer_rt *rt_entry(lsm_core *c, const char *fp){ int i; for(i=0;i<c->nrt;i++) if(!strcmp(c->rt[i].fp,fp)) return &c->rt[i]; c->rt=(peer_rt*)realloc(c->rt,sizeof(peer_rt)*(c->nrt+1)); memset(&c->rt[c->nrt],0,sizeof(peer_rt)); scpy(c->rt[c->nrt].fp,fp,FP_LEN); return &c->rt[c->nrt++]; }
+static peer_rt *rt_entry(lsm_core *c, const char *fp){ int i; for(i=0;i<c->nrt;i++) if(!strcmp(c->rt[i].fp,fp)) return &c->rt[i]; c->rt=(peer_rt*)xrealloc(c->rt,sizeof(peer_rt)*(c->nrt+1)); memset(&c->rt[c->nrt],0,sizeof(peer_rt)); scpy(c->rt[c->nrt].fp,fp,FP_LEN); return &c->rt[c->nrt++]; }
 static int64_t backoff(int f){ int64_t base=500; int i; for(i=0;i<f && base<30000;i++) base*=2; if(base>30000) base=30000; { uint8_t r; rand_bytes(&r,1); return base+(r*400/256); } }
 
 static void conn_start(lsm_core *c, sock_t s, const struct sockaddr_in *a, int initiator, const char *key){
-    conn *k=(conn*)calloc(1,sizeof(conn)); int one=1;
+    conn *k=(conn*)xcalloc(1,sizeof(conn)); int one=1;
     k->s=s; k->addr=*a; k->initiator=initiator; k->started=mono_ms(); k->last_rx=k->started; k->last_ping=k->started;
     scpy(k->dial_key,key?key:"",sizeof k->dial_key);
     setsockopt(s,IPPROTO_TCP,TCP_NODELAY,(const char*)&one,sizeof one);
@@ -438,7 +442,7 @@ static void process_wire(lsm_core *c, conn *k, const uint8_t *m, size_t n){
             b_u16(&h,PROTO); b_str(&h,LSM_APP_VERSION); b_str(&h,c->name); b_put(&h,c->ed_pk,32); b_u16(&h,(uint16_t)c->lport); b_u32(&h,MY_CAPS);
             send_plain(k,h.p,h.n); b_free(&h); k->state=3; }
         return; }
-    { uint8_t *pt=(uint8_t*)malloc(n); rd_t r;
+    { uint8_t *pt=(uint8_t*)xmalloc(n); rd_t r;
       if(n<16 || noise_dec(k->rx,k->rxn,m,n,pt)){ free(pt); conn_close(c,k,"decrypt failed",0); return; }
       k->rxn++; r.p=pt; r.e=pt+n-16; r.err=0;
       if(k->state==3){ uint16_t pv=r_u16(&r); char *ver=r_str(&r), *nm=r_str(&r);
@@ -461,7 +465,7 @@ static void conn_parse(lsm_core *c, conn *k){
     while(k->state!=9 && k->in.n>=4){ size_t l=((size_t)k->in.p[0]<<24)|(k->in.p[1]<<16)|(k->in.p[2]<<8)|k->in.p[3]; uint8_t *m;
         if(l==0||l>MAX_WIRE){ conn_close(c,k,"bad frame length",0); return; }
         if(k->in.n<4+l) break;
-        m=(uint8_t*)malloc(l); memcpy(m,k->in.p+4,l); b_consume(&k->in,4+l);
+        m=(uint8_t*)xmalloc(l); memcpy(m,k->in.p+4,l); b_consume(&k->in,4+l);
         process_wire(c,k,m,l); free(m); } }
 
 static void conn_writable(lsm_core *c, conn *k){
@@ -486,7 +490,7 @@ static void enum_ifaces(lsm_core *c){
     uint32_t ips[32], masks[32]; int n=0, i, j;
 #ifdef _WIN32
     ULONG len=0; IP_ADAPTER_INFO *ai, *a;
-    GetAdaptersInfo(NULL,&len); ai=(IP_ADAPTER_INFO*)malloc(len?len:sizeof(IP_ADAPTER_INFO));
+    GetAdaptersInfo(NULL,&len); ai=(IP_ADAPTER_INFO*)xmalloc(len?len:sizeof(IP_ADAPTER_INFO));
     if(ai && GetAdaptersInfo(ai,&len)==NO_ERROR){ for(a=ai;a && n<32;a=a->Next){ IP_ADDR_STRING *s; for(s=&a->IpAddressList;s && n<32;s=s->Next){ uint32_t ip=inet_addr(s->IpAddress.String), m=inet_addr(s->IpMask.String); if(ip==0||ip==INADDR_NONE) continue; ips[n]=ip; masks[n]=m; n++; } } }
     free(ai);
 #elif defined(__ANDROID__)
@@ -578,7 +582,7 @@ static void frame_msg(buf_t *f, const uint8_t id[16], const buf_t *payload){ f->
 static int send_reliable(lsm_core *c, const char *fp, const buf_t *payload, const uint8_t id[16], const char *msg_ref){
     buf_t f={0}; int online; outgoing o; frame_msg(&f,id,payload); online=send_to_fp(c,fp,&f); b_free(&f);
     memset(&o,0,sizeof o); scpy(o.fp,fp,FP_LEN); memcpy(o.id,id,16); b_put(&o.payload,payload->p,payload->n); if(msg_ref) scpy(o.msg_ref,msg_ref,40);
-    c->outbox=(outgoing*)realloc(c->outbox,sizeof(outgoing)*(c->noutbox+1)); c->outbox[c->noutbox++]=o; save_outbox(c); return online; }
+    c->outbox=(outgoing*)xrealloc(c->outbox,sizeof(outgoing)*(c->noutbox+1)); c->outbox[c->noutbox++]=o; save_outbox(c); return online; }
 static void flush_outbox(lsm_core *c, const char *fp){ int i; buf_t f={0};
     for(i=0;i<c->noutbox;i++){ outgoing *o=&c->outbox[i]; if(strcmp(o->fp,fp)) continue; frame_msg(&f,o->id,&o->payload);
         if(send_to_fp(c,fp,&f) && o->msg_ref[0]){ lsm_msg *m=msg_get(c,o->msg_ref); if(m && m->status==ST_QUEUED) set_status(c,m,ST_SENT); } }
@@ -591,10 +595,10 @@ static void on_ack(lsm_core *c, const char *fp, const uint8_t id[16]){ int i; ch
 
 /* ------------------------------------------------------------ groups */
 static void invite_bytes(buf_t *b, lsm_group *g){ int i; b->n=0; b_put(b,g->id,16); b_put(b,g->name,strlen(g->name)); b_u8(b,0); b_put(b,g->creator_fp,strlen(g->creator_fp)); b_u8(b,0);
-    { char (*ms)[FP_LEN]=(char(*)[FP_LEN])malloc(FP_LEN*(g->nmembers+1)); memcpy(ms,g->members,FP_LEN*g->nmembers); qsort(ms,g->nmembers,FP_LEN,cmpstr); for(i=0;i<g->nmembers;i++){ b_put(b,ms[i],strlen(ms[i])); b_u8(b,0);} free(ms); }
+    { char (*ms)[FP_LEN]=(char(*)[FP_LEN])xmalloc(FP_LEN*(g->nmembers+1)); memcpy(ms,g->members,FP_LEN*g->nmembers); qsort(ms,g->nmembers,FP_LEN,cmpstr); for(i=0;i<g->nmembers;i++){ b_put(b,ms[i],strlen(ms[i])); b_u8(b,0);} free(ms); }
     b_put(b,g->key,32); b_u64(b,(uint64_t)g->created_ms); }
 static void rekey_bytes(buf_t *b, lsm_group *g, const char *removed){ int i; b->n=0; b_put(b,"REKEY1",6); b_put(b,g->id,16);
-    { char (*ms)[FP_LEN]=(char(*)[FP_LEN])malloc(FP_LEN*(g->nmembers+1)); memcpy(ms,g->members,FP_LEN*g->nmembers); qsort(ms,g->nmembers,FP_LEN,cmpstr); for(i=0;i<g->nmembers;i++){ b_put(b,ms[i],strlen(ms[i])); b_u8(b,0);} free(ms); }
+    { char (*ms)[FP_LEN]=(char(*)[FP_LEN])xmalloc(FP_LEN*(g->nmembers+1)); memcpy(ms,g->members,FP_LEN*g->nmembers); qsort(ms,g->nmembers,FP_LEN,cmpstr); for(i=0;i<g->nmembers;i++){ b_put(b,ms[i],strlen(ms[i])); b_u8(b,0);} free(ms); }
     b_put(b,g->key,32); b_u64(b,g->key_epoch); b_put(b,removed,strlen(removed)); }
 static void payload_invite(lsm_core *c, lsm_group *g, buf_t *p){ buf_t sb={0}; uint8_t sig[64]; int i; invite_bytes(&sb,g); crypto_ed25519_sign(sig,c->ed_sk,sb.p,sb.n); b_free(&sb);
     p->n=0; b_u32(p,2); b_uuid(p,g->id); b_str(p,g->name); b_str(p,g->creator_fp); b_u64(p,(uint64_t)g->nmembers); for(i=0;i<g->nmembers;i++) b_str(p,g->members[i]);
@@ -694,7 +698,7 @@ static int accept_transfer(lsm_core *c, lsm_transfer *t){ char part[600]; conn *
     if(t->part[0]){ uremove(t->part); rs_sidecar_remove(t); }
     snprintf(part,sizeof part,"%s" PATHSEP ".%s.part",c->dl_dir,t->name); scpy(t->part,part,sizeof t->part);
     t->fp_handle=ufopen(part,"wb"); if(!t->fp_handle){ return -1; }
-    free(t->hash); t->hash=malloc(sizeof(sha256_ctx)); sha256_init((sha256_ctx*)t->hash); t->transferred=0; t->resumed_from=0; t->last_prog=0; t->state=TS_ACTIVE;
+    free(t->hash); t->hash=xmalloc(sizeof(sha256_ctx)); sha256_init((sha256_ctx*)t->hash); t->transferred=0; t->resumed_from=0; t->last_prog=0; t->state=TS_ACTIVE;
     rs_sidecar_write(c,t); send_tid_frame(c,t->peer_fp,6,t->tid,NULL); emit_xfer(c,t); return 0; }
 /* sender pump: called every loop iteration; respects 4 MiB credit window and socket backlog */
 static void pump_files(lsm_core *c){ int i; uint8_t *buf=NULL;
@@ -702,7 +706,7 @@ static void pump_files(lsm_core *c){ int i; uint8_t *buf=NULL;
         k=conn_by_fp(c,t->peer_fp); if(!k){ continue; }
         while(t->transferred<t->size && k->out.n<512*1024 && t->transferred-t->credit<=WINDOW){
             size_t want=(size_t)((t->size-t->transferred)<CHUNK?(t->size-t->transferred):CHUNK), n; buf_t f={0};
-            if(!buf) buf=(uint8_t*)malloc(CHUNK);
+            if(!buf) buf=(uint8_t*)xmalloc(CHUNK);
             n=fread(buf,1,want,(FILE*)t->fp_handle);
             if(n==0){ xfer_fail(c,t,TS_FAILED,"\xe6\x96\x87\xe4\xbb\xb6\xe5\x9c\xa8\xe5\x8f\x91\xe9\x80\x81\xe8\xbf\x87\xe7\xa8\x8b\xe4\xb8\xad\xe8\xa2\xab\xe4\xbf\xae\xe6\x94\xb9\xe6\x88\x96\xe6\x88\xaa\xe6\x96\xad"); send_tid_frame(c,t->peer_fp,12,t->tid,"read error"); break; }
             b_u32(&f,8); b_uuid(&f,t->tid); b_u64(&f,t->transferred); b_bytes(&f,buf,n); send_frame(k,&f); b_free(&f); t->transferred+=n; }
@@ -727,7 +731,7 @@ static void on_file_frame(lsm_core *c, const char *fp, uint32_t v, rd_t *r){
         lsm_uuid_str(mid,ms); if(tomb_has(c,ms)){ send_tid_frame(c,fp,7,tid,"\xe5\xaf\xb9\xe6\x96\xb9\xe5\xb7\xb2\xe5\x88\xa0\xe9\x99\xa4\xe8\xbf\x99\xe6\x9d\xa1\xe6\xb6\x88\xe6\x81\xaf"); free(mime); return; } /* 对方已删除这条消息 */
         memset(&nt,0,sizeof nt); memcpy(nt.tid,tid,16); lsm_uuid_str(mid,ms); scpy(nt.msg_id,ms,40); scpy(nt.conv,conv,64); scpy(nt.peer_fp,fp,FP_LEN); scpy(nt.name,nm,sizeof nt.name); nt.size=size; scpy(nt.mime,mime,sizeof nt.mime); free(mime);
         memcpy(nt.sha,sha,32); nt.has_group=hasg; if(hasg) memcpy(nt.group_id,gid,16); nt.offer_ts=ts; nt.state=TS_OFFERED;
-        c->xfers=(lsm_transfer*)realloc(c->xfers,sizeof(lsm_transfer)*(c->nxfers+1)); c->xfers[c->nxfers++]=nt; t=&c->xfers[c->nxfers-1];
+        c->xfers=(lsm_transfer*)xrealloc(c->xfers,sizeof(lsm_transfer)*(c->nxfers+1)); c->xfers[c->nxfers++]=nt; t=&c->xfers[c->nxfers-1];
         { lsm_msg *m=msg_get(c,ms); if(!m){ seen_add(c,mid); m=add_message(c,ms,conv,0,fp,K_FILE,"",ts,ST_RECEIVED); }
           { char u[37]; lsm_uuid_str(tid,u); scpy(m->file_tid,u,40); } scpy(m->file_name,nm,260); m->file_size=size; hist_rec_msg(c,m); }
         if(trust_of(c,fp)!=TRUST_TRUSTED){ t->state=TS_REJECTED; scpy(t->error,"untrusted",sizeof t->error); send_tid_frame(c,fp,7,tid,"\xe5\xaf\xb9\xe6\x96\xb9\xe5\xb0\x9a\xe6\x9c\xaa\xe4\xbf\xa1\xe4\xbb\xbb\xe4\xbd\xa0\xef\xbc\x8c\xe6\x96\x87\xe4\xbb\xb6\xe8\xa2\xab\xe6\x8b\x92\xe6\x94\xb6\xef\xbc\x88\xe8\xaf\xb7\xe5\x85\x88\xe4\xba\x92\xe7\x9b\xb8\xe4\xbf\xa1\xe4\xbb\xbb\xef\xbc\x89");
@@ -815,7 +819,7 @@ static void on_payload(lsm_core *c, const char *fp, const uint8_t id[16], rd_t *
         add_message(c,ids,conv,0,fp,K_TEXT,(char*)pl,ts,ST_RECEIVED); free(pl); break; }
     case 2: { lsm_group g, *ex; char *nm, *cf; uint64_t nm_n, i; size_t sl; const uint8_t *sig; buf_t sb={0}; char conv[64], **raw;
         memset(&g,0,sizeof g); r_uuid(r,g.id); nm=r_str(r); cf=r_str(r); nm_n=r_u64(r); if(r->err||nm_n>64){ free(nm); free(cf); return; }
-        raw=(char**)calloc((size_t)nm_n+1,sizeof(char*)); for(i=0;i<nm_n;i++) raw[i]=r_str(r);
+        raw=(char**)xcalloc((size_t)nm_n+1,sizeof(char*)); for(i=0;i<nm_n;i++) raw[i]=r_str(r);
         r_fix(r,g.key,32); g.created_ms=(int64_t)r_u64(r); g.key_epoch=r_u64(r); sig=r_bytes(r,&sl);
         g.nmembers=(int)nm_n; for(i=0;i<nm_n;i++) scpy(g.members[i],raw[i],FP_LEN); scpy(g.creator_fp,cf,FP_LEN);
         /* signature over the raw fields */
@@ -828,13 +832,13 @@ static void on_payload(lsm_core *c, const char *fp, const uint8_t id[16], rd_t *
         if(!group_is_member(&g,c->fp)) goto inv_done;
         sanitize_name(nm,g.name,sizeof g.name);
         ex=group_get(c,g.id); conv_group(g.id,conv);
-        if(ex) *ex=g; else { c->groups=(lsm_group*)realloc(c->groups,sizeof(lsm_group)*(c->ngroups+1)); c->groups[c->ngroups++]=g; }
+        if(ex) *ex=g; else { c->groups=(lsm_group*)xrealloc(c->groups,sizeof(lsm_group)*(c->ngroups+1)); c->groups[c->ngroups++]=g; }
         save_groups(c); { char u[37]; lsm_uuid_str(g.id,u); emit(c,"group\t%s\t%s",u,g.name); }
         if(!ex) system_msg(c,conv,"%s \xe9\x82\x80\xe8\xaf\xb7\xe4\xbd\xa0\xe5\x8a\xa0\xe5\x85\xa5\xe4\xba\x86\xe7\xbe\xa4\xe7\xbb\x84\xe3\x80\x8c%s\xe3\x80\x8d",peer_name(c,fp),nm);
     inv_done:
         for(i=0;i<nm_n;i++) free(raw[i]); free(raw); free(nm); free(cf); b_free(&sb); break; }
     case 3: { uint8_t gid[16], key[32]; uint64_t n, i, ep; char **raw, *rm; size_t sl; const uint8_t *sig; lsm_group *g, tmp; buf_t sb={0}; char conv[64];
-        r_uuid(r,gid); n=r_u64(r); if(r->err||n>64) return; raw=(char**)calloc((size_t)n+1,sizeof(char*)); for(i=0;i<n;i++) raw[i]=r_str(r);
+        r_uuid(r,gid); n=r_u64(r); if(r->err||n>64) return; raw=(char**)xcalloc((size_t)n+1,sizeof(char*)); for(i=0;i<n;i++) raw[i]=r_str(r);
         r_fix(r,key,32); ep=r_u64(r); rm=r_str(r); sig=r_bytes(r,&sl);
         g=group_get(c,gid);
         if(g && !r->err){ memset(&tmp,0,sizeof tmp); memcpy(tmp.id,gid,16); tmp.nmembers=(int)n; for(i=0;i<n;i++) scpy(tmp.members[i],raw[i],FP_LEN); memcpy(tmp.key,key,32); tmp.key_epoch=ep;
@@ -952,7 +956,7 @@ static void *thread_main(void *p){ lsm_core *c=(lsm_core*)p; while(!c->stop) loo
 #endif
 
 lsm_core *lsm_start(const lsm_opts *o, char *err, size_t errn){
-    lsm_core *c=(lsm_core*)calloc(1,sizeof(lsm_core)); struct sockaddr_in a; int one=1; char p[600];
+    lsm_core *c=(lsm_core*)xcalloc(1,sizeof(lsm_core)); struct sockaddr_in a; int one=1; char p[600];
 #ifdef _WIN32
     WSADATA w; if(WSAStartup(MAKEWORD(2,2),&w)){ scpy(err,"WSAStartup failed",errn); free(c); return NULL; }
 #else
@@ -962,13 +966,13 @@ lsm_core *lsm_start(const lsm_opts *o, char *err, size_t errn){
     mu_init(&c->mu); c->o=*o; if(!c->o.discovery_port) c->o.discovery_port=41234; if(!c->o.listen_port) c->o.listen_port=41235; if(!c->o.announce_ms) c->o.announce_ms=3000;
     scpy(c->data_dir,o->data_dir,sizeof c->data_dir); umkdir(c->data_dir); path_join(c->dl_dir,sizeof c->dl_dir,c->data_dir,"downloads"); umkdir(c->dl_dir);
     if(o->announce_targets) scpy(c->announce_targets,o->announce_targets,sizeof c->announce_targets);
-    c->ev_cap=4096; c->events=(char**)calloc(c->ev_cap,sizeof(char*));
-    c->seen=(uint8_t(*)[16])malloc(16*20000);
+    c->ev_cap=4096; c->events=(char**)xcalloc(c->ev_cap,sizeof(char*));
+    c->seen=(uint8_t(*)[16])xmalloc(16*20000);
     c->lsock=c->usock=c->ufallback=BADSOCK;
     if(load_identity(c)){ snprintf(err,errn,"cannot write identity in %s",c->data_dir); free(c); return NULL; }
     load_contacts(c); load_groups(c); load_history(c); load_outbox(c); rl_init(c); rs_restore(c);
     { char *t=load_sealed(c,"manual.dat"), *l, *nx; for(l=t; l && *l; l=nx){ manual_rt m; nx=strchr(l,'\n'); if(nx) *nx++=0; memset(&m,0,sizeof m); if(resolve(l,41235,&m.sa)) continue; scpy(m.addr,l,sizeof m.addr);
-        c->manual=(manual_rt*)realloc(c->manual,sizeof(manual_rt)*(c->nmanual+1)); c->manual[c->nmanual++]=m; } free(t); }
+        c->manual=(manual_rt*)xrealloc(c->manual,sizeof(manual_rt)*(c->nmanual+1)); c->manual[c->nmanual++]=m; } free(t); }
     { int i; for(i=0;i<c->ncontacts;i++){ c->contacts[i].online=0; c->contacts[i].rtt_ms=-1; } }
     /* TCP listener: preferred port, fallback ephemeral */
     c->lsock=socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
@@ -1037,7 +1041,7 @@ int lsm_send_file(lsm_core *c, const char *conv, const char *path, char *err){
     FILE *f=ufopen(path,"rb"); uint8_t sha[32], *buf; sha256_ctx h; size_t n; uint64_t size=0; char nm[260], ids[37]; uint8_t mid[16]; lsm_transfer t; int rc=0; int64_t ts=wall_ms();
     const char *targets[64]; int nt=0, i; lsm_group *g=NULL; uint8_t gid[16]; lsm_msg *m;
     if(!f){ E("\xe6\x97\xa0\xe6\xb3\x95\xe6\x89\x93\xe5\xbc\x80\xe6\x96\x87\xe4\xbb\xb6"); return -1; }
-    buf=(uint8_t*)malloc(65536); sha256_init(&h); while((n=fread(buf,1,65536,f))>0){ sha256_update(&h,buf,n); size+=n; } fclose(f); free(buf); sha256_final(&h,sha);
+    buf=(uint8_t*)xmalloc(65536); sha256_init(&h); while((n=fread(buf,1,65536,f))>0){ sha256_update(&h,buf,n); size+=n; } fclose(f); free(buf); sha256_final(&h,sha);
     sanitize_filename(path,nm,sizeof nm);
     mu_lock(&c->mu);
     if(!strncmp(conv,"dm:",3)) targets[nt++]=conv+3;
@@ -1048,7 +1052,7 @@ int lsm_send_file(lsm_core *c, const char *conv, const char *path, char *err){
     for(i=0;i<nt;i++){ memset(&t,0,sizeof t); uuid_new(t.tid); scpy(t.msg_id,ids,40); scpy(t.conv,conv,64); scpy(t.peer_fp,targets[i],FP_LEN); t.out=1; scpy(t.name,nm,sizeof t.name); t.size=size; scpy(t.mime,mime_guess(nm),sizeof t.mime); memcpy(t.sha,sha,32);
         if(g){ t.has_group=1; memcpy(t.group_id,gid,16); } scpy(t.path,path,sizeof t.path); t.offer_ts=ts; t.state=TS_OFFERED;
         if(i==0){ char u[37]; lsm_uuid_str(t.tid,u); scpy(m->file_tid,u,40); }
-        c->xfers=(lsm_transfer*)realloc(c->xfers,sizeof(lsm_transfer)*(c->nxfers+1)); c->xfers[c->nxfers++]=t;
+        c->xfers=(lsm_transfer*)xrealloc(c->xfers,sizeof(lsm_transfer)*(c->nxfers+1)); c->xfers[c->nxfers++]=t;
         rs_out_write(c,&c->xfers[c->nxfers-1]); send_offer(c,&c->xfers[c->nxfers-1]); emit_xfer(c,&c->xfers[c->nxfers-1]); }
     hist_rec_msg(c,msg_get(c,ids));
 out: mu_unlock(&c->mu); return rc; }
@@ -1057,7 +1061,7 @@ int lsm_add_addr(lsm_core *c, const char *addr, char *err){ struct sockaddr_in a
     if(resolve(addr,41235,&a)){ E("\xe5\x9c\xb0\xe5\x9d\x80\xe6\x97\xa0\xe6\x95\x88"); return -1; }
     mu_lock(&c->mu); memset(&m,0,sizeof m); addr_str(&a,m.addr,sizeof m.addr); m.sa=a;
     for(i=0;i<c->nmanual;i++) if(!strcmp(c->manual[i].addr,m.addr)){ c->manual[i].next_attempt=0; mu_unlock(&c->mu); return 0; }
-    c->manual=(manual_rt*)realloc(c->manual,sizeof(manual_rt)*(c->nmanual+1)); c->manual[c->nmanual++]=m;
+    c->manual=(manual_rt*)xrealloc(c->manual,sizeof(manual_rt)*(c->nmanual+1)); c->manual[c->nmanual++]=m;
     { buf_t b={0}; for(i=0;i<c->nmanual;i++) bfmt(&b,"%s\n",c->manual[i].addr); save_sealed(c,"manual.dat",&b); b_free(&b); } /* persisted like v0.5 contacts.manual */
     mu_unlock(&c->mu); return 0; }
 int lsm_set_trust(lsm_core *c, const char *fp, int trust, char *err){ lsm_contact *k; (void)err; mu_lock(&c->mu); k=contact_entry(c,fp); k->trust=trust; save_contacts(c);
@@ -1072,7 +1076,7 @@ int lsm_group_create(lsm_core *c, const char *name, const char **fps, int n, cha
     memset(&g,0,sizeof g); uuid_new(g.id); sanitize_name(name,g.name,sizeof g.name); scpy(g.creator_fp,c->fp,FP_LEN);
     for(i=0;i<n && i<63;i++) scpy(g.members[g.nmembers++],fps[i],FP_LEN); scpy(g.members[g.nmembers++],c->fp,FP_LEN); group_sort(&g);
     rand_bytes(g.key,32); g.created_ms=wall_ms(); g.key_epoch=0;
-    c->groups=(lsm_group*)realloc(c->groups,sizeof(lsm_group)*(c->ngroups+1)); c->groups[c->ngroups++]=g; save_groups(c);
+    c->groups=(lsm_group*)xrealloc(c->groups,sizeof(lsm_group)*(c->ngroups+1)); c->groups[c->ngroups++]=g; save_groups(c);
     payload_invite(c,&g,&p); for(i=0;i<g.nmembers;i++) if(strcmp(g.members[i],c->fp)){ uuid_new(id); send_reliable(c,g.members[i],&p,id,NULL); }
     b_free(&p); lsm_uuid_str(g.id,gid_out); emit(c,"group\t%s\t%s",gid_out,g.name); conv_group(g.id,conv);
     system_msg(c,conv,"\xe4\xbd\xa0\xe5\x88\x9b\xe5\xbb\xba\xe4\xba\x86\xe7\xbe\xa4\xe7\xbb\x84\xe3\x80\x8c%s\xe3\x80\x8d",g.name);
