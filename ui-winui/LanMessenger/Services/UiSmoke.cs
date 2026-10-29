@@ -97,6 +97,13 @@ public static class UiSmoke
                             cp.CloseMoreMenuForSmoke();
                             await Task.Delay(600);
                             await ShortcutChecksAsync(w, cp, dir, label, theme);
+                            // W7 high DPI: the process is per-monitor-v2 DPI aware and XAML renders at the window's own DPI
+                            {
+                                var hw = WinRT.Interop.WindowNative.GetWindowHandle(w);
+                                uint dpi = GetDpiForWindow(hw); double rs = w.Content.XamlRoot.RasterizationScale;
+                                bool pmv2 = AreDpiAwarenessContextsEqual(GetWindowDpiAwarenessContext(hw), new IntPtr(-4));
+                                Check(pmv2 && dpi > 0 && Math.Abs(rs - dpi / 96.0) < 0.01, $"high DPI: per-monitor v2 aware ({pmv2}), XAML scale {rs:0.##} = window DPI {dpi}/96");
+                            }
                             // contact details dialog (fingerprint / latency moved out of the header)
                             _ = cp.SmokeShowDetailsAsync(); await Task.Delay(1500);
                             await ShotAsync(w, dir, "dialog-details", label, theme);
@@ -815,6 +822,9 @@ public static class UiSmoke
     [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr h);
     [DllImport("user32.dll")] private static extern int GetSystemMetrics(int index);
+    [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr h);
+    [DllImport("user32.dll")] private static extern IntPtr GetWindowDpiAwarenessContext(IntPtr h);
+    [DllImport("user32.dll")] private static extern bool AreDpiAwarenessContextsEqual(IntPtr a, IntPtr b);
     [DllImport("user32.dll")] private static extern bool ClientToScreen(IntPtr h, ref POINT p);
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr h);
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr h, out RECT r);

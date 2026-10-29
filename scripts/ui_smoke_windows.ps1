@@ -116,7 +116,7 @@ foreach ($theme in "light", "dark") {
   else { $problems += "[$theme] contrast-$theme.txt missing" }
   if (-not (Select-String -Path "$dir\ui-smoke.txt" -Pattern "UI_SMOKE_OK" -Quiet -ErrorAction SilentlyContinue)) { $problems += "[$theme] app reported UI_SMOKE_FAIL" }
   # runtime checks done in the app with real SendInput keyboard/mouse input (UiSmoke.cs): each must report PASS
-  $runtime = @("shortcut Ctrl+F", "shortcut Esc clears", "shortcut Ctrl+N opens", "chat header subtitle has no", "shortcut Ctrl+Tab", "shortcut Ctrl+Shift+Tab",
+  $runtime = @("high DPI: per-monitor v2 aware (True)", "shortcut Ctrl+F", "shortcut Esc clears", "shortcut Ctrl+N opens", "chat header subtitle has no", "shortcut Ctrl+Tab", "shortcut Ctrl+Shift+Tab",
                "right-click on a message", "right-click on a contact", "Esc closes the context menu",
                "window memory: saved", "window memory: restored", "window memory: an off-screen",
                "Esc closes the contact-details dialog", "Shift+Enter inserts a new line", "Enter sends and clears the composer",
