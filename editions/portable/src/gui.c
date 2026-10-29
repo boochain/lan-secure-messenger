@@ -72,17 +72,33 @@ static void msgbox(const char *t, UINT f);
 #include "updcheck.h"
 /* Update check (help menu): WinHTTP GET of the GitHub releases API on a worker thread; the result string goes back
  * with WM_UPDRES. XP's WinHTTP 5.1 cannot do TLS 1.2, so there the request fails and we offer the releases page. */
-static DWORD WINAPI upd_thread(LPVOID hwnd){ HINTERNET s=NULL,cn=NULL,rq=NULL; char *body=NULL; size_t n=0; DWORD av=0, rd=0; int ok=0;
-    s=WinHttpOpen(L"LanMessenger-XP",WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,WINHTTP_NO_PROXY_NAME,WINHTTP_NO_PROXY_BYPASS,0);
-    if(s){ WinHttpSetTimeouts(s,10000,10000,10000,15000); cn=WinHttpConnect(s,L"" UPD_API_HOST,INTERNET_DEFAULT_HTTPS_PORT,0); }
-    if(cn) rq=WinHttpOpenRequest(cn,L"GET",L"" UPD_API_PATH,NULL,WINHTTP_NO_REFERER,WINHTTP_DEFAULT_ACCEPT_TYPES,WINHTTP_FLAG_SECURE);
-    if(rq && WinHttpSendRequest(rq,L"Accept: application/vnd.github+json\r\n",(DWORD)-1,WINHTTP_NO_REQUEST_DATA,0,0,0) && WinHttpReceiveResponse(rq,NULL)){
-        DWORD st=0, sl=sizeof st; WinHttpQueryHeaders(rq,WINHTTP_QUERY_STATUS_CODE|WINHTTP_QUERY_FLAG_NUMBER,WINHTTP_HEADER_NAME_BY_INDEX,&st,&sl,WINHTTP_NO_HEADER_INDEX);
+/* winhttp.dll is loaded at run time: not on the XP import allow-list (tools/xp_import_check.py), and absent on
+ * stripped systems; if it or a function is missing the check just reports failure. */
+typedef HINTERNET (WINAPI *wh_open_t)(LPCWSTR,DWORD,LPCWSTR,LPCWSTR,DWORD);
+typedef BOOL (WINAPI *wh_tmo_t)(HINTERNET,int,int,int,int);
+typedef HINTERNET (WINAPI *wh_conn_t)(HINTERNET,LPCWSTR,INTERNET_PORT,DWORD);
+typedef HINTERNET (WINAPI *wh_oreq_t)(HINTERNET,LPCWSTR,LPCWSTR,LPCWSTR,LPCWSTR,LPCWSTR*,DWORD);
+typedef BOOL (WINAPI *wh_send_t)(HINTERNET,LPCWSTR,DWORD,LPVOID,DWORD,DWORD,DWORD_PTR);
+typedef BOOL (WINAPI *wh_recv_t)(HINTERNET,LPVOID);
+typedef BOOL (WINAPI *wh_qh_t)(HINTERNET,DWORD,LPCWSTR,LPVOID,LPDWORD,LPDWORD);
+typedef BOOL (WINAPI *wh_qda_t)(HINTERNET,LPDWORD);
+typedef BOOL (WINAPI *wh_rd_t)(HINTERNET,LPVOID,DWORD,LPDWORD);
+typedef BOOL (WINAPI *wh_close_t)(HINTERNET);
+static DWORD WINAPI upd_thread(LPVOID hwnd){ HINTERNET s=NULL,cn=NULL,rq=NULL; char *body=NULL; size_t n=0; DWORD av=0, rd=0; int ok=0; HMODULE m=LoadLibraryW(L"winhttp.dll");
+    wh_open_t pOpen=m?(wh_open_t)GetProcAddress(m,"WinHttpOpen"):NULL; wh_tmo_t pTmo=m?(wh_tmo_t)GetProcAddress(m,"WinHttpSetTimeouts"):NULL; wh_conn_t pConn=m?(wh_conn_t)GetProcAddress(m,"WinHttpConnect"):NULL;
+    wh_oreq_t pOreq=m?(wh_oreq_t)GetProcAddress(m,"WinHttpOpenRequest"):NULL; wh_send_t pSend=m?(wh_send_t)GetProcAddress(m,"WinHttpSendRequest"):NULL; wh_recv_t pRecv=m?(wh_recv_t)GetProcAddress(m,"WinHttpReceiveResponse"):NULL;
+    wh_qh_t pQh=m?(wh_qh_t)GetProcAddress(m,"WinHttpQueryHeaders"):NULL; wh_qda_t pQda=m?(wh_qda_t)GetProcAddress(m,"WinHttpQueryDataAvailable"):NULL; wh_rd_t pRd=m?(wh_rd_t)GetProcAddress(m,"WinHttpReadData"):NULL; wh_close_t pClose=m?(wh_close_t)GetProcAddress(m,"WinHttpCloseHandle"):NULL;
+    if(!(pOpen&&pTmo&&pConn&&pOreq&&pSend&&pRecv&&pQh&&pQda&&pRd&&pClose)){ if(m) FreeLibrary(m); PostMessageW((HWND)hwnd,WM_UPDRES,0,0); return 0; }
+    s=pOpen(L"LanMessenger-XP",WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,WINHTTP_NO_PROXY_NAME,WINHTTP_NO_PROXY_BYPASS,0);
+    if(s){ pTmo(s,10000,10000,10000,15000); cn=pConn(s,L"" UPD_API_HOST,INTERNET_DEFAULT_HTTPS_PORT,0); }
+    if(cn) rq=pOreq(cn,L"GET",L"" UPD_API_PATH,NULL,WINHTTP_NO_REFERER,WINHTTP_DEFAULT_ACCEPT_TYPES,WINHTTP_FLAG_SECURE);
+    if(rq && pSend(rq,L"Accept: application/vnd.github+json\r\n",(DWORD)-1,WINHTTP_NO_REQUEST_DATA,0,0,0) && pRecv(rq,NULL)){
+        DWORD st=0, sl=sizeof st; pQh(rq,WINHTTP_QUERY_STATUS_CODE|WINHTTP_QUERY_FLAG_NUMBER,WINHTTP_HEADER_NAME_BY_INDEX,&st,&sl,WINHTTP_NO_HEADER_INDEX);
         ok=(st==200);
-        while(ok && WinHttpQueryDataAvailable(rq,&av) && av>0 && n<4*1024*1024){ char *nb=(char*)realloc(body,n+av+1); if(!nb){ ok=0; break; } body=nb; if(!WinHttpReadData(rq,body+n,av,&rd)){ ok=0; break; } n+=rd; } }
+        while(ok && pQda(rq,&av) && av>0 && n<4*1024*1024){ char *nb=(char*)realloc(body,n+av+1); if(!nb){ ok=0; break; } body=nb; if(!pRd(rq,body+n,av,&rd)){ ok=0; break; } n+=rd; } }
     if(body) body[n]=0;
-    if(rq) WinHttpCloseHandle(rq); if(cn) WinHttpCloseHandle(cn); if(s) WinHttpCloseHandle(s);
-    if(!ok){ free(body); body=NULL; }
+    if(rq) pClose(rq); if(cn) pClose(cn); if(s) pClose(s);
+    if(!ok){ free(body); body=NULL; } FreeLibrary(m);
     PostMessageW((HWND)hwnd,WM_UPDRES,0,(LPARAM)body); return 0; }
 static void upd_done(char *body){ char m[300], url[300];
     if(!body){ if(tmsg(L"检查更新",L"无法连接 GitHub 检查更新（Windows XP 不支持 GitHub 要求的 TLS 1.2，或网络不可用）。\n是否在浏览器中打开发布页？",1)==1) ShellExecuteW(hMain,L"open",L"" UPD_RELEASES_URL,NULL,NULL,SW_SHOWNORMAL); return; }
