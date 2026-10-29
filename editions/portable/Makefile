@@ -9,7 +9,7 @@ LDXP32 = -static -static-libgcc -Wl,--major-subsystem-version,5,--minor-subsyste
 LDXP64 = -static -static-libgcc -Wl,--major-subsystem-version,5,--minor-subsystem-version,2,--major-os-version,5,--minor-os-version,2
 CORE = src/core.c src/xcrypto.c src/third_party/monocypher.c src/third_party/monocypher-ed25519.c
 LIBS = -lws2_32 -liphlpapi -lshell32 -ladvapi32
-GUILIBS = $(LIBS) -lcomctl32 -lcomdlg32 -lgdi32 -luser32
+GUILIBS = $(LIBS) -lcomctl32 -lcomdlg32 -lgdi32 -luser32 -lwinhttp
 
 all: build/x86/LanMessenger.exe build/x86/lanmsg-cli.exe build/x64/LanMessenger.exe build/x64/lanmsg-cli.exe build/linux/lanmsg-cli
 

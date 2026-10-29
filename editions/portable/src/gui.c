@@ -40,6 +40,8 @@
 #define IDM_DLDIR 215
 #define IDM_MUTE 242
 #define IDM_DIAG 243
+#define IDM_UPDATE 244
+#define WM_UPDRES (WM_APP+7)
 #define IDM_SHOW 216
 #define WM_TRAY (WM_APP+1)
 #define TIMER_POLL 1
@@ -65,6 +67,28 @@ static int tmsg(const wchar_t *title, const wchar_t *text, int cancel);
 static UINT WM_TASKBARCREATED; static int tray_added;
 static void fit_vscroll(HWND e);
 static int peer_muted(const char *fp);
+static void msgbox(const char *t, UINT f);
+#include <winhttp.h>
+#include "updcheck.h"
+/* Update check (help menu): WinHTTP GET of the GitHub releases API on a worker thread; the result string goes back
+ * with WM_UPDRES. XP's WinHTTP 5.1 cannot do TLS 1.2, so there the request fails and we offer the releases page. */
+static DWORD WINAPI upd_thread(LPVOID hwnd){ HINTERNET s=NULL,cn=NULL,rq=NULL; char *body=NULL; size_t n=0; DWORD av=0, rd=0; int ok=0;
+    s=WinHttpOpen(L"LanMessenger-XP",WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,WINHTTP_NO_PROXY_NAME,WINHTTP_NO_PROXY_BYPASS,0);
+    if(s){ WinHttpSetTimeouts(s,10000,10000,10000,15000); cn=WinHttpConnect(s,L"" UPD_API_HOST,INTERNET_DEFAULT_HTTPS_PORT,0); }
+    if(cn) rq=WinHttpOpenRequest(cn,L"GET",L"" UPD_API_PATH,NULL,WINHTTP_NO_REFERER,WINHTTP_DEFAULT_ACCEPT_TYPES,WINHTTP_FLAG_SECURE);
+    if(rq && WinHttpSendRequest(rq,L"Accept: application/vnd.github+json\r\n",(DWORD)-1,WINHTTP_NO_REQUEST_DATA,0,0,0) && WinHttpReceiveResponse(rq,NULL)){
+        DWORD st=0, sl=sizeof st; WinHttpQueryHeaders(rq,WINHTTP_QUERY_STATUS_CODE|WINHTTP_QUERY_FLAG_NUMBER,WINHTTP_HEADER_NAME_BY_INDEX,&st,&sl,WINHTTP_NO_HEADER_INDEX);
+        ok=(st==200);
+        while(ok && WinHttpQueryDataAvailable(rq,&av) && av>0 && n<4*1024*1024){ char *nb=(char*)realloc(body,n+av+1); if(!nb){ ok=0; break; } body=nb; if(!WinHttpReadData(rq,body+n,av,&rd)){ ok=0; break; } n+=rd; } }
+    if(body) body[n]=0;
+    if(rq) WinHttpCloseHandle(rq); if(cn) WinHttpCloseHandle(cn); if(s) WinHttpCloseHandle(s);
+    if(!ok){ free(body); body=NULL; }
+    PostMessageW((HWND)hwnd,WM_UPDRES,0,(LPARAM)body); return 0; }
+static void upd_done(char *body){ char m[300], url[300];
+    if(!body){ if(tmsg(L"检查更新",L"无法连接 GitHub 检查更新（Windows XP 不支持 GitHub 要求的 TLS 1.2，或网络不可用）。\n是否在浏览器中打开发布页？",1)==1) ShellExecuteW(hMain,L"open",L"" UPD_RELEASES_URL,NULL,NULL,SW_SHOWNORMAL); return; }
+    { int newer=upd_result(body,LSM_APP_VERSION,m,sizeof m,url,sizeof url); free(body);
+      if(newer){ char t[400]; snprintf(t,sizeof t,"%s\n是否打开下载页？",m); if(tmsg(L"检查更新",W(t),1)==1) ShellExecuteW(hMain,L"open",W(url),NULL,NULL,SW_SHOWNORMAL); }
+      else msgbox(m,MB_ICONINFORMATION); } }
 static void msgbox(const char *t, UINT f){ (void)f; tmsg(L"局域网安全通讯 XP",W(t),0); }
 
 /* ---------------------------------------------------------------- theme (design/palette.json, Fluent 2)
@@ -573,6 +597,7 @@ static void do_command(int id){
     case IDM_NAME: { wchar_t init[300]; lsm_lock(C); wcsncpy(init,W(lsm_my_name(C)),299); init[299]=0; lsm_unlock(C); if(prompt(L"修改昵称",L"新的显示名称：",init,&p,1)){ lsm_set_name(C,U(p.text,u8,sizeof u8)); refresh_list(); } break; }
     case IDM_DLDIR: { lsm_lock(C); strcpy(u8,lsm_download_dir(C)); lsm_unlock(C); ShellExecuteW(hMain,L"open",W(u8),NULL,NULL,SW_SHOWNORMAL); break; }
     case IDM_MUTE: { const char *fp=selected_peer(); if(fp){ lsm_set_muted(C,fp,!peer_muted(fp),err); refresh_list(); } break; }
+    case IDM_UPDATE: { HANDLE th=CreateThread(NULL,0,upd_thread,hMain,0,NULL); if(th) CloseHandle(th); else upd_done(NULL); break; }
     case IDM_DIAG: { size_t need=lsm_diagnostics(C,NULL,0); char *d=(char*)malloc(need+1); if(d){ lsm_diagnostics(C,d,need+1); msgbox(d,MB_ICONINFORMATION); free(d); } break; }
     case IDM_ABOUT: msgbox("局域网安全通讯 XP 版 " LSM_APP_VERSION "\r\n\r\n与 v0.5 完全兼容的旧系统版本（协议 v5）：Noise_XX_25519_ChaChaPoly_BLAKE2s 加密、自动发现、按 IP 添加、PIN 配对、群组、文件传输、送达/已读回执。\r\n\r\n支持 Windows XP SP3 及以上。",MB_ICONINFORMATION); break;
     } }
@@ -689,7 +714,7 @@ static HMENU build_menu(void){
     AM(c,MF_SEPARATOR,0,NULL); AM(c,MF_STRING,IDM_PINOFFER,L"生成 PIN（让对方输入）(&P)"); AM(c,MF_STRING,IDM_PINPAIR,L"输入 PIN 配对(&I)...");
     AM(g,MF_STRING,IDM_GCREATE,L"创建群组(&C)..."); AM(g,MF_STRING,IDM_GINVITE,L"邀请成员(&I)..."); AM(g,MF_STRING,IDM_GREMOVE,L"移除成员(&R)..."); AM(g,MF_STRING,IDM_GLEAVE,L"退出群组(&L)");
     AM(s,MF_STRING,IDM_NAME,L"修改昵称(&N)..."); AM(s,MF_STRING,IDM_RELAY,L"中转服务器(&R)..."); AM(s,MF_SEPARATOR,0,NULL); AM(s,MF_STRING|(theme_mode==0?MF_CHECKED:0),IDM_THEME_SYS,L"外观：跟随系统(&Y)"); AM(s,MF_STRING|(theme_mode==1?MF_CHECKED:0),IDM_THEME_LIGHT,L"外观：浅色(&L)"); AM(s,MF_STRING|(theme_mode==2?MF_CHECKED:0),IDM_THEME_DARK,L"外观：深色(&K)");
-    AM(h,MF_STRING,IDM_DIAG,L"诊断信息(&D)..."); AM(h,MF_STRING,IDM_ABOUT,L"关于(&A)");
+    AM(h,MF_STRING,IDM_DIAG,L"诊断信息(&D)..."); AM(h,MF_STRING,IDM_UPDATE,L"检查更新(&U)..."); AM(h,MF_STRING,IDM_ABOUT,L"关于(&A)");
     AM(m,MF_POPUP,(UINT_PTR)f,L"文件(&F)"); AM(m,MF_POPUP,(UINT_PTR)c,L"联系人(&C)"); AM(m,MF_POPUP,(UINT_PTR)g,L"群组(&G)"); AM(m,MF_POPUP,(UINT_PTR)s,L"设置(&S)"); AM(m,MF_POPUP,(UINT_PTR)h,L"帮助(&H)");
     menu_bg(m);
     return m; }
@@ -790,6 +815,7 @@ static LRESULT CALLBACK MainProc(HWND h, UINT m, WPARAM w, LPARAM l){
         if(LOWORD(w)==IDC_HDRSEARCH){ SetFocus(hSearch); SendMessageW(hSearch,EM_SETSEL,0,-1); return 0; }
         if(LOWORD(w)==IDC_FILE){ send_file_dlg(); return 0; }
         do_command(LOWORD(w)); return 0;
+    case WM_UPDRES: upd_done((char*)l); return 0;
     case WM_TRAY:
         if(l==WM_LBUTTONDBLCLK||l==NIN_BALLOONUSERCLICK) do_command(IDM_SHOW);
         else if(l==WM_RBUTTONUP){ POINT pt; HMENU pm=CreatePopupMenu(); AM(pm,MF_STRING,IDM_SHOW,L"显示主窗口"); AM(pm,MF_SEPARATOR,0,NULL); AM(pm,MF_STRING,IDM_EXIT,L"退出"); menu_bg(pm); GetCursorPos(&pt); SetForegroundWindow(h); TrackPopupMenu(pm,TPM_RIGHTBUTTON,pt.x,pt.y,0,h,NULL); DestroyMenu(pm); }
