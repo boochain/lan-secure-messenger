@@ -59,5 +59,14 @@ for l in s.split("\n"):
     if not seen and m:
         out.append(f"{m.group(1)}  working-directory: /")
 s = "\n".join(out)
+# Unified repo: the cross-implementation matrix runs against the CURRENT Rust daemon (root workspace) -- the
+# reference/v0.5 snapshot has no resume / relay, so the matrix's resume checks cannot pass against it. interop.py
+# keeps testing the frozen v0.5 daemon (backward compatibility).
+s = s.replace("(cd reference/v0.5 && cargo build --release -p lan-daemon -p lan-cli)",
+              "(cd reference/v0.5 && cargo build --release -p lan-daemon -p lan-cli) && (cd $GITHUB_WORKSPACE && cargo build --release -p lan-daemon -p lan-cli)")
+s = re.sub(r"(working-directory: editions/portable/reference/v0.5\n(\s+)run: cargo build --release -p lan-daemon -p lan-cli)",
+           r"\1 && (cd $GITHUB_WORKSPACE && cargo build --release -p lan-daemon -p lan-cli)", s)
+s = "\n".join(l.replace("--rust-bin reference/v0.5/target/release", "--rust-bin $GITHUB_WORKSPACE/target/release") if "tests/matrix.py" in l else l
+              for l in s.split("\n"))
 open(DST, "w", encoding="utf-8").write(s)
 print("wrote", DST)

@@ -66,7 +66,7 @@ jobs:
           python3 tests/regress.py build/linux/lanmsg-cli
       - name: Build real v0.5 daemon (reference/v0.5 = v0.5.0-beta.2 source)
         working-directory: editions/portable/reference/v0.5
-        run: cargo build --release -p lan-daemon -p lan-cli
+        run: cargo build --release -p lan-daemon -p lan-cli && (cd $GITHUB_WORKSPACE && cargo build --release -p lan-daemon -p lan-cli)
       - name: Interop under wine (x86 exe <-> v0.5 lan-daemon, netns bridge)
         run: sudo -E env "PATH=$PATH" python3 tests/interop.py --rust-bin reference/v0.5/target/release --exe build/x86/lanmsg-cli.exe --work /tmp/lsm-interop
       - name: Interop native (same core, Linux build)
@@ -76,7 +76,7 @@ jobs:
       - name: Cross-platform interop matrix (v0.5 Rust, C native, XP exe under wine, Linux edition CLI; Android slot)
         run: |
           mkdir -p /tmp/lx && tar -C /tmp/lx -xzf dist/linux/lan-messenger-*-linux-x86_64.tar.gz
-          sudo -E env "PATH=$PATH" python3 tests/matrix.py --rust-bin reference/v0.5/target/release --native-cli build/linux/lanmsg-cli --wine-exe build/x86/lanmsg-cli.exe --linux-cli $(ls -d /tmp/lx/*/bin)/lanmsg-cli --work /tmp/lsm-matrix
+          sudo -E env "PATH=$PATH" python3 tests/matrix.py --rust-bin $GITHUB_WORKSPACE/target/release --native-cli build/linux/lanmsg-cli --wine-exe build/x86/lanmsg-cli.exe --linux-cli $(ls -d /tmp/lx/*/bin)/lanmsg-cli --work /tmp/lsm-matrix
       - name: Batch-file encoding check (GBK, CRLF, no BOM) + package
         run: |
           python3 tools/package.py
@@ -111,7 +111,7 @@ jobs:
         run: |
           sh linux/build.sh || test -x build/linux-rel/lan-messenger-gtk
           make build/x86/LanMessenger.exe
-          (cd reference/v0.5 && cargo build --release -p lan-daemon -p lan-cli)
+          (cd reference/v0.5 && cargo build --release -p lan-daemon -p lan-cli) && (cd $GITHUB_WORKSPACE && cargo build --release -p lan-daemon -p lan-cli)
       - name: Linux GTK screenshots (every screen, light + dark)
         run: python3 tests/linux_gui_shots.py --rust-bin reference/v0.5/target/release --gui build/linux-rel/lan-messenger-gtk --out shots/linux
       - name: XP Win32 screenshots under wine (every screen, light + dark)
@@ -158,7 +158,7 @@ jobs:
           sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
       - name: Build v0.5 daemon + native C CLI
         run: |
-          (cd reference/v0.5 && cargo build --release -p lan-daemon -p lan-cli)
+          (cd reference/v0.5 && cargo build --release -p lan-daemon -p lan-cli) && (cd $GITHUB_WORKSPACE && cargo build --release -p lan-daemon -p lan-cli)
           sudo apt-get update -qq && sudo apt-get install -y -qq make && make build/linux/lanmsg-cli
       - name: Screenshot + audit deps (Pillow, numpy, OpenCV, tesseract chi_sim)
         run: |
@@ -188,7 +188,7 @@ jobs:
             adb push art/build/android/lanmsg-cli-x86_64 /data/local/tmp/lanmsg-cli && adb shell chmod 755 /data/local/tmp/lanmsg-cli
             python3 tests/android_theme_shots.py --out shots/android
             python3 -u tests/android_chat_shots.py --cli /data/local/tmp/lanmsg-cli --out shots/android
-            sudo -E env "PATH=$PATH" ADB=$(which adb) python3 tests/matrix.py --rust-bin reference/v0.5/target/release --native-cli build/linux/lanmsg-cli --android-cmd /data/local/tmp/lanmsg-cli --kinds rust,native,android --work /tmp/lsm-matrix-android
+            sudo -E env "PATH=$PATH" ADB=$(which adb) python3 tests/matrix.py --rust-bin $GITHUB_WORKSPACE/target/release --native-cli build/linux/lanmsg-cli --android-cmd /data/local/tmp/lanmsg-cli --kinds rust,native,android --work /tmp/lsm-matrix-android
       - name: Audit Android screenshots (light + dark)
         run: |
           python3 tools/ui_color_audit.py --self-test --out ui-audit/self-test
