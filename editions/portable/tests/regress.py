@@ -106,6 +106,11 @@ pa = [l for l in A.cmd("peers") if l.startswith("PEER " + B.fp)]
 muted_after_restart = bool(pa) and "\tmuted" in pa[0] and "trusted" in pa[0]
 A.cmd(f"unmute {B.fp}"); pb = [l for l in A.cmd("peers") if l.startswith("PEER " + B.fp)]
 check("mute survives restart, unmute clears it, trust unchanged", okm and muted_after_restart and bool(pb) and "\tmuted" not in pb[0], (pa[:1], pb[:1]))
+# 7. 诊断 snapshot: sockets, relay, and the peer's link state
+dg = [l for l in A.cmd("diag") if l.startswith("DIAG ")]
+keys = {l.split("\t")[0][5:] for l in dg}
+peer = [l for l in dg if l.startswith("DIAG peer\t" + B.fp)]
+check("diag reports listen/discovery/relay and per-peer state", {"version", "tcp_listen", "udp_discovery", "relay", "outbox"} <= keys and bool(peer) and "online" in peer[0] and "muted=0" in peer[0], (sorted(keys), peer[:1]))
 want = {"王工": "王", "Alice Chen": "AC", "CI 测试群": "C", "bob": "B", "Bob Miller Jr": "BM", "李 Bob": "李", "  ": "?"}
 got = {k: next((l.split()[2] if len(l.split()) > 2 else "") for l in A.cmd(f"initials {k}") if l.startswith("OK initials")) for k in want if k.strip()}
 check("avatar initials rule (CJK -> 1 char, Latin -> up to 2, never mixed)", all(got[k] == v for k, v in want.items() if k.strip()), got)

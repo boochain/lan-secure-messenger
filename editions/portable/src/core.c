@@ -1160,3 +1160,22 @@ void lsm_initials(const char *name, char out[8]){
 }
 
 #include "resume.c"
+
+/* ------------------------------------------------------------ diagnostics (诊断) */
+size_t lsm_diagnostics(lsm_core *c, char *out, size_t n){ buf_t b={0}; int i, act=0; char det[300]; const char *rs; size_t len;
+    mu_lock(&c->mu);
+    bfmt(&b,"version\t%s\n",LSM_APP_VERSION); bfmt(&b,"fingerprint\t%s\n",c->fp); bfmt(&b,"name\t%s\n",c->name);
+    bfmt(&b,"data_dir\t%s\n",c->data_dir); bfmt(&b,"download_dir\t%s\n",c->dl_dir);
+    bfmt(&b,"tcp_listen\t%s\t%d\n",c->lsock!=BADSOCK?"ok":"fail",c->lport);
+    bfmt(&b,"udp_discovery\t%s\t%d\n",c->usock!=BADSOCK?"ok":(c->o.no_discovery?"off":"fail"),c->o.discovery_port?c->o.discovery_port:41234);
+    bfmt(&b,"announce_targets\t%s\n",c->announce_targets);
+    for(i=0;i<c->nifs;i++){ struct in_addr a, m; char ip[20], bc[20]; a.s_addr=c->ifs[i].ip; m.s_addr=c->ifs[i].bcast;
+        scpy(ip,inet_ntoa(a),sizeof ip); scpy(bc,inet_ntoa(m),sizeof bc); bfmt(&b,"interface\t%s\t%s\n",ip,bc); }
+    det[0]=0; rs=lsm_relay_status(c,det,sizeof det); bfmt(&b,"relay\t%s\t%s\n",rs?rs:"off",det);
+    for(i=0;i<c->ncontacts;i++){ lsm_contact *k=&c->contacts[i];
+        bfmt(&b,"peer\t%s\t%s\t%s\t%s\trtt=%d\t%s\ttrust=%d\tmuted=%d\tlast_seen_ms=%lld\n",k->fp,k->name,k->online?"online":"offline",
+             k->online?(k->via_relay?"relay":"direct"):"-",k->rtt_ms,k->addr,k->trust,k->muted,(long long)k->last_seen_ms); }
+    for(i=0;i<c->nxfers;i++) if(c->xfers[i].state==TS_ACTIVE) act++;
+    bfmt(&b,"outbox\t%d\n",c->noutbox); bfmt(&b,"transfers_active\t%d\n",act);
+    mu_unlock(&c->mu);
+    len=b.n; if(n){ size_t k=len<n-1?len:n-1; if(k) memcpy(out,b.p,k); out[k]=0; } b_free(&b); return len; }

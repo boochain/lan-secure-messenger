@@ -52,7 +52,7 @@ static char *next_tok(char **s){ char *p=*s, *st; while(*p==' ') p++; if(!*p) re
 static const char *STS[]={"queued","sent","delivered","read","received","failed"};
 static const char *TST[]={"offered","active","verifying","done","failed","rejected","cancelled"};
 
-static void help(void){ outf("commands: id | peers | add <ip[:port]> | trust/untrust/block <peer> | mute/unmute <peer> | send <peer> <text> | sendgroup <group> <text> |\n"
+static void help(void){ outf("commands: id | peers | add <ip[:port]> | trust/untrust/block <peer> | mute/unmute <peer> | diag | send <peer> <text> | sendgroup <group> <text> |\n"
     " sendfile <peer|group> <path> | pin-offer | pin-pair <peer> <pin> | group-create <name> <peer,peer..> | group-invite <group> <peer,..> |\n"
     " group-remove <group> <peer> | group-leave <group> | groups | history <peer|group> [n] | read <peer|group> | transfers | name <new name> |\n"
     " firewall-setup | drop-links | sleep <ms> | quit\n"); }
@@ -66,6 +66,7 @@ static int run_cmd(char *line){
     if(!strcmp(cmd,"id")){ lsm_lock(C); outf("OK id %s %s port=%d version=%s\n",lsm_my_fp(C),lsm_my_name(C),lsm_listen_port(C),LSM_APP_VERSION); lsm_unlock(C); return 0; }
     if(!strcmp(cmd,"peers")){ lsm_contact *k; int n,i; lsm_lock(C); n=lsm_contacts(C,&k); for(i=0;i<n;i++) outf("PEER %s\t%s\t%s\t%s\trtt=%d\t%s",k[i].fp,k[i].online?"online":"offline",k[i].trust==1?"trusted":k[i].trust==2?"blocked":"unknown",k[i].name,k[i].rtt_ms,k[i].addr), outf("%s%s",k[i].muted?"\tmuted":"",k[i].online?(k[i].via_relay?"\tvia=relay\n":"\tvia=direct\n"):"\n"); lsm_unlock(C); outf("OK peers %d\n",n); return 0; }
     if(!strcmp(cmd,"add")){ if(lsm_add_addr(C,s,err)) outf("ERR %s\n",err); else outf("OK add %s\n",s); return 0; }
+    if(!strcmp(cmd,"diag")){ size_t need=lsm_diagnostics(C,NULL,0); char *d=(char*)malloc(need+1); if(!d){ outf("ERR oom\n"); return 0; } lsm_diagnostics(C,d,need+1); { char *l=d, *e; while(*l){ e=strchr(l,'\n'); if(e) *e=0; outf("DIAG %s\n",l); if(!e) break; l=e+1; } } free(d); outf("OK diag\n"); return 0; }
     if(!strcmp(cmd,"mute")||!strcmp(cmd,"unmute")){ if(peer_of(s,fp)){ outf("ERR no peer matches '%s'\n",s); return 0; } lsm_set_muted(C,fp,cmd[0]=='m',err); outf("OK %s %s\n",cmd,fp); return 0; }
     if(!strcmp(cmd,"trust")||!strcmp(cmd,"untrust")||!strcmp(cmd,"block")){ if(peer_of(s,fp)){ outf("ERR no peer matches '%s'\n",s); return 0; } lsm_set_trust(C,fp,cmd[0]=='t'?1:cmd[0]=='b'?2:0,err); outf("OK %s %s\n",cmd,fp); return 0; }
     if(!strcmp(cmd,"send")||!strcmp(cmd,"sendgroup")){ char *who=next_tok(&s), id[40]; const char *cv; while(s&&*s==' ') s++; if(!who||!(cv=conv_of(who,buf))){ outf("ERR unknown target\n"); return 0; }

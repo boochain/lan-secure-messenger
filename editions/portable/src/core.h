@@ -123,6 +123,9 @@ int lsm_add_addr(lsm_core *c, const char *addr, char *err);
 int lsm_set_trust(lsm_core *c, const char *fp, int trust, char *err);
 /* 免打扰 on/off for a peer (local only, like the Rust core's contact.muted); emits "peer\t<fp>\tmuted\t0|1" */
 int lsm_set_muted(lsm_core *c, const char *fp, int muted, char *err);
+/* 诊断 (diagnostics) snapshot as "key\tvalue..." lines (same facts as the WinUI 诊断 page: listen/discovery sockets,
+   interfaces, relay, per-peer link state). Writes at most n-1 bytes + NUL into buf; returns the full length. Takes the lock. */
+size_t lsm_diagnostics(lsm_core *c, char *buf, size_t n);
 int lsm_pin_offer(lsm_core *c, char pin_out[8]);
 int lsm_pin_pair(lsm_core *c, const char *fp, const char *pin, char *err); /* async: event pin_result */
 int lsm_group_create(lsm_core *c, const char *name, const char **fps, int n, char *gid_out, char *err);
