@@ -22,6 +22,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
@@ -106,6 +108,8 @@ fun Chat(st: AppState, conv: String, back: () -> Unit) {
                         if (contact != null) {
                             DropdownMenuItem({ Text("信任") }, { menu = false; Native.setTrust(contact.fp, 1); Repo.refresh() }, leadingIcon = { Ic(R.drawable.ms_trusted) })
                             DropdownMenuItem({ Text("取消信任") }, { menu = false; Native.setTrust(contact.fp, 0); Repo.refresh() }, leadingIcon = { Ic(R.drawable.ms_offline) })
+                            DropdownMenuItem({ Text(if (Native.isMuted(contact.fp)) "关闭免打扰" else "免打扰") }, { menu = false; Native.setMuted(contact.fp, !Native.isMuted(contact.fp)); Repo.refresh() }, leadingIcon = { Ic(R.drawable.ms_mute) })
+                            DropdownMenuItem({ Text("诊断信息") }, { menu = false; dlg = "diag" }, leadingIcon = { Ic(R.drawable.ms_lock) })
                             DropdownMenuItem({ Text("屏蔽") }, { menu = false; dlg = "block" }, leadingIcon = { Ic(R.drawable.ms_mute) })
                             DropdownMenuItem({ Text("输入 PIN 配对") }, { menu = false; dlg = "pin" }, leadingIcon = { Ic(R.drawable.ms_lock) })
                             DropdownMenuItem({ Text("查看指纹") }, { menu = false; dlg = "fp" }, leadingIcon = { Ic(R.drawable.ms_info) })
@@ -172,6 +176,9 @@ fun Chat(st: AppState, conv: String, back: () -> Unit) {
             dismissButton = { TextButton({ delMsg = null }) { Text("取消") } })
     }
     when (dlg) {
+        "diag" -> LsmAlertDialog(onDismissRequest = { dlg = "" }, title = { Text("诊断信息") },
+            text = { Text(Native.diagnostics(), fontSize = 11.sp, modifier = Modifier.verticalScroll(rememberScrollState())) },
+            confirmButton = { TextButton({ dlg = "" }) { Text("关闭") } })
         // destructive actions are confirmed (Material: confirmation dialog for irreversible/disruptive actions)
         "block" -> LsmAlertDialog(onDismissRequest = { dlg = "" }, title = { Text("屏蔽 ${contact?.name ?: ""}？") },
             text = { Text("屏蔽后将不再接收对方的消息和文件。可随时在菜单中取消屏蔽。") },

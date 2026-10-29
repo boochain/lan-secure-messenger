@@ -100,6 +100,7 @@ class CoreService : Service() {
             return PendingIntent.getActivity(c, conv?.hashCode() ?: 0, i, PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0))
         }
         fun notifyMsg(c: Context, conv: String, title: String, text: String) {
+            if (conv.startsWith("dm:") && Native.isMuted(conv.substring(3))) return  // 免打扰
             val n = NotificationCompat.Builder(c, CH_MSG).setSmallIcon(R.drawable.ic_stat).setContentTitle(title).setContentText(text)
                 .setAutoCancel(true).setPriority(NotificationCompat.PRIORITY_HIGH).setContentIntent(openApp(c, conv)).build()
             try { (c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(conv.hashCode(), n) } catch (_: SecurityException) {}
