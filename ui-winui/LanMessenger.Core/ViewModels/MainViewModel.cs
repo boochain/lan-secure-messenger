@@ -930,7 +930,9 @@ public partial class MainViewModel : ObservableObject
             foreach (var r in doc.RootElement.EnumerateArray())
             {
                 var tag = r.GetProperty("tag_name").GetString() ?? "";
-                if (!tag.StartsWith("v0.5") && !tag.StartsWith("v1")) continue;
+                // any release tag "v<digit>…" (the old filter only matched v0.5/v1 and so never offered v0.6+); skip drafts
+                if (tag.Length < 2 || tag[0] != 'v' || !char.IsDigit(tag[1])) continue;
+                if (r.TryGetProperty("draft", out var d) && d.ValueKind == JsonValueKind.True) continue;
                 if (best == null || CompareVersions(tag, best) > 0) { best = tag; url = r.GetProperty("html_url").GetString(); }
             }
             UpdateText = best == null ? "未找到新版本" :
@@ -959,7 +961,15 @@ public partial class MainViewModel : ObservableObject
         if (ap == bp) return 0;
         if (ap == "") return 1;
         if (bp == "") return -1;
-        return string.CompareOrdinal(ap, bp);
+        // SemVer pre-release precedence: dot-separated identifiers, numeric ones compared numerically (beta.10 > beta.9)
+        var aa = ap.Split('.'); var bb = bp.Split('.');
+        for (int i = 0; i < Math.Min(aa.Length, bb.Length); i++)
+        {
+            bool an2 = int.TryParse(aa[i], out var x), bn2 = int.TryParse(bb[i], out var y);
+            int c = an2 && bn2 ? x.CompareTo(y) : an2 ? -1 : bn2 ? 1 : string.CompareOrdinal(aa[i], bb[i]);
+            if (c != 0) return c;
+        }
+        return aa.Length.CompareTo(bb.Length);
     }
 
     // ------------------------------------------------------------ diagnostics
