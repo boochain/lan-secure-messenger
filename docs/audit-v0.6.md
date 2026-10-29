@@ -44,7 +44,7 @@ the server, the Rust client and the C client.
 
 ## 2. Feature parity (4 platforms)
 
-Evidence: grep of each UI + the core APIs (`core.h` for C, `api.rs` for Rust); "core only" = core supports it but
+Evidence: grep of each UI (keyword hits, not a click-through of each app; verify the — cells before planning) + the core APIs (`core.h` for C, `api.rs` for Rust); "core only" = core supports it but
 the UI has no entry point. ✓ present, — missing, n/a not applicable.
 
 | Feature | Windows WinUI (Rust) | Windows XP (C, Win32) | Linux GTK 4 (C) | Android (C, Compose) |
@@ -92,7 +92,7 @@ update check; XP notifications (balloon tips are available on XP).
 | S3 | Incoming file names (P4) | Medium | **Fixed** earlier |
 | S4 | Unknown frame → link drop (P1) | Low | **Fixed** |
 | S5 | `unsafe` in Rust: 9 sites, all Windows FFI (named-pipe SDDL `D:P(A;;GA;;;<user SID>)`, `IsUserAnAdmin`, `ShellExecuteExW` runas, `MessageBoxW`) | Info | Reviewed, OK |
-| S6 | 48 `unwrap()` in lan-core non-test code: reviewed the ones on network input — all on fixed-size slices after a length check or on internal maps keyed by ids just looked up | Info | OK |
+| S6 | 48 `unwrap()` in lan-core non-test code; the relay AUTH_OK parse ones follow a length check. **Not all individually reviewed** in this pass | Info | **Open**: review the ones on network input |
 | S7 | Relay server: per-IP and total connection caps, auth-failure rate limit, 1 KiB pre-auth limit, hard 16 MiB frame ceiling; passphrase never logged; transport content is end-to-end encrypted between peers (server sees only fingerprints and sizes) | Info | OK |
 | S8 | Relay deploy scripts never change the firewall unless asked (default No / `--open-firewall`), uninstall removes only rules recorded in the state file | Info | OK (tested in relay-server CI) |
 | S9 | `cargo audit` / dependency CVE scan not run (tool not installed on the audit box) | — | **Open**: add `cargo audit` to CI |
