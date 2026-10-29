@@ -70,6 +70,7 @@ jobs:
       - name: Backup interop (C core <-> Rust lan-core, LSMBAK02)
         run: |
           (cd $GITHUB_WORKSPACE && cargo build --release -p lan-core --example backup_tool)
+          cc -Wall -Wno-misleading-indentation -Isrc -o /tmp/updcheck_test tests/updcheck_test.c && /tmp/updcheck_test
           python3 tests/backup_interop.py --cli build/linux/lanmsg-cli --rust-tool $GITHUB_WORKSPACE/target/release/examples/backup_tool
       - name: Interop under wine (x86 exe <-> v0.5 lan-daemon, netns bridge)
         run: sudo -E env "PATH=$PATH" python3 tests/interop.py --rust-bin reference/v0.5/target/release --exe build/x86/lanmsg-cli.exe --work /tmp/lsm-interop

@@ -72,6 +72,7 @@ assert s.count(_anchor) == 1, "backup interop anchor"
 s = s.replace(_anchor, """      - name: Backup interop (C core <-> Rust lan-core, LSMBAK02)
         run: |
           (cd $GITHUB_WORKSPACE && cargo build --release -p lan-core --example backup_tool)
+          cc -Wall -Wno-misleading-indentation -Isrc -o /tmp/updcheck_test tests/updcheck_test.c && /tmp/updcheck_test
           python3 tests/backup_interop.py --cli build/linux/lanmsg-cli --rust-tool $GITHUB_WORKSPACE/target/release/examples/backup_tool
 """ + _anchor)
 s = "\n".join(l.replace("--no-resume-kinds rust ", "").replace("--rust-bin reference/v0.5/target/release", "--rust-bin $GITHUB_WORKSPACE/target/release") if "tests/matrix.py" in l else l
