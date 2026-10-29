@@ -8,6 +8,7 @@
 #include <commctrl.h>
 #include <commdlg.h>
 #include <shellapi.h>
+#include <shlobj.h>   /* DROPFILES (test drop hook) */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -159,30 +160,30 @@ static LRESULT CALLBACK PromptProc(HWND h, UINT m, WPARAM w, LPARAM l){
     case WM_CTLCOLORLISTBOX: return ctl_color((HDC)w,(HWND)l,2);
     case WM_ERASEBKGND: { RECT r; GetClientRect(h,&r); FillRect((HDC)w,&r,brWin); return 1; }
     case WM_PAINT: { PAINTSTRUCT ps; HDC dc=BeginPaint(h,&ps); RECT cr, tr; wchar_t t[128]; HBRUSH dv=CreateSolidBrush(T.divider); GetClientRect(h,&cr);
-        tr=cr; tr.bottom=TITLE_H; FillRect(dc,&tr,brCard); tr.top=TITLE_H-1; FillRect(dc,&tr,dv); FrameRect(dc,&cr,dv); DeleteObject(dv);
-        GetWindowTextW(h,t,128); tr=cr; tr.left=12; tr.bottom=TITLE_H; SetBkMode(dc,TRANSPARENT); SetTextColor(dc,T.text_primary); SelectObject(dc,fBodyStrong); DrawTextW(dc,t,-1,&tr,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX);
+        tr=cr; tr.bottom=scale_px(TITLE_H); FillRect(dc,&tr,brCard); tr.top=scale_px(TITLE_H)-1; FillRect(dc,&tr,dv); FrameRect(dc,&cr,dv); DeleteObject(dv);
+        GetWindowTextW(h,t,128); tr=cr; tr.left=scale_px(12); tr.bottom=scale_px(TITLE_H); SetBkMode(dc,TRANSPARENT); SetTextColor(dc,T.text_primary); SelectObject(dc,fBodyStrong); DrawTextW(dc,t,-1,&tr,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX);
         if(p){ frame_child(h,dc,p->ed); frame_child(h,dc,p->lb); } EndPaint(h,&ps); return 0; }
-    case WM_NCHITTEST: { POINT pt={(short)LOWORD(l),(short)HIWORD(l)}; ScreenToClient(h,&pt); if(pt.y<TITLE_H) return HTCAPTION; break; }
+    case WM_NCHITTEST: { POINT pt={(short)LOWORD(l),(short)HIWORD(l)}; ScreenToClient(h,&pt); if(pt.y<scale_px(TITLE_H)) return HTCAPTION; break; }
     case WM_MEASUREITEM: { MEASUREITEMSTRUCT *mi=(MEASUREITEMSTRUCT*)l; if(mi->CtlType==ODT_LISTBOX){ mi->itemHeight=scale_px(28); return TRUE; } break; }
     case WM_DRAWITEM: { DRAWITEMSTRUCT *d=(DRAWITEMSTRUCT*)l; if(d->CtlType==ODT_LISTBOX){ draw_list_item(d); return TRUE; } if(d->CtlType==ODT_BUTTON){ draw_button(d); return TRUE; } break; }
     }
     return DefWindowProcW(h,m,w,l); }
 static int prompt(const wchar_t *title, const wchar_t *label, const wchar_t *init, prompt_t *p, int with_edit){
-    HWND h, st, ok, ca=NULL, prev_focus=GetFocus(); MSG msg; RECT r; int H=with_edit?150:120, i, y=12, lh;
-    if(p->items) H+=180;
+    HWND h, st, ok, ca=NULL, prev_focus=GetFocus(); MSG msg; RECT r; int H=with_edit?scale_px(150):scale_px(120), i, y=scale_px(12), lh;
+    if(p->items) H+=scale_px(180);
     p->done=p->ok=0; p->label=label; p->ed=p->lb=NULL;
     GetWindowRect(hMain,&r);
-    h=CreateWindowExW(WS_EX_TOOLWINDOW,L"LsmPrompt",title,WS_POPUP,r.left+80,r.top+80,420,H,hMain,NULL,hInst,NULL); /* no system caption: title bar drawn from the theme (WM_PAINT), drag via WM_NCHITTEST */ y+=TITLE_H;
+    h=CreateWindowExW(WS_EX_TOOLWINDOW,L"LsmPrompt",title,WS_POPUP,r.left+scale_px(80),r.top+scale_px(80),scale_px(420),H,hMain,NULL,hInst,NULL); /* no system caption: title bar drawn from the theme (WM_PAINT), drag via WM_NCHITTEST */ y+=scale_px(TITLE_H);
     SetWindowLongPtrW(h,GWLP_USERDATA,(LONG_PTR)p);
-    { RECT lr={0,0,390,0}; HDC dc=GetDC(h); HGDIOBJ of=SelectObject(dc,fBody); DrawTextW(dc,label,-1,&lr,DT_CALCRECT|DT_WORDBREAK); SelectObject(dc,of); ReleaseDC(h,dc); lh=lr.bottom+4; if(lh<36) lh=36; }
-    st=CreateWindowW(L"STATIC",label,WS_CHILD|WS_VISIBLE,12,y,390,lh,h,NULL,hInst,NULL); SendMessageW(st,WM_SETFONT,(WPARAM)hFont,1); y+=lh+8;
-    if(p->items){ p->lb=CreateWindowExW(0,L"LISTBOX",NULL,WS_CHILD|WS_VISIBLE|WS_VSCROLL|LBS_NOTIFY|LBS_OWNERDRAWFIXED|LBS_HASSTRINGS|(p->multi?LBS_EXTENDEDSEL|LBS_MULTIPLESEL:0),12,y,390,170,h,NULL,hInst,NULL);
-        SendMessageW(p->lb,WM_SETFONT,(WPARAM)hFont,1); for(i=0;i<p->nitems;i++) SendMessageW(p->lb,LB_ADDSTRING,0,(LPARAM)W(p->items[i])); if(!p->multi && p->nitems) SendMessageW(p->lb,LB_SETCURSEL,0,0); y+=178; }
-    if(with_edit){ p->ed=CreateWindowExW(0,L"EDIT",init?init:L"",WS_CHILD|WS_VISIBLE|WS_TABSTOP|ES_AUTOHSCROLL,13,y+3,388,22,h,NULL,hInst,NULL); SendMessageW(p->ed,WM_SETFONT,(WPARAM)hFont,1); y+=32; }
-    ok=CreateWindowW(L"BUTTON",L"确定",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_OWNERDRAW,p->no_cancel?316:220,y,86,28,h,(HMENU)IDOK,hInst,NULL);
-    if(!p->no_cancel) ca=CreateWindowW(L"BUTTON",L"取消",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_OWNERDRAW,316,y,86,28,h,(HMENU)IDCANCEL,hInst,NULL);
+    { RECT lr={0,0,scale_px(390),0}; HDC dc=GetDC(h); HGDIOBJ of=SelectObject(dc,fBody); DrawTextW(dc,label,-1,&lr,DT_CALCRECT|DT_WORDBREAK); SelectObject(dc,of); ReleaseDC(h,dc); lh=lr.bottom+scale_px(4); if(lh<scale_px(36)) lh=scale_px(36); }
+    st=CreateWindowW(L"STATIC",label,WS_CHILD|WS_VISIBLE,scale_px(12),y,scale_px(390),lh,h,NULL,hInst,NULL); SendMessageW(st,WM_SETFONT,(WPARAM)hFont,1); y+=lh+scale_px(8);
+    if(p->items){ p->lb=CreateWindowExW(0,L"LISTBOX",NULL,WS_CHILD|WS_VISIBLE|WS_VSCROLL|LBS_NOTIFY|LBS_OWNERDRAWFIXED|LBS_HASSTRINGS|(p->multi?LBS_EXTENDEDSEL|LBS_MULTIPLESEL:0),scale_px(12),y,scale_px(390),scale_px(170),h,NULL,hInst,NULL);
+        SendMessageW(p->lb,WM_SETFONT,(WPARAM)hFont,1); for(i=0;i<p->nitems;i++) SendMessageW(p->lb,LB_ADDSTRING,0,(LPARAM)W(p->items[i])); if(!p->multi && p->nitems) SendMessageW(p->lb,LB_SETCURSEL,0,0); y+=scale_px(178); }
+    if(with_edit){ p->ed=CreateWindowExW(0,L"EDIT",init?init:L"",WS_CHILD|WS_VISIBLE|WS_TABSTOP|ES_AUTOHSCROLL,scale_px(13),y+scale_px(3),scale_px(388),scale_px(22),h,NULL,hInst,NULL); SendMessageW(p->ed,WM_SETFONT,(WPARAM)hFont,1); y+=scale_px(32); }
+    ok=CreateWindowW(L"BUTTON",L"确定",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_OWNERDRAW,p->no_cancel?scale_px(316):scale_px(220),y,scale_px(86),scale_px(28),h,(HMENU)IDOK,hInst,NULL);
+    if(!p->no_cancel) ca=CreateWindowW(L"BUTTON",L"取消",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_OWNERDRAW,scale_px(316),y,scale_px(86),scale_px(28),h,(HMENU)IDCANCEL,hInst,NULL);
     SendMessageW(ok,WM_SETFONT,(WPARAM)hFont,1); if(ca) SendMessageW(ca,WM_SETFONT,(WPARAM)hFont,1);
-    SetWindowPos(h,NULL,0,0,420,y+44,SWP_NOMOVE|SWP_NOZORDER);
+    SetWindowPos(h,NULL,0,0,scale_px(420),y+scale_px(44),SWP_NOMOVE|SWP_NOZORDER);
     EnableWindow(hMain,FALSE); ShowWindow(h,SW_SHOW); if(p->ed) SetFocus(p->ed); else if(p->lb) SetFocus(p->lb); else SetFocus(ok);
     while(!p->done && GetMessageW(&msg,NULL,0,0)){ if(!IsDialogMessageW(h,&msg)){ TranslateMessage(&msg); DispatchMessageW(&msg);} }
     EnableWindow(hMain,TRUE); SetForegroundWindow(hMain); if(prev_focus && IsWindow(prev_focus)) SetFocus(prev_focus); /* keyboard focus survives the dialog */
@@ -590,14 +591,14 @@ static void send_file_dlg(void){
 static void draw_shield(HDC dc, int x, int y, int s){ POINT p[6]={{x,y+s/6},{x+s/2,y},{x+s,y+s/6},{x+s,y+s/2},{x+s/2,y+s},{x,y+s/2}}; HBRUSH br=CreateSolidBrush(SHIELD_FILL); HPEN pn=CreatePen(PS_SOLID,1,SHIELD_EDGE); HGDIOBJ ob=SelectObject(dc,br), op=SelectObject(dc,pn); Polygon(dc,p,6); SelectObject(dc,ob); SelectObject(dc,op); DeleteObject(br); DeleteObject(pn); }
 static void online_dot(HDC dc, RECT av, COLORREF ring){ RECT o={av.right-scale_px(9),av.bottom-scale_px(9),av.right+scale_px(3),av.bottom+scale_px(3)}; HBRUSH br=CreateSolidBrush(T.online); HPEN pn=CreatePen(PS_SOLID,2,ring); HGDIOBJ ob=SelectObject(dc,br), op=SelectObject(dc,pn); Ellipse(dc,o.left,o.top,o.right,o.bottom); SelectObject(dc,ob); SelectObject(dc,op); DeleteObject(br); DeleteObject(pn); }
 static RECT hdr_avatar_rect(RECT c){ RECT a; a.left=c.left+scale_px(10); a.top=(c.top+c.bottom)/2-scale_px(17); a.right=a.left+scale_px(34); a.bottom=a.top+scale_px(34); return a; }
-static void draw_header(DRAWITEMSTRUCT *d){ RECT c=d->rcItem, av, t; HDC dc=d->hDC; HBRUSH bg=CreateSolidBrush(P.header); SIZE sz; int x, lh;
+static void draw_header(DRAWITEMSTRUCT *d){ RECT c=d->rcItem, av, t; HDC dc=d->hDC; HBRUSH bg=CreateSolidBrush(P.header); SIZE sz; int x, lh, lb;
     FillRect(dc,&c,bg); DeleteObject(bg); if(!hdr_on) return; SetBkMode(dc,TRANSPARENT);
     av=hdr_avatar_rect(c); fill_round(dc,av,scale_px(8),P.av[hdr_av],P.av[hdr_av]); SelectObject(dc,fBodyStrong); SetTextColor(dc,RGB(255,255,255)); DrawTextW(dc,hdr_ini,-1,&av,DT_CENTER|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX);
     if(hdr_online) online_dot(dc,av,P.header);
-    x=av.right+scale_px(10); lh=line_h(dc,fSubtitle);
-    t.left=x; t.top=c.top+scale_px(5); t.right=c.right-scale_px(8); t.bottom=t.top+lh; SelectObject(dc,fBodyStrong); SetTextColor(dc,T.text_primary); DrawTextW(dc,hdr_name,-1,&t,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX|DT_END_ELLIPSIS);
+    x=av.right+scale_px(10); lh=line_h(dc,fBodyStrong); lb=line_h(dc,fBody);   /* name + subtitle centred as a block (no clipping at 144 DPI) */
+    t.left=x; t.top=c.top+((c.bottom-c.top)-lh-lb)/2; if(t.top<c.top+scale_px(2)) t.top=c.top+scale_px(2); t.right=c.right-scale_px(8); t.bottom=t.top+lh; SelectObject(dc,fBodyStrong); SetTextColor(dc,T.text_primary); DrawTextW(dc,hdr_name,-1,&t,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX|DT_END_ELLIPSIS);
     GetTextExtentPoint32W(dc,hdr_name,(int)wcslen(hdr_name),&sz); if(hdr_trust==1) draw_shield(dc,x+sz.cx+scale_px(6),(t.top+t.bottom)/2-scale_px(7),scale_px(14));
-    t.top=t.bottom; t.bottom=c.bottom-scale_px(4); SelectObject(dc,fBody);
+    t.top=t.bottom; t.bottom=t.top+lb; SelectObject(dc,fBody);
     if(!hdr_group && hdr_via){ draw_cloud(dc,t.left,(t.top+t.bottom)/2,T.text_secondary); t.left+=scale_px(16); } /* relay peer: cloud before 在线 (WinUI) */
     if(!hdr_group){ const wchar_t *on=hdr_online?L"在线":L"离线"; SetTextColor(dc,hdr_online?(theme_mode==2?HX(0x8EE07F):T.online):T.text_secondary); /* onlinetext (xp.json): the dot green #6CCB5F is Lc 57 as 14px text on the dark header */ DrawTextW(dc,on,-1,&t,DT_LEFT|DT_VCENTER|DT_SINGLELINE); GetTextExtentPoint32W(dc,on,(int)wcslen(on),&sz); t.left+=sz.cx; }
     SetTextColor(dc,T.text_secondary); DrawTextW(dc,hdr_sub,-1,&t,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX|DT_END_ELLIPSIS); }
@@ -619,7 +620,7 @@ static void draw_icon_button(DRAWITEMSTRUCT *d){ RECT r=d->rcItem; HDC dc=d->hDC
     else { int ix=r.left+scale_px(10); RECT tr=r; GetWindowTextW(d->hwndItem,t,64);
         if(id==IDC_SEND){ POINT p[4]={{ix,cy-6*u},{ix+13*u,cy},{ix,cy+6*u},{ix+3*u,cy}}; HBRUSH pb=CreateSolidBrush(P.accenttext); SelectObject(dc,pb); Polygon(dc,p,4); SelectObject(dc,GetStockObject(NULL_BRUSH)); DeleteObject(pb); }
         else { Ellipse(dc,ix+1*u,cy-7*u,ix+7*u,cy-1*u); Arc(dc,ix-2*u,cy,ix+10*u,cy+12*u,ix+10*u,cy+6*u,ix-2*u,cy+6*u); MoveToEx(dc,ix+11*u,cy-1*u,NULL); LineTo(dc,ix+11*u,cy+6*u); MoveToEx(dc,ix+8*u,cy+3*u,NULL); LineTo(dc,ix+15*u,cy+3*u); }
-        tr.left=ix+scale_px(18); SelectObject(dc,fBody); SetTextColor(dc,T.text_primary); DrawTextW(dc,t,-1,&tr,DT_LEFT|DT_VCENTER|DT_SINGLELINE|((d->itemState&ODS_NOACCEL)?DT_HIDEPREFIX:0)); }
+        tr.left=ix+18*u; /* same unit as the icon (u rounds up at 144 DPI) */ SelectObject(dc,fBody); SetTextColor(dc,T.text_primary); DrawTextW(dc,t,-1,&tr,DT_LEFT|DT_VCENTER|DT_SINGLELINE|((d->itemState&ODS_NOACCEL)?DT_HIDEPREFIX:0)); }
     SelectObject(dc,op); SelectObject(dc,ob); DeleteObject(pn);
     if((d->itemState&ODS_FOCUS) && id==IDC_SEND){ RECT f=r; InflateRect(&f,-4,-4); SetTextColor(dc,T.text_primary); SetBkColor(dc,T.card_bg); DrawFocusRect(dc,&f); } }
 /* LSM_UI_TEST: decorative icon rects (online dots, shields), relative to the window's top-left, for the colour audit's ignore list */
@@ -654,20 +655,24 @@ static LRESULT CALLBACK InputProc(HWND h, UINT m, WPARAM w, LPARAM l){ if(m==WM_
     if(m==WM_SETFOCUS||m==WM_KILLFOCUS){ RECT r; InvalidateRect(h,NULL,TRUE); GetWindowRect(h,&r); MapWindowPoints(NULL,hMain,(POINT*)&r,2); InflateRect(&r,2,2); InvalidateRect(hMain,&r,FALSE); }
     if(m==WM_KEYDOWN && w==VK_TAB){ SetFocus(GetNextDlgTabItem(hMain,h,(GetKeyState(VK_SHIFT)&0x8000)?TRUE:FALSE)); return 0; } if(m==WM_CHAR && w=='\t') return 0; if(m==WM_KEYDOWN && w==VK_RETURN && !(GetKeyState(VK_SHIFT)&0x8000)){ send_current(); return 0; } if(m==WM_CHAR && w=='\r' && !(GetKeyState(VK_SHIFT)&0x8000)) return 0; return CallWindowProcW(oldInputProc,h,m,w,l); }
 
-static void layout(int W_, int H_0){
-    int T0=MENUBAR_H, H_=H_0-T0, sb=26, lw=W_/3<260?W_/3:260, ih=64, bw=96, i, x=4;
+static void layout(int W_, int H_0){   /* every length scales with the DPI (S = scale_px): 96 DPI unchanged, 144 DPI = 150 % (X7) */
+#define S(v) scale_px(v)
+    int T0=S(MENUBAR_H), H_=H_0-T0, sb=S(26), lw=W_/3<S(260)?W_/3:S(260), i, x=S(4);
     for(i=0;i<5;i++){ wchar_t t[32]; RECT r={0,0,0,0}; HDC dc=GetDC(hMain); HGDIOBJ of=SelectObject(dc,fBody); GetWindowTextW(hMenuBtn[i],t,32); DrawTextW(dc,t,-1,&r,DT_CALCRECT|DT_SINGLELINE); SelectObject(dc,of); ReleaseDC(hMain,dc);
-        MoveWindow(hMenuBtn[i],x,2,r.right+20,T0-4,TRUE); x+=r.right+22; }
-    { int ph=34, hh=50, cb=56, top=T0+6, rx=lw+12, rw=W_-lw-18, bot=T0+H_-sb;
-      MoveWindow(hAdd,lw-64,top+5,66,24,TRUE);                      /* 联系人与群组 pane header (text painted in WM_PAINT) */
-      MoveWindow(hSearch,7,top+ph+1,lw-2,24,TRUE);
-      MoveWindow(hList,6,top+ph+32,lw,bot-6-(top+ph+32),TRUE);
-      MoveWindow(hTitle,rx,top,rw-44,hh,TRUE); MoveWindow(hHdrSearch,rx+rw-40,top+(hh-30)/2,32,30,TRUE);
-      MoveWindow(hChat,rx,top+hh+1,rw,bot-cb-(top+hh+1)-6,TRUE);
-      MoveWindow(hFile,rx,bot-cb+(cb-30)/2-3,30,30,TRUE);
-      MoveWindow(hInput,rx+36,bot-cb,rw-36-98,cb-6,TRUE);
-      MoveWindow(hSend,rx+rw-92,bot-cb+(cb-30)/2-3,92,30,TRUE);
-      MoveWindow(hStatus,0,bot,W_,sb,TRUE); (void)ih; (void)bw; if(hChatSb){ sb_place(hChat,hChatSb); sb_place(hList,hListSb); } } }
+        MoveWindow(hMenuBtn[i],x,S(2),r.right+S(20),T0-S(4),TRUE); x+=r.right+S(22); }
+    int hh=S(50); { HDC dc=GetDC(hMain); int need=line_h(dc,fBodyStrong)+line_h(dc,fBody)+S(12); ReleaseDC(hMain,dc); if(need>hh) hh=need; }   /* header fits name + subtitle at any DPI */
+    { int ph=S(34), cb=S(56), top=T0+S(6), rx=lw+S(12), rw=W_-lw-S(18), bot=T0+H_-sb;
+      MoveWindow(hAdd,lw-S(64),top+S(5),S(66),S(24),TRUE);                      /* 联系人与群组 pane header (text painted in WM_PAINT) */
+      MoveWindow(hSearch,S(7),top+ph+S(1),lw-S(2),S(24),TRUE);
+      MoveWindow(hList,S(6),top+ph+S(32),lw,bot-S(6)-(top+ph+S(32)),TRUE);
+      MoveWindow(hTitle,rx,top,rw-S(44),hh,TRUE); MoveWindow(hHdrSearch,rx+rw-S(40),top+(hh-S(30))/2,S(32),S(30),TRUE);
+      MoveWindow(hChat,rx,top+hh+S(1),rw,bot-cb-(top+hh+S(1))-S(6),TRUE);
+      MoveWindow(hFile,rx,bot-cb+(cb-S(30))/2-S(3),S(30),S(30),TRUE);
+      MoveWindow(hInput,rx+S(36),bot-cb,rw-S(36)-S(98),cb-S(6),TRUE);
+      MoveWindow(hSend,rx+rw-S(92),bot-cb+(cb-S(30))/2-S(3),S(92),S(30),TRUE);
+      MoveWindow(hStatus,0,bot,W_,sb,TRUE); if(hChatSb){ sb_place(hChat,hChatSb); sb_place(hList,hListSb); } }
+#undef S
+}
 static void open_menu(int i){ RECT r; GetWindowRect(hMenuBtn[i],&r); SendMessageW(hMenuBtn[i],BM_SETSTATE,TRUE,0);
     TrackPopupMenu(GetSubMenu(hMenuTree,i),TPM_LEFTALIGN|TPM_TOPALIGN|TPM_LEFTBUTTON,r.left,r.bottom,0,hMain,NULL); SendMessageW(hMenuBtn[i],BM_SETSTATE,FALSE,0); }
 
@@ -718,6 +723,12 @@ static void contact_menu(LPARAM l){ POINT pt; int s=-1, dm, cmd; HMENU pm;
     menu_bg(pm); cmd=TrackPopupMenu(pm,TPM_RIGHTBUTTON|TPM_RETURNCMD|TPM_NONOTIFY,pt.x,pt.y,0,hMain,NULL); DestroyMenu(pm);
     if(cmd==IDM_OPENCHAT) SetFocus(hInput); else if(cmd==IDM_COPYFP) copy_text(W(cur_conv+3)); else if(cmd) do_command(cmd); }
 
+/* LSM_UI_TEST_DROP=<path> (test only): once a chat is open, hand that path to the real WM_DROPFILES handler in a
+   shell-style HDROP (DROPFILES + wide path list), exactly what Explorer posts on a drag & drop (X8) */
+static void test_drop(HWND h){ static int done; wchar_t p[MAX_PATH]; DWORD n; HGLOBAL g; DROPFILES *df; if(done || !cur_conv[0]) return;
+    n=GetEnvironmentVariableW(L"LSM_UI_TEST_DROP",p,MAX_PATH); if(!n || n>=MAX_PATH) { done=1; return; } done=1;
+    g=GlobalAlloc(GMEM_MOVEABLE|GMEM_ZEROINIT,sizeof(DROPFILES)+(n+2)*sizeof(wchar_t)); if(!g) return; df=(DROPFILES*)GlobalLock(g); df->pFiles=sizeof(DROPFILES); df->fWide=TRUE;
+    memcpy((char*)df+sizeof(DROPFILES),p,n*sizeof(wchar_t)); GlobalUnlock(g); SendMessageW(h,WM_DROPFILES,(WPARAM)g,0); }
 static LRESULT CALLBACK MainProc(HWND h, UINT m, WPARAM w, LPARAM l){
     switch(m){
     case WM_CREATE: {
@@ -749,7 +760,7 @@ static LRESULT CALLBACK MainProc(HWND h, UINT m, WPARAM w, LPARAM l){
     case WM_SIZE: if(w!=SIZE_MINIMIZED){ if(hTip) SendMessageW(hTip,TTM_POP,0,0); layout(LOWORD(l),HIWORD(l)); if(C) refresh_chat(); fit_vscroll(hInput); InvalidateRect(h,NULL,TRUE); } else ShowWindow(h,SW_HIDE); return 0;
     case WM_GETMINMAXINFO: ((MINMAXINFO*)l)->ptMinTrackSize.x=640; ((MINMAXINFO*)l)->ptMinTrackSize.y=420; return 0;
     case WM_SETFOCUS: SetFocus(hList); return 0; /* keyboard users land in the contact list */
-    case WM_TIMER: if(!tray_added) tray_add(); poll_events(); ui_icons_dump(); return 0;
+    case WM_TIMER: if(!tray_added) tray_add(); poll_events(); ui_icons_dump(); test_drop(h); return 0;
     /* system colours only: readable in any theme incl. high-contrast */
     case WM_CTLCOLORSTATIC: case WM_CTLCOLORBTN: case WM_CTLCOLORDLG: return ctl_color((HDC)w,(HWND)l,0);
     case WM_CTLCOLOREDIT: return ctl_color((HDC)w,(HWND)l,1);
@@ -759,7 +770,7 @@ static LRESULT CALLBACK MainProc(HWND h, UINT m, WPARAM w, LPARAM l){
     case WM_DRAWITEM: { DRAWITEMSTRUCT *d=(DRAWITEMSTRUCT*)l; if(d->CtlType==ODT_MENU){ draw_menu(d); return TRUE; } if(d->CtlType==ODT_BUTTON && d->CtlID>=IDC_MENUBTN && d->CtlID<IDC_MENUBTN+5){ draw_menubtn(d); return TRUE; } if(d->CtlType==ODT_STATIC && d->CtlID==IDC_TITLE){ draw_header(d); return TRUE; } if(d->CtlType==ODT_STATIC && d->CtlID==IDC_STATUS){ draw_status(d); return TRUE; } if(d->CtlType==ODT_BUTTON && (d->CtlID==IDC_SEND||d->CtlID==IDC_FILE||d->CtlID==IDC_ADD||d->CtlID==IDC_HDRSEARCH)){ draw_icon_button(d); return TRUE; } if(d->CtlType==ODT_LISTBOX && d->CtlID==IDC_CHAT){ draw_chat_item(d); return TRUE; } if(d->CtlType==ODT_LISTBOX && d->CtlID==IDC_LIST){ draw_conv_item(d); return TRUE; } if(d->CtlType==ODT_LISTBOX){ draw_list_item(d); return TRUE; } if(d->CtlType==ODT_BUTTON){ draw_button(d); return TRUE; } break; }
     case WM_PAINT: { PAINTSTRUCT ps; HDC dc=BeginPaint(h,&ps); { RECT lr, hb; GetWindowRect(hAdd,&lr); MapWindowPoints(NULL,h,(POINT*)&lr,2); lr.left=12; lr.right-=70; SetBkMode(dc,TRANSPARENT); SetTextColor(dc,T.text_primary); SelectObject(dc,fBodyStrong); DrawTextW(dc,L"联系人与群组",-1,&lr,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
           GetWindowRect(hTitle,&hb); MapWindowPoints(NULL,h,(POINT*)&hb,2); hb.right+=44; { HBRUSH b=CreateSolidBrush(P.header); FillRect(dc,&hb,b); DeleteObject(b); } { RECT f=hb; InflateRect(&f,1,1); f.bottom=hb.bottom+1; { HBRUSH dv=CreateSolidBrush(T.divider); FrameRect(dc,&f,dv); DeleteObject(dv); } } }
-        frame_child(h,dc,hList); frame_field(h,dc,hSearch); frame_child(h,dc,hChat); frame_field(h,dc,hInput); { RECT cr; HBRUSH dv=CreateSolidBrush(T.divider); GetClientRect(h,&cr); cr.top=MENUBAR_H-1; cr.bottom=MENUBAR_H; FillRect(dc,&cr,dv); DeleteObject(dv); } EndPaint(h,&ps); return 0; }
+        frame_child(h,dc,hList); frame_field(h,dc,hSearch); frame_child(h,dc,hChat); frame_field(h,dc,hInput); { RECT cr; HBRUSH dv=CreateSolidBrush(T.divider); GetClientRect(h,&cr); cr.top=scale_px(MENUBAR_H)-1; cr.bottom=scale_px(MENUBAR_H); FillRect(dc,&cr,dv); DeleteObject(dv); } EndPaint(h,&ps); return 0; }
     case WM_MENUCHAR: { HMENU mm=(HMENU)l; int i,n=GetMenuItemCount(mm); wchar_t ch=(wchar_t)towlower((wint_t)LOWORD(w)); /* mnemonics for owner-drawn items */
         for(i=0;i<n;i++){ MENUITEMINFOW ii; const wchar_t *t,*a; memset(&ii,0,sizeof ii); ii.cbSize=sizeof ii; ii.fMask=MIIM_DATA; if(!GetMenuItemInfoW(mm,i,TRUE,&ii)) continue; t=(const wchar_t*)ii.dwItemData; if(!t) continue; a=wcschr(t,L'&'); if(a && towlower(a[1])==ch) return MAKELRESULT(i,MNC_EXECUTE); }
         return MAKELRESULT(0,MNC_IGNORE); }

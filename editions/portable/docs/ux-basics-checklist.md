@@ -45,7 +45,7 @@ stalonetray, xdotool) · **Xvfb** = tests/adw_basics.py (GTK 4, xdotool, app-rep
 | X9 | Message context menu | **FIXED** 7803449 | wine: menu window 246×71 appears, Esc closes it. Bug: owner was the owner-drawn LISTBOX → wine drew an empty 18 px menu (visible in old s12–s15 shots) |
 | X10 | Copy message text | PASS | wine: Ctrl+C on bubble → Ctrl+V in composer → peer receives the same text |
 | X11 | Tooltips | PASS | wine: tooltip window on hover over 发送 (shot xp-basics-tooltip) |
-| X12 | Single instance | **FAIL (wine)** | second start exits (mutex works) but the hidden window is not re-shown under wine; 465f3a5 posts IDM_SHOW to the running copy instead — still fails under wine, needs a real-Windows check |
+| X12 | Single instance | **FAIL (wine)**, real Windows: job `xp-windows-smoke` (ab980b1) | second start exits (mutex works) but the hidden window is not re-shown under wine; 465f3a5 posts IDM_SHOW to the running copy instead — still fails under wine, needs a real-Windows check |
 | X13 | Confirm destructive | PASS (CODE) | tmsg yes/cancel |
 | X17 | Balloon click → chat | CODE | balloon now shown once per session |
 | G1 | Esc closes dialog / popover | PASS | Xvfb: Ctrl+I details (dialogs 1→0), Ctrl+N popover (1→0) |
@@ -59,9 +59,11 @@ stalonetray, xdotool) · **Xvfb** = tests/adw_basics.py (GTK 4, xdotool, app-rep
 | G11 | Tooltips | PASS | Xvfb: tooltip surface appears on hover over send |
 | G12 | Single instance | PASS | Xvfb: second launch exits, the hidden window is presented again |
 | G13 | Confirm destructive | PASS (CODE) | confirm() AdwAlertDialog |
-| G17 | Notification click → chat | PARTIAL | raises the app, no per-chat target |
+| G17 | Notification click → chat | **FIXED** c636640 | Xvfb: message notification default action `app.open-conv(dm:<fp>)` called over D-Bus (as the desktop does on click) shows the hidden window and opens that chat (shot adw-basics-notification-open) |
 
-Remaining FAIL/PARTIAL/CODE: X12 (FAIL under wine), X7, G17 (PARTIAL), A12, X8, G8, W7/W8/W11–W13/W17, X13/G13/X17 (CODE).
+Online dot (all four): 2px ring in the colour behind the avatar — WinUI list bg / selected-row colour (4431585), GTK list / hover / selected row (ab980b1), XP sidebar / selected row (already), Android pane colour (already).
+
+Remaining FAIL/PARTIAL/CODE: X12 (FAIL under wine; Windows CI result pending), X7, A12, X8, G8, W7/W8/W11–W13/W17, X13/G13/X17 (CODE).
 
 ## Android (Compose, lan-secure-messenger-xp/android)
 

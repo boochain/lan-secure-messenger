@@ -66,15 +66,19 @@ A = peer("a", "王工", port + 2)
 exe_dir_txt = os.path.join(os.path.dirname(exe), "window.txt")
 if os.path.exists(exe_dir_txt): os.remove(exe_dir_txt)
 icons_file = os.path.join(env["WINEPREFIX"], "drive_c", data[3:], "ui_icons.txt")
-def start():
-    g = Proc(["wine", exe, "--data", data, "--name", "Bill", "--port", str(port), "--disco-port", str(port + 1), "--theme", theme, "--auto-trust"], dict(env, LSM_UI_TEST="1"))
+def start(extra=None):
+    g = Proc(["wine", exe, "--data", data, "--name", "Bill", "--port", str(port), "--disco-port", str(port + 1), "--theme", theme, "--auto-trust"], dict(env, LSM_UI_TEST="1", **(extra or {})))
     w = wait(lambda: (wins("局域网安全通讯 XP") or [None])[0], 40); return g, w
-g, wid = start(); check(bool(wid), "XP window appeared")
+dropf = "/tmp/xp-drop-测试文件.txt"; open(dropf, "w").write("drop test\n")
+g, wid = start({"LSM_UI_TEST_DROP": "Z:" + dropf.replace("/", "\\")}); check(bool(wid), "XP window appeared")
 xdo("windowmove", wid, "20", "20"); xdo("windowsize", wid, "1024", "700"); time.sleep(2)
 A.cmd(f"add 127.0.0.1:{port}")
 xfp = wait(lambda: next((l.split()[1] for l in A.cmd("peers") if l.startswith("PEER") and "Bill" in l), None), 30); A.cmd(f"trust {xfp[:12]}")
 A.cmd(f"send {xfp[:12]} 基础检查：请回复。"); time.sleep(2)
 click(200, 160); time.sleep(1.5)
+# X8 drag & drop: the test hook hands the path to the real WM_DROPFILES handler once a chat is open -> the peer gets the file offer
+off = wait(lambda: next((l for l in A.lines if "xp-drop-测试文件.txt" in l), None), 20)
+check(bool(off), f"X8 a dropped file (WM_DROPFILES, shell HDROP) is offered to the open chat ({(off or '')[:70]!r})")
 # X1 Esc closes dialogs: Ctrl+N prompt, 设置 > 中转服务器 dialog
 xdo("key", "ctrl+n"); d = wait(lambda: wins("按 IP 添加"), 5); xdo("key", "Escape"); gone = wait(lambda: not wins("按 IP 添加"), 5)
 check(bool(d) and bool(gone), "X1 Esc closes the 按 IP 添加 dialog (Ctrl+N)")
@@ -106,6 +110,9 @@ check(bool(wait(lambda: any("\tin\t" in l and "基础检查：请回复。" in l
 gg = geom(wid); base = tops(); xdo("mousemove", str(gg["X"] + 965), str(gg["Y"] + 640)); tt = wait(lambda: popups(base, 60, 12), 4); shot_tt = f"{out}/xp-basics-tooltip.png"
 subprocess.run(["import", "-window", "root", "-crop", f"{gg['WIDTH']}x{gg['HEIGHT']}+{gg['X']}+{gg['Y']}", "+repage", shot_tt], env=env)
 check(bool(tt), "X11 hovering 发送 shows a tooltip")
+# X13 destructive action confirmed: bubble menu 删除这条消息（仅本机）… asks first, Esc cancels
+click(400, 210, "3"); time.sleep(0.8); xdo("key", "d"); pr = wait(lambda: wins("^删除消息$"), 5); shot("xp-basics-delete-confirm"); xdo("key", "Escape"); prg = wait(lambda: not wins("^删除消息$"), 5)
+check(bool(pr) and bool(prg), "X13 删除这条消息 asks for confirmation (删除消息 prompt), Esc cancels")
 # X5 close: hides to the notification area when there is one (else exits); X12 a second start re-opens the running window
 xdo("windowclose", wid); time.sleep(2); hidden = not wins("局域网安全通讯 XP"); alive = g.p.poll() is None
 check(hidden and (alive or not tray_ok), f"X5 close hides the window and keeps running (hidden={hidden}, running={alive})" if alive else f"X5 close exits (no notification area; tray={tray_ok})")

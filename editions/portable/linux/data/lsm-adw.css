@@ -18,6 +18,9 @@ window, .sidebar-pane { background-color: @lsm_window; }
 .av0 { background-color: @lsm_avatar0; } .av1 { background-color: @lsm_avatar1; } .av2 { background-color: @lsm_avatar2; } .av3 { background-color: @lsm_avatar3; }
 .av4 { background-color: @lsm_avatar4; } .av5 { background-color: @lsm_avatar5; } .av6 { background-color: @lsm_avatar6; } .av7 { background-color: @lsm_avatar7; }
 .online-dot { background-color: @lsm_online; border-radius: 9999px; border: 2px solid @lsm_list; min-width: 6px; min-height: 6px; margin: 0 1px 1px 0; }
+/* the 2px ring is the colour behind the avatar: hovered / selected rows too (WhatsApp/Telegram style) */
+.navigation-sidebar > row:hover .online-dot { border-color: @lsm_rowhover; }
+.navigation-sidebar > row:selected .online-dot { border-color: @lsm_rowsel; }
 .status { padding: 8px 14px; color: @lsm_fg2; font-size: 12px; }
 .chat-title { font-weight: 700; color: @lsm_fg; }
 .chat-sub { color: @lsm_fg2; font-size: 13px; }
