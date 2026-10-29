@@ -80,6 +80,7 @@ static int64_t mono_ms(void){ /* GetTickCount64 is Vista+: extend 32-bit tick ou
     static DWORD last; static int64_t hi; static int init; DWORD t=GetTickCount();
     if(init && t<last) hi+=((int64_t)1<<32); init=1; last=t; return hi+t; }
 static int64_t wall_ms(void){FILETIME f; ULARGE_INTEGER u; GetSystemTimeAsFileTime(&f); u.LowPart=f.dwLowDateTime; u.HighPart=f.dwHighDateTime; return (int64_t)((u.QuadPart-116444736000000000ULL)/10000);} 
+static void *xmalloc(size_t n); /* defined with the allocation helpers below */
 static wchar_t *widen(const char *s){int n=MultiByteToWideChar(CP_UTF8,0,s,-1,NULL,0); wchar_t *w=(wchar_t*)xmalloc(sizeof(wchar_t)*(n+1)); MultiByteToWideChar(CP_UTF8,0,s,-1,w,n); return w;}
 static FILE *ufopen(const char *p, const char *mode){wchar_t *w=widen(p), *m=widen(mode); FILE *f=_wfopen(w,m); free(w); free(m); return f;}
 static int uremove(const char *p){wchar_t *w=widen(p); int r=_wremove(w); free(w); return r;}
