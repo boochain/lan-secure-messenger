@@ -64,7 +64,7 @@ static int run_cmd(char *line){
     if(!strcmp(cmd,"quit")||!strcmp(cmd,"exit")) return 1;
     if(!strcmp(cmd,"help")){ help(); return 0; }
     if(!strcmp(cmd,"id")){ lsm_lock(C); outf("OK id %s %s port=%d version=%s\n",lsm_my_fp(C),lsm_my_name(C),lsm_listen_port(C),LSM_APP_VERSION); lsm_unlock(C); return 0; }
-    if(!strcmp(cmd,"peers")){ lsm_contact *k; int n,i; lsm_lock(C); n=lsm_contacts(C,&k); for(i=0;i<n;i++) outf("PEER %s\t%s\t%s\t%s\trtt=%d\t%s\n",k[i].fp,k[i].online?"online":"offline",k[i].trust==1?"trusted":k[i].trust==2?"blocked":"unknown",k[i].name,k[i].rtt_ms,k[i].addr); lsm_unlock(C); outf("OK peers %d\n",n); return 0; }
+    if(!strcmp(cmd,"peers")){ lsm_contact *k; int n,i; lsm_lock(C); n=lsm_contacts(C,&k); for(i=0;i<n;i++) outf("PEER %s\t%s\t%s\t%s\trtt=%d\t%s",k[i].fp,k[i].online?"online":"offline",k[i].trust==1?"trusted":k[i].trust==2?"blocked":"unknown",k[i].name,k[i].rtt_ms,k[i].addr), outf("%s",k[i].online?(k[i].via_relay?"\tvia=relay\n":"\tvia=direct\n"):"\n"); lsm_unlock(C); outf("OK peers %d\n",n); return 0; }
     if(!strcmp(cmd,"add")){ if(lsm_add_addr(C,s,err)) outf("ERR %s\n",err); else outf("OK add %s\n",s); return 0; }
     if(!strcmp(cmd,"trust")||!strcmp(cmd,"untrust")||!strcmp(cmd,"block")){ if(peer_of(s,fp)){ outf("ERR no peer matches '%s'\n",s); return 0; } lsm_set_trust(C,fp,cmd[0]=='t'?1:cmd[0]=='b'?2:0,err); outf("OK %s %s\n",cmd,fp); return 0; }
     if(!strcmp(cmd,"send")||!strcmp(cmd,"sendgroup")){ char *who=next_tok(&s), id[40]; const char *cv; while(s&&*s==' ') s++; if(!who||!(cv=conv_of(who,buf))){ outf("ERR unknown target\n"); return 0; }
@@ -90,9 +90,14 @@ static int run_cmd(char *line){
     if(!strcmp(cmd,"initials")){ char o[8]; lsm_initials(s?s:"",o); outf("OK initials %s\n",o); return 0; }
     if(!strcmp(cmd,"delete")){ char *id=next_tok(&s); if(!id){ outf("ERR usage: delete <msg-id>\n"); return 0; } outf(lsm_delete_message(C,id)?"ERR not found\n":"OK delete\n"); return 0; }
     if(!strcmp(cmd,"read")){ const char *cv=conv_of(s,buf); if(!cv){ outf("ERR unknown target\n"); return 0; } outf("OK read %d\n",lsm_mark_read(C,cv)); return 0; }
-    if(!strcmp(cmd,"transfers")){ lsm_transfer *t; int n,i; char u[37]; lsm_lock(C); n=lsm_transfers(C,&t); for(i=0;i<n;i++){ lsm_uuid_str(t[i].tid,u); outf("XFER %s\t%s\t%s\t%llu/%llu\t%s\t%s\t%s\n",u,t[i].out?"out":"in",TST[t[i].state],(unsigned long long)t[i].transferred,(unsigned long long)t[i].size,t[i].name,t[i].path,t[i].error); } lsm_unlock(C); outf("OK transfers %d\n",n); return 0; }
+    if(!strcmp(cmd,"transfers")){ lsm_transfer *t; int n,i; char u[37]; lsm_lock(C); n=lsm_transfers(C,&t); for(i=0;i<n;i++){ lsm_uuid_str(t[i].tid,u); outf("XFER %s\t%s\t%s\t%llu/%llu\t%s\t%s\t%s\tresumed=%llu\n",u,t[i].out?"out":"in",TST[t[i].state],(unsigned long long)t[i].transferred,(unsigned long long)t[i].size,t[i].name,t[i].path,t[i].error,(unsigned long long)t[i].resumed_from); } lsm_unlock(C); outf("OK transfers %d\n",n); return 0; }
     if(!strcmp(cmd,"name")){ lsm_set_name(C,s); outf("OK name\n"); return 0; }
     if(!strcmp(cmd,"cancel")){ if(lsm_transfer_cancel(C,s,err)) outf("ERR %s\n",err); else outf("OK cancel\n"); return 0; }
+    if(!strcmp(cmd,"relay")){ /* relay <host> <port> <passphrase> | relay off | relay status */
+        char *a=next_tok(&s), *pt=next_tok(&s), host[256], det[256]; int en, port, hp=0;
+        if(a && !strcmp(a,"off")){ lsm_relay_set(C,0,NULL,0,NULL,err); outf("OK relay off\n"); return 0; }
+        if(a && strcmp(a,"status") && pt){ while(s&&*s==' ') s++; if(lsm_relay_set(C,1,a,atoi(pt),s?s:"",err)) outf("ERR %s\n",err); else outf("OK relay %s:%d\n",a,atoi(pt)); return 0; }
+        lsm_relay_get(C,&en,host,sizeof host,&port,&hp); lsm_lock(C); { const char *st=lsm_relay_status(C,det,sizeof det); outf("OK relay %s %s enabled=%d server=%s:%d peers=%d passphrase=%s\n",st,det[0]?det:"-",en,host,port,lsm_relay_peers(C),hp?"set":"none"); } lsm_unlock(C); return 0; }
     if(!strcmp(cmd,"drop-links")){ outf("OK dropped %d\n",lsm_drop_links(C)); return 0; }
     if(!strcmp(cmd,"sleep")){ sleep_ms(atoi(s)); outf("OK sleep\n"); return 0; }
     if(!strcmp(cmd,"firewall-setup")){ char rep[2048], exe[1024]="";

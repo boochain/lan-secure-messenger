@@ -55,7 +55,8 @@ fun Home(st: AppState, open: (String) -> Unit) {
                 IconButton({ searching = false; q = "" }) { Ic(R.drawable.ms_back, "关闭搜索", p.fg) }
                 SearchField(q, { q = it }, "搜索联系人和群组", Modifier.weight(1f))
             } else {
-                Text(when (tab) { 1 -> "群组"; 2 -> "文件传输"; 3 -> "设置"; else -> "局域网安全通讯" }, style = MaterialTheme.typography.titleLarge, color = p.fg, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (tab == 3 && dlg == "relay") IconButton({ dlg = "" }) { Ic(R.drawable.ms_back, "返回", p.fg) }
+                Text(if (tab == 3 && dlg == "relay") "中转服务器（可选）" else when (tab) { 1 -> "群组"; 2 -> "文件传输"; 3 -> "设置"; else -> "局域网安全通讯" }, style = MaterialTheme.typography.titleLarge, color = p.fg, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (tab <= 1) IconButton({ searching = true }) { Ic(R.drawable.ms_search, "搜索", p.fg) }
             }
             Box {
@@ -97,7 +98,7 @@ fun Home(st: AppState, open: (String) -> Unit) {
                     else Fab(R.drawable.ms_groups, "创建群组", "创建群组", Modifier.align(Alignment.BottomEnd)) { dlg = "group" }
                 }
                 2 -> Transfers(st)
-                else -> Settings(st) { dlg = it }
+                else -> if (dlg == "relay") RelayScreen(st) { dlg = "" } else Settings(st) { dlg = it }
             }
         }
         HorizontalDivider(thickness = 1.dp, color = p.divider)   // mockup: navbar border-top 1px divider
@@ -105,7 +106,7 @@ fun Home(st: AppState, open: (String) -> Unit) {
             val items = listOf(Triple("聊天", R.drawable.ms_chats, R.drawable.ms_chats_fill), Triple("群组", R.drawable.ms_groups, R.drawable.ms_groups_fill),
                 Triple("传输", R.drawable.ms_transfers, R.drawable.ms_transfers_fill), Triple("设置", R.drawable.ms_settings, R.drawable.ms_settings_fill))
             items.forEachIndexed { i, (label, ic, icOn) ->
-                NavigationBarItem(selected = tab == i, onClick = { tab = i; searching = false; q = "" }, label = { Text(label, fontWeight = if (tab == i) FontWeight.SemiBold else FontWeight.Medium) },
+                NavigationBarItem(selected = tab == i, onClick = { tab = i; searching = false; q = ""; if (dlg == "relay") dlg = "" }, label = { Text(label, fontWeight = if (tab == i) FontWeight.SemiBold else FontWeight.Medium) },
                     icon = { val n = when (i) { 0 -> totalUnread; 1 -> convs.filter { it.group }.sumOf { it.unread }; 2 -> st.transfers.count { it.state == "active" || it.state == "offered" }; else -> 0 }
                         if (n > 0) BadgedBox(badge = { Badge(containerColor = p.badge, contentColor = p.badgeFg) { Text("$n") } }) { Ic(if (tab == i) icOn else ic, null) } else Ic(if (tab == i) icOn else ic, null) },
                     colors = NavigationBarItemDefaults.colors(selectedIconColor = p.onSecCont, selectedTextColor = p.fg, indicatorColor = p.secCont, unselectedIconColor = p.fg2, unselectedTextColor = p.fg2))
@@ -121,6 +122,17 @@ fun Home(st: AppState, open: (String) -> Unit) {
                 Text(pin, style = MaterialTheme.typography.displayMedium, fontFamily = FontFamily.Monospace, letterSpacing = 6.sp, color = p.fg)
                 Spacer(Modifier.height(8.dp)); Text("请让对方在“输入 PIN 配对”中输入（5 分钟内有效）。") } }, confirmButton = { TextButton({ dlg = "" }) { Text("好") } }) }
         "about" -> LsmAlertDialog(onDismissRequest = { dlg = "" }, title = { Text("关于") }, text = { Text("局域网安全通讯 Android 版 ${st.me.version}\n\n与 Windows v0.5、XP 版和 Linux 版完全互通（协议 v5）：Noise_XX_25519_ChaChaPoly_BLAKE2s 加密、自动发现、按 IP 添加、PIN 配对、群组、文件传输、送达/已读回执。\n\n本机端口 TCP ${st.me.port}") }, confirmButton = { TextButton({ dlg = "" }) { Text("好") } })
+    }
+}
+
+/** small 经服务器 chip (icon + text) for relay peers: list row and chat header */
+@Composable
+fun ViaBadge(modifier: Modifier = Modifier) {
+    val p = LocalPalette.current
+    Row(modifier.clip(RoundedCornerShape(8.dp)).background(p.chip).padding(horizontal = 6.dp, vertical = 1.dp).semantics { contentDescription = "经服务器中转" },
+        verticalAlignment = Alignment.CenterVertically) {
+        Ic(R.drawable.ms_via_server, null, p.chipFg, 14.dp); Spacer(Modifier.width(3.dp))
+        Text("经服务器", fontSize = 12.sp, lineHeight = 16.sp, color = p.chipFg, maxLines = 1)
     }
 }
 
@@ -142,7 +154,7 @@ fun ConnBanner(st: AppState) {
         st.error.isNotEmpty() -> false to "启动失败：" + st.error
         !st.running -> false to "正在启动…"
         net == null -> false to "未连接局域网 · 连上 Wi-Fi 后会自动发现联系人"
-        else -> true to "已连接 · 局域网 $net · ${st.contacts.size} 位联系人"
+        else -> true to "已连接 · 局域网 $net" + (if (st.relay.enabled && st.relay.state == "online") " · 中转服务器" else "") + " · ${st.contacts.size} 位联系人"
     }
     Row(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(p.chip).padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically) {
@@ -165,7 +177,7 @@ fun ConvRow(c: Conv, click: () -> Unit) {
                 Text(c.name, fontSize = 16.sp, lineHeight = 24.sp, letterSpacing = .15.sp, fontWeight = if (unread) FontWeight.Bold else FontWeight.Normal, color = p.fg,
                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
                 if (c.trusted) Ic(R.drawable.ms_trusted, "已验证身份", p.online, 16.dp, Modifier.padding(start = 4.dp))
-                if (c.via) Ic(R.drawable.ms_via_server, "经服务器中转", p.fg2, 16.dp, Modifier.padding(start = 4.dp))
+                if (c.via) ViaBadge(Modifier.padding(start = 6.dp))
               }
                 Spacer(Modifier.width(8.dp))
                 if (m != null) Text(listTime(m.ts), fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = .4.sp, color = if (unread) p.accent else p.fg2, fontWeight = if (unread) FontWeight.Bold else FontWeight.Normal)
@@ -211,8 +223,11 @@ fun Transfers(st: AppState) {
                 Box(Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)).background(p.tile), contentAlignment = Alignment.Center) { Ic(fileIcon(t.name), null, p.tileFg) }
                 Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
                     Text(t.name, fontSize = 16.sp, lineHeight = 24.sp, color = p.fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text((if (t.out) "发送 · " else "接收 · ") + humanSize(t.size) + " · " + xferZh(t.state) + (if (t.state == "active" && t.size > 0) " ${t.done * 100 / t.size}%" else "") +
-                        (if (t.error.isNotEmpty()) " · " + errZh(t.error) else ""), style = MaterialTheme.typography.bodyMedium, color = p.fg2, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text((if (t.out) "发送 · " else "接收 · ") + humanSize(t.size) + " · " + (if (t.paused) t.error else xferZh(t.state) + (if (t.state == "active" && t.size > 0) " ${t.done * 100 / t.size}%" else "") +
+                        (if (t.error.isNotEmpty()) " · " + errZh(t.error) else "")), style = MaterialTheme.typography.bodyMedium, color = p.fg2, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    // resumed transfer: where it continued from
+                    if (t.resumed > 0 && t.size > 0 && !t.paused) Text("从 ${t.resumed * 100 / t.size}%（${humanSize(t.resumed)}）处续传", style = MaterialTheme.typography.bodySmall, color = p.fg2)
+                    if (t.paused && t.size > 0) LinearProgressIndicator(progress = { t.done.toFloat() / t.size }, Modifier.fillMaxWidth().padding(top = 6.dp), color = p.fg2, trackColor = p.divider)
                     if (t.state == "active" && t.size > 0) LinearProgressIndicator(progress = { t.done.toFloat() / t.size }, Modifier.fillMaxWidth().padding(top = 6.dp), color = p.accent, trackColor = p.divider)
                 }
                 if (t.state == "active" || t.state == "offered") IconButton({ val e = Native.cancelTransfer(t.id); if (e.isNotEmpty()) Repo.toast.value = e; Repo.refresh() }) { Ic(R.drawable.ms_close, "取消", p.fg2) }
@@ -238,6 +253,7 @@ fun Settings(st: AppState, dlg: (String) -> Unit) {
         item { SettingRow(R.drawable.ms_lock, "生成 PIN（让对方输入）", "与新设备配对并互相信任") { dlg("pin") } }
         item { SettingRow(R.drawable.ms_add_contact, "按 IP 添加", "不在同一网段时手动添加") { dlg("add") } }
         item { SettingRow(R.drawable.ms_groups, "创建群组", "从已信任的联系人中选择") { dlg("group") } }
+        item { SettingRow(R.drawable.ms_via_server, "中转服务器（可选）", if (st.relay.enabled) relayStateZh(st.relay.state) + (if (st.relay.host.isNotEmpty()) " · ${st.relay.host}" else "") else "未启用 · 局域网直连优先") { dlg("relay") } }
         item { SettingRow(R.drawable.ms_network, "本机端口", "TCP ${st.me.port}", null) }
         item { SettingRow(R.drawable.ms_open_folder, "接收的文件", st.me.downloads, null) }
         item { SettingRow(R.drawable.ms_info, "关于", "版本 ${st.me.version}") { dlg("about") } }

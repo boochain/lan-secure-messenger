@@ -18,6 +18,9 @@ window, .sidebar-pane { background-color: @lsm_window; }
 .av0 { background-color: @lsm_avatar0; } .av1 { background-color: @lsm_avatar1; } .av2 { background-color: @lsm_avatar2; } .av3 { background-color: @lsm_avatar3; }
 .av4 { background-color: @lsm_avatar4; } .av5 { background-color: @lsm_avatar5; } .av6 { background-color: @lsm_avatar6; } .av7 { background-color: @lsm_avatar7; }
 .online-dot { background-color: @lsm_online; border-radius: 9999px; border: 2px solid @lsm_list; min-width: 6px; min-height: 6px; margin: 0 1px 1px 0; }
+/* the 2px ring is the colour behind the avatar: hovered / selected rows too (WhatsApp/Telegram style) */
+.navigation-sidebar > row:hover .online-dot { border-color: @lsm_rowhover; }
+.navigation-sidebar > row:selected .online-dot { border-color: @lsm_rowsel; }
 .status { padding: 8px 14px; color: @lsm_fg2; font-size: 12px; }
 .chat-title { font-weight: 700; color: @lsm_fg; }
 .chat-sub { color: @lsm_fg2; font-size: 13px; }
@@ -52,7 +55,7 @@ button.send { min-width: 36px; min-height: 36px; }
 .sidebar-search { background-color: @lsm_list; border: 1px solid @lsm_fieldborder; color: @lsm_fg; }
 .sidebar-search text placeholder, .sidebar-search image { color: @lsm_fg2; opacity: 1; }
 .navigation-sidebar > row:selected .conv-preview, .navigation-sidebar > row:selected .conv-time { color: @lsm_fg; }
-.navigation-sidebar > row:selected .conv-time.unread { color: @lsm_accenttext; }
+.navigation-sidebar > row:selected .conv-time.unread { color: @lsm_fg; } /* bold keeps it "unread"; accent text was 3.8:1 on the light rowsel #CDCDD1 */
 .content-pane { border-left: 1px solid @lsm_divider; }
 .chat-sub, .conv-preview, .conv-time, .status, .placeholder, .hint { opacity: 1; }
 .sub { color: @lsm_fg; font-size: 13px; }
@@ -65,3 +68,10 @@ popover > contents { border: 1px solid @lsm_fieldborder; }
 /* entry placeholders (add-contact box, search) at the secondary token, not GTK's dimmed default */
 entry text placeholder { color: @lsm_fg2; opacity: 1; }
 popover entry { background-color: @lsm_field; border: 1px solid @lsm_fieldborder; color: @lsm_fg; }
+.relay-badge { background-color: @lsm_chip; color: @lsm_chipfg; border-radius: 6px; padding: 0 6px; font-size: 12px; font-weight: 600; }
+.lsm-relay .dim-label, .lsm-relay row .subtitle, .lsm-relay preferencesgroup .description, .lsm-relay .relay-status { color: @lsm_fg2; opacity: 1; }
+.lsm-relay entry text placeholder { color: @lsm_fg2; opacity: 1; }
+.lsm-relay .relay-status.live { color: @lsm_fg; } /* live status line: primary text (fg2 thin CJK strokes measured 4.2:1 under slight hinting) */
+progressbar.xfer > trough { min-height: 3px; background-color: @lsm_stroke; border-radius: 2px; margin-top: 4px; }
+progressbar.xfer > trough > progress { min-height: 3px; background-color: @lsm_accent; border-radius: 2px; }
+progressbar.xfer.paused > trough > progress { background-color: @lsm_fg2; }

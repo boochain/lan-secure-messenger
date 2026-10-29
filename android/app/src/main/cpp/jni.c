@@ -43,7 +43,7 @@ JNIEXPORT jstring JNICALL FN(state)(JNIEnv *e, jclass k){
     n=lsm_contacts(C,&c); nm=lsm_messages(C,&m);
     for(i=0;i<n;i++){ char conv[64]; int un=0; snprintf(conv,64,"dm:%s",c[i].fp); for(j=0;j<nm;j++) if(m[j].unread&&!strcmp(m[j].conv,conv)) un++;
         if(i) sb_s(&b,","); sb_s(&b,"{\"fp\":"); sb_js(&b,c[i].fp); sb_s(&b,",\"name\":"); sb_js(&b,c[i].name); sb_f(&b,",\"trust\":%d,\"online\":%s,\"rtt\":%d,\"unread\":%d,\"addr\":",c[i].trust,c[i].online?"true":"false",c[i].rtt_ms,un);
-        sb_js(&b,c[i].addr); sb_s(&b,",\"version\":"); sb_js(&b,c[i].app_version); sb_s(&b,"}"); }
+        sb_js(&b,c[i].addr); sb_s(&b,",\"version\":"); sb_js(&b,c[i].app_version); sb_f(&b,",\"via\":%s}",c[i].via_relay?"true":"false"); }
     sb_s(&b,"],\"groups\":["); n=lsm_groups(C,&g);
     for(i=0;i<n;i++){ char u[37], conv[64]; int un=0; lsm_uuid_str(g[i].id,u); snprintf(conv,64,"group:%s",u); for(j=0;j<nm;j++) if(m[j].unread&&!strcmp(m[j].conv,conv)) un++;
         if(i) sb_s(&b,","); sb_s(&b,"{\"id\":"); sb_js(&b,u); sb_s(&b,",\"name\":"); sb_js(&b,g[i].name); sb_f(&b,",\"epoch\":%llu,\"unread\":%d,\"members\":[",(unsigned long long)g[i].key_epoch,un);
@@ -51,8 +51,13 @@ JNIEXPORT jstring JNICALL FN(state)(JNIEnv *e, jclass k){
     sb_s(&b,"],\"transfers\":["); n=lsm_transfers(C,&t);
     for(i=0;i<n;i++){ char u[37]; lsm_uuid_str(t[i].tid,u); if(i) sb_s(&b,","); sb_s(&b,"{\"id\":"); sb_js(&b,u); sb_s(&b,",\"msg\":"); sb_js(&b,t[i].msg_id); sb_s(&b,",\"name\":"); sb_js(&b,t[i].name);
         sb_f(&b,",\"out\":%s,\"size\":%llu,\"done\":%llu,\"state\":\"%s\",\"path\":",t[i].out?"true":"false",(unsigned long long)t[i].size,(unsigned long long)t[i].transferred,TS[t[i].state]); sb_js(&b,t[i].path);
-        sb_s(&b,",\"error\":"); sb_js(&b,t[i].error); sb_s(&b,"}"); }
-    sb_s(&b,"]}"); lsm_unlock(C); r=JU(e,b.p); free(b.p); return r; }
+        sb_s(&b,",\"error\":"); sb_js(&b,t[i].error); sb_f(&b,",\"resumed\":%llu}",(unsigned long long)t[i].resumed_from); }
+    /* relay server (optional): the passphrase is write-only, only has_pass is reported */
+    { int en=0, port=0, hp=0; char host[256]="", det[256]=""; const char *rs;
+      lsm_unlock(C); lsm_relay_get(C,&en,host,sizeof host,&port,&hp); lsm_lock(C); rs=lsm_relay_status(C,det,sizeof det);
+      sb_f(&b,"],\"relay\":{\"enabled\":%s,\"port\":%d,\"has_pass\":%s,\"peers\":%d,\"state\":",en?"true":"false",port,hp?"true":"false",lsm_relay_peers(C)); sb_js(&b,rs);
+      sb_s(&b,",\"host\":"); sb_js(&b,host); sb_s(&b,",\"detail\":"); sb_js(&b,det); sb_s(&b,"}"); }
+    sb_s(&b,"}"); lsm_unlock(C); r=JU(e,b.p); free(b.p); return r; }
 
 JNIEXPORT jstring JNICALL FN(messages)(JNIEnv *e, jclass k, jstring conv){
     sb b={0}; lsm_msg *m; int n,i,first=1; char *cv=U(e,conv); jstring r; (void)k; if(!C){ free(cv); return J(e,"[]"); }
@@ -78,4 +83,7 @@ JNIEXPORT jstring JNICALL FN(groupLeave)(JNIEnv *e, jclass k, jstring gid){ char
 JNIEXPORT jboolean JNICALL FN(deleteMessage)(JNIEnv *e, jclass k, jstring id){ char *s=U(e,id); int rc=C?lsm_delete_message(C,s):-1; (void)k; free(s); return rc==0?JNI_TRUE:JNI_FALSE; }
 JNIEXPORT void JNICALL FN(markRead)(JNIEnv *e, jclass k, jstring conv){ char *c=U(e,conv); (void)k; if(C) lsm_mark_read(C,c); free(c); }
 JNIEXPORT void JNICALL FN(setName)(JNIEnv *e, jclass k, jstring n){ char *s=U(e,n); (void)k; if(C) lsm_set_name(C,s); free(s); }
+/* pass == null keeps the stored passphrase, "" clears it (write-only: there is no getter) */
+JNIEXPORT jstring JNICALL FN(relaySet)(JNIEnv *e, jclass k, jboolean on, jstring host, jint port, jstring pass){ char *h=U(e,host), *pw=pass?U(e,pass):NULL, err[256]=""; int rc=C?lsm_relay_set(C,on?1:0,h,port,pw,err):1; (void)k;
+    free(h); if(pw){ memset(pw,0,strlen(pw)); free(pw); } return J(e,rc?(err[0]?err:"failed"):""); }
 JNIEXPORT jstring JNICALL FN(cancelTransfer)(JNIEnv *e, jclass k, jstring tid){ char *s=U(e,tid), err[256]=""; int rc=C?lsm_transfer_cancel(C,s,err):1; (void)k; free(s); return J(e,rc?(err[0]?err:"failed"):""); }
