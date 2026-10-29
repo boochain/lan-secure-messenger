@@ -97,6 +97,14 @@ impl LinkReader {
         wire::decode(&b)
     }
 
+    /// Like `recv`, but a frame that authenticates yet does not decode (a newer peer's frame type, or a
+    /// malformed body) is returned as `Ok(None)` instead of an error, so the link stays up -- the C core
+    /// ignores unknown frame types the same way (forward compatibility, audit v0.6).
+    pub async fn recv_lenient(&mut self) -> Result<Option<Frame>> {
+        let b = self.recv_bytes().await?;
+        Ok(wire::decode(&b).ok())
+    }
+
     async fn recv_bytes(&mut self) -> Result<Vec<u8>> {
         let n = read_raw(&mut self.rd, &mut self.buf).await?;
         self.out.resize(n, 0);

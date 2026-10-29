@@ -540,12 +540,16 @@ impl Engine {
         let fp2 = fp.clone();
         let rd = tokio::spawn(async move {
             loop {
-                match reader.recv().await {
-                    Ok(Frame::Bye) => {
+                match reader.recv_lenient().await {
+                    Ok(None) => {
+                        tracing::debug!("ignoring an undecodable frame (unknown type from a newer peer?)");
+                        continue;
+                    }
+                    Ok(Some(Frame::Bye)) => {
                         let _ = tx.send(EngineMsg::Closed { fp: fp2, conn_id, err: "peer closed".into() });
                         break;
                     }
-                    Ok(frame) => {
+                    Ok(Some(frame)) => {
                         if tx.send(EngineMsg::Frame { fp: fp2.clone(), conn_id, frame }).is_err() {
                             break;
                         }
