@@ -66,7 +66,7 @@ s = s.replace("(cd reference/v0.5 && cargo build --release -p lan-daemon -p lan-
               "(cd reference/v0.5 && cargo build --release -p lan-daemon -p lan-cli) && (cd $GITHUB_WORKSPACE && cargo build --release -p lan-daemon -p lan-cli)")
 s = re.sub(r"(working-directory: editions/portable/reference/v0.5\n(\s+)run: cargo build --release -p lan-daemon -p lan-cli)",
            r"\1 && (cd $GITHUB_WORKSPACE && cargo build --release -p lan-daemon -p lan-cli)", s)
-s = "\n".join(l.replace("--rust-bin reference/v0.5/target/release", "--rust-bin $GITHUB_WORKSPACE/target/release") if "tests/matrix.py" in l else l
+s = "\n".join(l.replace("--no-resume-kinds rust ", "").replace("--rust-bin reference/v0.5/target/release", "--rust-bin $GITHUB_WORKSPACE/target/release") if "tests/matrix.py" in l else l
               for l in s.split("\n"))
 open(DST, "w", encoding="utf-8").write(s)
 print("wrote", DST)
