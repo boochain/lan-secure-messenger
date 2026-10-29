@@ -197,7 +197,7 @@
                 </StackPanel>
             </Grid>
             <AutoSuggestBox x:Name="SearchBox" Grid.Row="1" Margin="16,0,16,8" PlaceholderText="搜索聊天记录 (Ctrl+F)" QueryIcon="Find"
-                            Text="{x:Bind VM.SearchText, Mode=TwoWay}" QuerySubmitted="Search_QuerySubmitted" />
+                            Text="{x:Bind VM.SearchText, Mode=TwoWay}" QuerySubmitted="Search_QuerySubmitted" Loaded="SearchBox_Loaded" />
             <ListView x:Name="ConvList" Grid.Row="2" Padding="4,0" RightTapped="ConvList_RightTapped" ItemsSource="{x:Bind VM.Conversations}" SelectionMode="Single"
                       SelectionChanged="ConvList_SelectionChanged">
                 <ListView.ItemContainerStyle>

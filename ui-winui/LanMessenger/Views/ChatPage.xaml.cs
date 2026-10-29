@@ -67,6 +67,21 @@ public sealed partial class ChatPage : Page
     private void AddAccel(VirtualKey key, VirtualKeyModifiers mods, Action run) => AddAccel(key, mods, () => { run(); return true; });
 
     public void FocusSearch() => SearchBox.Focus(FocusState.Keyboard);
+    /// <summary>The AutoSuggestBox template's icon-only query button gets a tooltip like every other icon button (W11).</summary>
+    private void SearchBox_Loaded(object sender, RoutedEventArgs e)
+    {
+        static Microsoft.UI.Xaml.DependencyObject? Find(Microsoft.UI.Xaml.DependencyObject d, string name)
+        {
+            for (int i = 0; i < Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(d); i++)
+            {
+                var c = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(d, i);
+                if (c is FrameworkElement fe && fe.Name == name) return c;
+                if (Find(c, name) is { } r) return r;
+            }
+            return null;
+        }
+        if (Find(SearchBox, "QueryButton") is Microsoft.UI.Xaml.Controls.Button qb) ToolTipService.SetToolTip(qb, "搜索 (Enter)");
+    }
     private void FocusSearch_Click(object sender, RoutedEventArgs e) => FocusSearch();
     /// <summary>Ctrl+N / the header button: the add-by-IP flyout, with its box focused.</summary>
     public void OpenAddPeer() => AddPeerFlyout.ShowAt(AddPeerButton);
