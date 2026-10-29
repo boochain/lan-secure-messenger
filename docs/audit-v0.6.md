@@ -95,7 +95,7 @@ update check; XP notifications (balloon tips are available on XP).
 | S6 | 49 `unwrap()` in lan-core non-test code, all reviewed (2026-10-30): network-input slices (relay HELLO ≥61, AUTH_OK ≥38, DELIVER ≥37, link caps `len >= used+4`) are behind length guards; map `remove/get_mut(..).unwrap()` follow a lookup of the same key in the same task; `first.unwrap()` follows a non-empty-recipients check; the rest are `Mutex::lock().unwrap()` (panics only on a poisoned lock, i.e. after another panic) | Info | OK |
 | S7 | Relay server: per-IP and total connection caps, auth-failure rate limit, 1 KiB pre-auth limit, hard 16 MiB frame ceiling; passphrase never logged; transport content is end-to-end encrypted between peers (server sees only fingerprints and sizes) | Info | OK |
 | S8 | Relay deploy scripts never change the firewall unless asked (default No / `--open-firewall`), uninstall removes only rules recorded in the state file | Info | OK (tested in relay-server CI) |
-| S9 | `cargo audit` / dependency CVE scan not run (tool not installed on the audit box) | — | **Open**: add `cargo audit` to CI |
+| S9 | `cargo audit` (2026-10-30, workspace + relay-server): **0 vulnerabilities**; 2 warnings: RUSTSEC-2025-0141 bincode 1.3.3 unmaintained (it *is* the wire format; pinned, no known flaw), RUSTSEC-2026-0386 tokio 1.53.1 `AsyncFd::new` unsound (not used anywhere; fixed in 1.54.x, bump after the release) | Info | OK; add `cargo audit` to CI later |
 
 ## 4. Follow-ups
 
