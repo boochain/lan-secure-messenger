@@ -341,7 +341,8 @@ async fn session(
             }
             let mf = u32::from_be_bytes(b[32..36].try_into().unwrap()) as usize;
             let hb = u16::from_be_bytes(b[36..38].try_into().unwrap()).max(5) as u64;
-            (mf.max(1024), hb)
+            // same clamp as the C core: a server cannot make us buffer more than the protocol's 16 MiB ceiling
+            (mf.clamp(4096, 16 * 1024 * 1024), hb)
         }
         Ok(Ok((T_AUTH_FAIL, b))) => {
             let code = b.first().copied().unwrap_or(0);

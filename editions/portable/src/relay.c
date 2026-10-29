@@ -138,7 +138,7 @@ static void rl_on_frame(lsm_core *c, uint8_t ty, const uint8_t *b, size_t n){
         if(ty!=RT_AUTH_OK || n<38){ rl_fail(c,"error","unexpected reply"); return; }
         rl_mac(mac,r->key,"LSMR-v1-server",r->cn,r->sn,r->myid);
         if(crypto_verify32(mac,b)){ rl_fail(c,"auth_failed","\xe6\x9c\x8d\xe5\x8a\xa1\xe5\x99\xa8\xe6\x9c\xaa\xe9\x80\x9a\xe8\xbf\x87\xe5\x8f\xa3\xe4\xbb\xa4\xe9\xaa\x8c\xe8\xaf\x81"); return; } /* 服务器未通过口令验证 */
-        r->max_frame=rl_rd32(b+32); r->hb=(b[36]<<8)|b[37]; if(r->hb<5) r->hb=5; if(r->max_frame<4096) r->max_frame=4096;
+        r->max_frame=rl_rd32(b+32); r->hb=(b[36]<<8)|b[37]; if(r->hb<5) r->hb=5; if(r->max_frame<4096) r->max_frame=4096; if(r->max_frame>16u*1024*1024) r->max_frame=16u*1024*1024; /* same clamp as lan-core */
         r->st=RS_UP; r->fails=0; r->last_ping=mono_ms();
         { char d[300]; snprintf(d,sizeof d,"%s:%d",r->host,r->port); rl_set_status(c,"online",d); }
         logf_(c,"relay: online %s:%d",r->host,r->port); return; }

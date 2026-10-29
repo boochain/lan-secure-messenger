@@ -28,7 +28,8 @@ All integers are **big-endian**. Every message on the TCP stream is a frame:
 ```
 
 `len` counts `type + body` (so `len >= 1`). `len == 0` or `len > max_frame` is a protocol error and the server
-closes the connection. Default `max_frame` = 1 048 640 (1 MiB + 64), announced in `AUTH_OK`; hard ceiling 16 MiB.
+closes the connection. Default `max_frame` = 1 048 640 (1 MiB + 64), announced in `AUTH_OK`; hard ceiling 16 MiB. Clients clamp the announced value to [4096, 16 MiB] before using it
+as their own read limit (both cores), so a server cannot make a client buffer more than 16 MiB per frame.
 Before authentication the server accepts at most 1024 bytes. Unknown frame types are **ignored** (forward compatibility).
 
 ## 3. 消息类型 (message types)
