@@ -1,79 +1,56 @@
-## 中文显示 / 字体
-
-GUI 使用 egui。启动时按以下顺序加载中文字体，避免出现「□□□」：
-
-1. 系统字体（Windows 微软雅黑 / 黑体 / 宋体；Linux Noto CJK / 文泉驿等）
-2. 程序目录下 `fonts/`（便携包可附带）
-3. **内置** `LanGuiCJK-Regular.ttf` 子集（界面文案 + 常用简体，约 1 MB）
-
-若个别好友昵称仍有缺字，可把完整中文字体（如 `msyh.ttc` 或 [霞鹜文楷](https://github.com/lxgw/LxgwWenKai)）放到 `fonts/` 后重启。
-
 # 局域网加密即时通讯（LAN Secure Messenger）
 
-面向 Windows 局域网的端到端加密即时通讯：自动发现同网段对等端，支持加密文本 / 图片 / 文件传输，提供 CLI 与 GUI。
+无服务器、无账号的局域网聊天工具：同一局域网内的电脑自动互相发现，文本、图片、文件、群聊全部端到端加密。
 
-- **仓库**: https://github.com/FREC86/lan-secure-messenger
-- **作者**: Bill Ocean (FREC86)
-- **许可**: MIT
+> **v0.5 是一次完整重构**（Rust 后台服务 + WinUI 3 界面），修复了 v0.3.x 在真实 Windows 上
+> “必须关闭防火墙才能用 / 界面乱码 / 消息发不出去 / 看不到对方 / 一方能看到另一方、另一方列表为空”等问题。
+> 旧的 egui 界面已移除。v0.3.x 代码保留在 `main` 分支的历史中。
+
+## 下载即用（Windows 10 1809+ / 11，x64）
+
+1. 到 [Releases](https://github.com/boochain/lan-secure-messenger/releases) 下载 `LanMessenger-<版本>-win-x64.zip`
+2. **解压整个文件夹**，双击 `LanMessenger.exe`（或 `启动.bat`）。自带 .NET 8 与 Windows App SDK，无需安装任何运行库
+3. 首次运行：填写显示名称 → 点击「一键配置防火墙」（弹出一次 UAC 管理员确认）
+4. 其他电脑同样打开即可互相看到；看不到时在左上角输入对方 IP 直接添加，或查看「诊断」页
+
+压缩包内容：
+
+| 文件 | 说明 |
+|------|------|
+| `LanMessenger.exe` | WinUI 3 图形界面（Mica、导航：聊天 / 群组 / 传输 / 设置 / 诊断，托盘图标，系统通知） |
+| `lan-daemon.exe` | 后台服务：网络、加密、存储；界面会自动启动它，关闭窗口后仍在托盘/后台接收消息 |
+| `lan-msg.exe` | 命令行客户端（`lan-msg --help`） |
+| `启动.bat` / `Start.bat` / `配置防火墙.bat` / `停止.bat` | 便捷脚本 |
 
 ## 功能
 
-- UDP 组播发现 + 在线/离线（Ed25519 签名公告；仅在状态变化时提示，心跳不再刷屏）
-- **私聊（DM）**：按对等端会话线程、未读、历史；文本 / 文件 / 图片均走既有加密传输栈
-- **群聊**：局域网群房间（建群 / 邀请 / 退群）；群共享密钥经既有 Noise 1:1 分发；成员列表由创建者签名；群文本与群文件
-- 1:1 端到端加密文本（Noise XX：X25519 + ChaCha20-Poly1305）
-- **文本送达回执**（`TextAck`）
-- 分块文件 / 图片传输（进度、SHA-256 校验、**可取消**、最大体积可配置）
-- **会话复用**：文本连接可池化复用，降低握手开销
-- TOFU 信任 + 人类可读指纹核对
-- **可选 PIN 配对**（`pair-offer` / `pair`）快速互信
-- 向所有**已信任且在线**对等端安全广播（带成功/失败明细）
-- 本地聊天历史（ChaCha20-Poly1305 静态加密；含群元数据 `groups.json`）
-- GUI：**首次运行**仅需显示名；**系统托盘**；私聊 / 群聊；**历史搜索**；静音；全部已读；备份/恢复；下载目录；检查更新
-- **送达回执**更可靠（TextAck 等待循环，忽略 Ping/Pong 干扰）
-- **群成员移除 + 群密钥轮换**（创建者操作；经 Noise 分发新密钥；仍无离线补历史）
-- **失败传输自动重试**（`transfer_retries`，默认 3）
-- **身份加密备份/恢复**（`backup` / `restore`）
-- CLI：`search`、`backup`、`restore`、`group-remove-member`、`mute`、`set-download-dir`、`check-update`
-- CLI（`lan-msg`）含 **`doctor`**、群聊子命令；一键下载即用（见下）
+- 私聊、群聊（创建者签名成员列表；移除成员自动换群密钥）
+- 文件 / 图片：进度、取消、重试、SHA-256 校验，图片在聊天中直接预览；支持拖拽发送
+- 送达 / 已读回执；对方离线时消息排队，上线后自动补发（去重，保证只送达一次）
+- TOFU 指纹信任 + PIN 配对；屏蔽；免打扰
+- 本地加密聊天记录 + 搜索；密码加密的备份 / 恢复（Argon2id）
+- 更新检查（GitHub Releases，可关闭）
 
-
-
-## 下载即用（Windows，免编译免配置）
-
-推荐下载 Release **v0.3.3** 便携包。
-
-> **启用自动构建：** 将 `packaging/ci/release.yml` 复制为 `.github/workflows/release.yml` 后推送（需具备 `workflow` 权限的 token）。此后推 `main` / 打 `v*` 标签即产出 Windows / Linux 发布包。
-
-
-
-1. 打开 [Releases](https://github.com/FREC86/lan-secure-messenger/releases) 下载 `lan-secure-messenger-windows-x64.zip`  
-   （配置 Actions 后，推送到 `main` 或打 `v*` 标签会自动构建并上传产物）
-2. 解压后双击 **`启动.bat`**（或 `Start.bat` / `lan-gui.exe`）
-3. 首次运行：自动生成密钥，设置**显示名称**即可开始；发现立即启动
-4. Windows 防火墙提示时勾选**专用网络**允许一次
-5. 关闭窗口后程序在**系统托盘**继续运行；托盘菜单可显示窗口 / 退出
-
-无需安装 Rust、无需命令行参数。同目录另有 `lan-msg.exe` 供高级 CLI 使用。
-
-Linux 开发机也可 `cargo build --release`；CI 另产出 `lan-secure-messenger-linux-x64.tar.gz`。
-
-## 架构
+## 架构（v0.5）
 
 ```
-lan-secure-messenger/
-├── lan-core/   # 发现、密码学、协议、会话、传输、历史
-├── lan-cli/    # clap CLI → lan-msg
-└── lan-gui/    # egui/eframe → lan-gui
+LanMessenger.exe (WinUI 3, C#)        lan-msg.exe (CLI)
+        │  JSON-RPC over named pipe  \\.\pipe\lan-secure-messenger-<用户名>（仅当前用户可访问）
+        ▼
+lan-daemon.exe (Rust, lan-core)
+  ├─ 连接管理 actor：每个联系人一条长期 TCP 连接（Noise XX 加密），文本/回执/文件块/群消息/在线状态全部多路复用
+  │    心跳 5 s，20 s 无响应判定断线；指数退避自动重连；同时互拨时按指纹确定性保留一条
+  ├─ 对称在线：A 通过任何途径发现 B → A 主动连 B → 握手成功后双方同时显示在线（在线 = 连接状态）
+  ├─ 发现：每块真实网卡发送定向广播（跳过回环、169.254、Hyper-V/vEthernet、VMware、VirtualBox、WSL、Docker、TAP/VPN，可覆盖）
+  │    + 可选组播 + 收到公告后单播回复 + 手动按 IP 添加（持久化）+ 启动时重连已信任联系人的上次地址
+  ├─ 防火墙：`lan-daemon firewall-setup` 通过一次 UAC 调用 netsh 为本程序添加入站规则（专用/域网络，TCP+UDP）；检测“公用网络”
+  ├─ 存储：%APPDATA%\FREC86\lan-secure-messenger\{config,data,logs}
+  └─ 日志：logs\daemon.*.log 按天滚动保留 7 天；崩溃写 crash.log
 ```
 
-| 层次 | 说明 |
-|------|------|
-| 发现 | UDP 组播 `239.255.42.99` + 可选广播；公告含公钥、端口、时间戳、nonce、Ed25519 签名 |
-| 会话 | TCP + Noise_XX_25519_ChaChaPoly_BLAKE2s；握手后核对静态公钥指纹 |
-| 应用消息 | 文本 / 广播 / 文件报价 / 分块 / ACK |
-| 身份 | 长期 X25519 + Ed25519，存于用户配置目录（Unix 权限 0600） |
-| 信任 | TOFU：首次见面核对指纹后标记 Trusted |
+- IPC 协议见 [docs/ipc.md](docs/ipc.md)（请求/响应 + 事件订阅 + 全量快照；Linux 上为 Unix socket）
+- 界面只根据 daemon 的快照和事件渲染，不自己维护网络状态
+- Rust 可执行文件静态链接 CRT（`+crt-static`），只依赖系统 DLL
 
 ## 威胁模型
 
@@ -82,7 +59,7 @@ lan-secure-messenger/
 - 局域网窃听者无法阅读文本 / 文件内容（E2E）
 - 伪造发现包难以冒充已签名身份
 - 已核对指纹并信任后，握手静态密钥不匹配则失败（缓解 MITM）
-- 发现重放：nonce 缓存 + 时间窗
+- 发现包重放：发现包只触发一次拨号，真正的身份认证在 Noise 握手中完成，重放无法冒充
 - 本地历史静态加密（防简单拷贝窥探；无法防本机恶意软件读密钥文件）
 
 ### 群聊威胁模型（诚实说明）
@@ -90,7 +67,7 @@ lan-secure-messenger/
 - 群共享密钥经 **Noise 1:1** 安全通道发给每位成员；创建者对「群 id + 名称 + 成员列表 + 密钥」签名
 - 群消息由发送者用群密钥加密后，经 1:1 会话**扇出**给在线成员（非中心服务器）
 - **无离线存转发**：成员离线则收不到该条；重新上线不会自动补历史（仅本地各自持久化已收消息）
-- 被踢/退群后，旧密钥仍可能被恶意前成员用于解密其离线期间截获的密文（MVP 不做前向保密轮转）
+- 移除成员后创建者自动轮换群密钥（rekey），被移除者无法解密之后的消息；但其离线期间截获的旧密文仍可被旧密钥解密
 - 邀请码便于识别群，**不替代**信任：只能邀请已 TOFU/PIN 信任的对等端
 
 ### 不在范围内
@@ -107,145 +84,8 @@ lan-secure-messenger/
 
 
 1. 首次见面**当面核对指纹**再信任
-2. 不可信网络不要开启 `--auto-trust`
+2. 不可信网络不要开启 `auto_trust`
 3. 日志不输出私钥
-
-## 构建
-
-需要 **Rust stable**（推荐 1.85+；本仓库 `rust-toolchain.toml` 使用 stable）。
-
-### Linux（开发 / 冒烟）
-
-```bash
-cargo build --release -p lan-cli
-cargo build --release -p lan-gui   # 需要图形相关系统库
-```
-
-产物：`target/release/lan-msg`、`target/release/lan-gui`
-
-### Windows x64
-
-1. 安装 [Rust](https://rustup.rs/)（默认 `x86_64-pc-windows-msvc`）
-2. 安装 Visual Studio Build Tools（C++ 桌面工作负载）
-3. PowerShell：
-
-```powershell
-git clone https://github.com/FREC86/lan-secure-messenger.git
-cd lan-secure-messenger
-cargo build --release -p lan-cli -p lan-gui
-```
-
-产物：
-
-- `target\release\lan-msg.exe`
-- `target\release\lan-gui.exe`
-
-推荐：**推送 `main` 或打 tag 后下载 Actions / Release 产物**（见「下载即用」）。
-
-可选本地交叉编译（Linux + mingw）：
-
-```bash
-rustup target add x86_64-pc-windows-gnu
-# Debian/Ubuntu: sudo apt install gcc-mingw-w64-x86-64
-cargo build --release -p lan-cli -p lan-gui --target x86_64-pc-windows-gnu
-# 打包参考 packaging/windows/
-```
-
-## 配置目录
-
-| 平台 | 默认路径 |
-|------|----------|
-| Windows | `%APPDATA%\FREC86\lan-secure-messenger\`（`directories`：`ProjectDirs::from("com", "FREC86", "lan-secure-messenger")` → Windows `%APPDATA%\FREC86\lan-secure-messenger\`） |
-| Linux | `~/.config/lan-secure-messenger/` |
-| macOS | `~/Library/Application Support/com.FREC86.lan-secure-messenger/` |
-
-内容：`identity.json`、`peers.json`、`groups.json`、`history.enc`、`history.key`、`settings.json`、`downloads/`
-
-同机多实例请用 `--config-dir` 或环境变量 `LAN_MSG_CONFIG` 隔离。
-
-## CLI 用法
-
-```bash
-# 本机身份
-lan-msg --name Alice id
-
-# 守护进程（发现 + 收消息）
-lan-msg --name Alice daemon
-
-# 列出对等端
-lan-msg peers --wait 3
-
-# 信任 / 拉黑
-lan-msg trust ABCD-EFGH-IJKL-MNOP
-lan-msg block ABCD-EFGH-IJKL-MNOP
-
-# 发文本 / 文件
-lan-msg send ABCD-EFGH-IJKL-MNOP "你好"
-lan-msg send-file ABCD-EFGH-IJKL-MNOP ./photo.png
-
-# 向已信任在线节点广播
-lan-msg broadcast "会议室集合"
-
-# 历史 / 改名 / 诊断
-lan-msg history --limit 20
-lan-msg history <对端指纹> --limit 20   # 私聊线程
-lan-msg set-name "我的电脑"
-lan-msg doctor
-
-# 群聊
-lan-msg create-group "项目组" --members <指纹1>,<指纹2>
-lan-msg groups
-lan-msg group-send <群UUID> "大家好"
-lan-msg group-send-file <群UUID> ./doc.pdf
-lan-msg group-invite <群UUID> <指纹>
-lan-msg group-leave <群UUID>
-lan-msg group-history <群UUID>
-```
-
-### 常用参数 / 环境变量
-
-| CLI | 环境变量 | 含义 |
-|-----|----------|------|
-| `--name` | `LAN_MSG_NAME` | 显示名 |
-| `--config-dir` | `LAN_MSG_CONFIG` | 配置目录 |
-| `--bind` | `LAN_MSG_BIND` | 绑定地址（默认 `0.0.0.0`） |
-| `--discovery-port` | `LAN_MSG_DISCOVERY_PORT` | 发现端口（默认 41234） |
-| `--listen-port` | `LAN_MSG_LISTEN_PORT` | TCP 端口（默认 41235） |
-| `--broadcast` | `LAN_MSG_BROADCAST` | 发现发送目标覆盖（测试用） |
-| `--auto-trust` | `LAN_MSG_AUTO_TRUST` | 自动信任（仅可信环境） |
-
-### 同机双进程冒烟（Linux）
-
-```bash
-./scripts/smoke_test.sh
-# 或手动：
-cargo build -p lan-cli
-# 终端 A
-./target/debug/lan-msg --config-dir /tmp/lsm-a --name Alice \
-  --bind 0.0.0.0 --discovery-port 41234 --listen-port 41235 --auto-trust daemon
-# 终端 B
-./target/debug/lan-msg --config-dir /tmp/lsm-b --name Bob \
-  --bind 0.0.0.0 --discovery-port 41234 --listen-port 41236 --auto-trust daemon
-# 另开终端从 A 发消息（先查 B 指纹）
-./target/debug/lan-msg --config-dir /tmp/lsm-a --listen-port 41246 --auto-trust \
-  send <B指纹> "hello"
-```
-
-发现使用 UDP **组播**（`239.255.42.99`），同机多进程可共用发现端口；TCP 监听端口必须不同。
-
-## GUI 用法
-
-```bash
-lan-gui
-LAN_MSG_NAME=Alice LAN_MSG_CONFIG=/tmp/lsm-gui lan-gui
-```
-
-- **首次运行**：自动生成身份，输入显示名即可；无需其它配置
-- 页签：**私聊** / **群聊**
-- 私聊：左侧好友列表（未读角标）→ 会话区发文本 / 文件；支持广播
-- 群聊：新建群（勾选已信任成员）→ 发群消息 / 文件；可邀请更多已信任成员；邀请码展示
-- 新设备弹窗：核对指纹后信任或拉黑
-- **托盘**：关闭窗口进入后台；托盘点击或「显示窗口」恢复；「退出」彻底退出
 
 ## 密码学
 
@@ -259,39 +99,54 @@ LAN_MSG_NAME=Alice LAN_MSG_CONFIG=/tmp/lsm-gui lan-gui
 
 不自行实现密码学原语。
 
-## 防火墙（Windows）
+## 构建
 
-允许专用网络入站：
+```bash
+# Rust 核心 + CLI（Linux / Windows）
+cargo build --release -p lan-daemon -p lan-cli
+cargo test -p lan-core                 # 单元 + 集成测试（两个引擎走真实回环 TCP）
+./scripts/smoke_test.sh                # 两个真实 daemon：单向发现、双向消息、文件、断线重连（PARTITION=1 再测静默断网）
+./scripts/stress_test.sh               # 5 节点全互联，2000 条消息 + 并发大文件
 
-- UDP `41234`（发现，可配置）
-- TCP `41235`（会话，可配置）
+# C# IPC 客户端测试（Linux 上即可运行，连接真实 Rust daemon）
+cd ui-winui && dotnet test LanMessenger.Core.Tests
 
-## 稳定性（v0.3.3）
+# WinUI 3 界面（仅 Windows）
+dotnet publish ui-winui/LanMessenger/LanMessenger.csproj -c Release -r win-x64 -p:Platform=x64 -o publish
+```
 
-- GUI 中文：系统字体 + 便携 `fonts/` + 内置 CJK 子集，修复豆腐块（□□□）。
+Windows 便携包由 `.github/workflows/windows.yml` 在 `windows-latest` 上构建：msvc 编译 + 导入表检查 + 防火墙规则测试 +
+双 daemon 命名管道冒烟 + C# 测试 + WinUI 发布 + 界面冒烟截图；推送 `v*` 标签时自动创建预发布。
 
-## 稳定性（v0.3.2）
+## CLI 用法（lan-msg）
 
-- 再验证：PIN 配对 / 群邀请 / 群消息发送失败时正确 `discard_session`，避免 `session_busy` 永久占用。
-- `atomic_write` 写失败时清理临时文件。
-- smoke + stress 全绿后重新交叉编译 Windows 便携包。
+```bash
+lan-daemon                       # 前台运行后台服务（界面会自动启动它）
+lan-msg status                   # 本机身份、端口
+lan-msg peers                    # 联系人与在线状态
+lan-msg add 192.168.1.23         # 按 IP[:端口] 添加（跨网段 / 广播被拦截时）
+lan-msg send <名称|指纹> "你好"
+lan-msg send-file <名称|指纹> ./a.zip
+lan-msg trust <指纹>  |  lan-msg pin-offer  |  lan-msg pin-pair <指纹> <PIN>
+lan-msg group-create "项目组" <成员...>  |  lan-msg send-group <群> "消息"
+lan-msg history <对象>  |  lan-msg search 关键字
+lan-msg diag                     # 网卡、防火墙、网络类型、每个联系人的连接状态（JSON）
+lan-msg firewall-setup           # 配置 Windows 防火墙（UAC）
+lan-msg watch                    # 实时事件流
+```
 
-## 稳定性（v0.3.1）
+`--ipc <管道或socket>` / 环境变量 `LSM_IPC` 可连接非默认实例；`lan-daemon --data-dir <目录> --set key=JSON` 可多实例测试。
 
-- 文本会话池：`session_busy` 防止同 peer 并发复用；断线用 `force_reconnect`（不再二次 `take` 死锁）
-- 文件接收写 `.part` 再 `rename`；失败清理半成品；块大小/总大小校验
-- 配置/历史/群/信任库：`atomic_write`（临时文件 + fsync + rename）
-- 握手/连接超时；帧长上限收紧；传输并发信号量（默认 4）
-- GUI 托盘「退出」真正退出并 `shutdown` 后端（不再被最小化逻辑吞掉）
-- 冒烟：`./scripts/smoke_test.sh`；压力：`./scripts/stress_test.sh`
+## 端口
 
-## 已知限制（MVP）
+- UDP `41234`：发现广播
+- TCP `41235`：加密连接（被占用时自动换端口，通过发现包告知对方）
 
-- 会话可复用，但非完整多路复用长连接
-- 群聊无离线补发、无 sender-keys 轮转（见威胁模型）
-- GUI 图片按文件传输，无内联大图预览
-- 跨子网需组播路由 / 自行改发现地址
-- Linux 托盘依赖 AppIndicator；无托盘环境可用 `--no-default-features` 构建 GUI
+## 已知限制
+
+- 仅局域网：跨网段需要手动按 IP 添加或配置额外发现目标
+- 群聊无离线补发（成员离线期间的群消息不会补发）
+- 游戏 / 共享文件夹功能（v0.4 分支）尚未移植到新架构
 
 ## License
 

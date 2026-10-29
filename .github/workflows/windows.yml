@@ -1,0 +1,222 @@
+name: windows
+
+on:
+  push:
+    branches: [main, "refactor/**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  # Static CRT: no vcruntime140.dll / api-ms-win-crt-* dependency on the target machine.
+  RUSTFLAGS: "-C target-feature=+crt-static"
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+
+jobs:
+  core:
+    name: Rust core (msvc) + tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+      - uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Unit + integration tests (lan-core, loopback engines)
+        run: cargo test --release -p lan-core -- --test-threads=2
+
+      - name: Build lan-daemon + lan-msg
+        run: cargo build --release -p lan-daemon -p lan-cli
+
+      - name: Check imports (must be system DLLs only)
+        shell: pwsh
+        run: |
+          $bad = @()
+          foreach ($exe in "target\release\lan-daemon.exe", "target\release\lan-msg.exe") {
+            $deps = dumpbin /nologo /dependents $exe | Where-Object { $_ -match '^\s+\S+\.dll\s*$' } | ForEach-Object { $_.Trim() }
+            Write-Host "$exe imports: $($deps -join ', ')"
+            $bad += $deps | Where-Object { $_ -match '(?i)^(vcruntime|msvcp|api-ms-win-crt|libgcc|libwinpthread|libstdc)' }
+            $sub = dumpbin /nologo /headers $exe | Select-String "subsystem"
+            Write-Host "  $sub"
+          }
+          if ($bad) { throw "non-system runtime DLL imports: $($bad -join ', ')" }
+
+      - name: lan-daemon self-checks
+        shell: pwsh
+        run: |
+          target\release\lan-daemon.exe --version
+          target\release\lan-daemon.exe paths
+          target\release\lan-daemon.exe interfaces
+          target\release\lan-daemon.exe firewall-status
+
+      - name: Firewall rule creation (runner is already elevated -> netsh path without UAC)
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path target\release\lan-daemon.exe).Path
+          & $exe firewall-setup --elevated
+          if ($LASTEXITCODE -ne 0) { throw "firewall-setup --elevated failed" }
+          $st = & $exe firewall-status | ConvertFrom-Json
+          $st | Format-List
+          netsh advfirewall firewall show rule name="LAN Secure Messenger (TCP-In)" verbose
+          if (-not ($st.tcp_rule -and $st.udp_rule)) { throw "rules not detected after setup" }
+          if ($st.rule_path_mismatch) { throw "rule path mismatch reported for the same exe" }
+          # idempotent: second run must not duplicate rules
+          & $exe firewall-setup --elevated
+          $n = (netsh advfirewall firewall show rule name="LAN Secure Messenger (TCP-In)" | Select-String "^Rule Name").Count
+          Write-Host "TCP rule count after 2 runs: $n"
+          if ($n -ne 1) { throw "expected exactly 1 TCP rule, got $n" }
+
+      - name: Two-daemon loopback smoke test (named pipes)
+        shell: pwsh
+        run: ./scripts/smoke_windows.ps1 -Bin target\release
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: C# IPC client tests against the real daemon
+        shell: pwsh
+        env:
+          LSM_DAEMON_BIN: ${{ github.workspace }}\target\release\lan-daemon.exe
+          LSM_EXPECT_FIREWALL_RULE: "1"
+        run: dotnet test ui-winui/LanMessenger.Core.Tests/LanMessenger.Core.Tests.csproj -c Release --logger "console;verbosity=normal"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rust-bin
+          path: |
+            target/release/lan-daemon.exe
+            target/release/lan-msg.exe
+
+  winui:
+    name: WinUI 3 app + portable zip
+    runs-on: windows-latest
+    needs: core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - uses: actions/download-artifact@v4
+        with:
+          name: rust-bin
+          path: rust-bin
+
+      - name: Publish WinUI app (unpackaged, self-contained)
+        shell: pwsh
+        run: dotnet publish ui-winui/LanMessenger/LanMessenger.csproj -c Release -r win-x64 -p:Platform=x64 -o publish
+
+      - name: Assemble LanMessenger/
+        id: pkg
+        shell: pwsh
+        run: |
+          $ver = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}" } else { "v0.5.0-dev-" + "${{ github.sha }}".Substring(0,7) }
+          $out = "dist\LanMessenger"
+          New-Item -ItemType Directory -Force $out | Out-Null
+          Copy-Item publish\* $out -Recurse
+          Copy-Item rust-bin\lan-daemon.exe, rust-bin\lan-msg.exe $out
+          Copy-Item packaging\windows\*.bat, packaging\windows\README.txt $out
+          Get-ChildItem $out -Filter *.pdb -Recurse | Remove-Item
+          if (-not (Test-Path "$out\LanMessenger.exe")) { throw "LanMessenger.exe missing from publish output" }
+          "version=$ver" >> $env:GITHUB_OUTPUT
+          $size = (Get-ChildItem $out -Recurse | Measure-Object Length -Sum).Sum / 1MB
+          Write-Host ("LanMessenger/ = {0:N1} MB, {1} files" -f $size, (Get-ChildItem $out -Recurse -File).Count)
+          Get-ChildItem $out -File | Where-Object { $_.Extension -in ".exe", ".bat", ".txt", ".pri" } | Format-Table Name, Length
+
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Inspect LanMessenger.exe
+        shell: pwsh
+        run: |
+          dumpbin /nologo /dependents dist\LanMessenger\LanMessenger.exe
+          dumpbin /nologo /headers dist\LanMessenger\LanMessenger.exe | Select-String "subsystem|machine"
+
+      - name: UI smoke in light + dark theme (screenshots, contrast check, live theme switch)
+        id: uismoke
+        shell: pwsh
+        run: ./scripts/ui_smoke_windows.ps1 -Dist dist\LanMessenger -Out ui-smoke
+
+      - name: Collect UI diagnostics
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force ui-smoke | Out-Null
+          $logs = "$env:APPDATA\FREC86\lan-secure-messenger\logs"
+          if (Test-Path $logs) { Copy-Item $logs ui-smoke\logs -Recurse -Force }
+          Get-WinEvent -LogName Application -MaxEvents 60 -ErrorAction SilentlyContinue |
+            Where-Object { $_.LevelDisplayName -in "Error", "Critical" } |
+            Format-List TimeCreated, ProviderName, Message | Out-File ui-smoke\application-errors.txt
+          Get-ChildItem ui-smoke -Recurse | Format-Table FullName, Length
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-smoke-screenshots
+          path: ui-smoke
+
+      - name: Zip
+        shell: pwsh
+        run: |
+          $zip = "LanMessenger-${{ steps.pkg.outputs.version }}-win-x64.zip"
+          Compress-Archive -Path dist\LanMessenger -DestinationPath $zip -CompressionLevel Optimal
+          "ZIP=$zip" >> $env:GITHUB_ENV
+          Get-Item $zip | Format-Table Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LanMessenger-win-x64
+          path: ${{ env.ZIP }}
+
+      - name: GitHub prerelease (tags only)
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $notes = @"
+          ## LAN Secure Messenger $tag（预发布 / 测试版）
+
+          全新架构：Rust 后台服务 lan-daemon + WinUI 3 界面 LanMessenger.exe。
+          下载 **$env:ZIP**，解压整个文件夹后双击 LanMessenger.exe 即可（自带 .NET 与 Windows App SDK，无需安装）。
+          首次运行请点击「一键配置防火墙」。
+
+          - 每个联系人一条长连接（Noise XX 加密），心跳 + 自动重连
+          - 对称发现：任意一方发现/连上另一方，双方都显示在线
+          - 按网卡定向广播，自动跳过 Hyper-V/VMware/VirtualBox/WSL/VPN 虚拟网卡；支持按 IP 手动添加
+          - 诊断页：防火墙规则、网络类型（公用/专用）、网卡、每个联系人的连接状态
+          "@
+          gh release create $tag $env:ZIP --prerelease --title "LAN Secure Messenger $tag" --notes $notes --target ${{ github.sha }}
+
+  ui-audit:
+    name: Screenshot colour audit (OCR contrast, APCA, stroke scan, dE2000, palette)
+    runs-on: ubuntu-24.04
+    needs: winui
+    if: always() && needs.winui.result != 'skipped'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: ui-smoke-screenshots, path: ui-smoke }
+      - name: Install tesseract (chi_sim+eng) + Python deps
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tesseract-ocr tesseract-ocr-chi-sim fonts-noto-cjk python3-numpy python3-opencv python3-pil
+          pip install --break-system-packages -q pytesseract
+      - name: Checker self-test (must fail synthetic black-on-#202020 etc.)
+        run: python3 tools/ui_color_audit.py --self-test --out ui-audit/self-test
+      - name: Audit every app screenshot (desktop-*.png is the whole runner desktop, not app UI)
+        run: |
+          find ui-smoke -name '*.png' ! -name 'desktop*' | sort > shots.txt; cat shots.txt
+          test -s shots.txt
+          # merge the static ignore file with the app-reported hints (decorative icons, open dialog rectangles)
+          python3 -c "import json,glob; m=json.load(open('tools/ui_audit_ignore.json')); r=m.setdefault('_reasons',{}); [ (r.update(d.pop('_reasons',{})), m.update(d)) for d in (json.load(open(f, encoding='utf-8-sig')) for f in glob.glob('ui-smoke/**/audit_ignore.json', recursive=True)) ]; json.dump(m, open('ui-audit-ignore.json','w'), ensure_ascii=False, indent=1); print(len(m)-1, 'ignore entries')"
+          python3 tools/ui_color_audit.py --palette tools/palettes/winui.json --ignore-file ui-audit-ignore.json --content ui-winui/LanMessenger/Assets/app.png --out ui-audit $(cat shots.txt)
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: ui-audit, path: ui-audit }

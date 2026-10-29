@@ -1,216 +1,67 @@
 #!/usr/bin/env bash
-# Two-process LAN messenger smoke test (discovery + text + file + doctor + quiet online).
+# v0.5 smoke test: two real lan-daemon processes + lan-msg client over unix-socket IPC.
+#  1. one-way discovery (B's inbound UDP "blocked": discovery_listen=false; only A hears B)
+#  2. both online, text both directions, receipts
+#  3. file transfer + sha256 check
+#  4. kill the TCP connection mid-conversation (ss -K if permitted, else debug RPC) -> auto reconnect,
+#     queued message delivered
+#  5. diagnostics, clean shutdown, logs written
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-BIN="$ROOT/target/debug/lan-msg"
-DIR="$ROOT/smoke-run"
-rm -rf "$DIR"
-mkdir -p "$DIR/a" "$DIR/b" "$DIR/files"
-echo "hello-from-A-encrypted-file" > "$DIR/files/sample.txt"
-# larger-ish file for progress
-dd if=/dev/urandom of="$DIR/files/big.bin" bs=1024 count=256 status=none
-
-DISC=41234
-PORT_A=41235
-PORT_B=41236
-
-export RUST_LOG=lan_core=info
-
-build_if_needed() {
-  if [[ ! -x "$BIN" ]]; then
-    cargo build -p lan-cli
-  fi
-}
-build_if_needed
-
-echo "=== Identity A ==="
-"$BIN" --config-dir "$DIR/a" --name Alice --bind 0.0.0.0 \
-  --discovery-port "$DISC" --listen-port "$PORT_A" id | tee "$DIR/id_a.txt"
-FP_A=$(grep -E '指纹' "$DIR/id_a.txt" | awk '{print $NF}')
-
-echo "=== Identity B ==="
-"$BIN" --config-dir "$DIR/b" --name Bob --bind 0.0.0.0 \
-  --discovery-port "$DISC" --listen-port "$PORT_B" id | tee "$DIR/id_b.txt"
-FP_B=$(grep -E '指纹' "$DIR/id_b.txt" | awk '{print $NF}')
-
-echo "FP_A=$FP_A"
-echo "FP_B=$FP_B"
-test -n "$FP_A" && test -n "$FP_B"
-
-echo "=== Doctor A (before daemon) ==="
-"$BIN" --config-dir "$DIR/a" --name Alice --bind 0.0.0.0 \
-  --discovery-port "$DISC" --listen-port "$PORT_A" doctor | tee "$DIR/doctor_a.txt"
-grep -q "$FP_A" "$DIR/doctor_a.txt"
-
-echo "=== Start daemon A ==="
-"$BIN" --config-dir "$DIR/a" --name Alice --bind 0.0.0.0 \
-  --discovery-port "$DISC" --listen-port "$PORT_A" --auto-trust \
-  daemon >"$DIR/a.log" 2>&1 &
-PID_A=$!
-
-echo "=== Start daemon B ==="
-"$BIN" --config-dir "$DIR/b" --name Bob --bind 0.0.0.0 \
-  --discovery-port "$DISC" --listen-port "$PORT_B" --auto-trust \
-  daemon >"$DIR/b.log" 2>&1 &
-PID_B=$!
-
-cleanup() {
-  kill "$PID_A" "$PID_B" 2>/dev/null || true
-  wait "$PID_A" "$PID_B" 2>/dev/null || true
-}
+BIN=${BIN:-target/debug}
+[ -n "${NO_BUILD:-}" ] || cargo build -q -p lan-daemon -p lan-cli
+T=$(mktemp -d /tmp/lsm-smoke.XXXX)
+PA=$((40000 + RANDOM % 10000)); PB=$((PA + 1))
+D="$BIN/lan-daemon"; M="$BIN/lan-msg"
+pids=()
+cleanup() { for p in "${pids[@]}"; do kill "$p" 2>/dev/null || true; done; }
 trap cleanup EXIT
-
-sleep 5
-
-echo "=== Quiet online check (PeerOnline should not spam every announce) ==="
-ONLINE_A=$(grep -c '\[在线\]' "$DIR/a.log" || true)
-ONLINE_B=$(grep -c '\[在线\]' "$DIR/b.log" || true)
-echo "online_lines A=$ONLINE_A B=$ONLINE_B"
-# With 2s announce over ~5s, old code could log 5+ times; new code ~1-2
-if [[ "$ONLINE_A" -gt 4 ]] || [[ "$ONLINE_B" -gt 4 ]]; then
-  echo "FAIL: PeerOnline too noisy (A=$ONLINE_A B=$ONLINE_B)"
-  head -80 "$DIR/a.log"
-  exit 1
+common=(--set listen_port=0 --set multicast_enabled=false --set 'exclude_interfaces=[" | "]' --set auto_trust=true --set announce_interval_secs=1)
+LSM_LOG=${LSM_LOG:-info} "$D" --data-dir "$T/a" --ipc "$T/a.sock" "${common[@]}" --set display_name=Alice --set discovery_port=$PA --set download_dir="\"$T/a/dl\"" >"$T/a.out" 2>&1 & pids+=($!)
+LSM_LOG=${LSM_LOG:-info} "$D" --data-dir "$T/b" --ipc "$T/b.sock" "${common[@]}" --set display_name=Bob --set discovery_port=$PB --set discovery_listen=false \
+  --set "announce_targets=[\"127.0.0.1:$PA\"]" --set download_dir="\"$T/b/dl\"" >"$T/b.out" 2>&1 & pids+=($!)
+A() { "$M" --ipc "$T/a.sock" "$@"; }
+B() { "$M" --ipc "$T/b.sock" "$@"; }
+for i in $(seq 50); do [ -S "$T/a.sock" ] && [ -S "$T/b.sock" ] && break; sleep 0.1; done
+FA=$(A --json status | python3 -c 'import json,sys;print(json.load(sys.stdin)["me"]["fingerprint"])')
+FB=$(B --json status | python3 -c 'import json,sys;print(json.load(sys.stdin)["me"]["fingerprint"])')
+echo "A=$FA B=$FB"
+A wait-peer "$FB" --timeout 20 && B wait-peer "$FA" --timeout 20
+echo "[ok] one-way discovery -> both online"
+ID1=$(A --json send "$FB" "你好 Bob" | python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])')
+ID2=$(B --json send "$FA" "hi Alice" | python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])')
+A wait-delivered "$ID1" --timeout 10 && B wait-delivered "$ID2" --timeout 10
+B history "$FA" | grep -q "你好 Bob"; A history "$FB" | grep -q "hi Alice"
+echo "[ok] text both directions + delivery receipts"
+head -c 3000000 /dev/urandom > "$T/blob.bin"
+A send-file "$FB" "$T/blob.bin" >/dev/null
+for i in $(seq 100); do ls "$T/b/dl/blob.bin" >/dev/null 2>&1 && B transfers | grep -q " done " && break; sleep 0.2; done
+cmp "$T/blob.bin" "$T/b/dl/blob.bin"
+echo "[ok] file transfer verified"
+PORT_B=$(B --json status | python3 -c 'import json,sys;print(json.load(sys.stdin)["me"]["listen_port"])')
+since() { A --json diag | python3 -c "import json,sys;d=json.load(sys.stdin);print(max([p.get('connected_for_ms') or 0 for p in d['peers']]+[0]))"; }
+sudo -n ss -K dst 127.0.0.1 dport = ":$PORT_B" >/dev/null 2>&1 || true
+sudo -n ss -K src 127.0.0.1 sport = ":$PORT_B" >/dev/null 2>&1 || true
+sleep 0.5
+if [ "$(since)" -gt 1500 ]; then A raw debug_drop_connection "{\"fingerprint\":\"$FB\"}" >/dev/null; echo "ss -K had no effect here; dropped link via debug RPC"; else echo "killed TCP via ss -K"; fi
+ID3=$(A --json send "$FB" "after cut" | python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])')
+A wait-peer "$FB" --timeout 20 && B wait-peer "$FA" --timeout 20
+A wait-delivered "$ID3" --timeout 20
+[ "$(B history "$FA" | grep -c 'after cut')" = 1 ]
+echo "[ok] reconnect after connection kill, queued message delivered exactly once"
+if [ -n "${PARTITION:-}" ] && sudo -n iptables -L >/dev/null 2>&1; then
+  echo "partition: dropping all packets to/from TCP $PORT_B and A's port for 25s (no FIN/RST -> heartbeat must detect)"
+  PORT_A=$(A --json status | python3 -c 'import json,sys;print(json.load(sys.stdin)["me"]["listen_port"])')
+  for P in $PORT_A $PORT_B; do sudo iptables -I INPUT -i lo -p tcp --dport $P -j DROP; sudo iptables -I INPUT -i lo -p tcp --sport $P -j DROP; done
+  ID4=$(A --json send "$FB" "sent during partition" | python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])')
+  sleep 25
+  A --json status | python3 -c "import json,sys;print('during partition A sees B online =',[p['online'] for p in json.load(sys.stdin)['peers']])"
+  for P in $PORT_A $PORT_B; do sudo iptables -D INPUT -i lo -p tcp --dport $P -j DROP; sudo iptables -D INPUT -i lo -p tcp --sport $P -j DROP; done
+  A wait-peer "$FB" --timeout 40 && A wait-delivered "$ID4" --timeout 40
+  echo "[ok] recovered from silent partition (heartbeat timeout + redial)"
 fi
-echo "QUIET ONLINE OK"
-
-echo "=== Send text A -> B ==="
-"$BIN" --config-dir "$DIR/a" --name Alice --bind 0.0.0.0 \
-  --discovery-port "$DISC" --listen-port 41246 --auto-trust \
-  send "$FP_B" "你好 Bob，这是加密消息" --wait 8 | tee "$DIR/send_text.txt"
-
+A diag > "$T/diag.json"; python3 -c "import json;d=json.load(open('$T/diag.json'));print('diag peers:',[(p['name'],p['state'],p['direction']) for p in d['peers']])"
+A shutdown >/dev/null; B shutdown >/dev/null
 sleep 1
-
-echo "=== Send file A -> B ==="
-"$BIN" --config-dir "$DIR/a" --name Alice --bind 0.0.0.0 \
-  --discovery-port "$DISC" --listen-port 41247 --auto-trust \
-  send-file "$FP_B" "$DIR/files/sample.txt" --wait 8 | tee "$DIR/send_file.txt"
-
-sleep 1
-
-echo "=== Send larger file (progress) A -> B ==="
-"$BIN" --config-dir "$DIR/a" --name Alice --bind 0.0.0.0 \
-  --discovery-port "$DISC" --listen-port 41248 --auto-trust \
-  send-file "$FP_B" "$DIR/files/big.bin" --wait 15 | tee "$DIR/send_big.txt"
-
-sleep 2
-
-echo "=== Broadcast A ==="
-"$BIN" --config-dir "$DIR/a" --name Alice --bind 0.0.0.0 \
-  --discovery-port "$DISC" --listen-port 41249 --auto-trust \
-  broadcast "广播测试 hello-all" --wait 5 | tee "$DIR/broadcast.txt"
-
-sleep 1
-
-echo "=== B log (tail) ==="
-tail -40 "$DIR/b.log"
-
-TEXT_OK=0
-FILE_OK=0
-BIG_OK=0
-BCAST_OK=0
-DELIV_OK=0
-
-if grep -q '你好 Bob' "$DIR/b.log"; then TEXT_OK=1; echo "TEXT OK"; else echo "TEXT FAIL"; fi
-if grep -q '广播测试' "$DIR/b.log"; then BCAST_OK=1; echo "BROADCAST OK"; else echo "BROADCAST FAIL"; fi
-
-recv=$(find "$DIR/b" -name 'sample.txt' 2>/dev/null | head -1 || true)
-if [[ -n "${recv:-}" ]]; then
-  diff -u "$DIR/files/sample.txt" "$recv"
-  FILE_OK=1
-  echo "FILE OK"
-else
-  echo "FILE FAIL"
-fi
-
-recv_big=$(find "$DIR/b" -name 'big.bin' 2>/dev/null | head -1 || true)
-if [[ -n "${recv_big:-}" ]]; then
-  diff -q "$DIR/files/big.bin" "$recv_big"
-  BIG_OK=1
-  echo "BIG FILE OK"
-else
-  echo "BIG FILE FAIL"
-fi
-
-# Delivery receipt must appear on sender CLI (TextAck wait)
-if grep -Eqi '回执|已送达' "$DIR/send_text.txt" 2>/dev/null; then
-  DELIV_OK=1
-  echo "DELIVERY RECEIPT OK"
-else
-  echo "DELIVERY RECEIPT FAIL — expected [回执] on send"
-  DELIV_OK=0
-fi
-
-echo "=== DM history A (peer thread) ==="
-"$BIN" --config-dir "$DIR/a" --name Alice --bind 0.0.0.0 \
-  --discovery-port "$DISC" --listen-port 41250 --auto-trust \
-  history "$FP_B" --limit 20 | tee "$DIR/dm_hist.txt"
-DM_OK=0
-if grep -q '你好 Bob' "$DIR/dm_hist.txt"; then DM_OK=1; echo "DM HISTORY OK"; else echo "DM HISTORY FAIL"; fi
-
-echo "=== Create group A + invite B ==="
-"$BIN" --config-dir "$DIR/a" --name Alice --bind 0.0.0.0 \
-  --discovery-port "$DISC" --listen-port 41251 --auto-trust \
-  create-group "测试群" --members "$FP_B" | tee "$DIR/create_group.txt"
-GID=$(grep -Eo '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' "$DIR/create_group.txt" | head -1)
-echo "GID=$GID"
-test -n "$GID"
-sleep 2
-
-GROUP_OK=0
-if grep -Eqi "群组|GroupInvite|测试群|邀请" "$DIR/b.log"; then
-  echo "GROUP INVITE SEEN ON B"
-fi
-
-echo "=== Group send A -> members ==="
-"$BIN" --config-dir "$DIR/a" --name Alice --bind 0.0.0.0 \
-  --discovery-port "$DISC" --listen-port 41252 --auto-trust \
-  group-send "$GID" "群聊你好各位" --wait 3 | tee "$DIR/group_send.txt"
-sleep 2
-tail -30 "$DIR/b.log"
-if grep -q '群聊你好各位' "$DIR/b.log"; then GROUP_OK=1; echo "GROUP TEXT OK"; else echo "GROUP TEXT FAIL"; fi
-
-echo "=== Group remove member + rekey ==="
-"$BIN" --config-dir "$DIR/a" --name Alice --bind 0.0.0.0 \
-  --discovery-port "$DISC" --listen-port 41253 --auto-trust \
-  group-remove-member "$GID" "$FP_B" --wait 2 | tee "$DIR/group_remove.txt"
-sleep 2
-"$BIN" --config-dir "$DIR/a" --name Alice --bind 0.0.0.0 \
-  --discovery-port "$DISC" --listen-port 41254 --auto-trust \
-  group-send "$GID" "移除后不应被Bob收到" --wait 2 | tee "$DIR/group_send2.txt" || true
-sleep 2
-REKEY_OK=0
-if grep -Eqi '移除|轮换|epoch' "$DIR/group_remove.txt"; then
-  echo "GROUP REMOVE/REKEY CMD OK"
-fi
-# Bob should have been notified of removal OR must not see the post-remove message
-if grep -q '移除后不应被Bob收到' "$DIR/b.log"; then
-  echo "GROUP REKEY FAIL — removed member still got message"
-  REKEY_OK=0
-else
-  REKEY_OK=1
-  echo "GROUP REKEY OK (removed member did not get post-rekey message)"
-fi
-
-echo "=== History search ==="
-"$BIN" --config-dir "$DIR/a" --name Alice --bind 0.0.0.0 \
-  --discovery-port "$DISC" --listen-port 41255 --auto-trust \
-  search "你好 Bob" --limit 20 | tee "$DIR/search.txt"
-SEARCH_OK=0
-if grep -q '你好 Bob' "$DIR/search.txt"; then SEARCH_OK=1; echo "SEARCH OK"; else echo "SEARCH FAIL"; fi
-
-echo "=== Backup/restore roundtrip ==="
-"$BIN" --config-dir "$DIR/a" --name Alice --bind 0.0.0.0 \
-  --discovery-port "$DISC" --listen-port 41256 --auto-trust \
-  backup "$DIR/backup.lsmb" --password "test-pass-123" | tee "$DIR/backup.txt"
-BACKUP_OK=0
-if [[ -f "$DIR/backup.lsmb" ]]; then BACKUP_OK=1; echo "BACKUP OK"; else echo "BACKUP FAIL"; fi
-
-if [[ "$TEXT_OK" -eq 1 && "$FILE_OK" -eq 1 && "$BIG_OK" -eq 1 && "$BCAST_OK" -eq 1 && "$DELIV_OK" -eq 1 && "$DM_OK" -eq 1 && "$GROUP_OK" -eq 1 && "$REKEY_OK" -eq 1 && "$SEARCH_OK" -eq 1 && "$BACKUP_OK" -eq 1 ]]; then
-  echo "=== SMOKE PASSED ==="
-  exit 0
-else
-  echo "=== SMOKE FAILED ==="
-  echo "TEXT=$TEXT_OK FILE=$FILE_OK BIG=$BIG_OK BCAST=$BCAST_OK DELIV=$DELIV_OK DM=$DM_OK GROUP=$GROUP_OK REKEY=$REKEY_OK SEARCH=$SEARCH_OK BACKUP=$BACKUP_OK"
-  exit 1
-fi
+ls "$T/a/logs"/daemon*.log >/dev/null
+echo "[ok] shutdown + logs in $T/a/logs"
+echo "SMOKE PASS"

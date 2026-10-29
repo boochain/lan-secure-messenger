@@ -1,242 +1,335 @@
-//! UDP multicast/broadcast discovery with signed announcements.
+//! UDP discovery. Announces are only *hints* for where to dial; presence is decided by
+//! the authenticated TCP connection (see engine). Sources:
+//!  * subnet-directed broadcast on every real IPv4 interface (+ 255.255.255.255 bound per interface)
+//!  * multicast 239.255.42.99 joined/sent per interface
+//!  * unicast replies to announces we receive, and configured unicast targets
+//! No timestamp-skew rejection (v0.3 silently dropped peers whose clock differed > 60 s).
 
 use crate::identity::{Fingerprint, Identity};
-use crate::protocol::DiscoveryAnnounce;
-use crate::{PROTOCOL_MAGIC, PROTOCOL_VERSION};
-use anyhow::{anyhow, Context, Result};
+use crate::netif::{self, NetIf};
+use crate::wire::{self, Announce, SignedAnnounce, ANNOUNCE_MAGIC, PROTO_VERSION};
 use ed25519_dalek::VerifyingKey;
-use rand::RngCore;
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
-use std::time::{SystemTime, UNIX_EPOCH};
+use serde::Serialize;
+use socket2::{Domain, Protocol, Socket, Type};
+use std::collections::HashMap;
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, ToSocketAddrs};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tokio::net::UdpSocket;
-use tracing::{debug, warn};
+use tokio::sync::mpsc;
 
-/// Default LAN multicast group for discovery.
-pub const DEFAULT_MULTICAST: Ipv4Addr = Ipv4Addr::new(239, 255, 42, 99);
+pub const MULTICAST_GROUP: Ipv4Addr = Ipv4Addr::new(239, 255, 42, 99);
 
-const MAX_SKEW_MS: i64 = 60_000;
-const NONCE_CACHE_MAX: usize = 2048;
-
-pub struct DiscoveryService {
-    sock: UdpSocket,
-    /// Where we send announces (multicast or override).
-    destinations: Vec<SocketAddr>,
-}
-
-impl DiscoveryService {
-    pub async fn bind(
-        bind_addr: &str,
-        discovery_port: u16,
-        broadcast_override: Option<&str>,
-    ) -> Result<Self> {
-        let bind_ip: Ipv4Addr = bind_addr
-            .parse()
-            .with_context(|| format!("bind_addr must be IPv4: {bind_addr}"))?;
-        let bind = SocketAddr::V4(SocketAddrV4::new(bind_ip, discovery_port));
-
-        let std_sock = socket2::Socket::new(
-            socket2::Domain::IPV4,
-            socket2::Type::DGRAM,
-            Some(socket2::Protocol::UDP),
-        )?;
-        // SO_REUSEADDR (not REUSEPORT): multiple processes can join the same
-        // multicast group:port and each receives a copy of every datagram.
-        std_sock.set_reuse_address(true)?;
-        std_sock.set_broadcast(true)?;
-        std_sock.bind(&bind.into())?;
-        std_sock.set_nonblocking(true)?;
-
-        let sock = UdpSocket::from_std(std_sock.into())?;
-
-        let mut destinations = Vec::new();
-
-        if let Some(addr) = broadcast_override {
-            // Smoke-test / custom: send to override host:discovery_port
-            // Also join multicast so real LAN still works when override is unset path.
-            let dest: SocketAddr = format!("{addr}:{discovery_port}")
-                .parse()
-                .context("parse broadcast override")?;
-            destinations.push(dest);
-            // For loopback testing, also try sending to the same port on localhost
-            // Multiple processes with REUSEPORT may not all get the packet, so we
-            // additionally support env-style multi-dest via comma-separated override.
-            for part in addr.split(',') {
-                let part = part.trim();
-                if part.is_empty() {
-                    continue;
-                }
-                // host or host:port
-                let dest: SocketAddr = if part.contains(':') {
-                    part.parse().with_context(|| format!("parse dest {part}"))?
-                } else {
-                    format!("{part}:{discovery_port}")
-                        .parse()
-                        .with_context(|| format!("parse dest host {part}"))?
-                };
-                if !destinations.contains(&dest) {
-                    destinations.push(dest);
-                }
-            }
-        } else {
-            // Production: multicast + limited broadcast
-            let iface = if bind_ip.is_unspecified() {
-                Ipv4Addr::UNSPECIFIED
-            } else {
-                bind_ip
-            };
-            sock.join_multicast_v4(DEFAULT_MULTICAST, iface)
-                .context("join multicast")?;
-            destinations.push(SocketAddr::V4(SocketAddrV4::new(
-                DEFAULT_MULTICAST,
-                discovery_port,
-            )));
-            destinations.push(SocketAddr::V4(SocketAddrV4::new(
-                Ipv4Addr::BROADCAST,
-                discovery_port,
-            )));
-        }
-
-        // Always join multicast when binding unspecified/LAN so we receive peers
-        if broadcast_override.is_none() || bind_ip.is_unspecified() {
-            let iface = if bind_ip.is_unspecified() {
-                Ipv4Addr::UNSPECIFIED
-            } else {
-                bind_ip
-            };
-            let _ = sock.join_multicast_v4(DEFAULT_MULTICAST, iface);
-        }
-
-        Ok(Self { sock, destinations })
-    }
-
-    pub fn local_addr(&self) -> Result<SocketAddr> {
-        Ok(self.sock.local_addr()?)
-    }
-
-    pub async fn announce(
-        &self,
-        identity: &Identity,
-        display_name: &str,
-        listen_port: u16,
-    ) -> Result<()> {
-        let mut nonce = [0u8; 16];
-        rand::thread_rng().fill_bytes(&mut nonce);
-        let ts_ms = now_ms();
-        let mut ann = DiscoveryAnnounce {
-            magic: PROTOCOL_MAGIC,
-            version: PROTOCOL_VERSION,
-            display_name: display_name.to_string(),
-            x25519_pk: identity.x25519_public_bytes(),
-            ed25519_pk: identity.ed25519_public_bytes(),
-            listen_port,
-            ts_ms,
-            nonce,
-            sig: vec![0u8; 64],
-        };
-        let bytes = ann.sign_bytes();
-        ann.sig = identity.sign(&bytes).to_vec();
-        let payload = bincode::serialize(&ann)?;
-        for dest in &self.destinations {
-            match self.sock.send_to(&payload, dest).await {
-                Ok(_) => debug!(to = %dest, "discovery announce sent"),
-                Err(e) => warn!(to = %dest, error = %e, "announce send failed"),
-            }
-        }
-        Ok(())
-    }
-
-    pub async fn recv(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
-        let (n, addr) = self.sock.recv_from(buf).await?;
-        Ok((n, addr))
-    }
-}
-
-pub struct AnnounceValidator {
-    seen_nonces: std::collections::HashSet<[u8; 16]>,
-    nonce_order: std::collections::VecDeque<[u8; 16]>,
-}
-
-impl Default for AnnounceValidator {
-    fn default() -> Self {
-        Self {
-            seen_nonces: Default::default(),
-            nonce_order: Default::default(),
-        }
-    }
-}
-
-impl AnnounceValidator {
-    pub fn validate(
-        &mut self,
-        data: &[u8],
-        from: SocketAddr,
-        self_fp: &Fingerprint,
-    ) -> Result<ValidatedPeer> {
-        let ann: DiscoveryAnnounce = bincode::deserialize(data).context("decode announce")?;
-        if ann.magic != PROTOCOL_MAGIC {
-            return Err(anyhow!("bad magic"));
-        }
-        if ann.version != PROTOCOL_VERSION {
-            return Err(anyhow!("unsupported version {}", ann.version));
-        }
-        let now = now_ms();
-        if (now - ann.ts_ms).abs() > MAX_SKEW_MS {
-            return Err(anyhow!("timestamp skew too large"));
-        }
-        if self.seen_nonces.contains(&ann.nonce) {
-            return Err(anyhow!("replayed nonce"));
-        }
-        let vk = VerifyingKey::from_bytes(&ann.ed25519_pk)
-            .map_err(|e| anyhow!("bad ed25519 pk: {e}"))?;
-        let msg = ann.sign_bytes();
-        anyhow::ensure!(ann.sig.len() == 64, "bad sig length");
-        let mut sig = [0u8; 64];
-        sig.copy_from_slice(&ann.sig);
-        if !Identity::verify(&vk, &msg, &sig) {
-            return Err(anyhow!("invalid discovery signature from {from}"));
-        }
-        let fp = Fingerprint::from_x25519(&ann.x25519_pk);
-        if &fp == self_fp {
-            return Err(anyhow!("self announce"));
-        }
-
-        self.seen_nonces.insert(ann.nonce);
-        self.nonce_order.push_back(ann.nonce);
-        while self.nonce_order.len() > NONCE_CACHE_MAX {
-            if let Some(old) = self.nonce_order.pop_front() {
-                self.seen_nonces.remove(&old);
-            }
-        }
-
-        let peer_addr = SocketAddr::new(from.ip(), ann.listen_port);
-        Ok(ValidatedPeer {
-            fingerprint: fp,
-            display_name: ann.display_name,
-            x25519_pk: ann.x25519_pk,
-            ed25519_pk: ann.ed25519_pk,
-            addr: peer_addr,
-            listen_port: ann.listen_port,
-        })
-    }
+#[derive(Debug, Clone)]
+pub struct Seen {
+    pub fp: Fingerprint,
+    pub name: String,
+    pub ed25519_pk: [u8; 32],
+    /// Where to dial (source ip + advertised TCP port).
+    pub dial: SocketAddr,
+    pub src: SocketAddr,
 }
 
 #[derive(Debug, Clone)]
-pub struct ValidatedPeer {
-    pub fingerprint: Fingerprint,
-    pub display_name: String,
-    pub x25519_pk: [u8; 32],
-    pub ed25519_pk: [u8; 32],
-    pub addr: SocketAddr,
-    pub listen_port: u16,
+pub struct DiscoParams {
+    pub port: u16,
+    pub listen: bool,
+    pub multicast: bool,
+    pub interval: Duration,
+    pub targets: Vec<String>,
+    pub include: Vec<String>,
+    pub exclude: Vec<String>,
 }
 
-fn now_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
+#[derive(Debug, Clone, Default, Serialize, serde::Deserialize)]
+pub struct DiscoStatus {
+    pub enabled: bool,
+    pub port: u16,
+    pub listening: bool,
+    pub bind_error: String,
+    pub multicast: bool,
+    pub announces_sent: u64,
+    pub announces_received: u64,
+    pub announces_rejected: u64,
+    pub send_errors: u64,
+    pub last_send_error: String,
+    pub interfaces: Vec<NetIf>,
 }
 
-pub fn warn_invalid(err: anyhow::Error) {
-    warn!(error = %err, "ignored discovery packet");
+pub struct AnnounceInfo {
+    pub name: String,
+    pub tcp_port: u16,
+}
+
+pub struct Discovery {
+    pub status: Arc<Mutex<DiscoStatus>>,
+    pub info: Arc<Mutex<AnnounceInfo>>,
+    reply_tx: mpsc::UnboundedSender<SocketAddr>,
+}
+
+impl Discovery {
+    /// Ask discovery to unicast an announce to `addr` (a peer's discovery port).
+    pub fn reply_to(&self, addr: SocketAddr) {
+        let _ = self.reply_tx.send(addr);
+    }
+
+    pub fn start(identity: Identity, params: DiscoParams, info: AnnounceInfo, tx: mpsc::UnboundedSender<Seen>) -> Self {
+        let status = Arc::new(Mutex::new(DiscoStatus { enabled: true, port: params.port, multicast: params.multicast, ..Default::default() }));
+        let info = Arc::new(Mutex::new(info));
+        let (reply_tx, reply_rx) = mpsc::unbounded_channel();
+        let d = Discovery { status: status.clone(), info: info.clone(), reply_tx: reply_tx.clone() };
+        tokio::spawn(run(identity, params, info, status, tx, reply_rx, reply_tx));
+        d
+    }
+
+    pub fn disabled() -> Self {
+        let (reply_tx, _rx) = mpsc::unbounded_channel();
+        Discovery {
+            status: Arc::new(Mutex::new(DiscoStatus::default())),
+            info: Arc::new(Mutex::new(AnnounceInfo { name: String::new(), tcp_port: 0 })),
+            reply_tx,
+        }
+    }
+}
+
+fn build_announce(identity: &Identity, info: &Arc<Mutex<AnnounceInfo>>, disco_port: u16) -> Vec<u8> {
+    let (name, tcp_port) = {
+        let i = info.lock().unwrap();
+        (i.name.clone(), i.tcp_port)
+    };
+    let a = Announce {
+        proto: PROTO_VERSION,
+        x25519_pk: identity.x25519_public_bytes(),
+        ed25519_pk: identity.ed25519_public_bytes(),
+        name,
+        tcp_port,
+        disco_port,
+        nonce: rand::random(),
+        ts_ms: chrono::Utc::now().timestamp_millis(),
+        want_reply: true,
+    };
+    let body = wire::encode(&a).unwrap_or_default();
+    let sig = identity.sign(&body).to_vec();
+    let mut out = ANNOUNCE_MAGIC.to_vec();
+    out.extend(wire::encode(&SignedAnnounce { body, sig }).unwrap_or_default());
+    out
+}
+
+pub fn parse_announce(buf: &[u8]) -> Option<Announce> {
+    if buf.len() < 4 || buf[..4] != ANNOUNCE_MAGIC {
+        return None;
+    }
+    let sa: SignedAnnounce = wire::decode(&buf[4..]).ok()?;
+    let a: Announce = wire::decode(&sa.body).ok()?;
+    if a.proto != PROTO_VERSION || sa.sig.len() != 64 {
+        return None;
+    }
+    let vk = VerifyingKey::from_bytes(&a.ed25519_pk).ok()?;
+    let mut sig = [0u8; 64];
+    sig.copy_from_slice(&sa.sig);
+    Identity::verify(&vk, &sa.body, &sig).then_some(a)
+}
+
+fn recv_socket(port: u16) -> std::io::Result<std::net::UdpSocket> {
+    let s = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
+    #[cfg(unix)]
+    s.set_reuse_address(true)?;
+    s.set_broadcast(true)?;
+    s.bind(&SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, port).into())?;
+    s.set_nonblocking(true)?;
+    Ok(s.into())
+}
+
+fn send_socket(ip: Ipv4Addr) -> std::io::Result<std::net::UdpSocket> {
+    let s = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
+    s.set_broadcast(true)?;
+    if !ip.is_unspecified() {
+        let _ = s.set_multicast_if_v4(&ip);
+        s.set_multicast_ttl_v4(1)?;
+    }
+    s.set_multicast_loop_v4(true)?;
+    s.bind(&SocketAddrV4::new(ip, 0).into())?;
+    s.set_nonblocking(true)?;
+    Ok(s.into())
+}
+
+fn resolve_targets(targets: &[String], default_port: u16) -> Vec<SocketAddr> {
+    let mut out = Vec::new();
+    for t in targets {
+        let t = t.trim();
+        if t.is_empty() {
+            continue;
+        }
+        let with_port = if t.contains(':') { t.to_string() } else { format!("{t}:{default_port}") };
+        if let Ok(it) = with_port.to_socket_addrs() {
+            out.extend(it.filter(|a| a.is_ipv4()));
+        }
+    }
+    out
+}
+
+async fn run(
+    identity: Identity,
+    p: DiscoParams,
+    info: Arc<Mutex<AnnounceInfo>>,
+    status: Arc<Mutex<DiscoStatus>>,
+    tx: mpsc::UnboundedSender<Seen>,
+    mut reply_rx: mpsc::UnboundedReceiver<SocketAddr>,
+    reply_tx: mpsc::UnboundedSender<SocketAddr>,
+) {
+    let me = identity.fingerprint().clone();
+    // Receiver.
+    let rsock = if p.listen {
+        match recv_socket(p.port).and_then(UdpSocket::from_std) {
+            Ok(s) => {
+                status.lock().unwrap().listening = true;
+                Some(Arc::new(s))
+            }
+            Err(e) => {
+                tracing::warn!(port = p.port, error = %e, "discovery bind failed; relying on manual add / redial");
+                status.lock().unwrap().bind_error = format!("UDP {} 绑定失败: {e}", p.port);
+                None
+            }
+        }
+    } else {
+        None
+    };
+    if let Some(rs) = rsock.clone() {
+        let status = status.clone();
+        let tx = tx.clone();
+        let me = me.clone();
+        tokio::spawn(async move {
+            let mut buf = vec![0u8; 2048];
+            let mut last_reply: HashMap<std::net::IpAddr, Instant> = HashMap::new();
+            loop {
+                let Ok((n, src)) = rs.recv_from(&mut buf).await else {
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                    continue;
+                };
+                let Some(a) = parse_announce(&buf[..n]) else {
+                    status.lock().unwrap().announces_rejected += 1;
+                    continue;
+                };
+                let fp = Fingerprint::from_x25519(&a.x25519_pk);
+                if fp == me {
+                    continue;
+                }
+                status.lock().unwrap().announces_received += 1;
+                let reply_due = a.want_reply && last_reply.get(&src.ip()).map(|t| t.elapsed() > Duration::from_secs(10)).unwrap_or(true);
+                if reply_due && a.disco_port != 0 {
+                    last_reply.insert(src.ip(), Instant::now());
+                    let _ = reply_tx.send(SocketAddr::new(src.ip(), a.disco_port));
+                }
+                let _ = tx.send(Seen {
+                    fp,
+                    name: crate::util::sanitize_display_name(&a.name),
+                    ed25519_pk: a.ed25519_pk,
+                    dial: SocketAddr::new(src.ip(), a.tcp_port),
+                    src,
+                });
+            }
+        });
+    }
+
+    let mut ifaces: Vec<NetIf> = Vec::new();
+    let mut socks: HashMap<Ipv4Addr, UdpSocket> = HashMap::new();
+    let mut joined: Vec<Ipv4Addr> = Vec::new();
+    let mut last_enum = Instant::now() - Duration::from_secs(3600);
+    let fallback = send_socket(Ipv4Addr::UNSPECIFIED).and_then(UdpSocket::from_std).ok();
+    let mut tick = tokio::time::interval(p.interval);
+    let targets_every = 1u64;
+    let mut n_tick: u64 = 0;
+    loop {
+        tokio::select! {
+            _ = tick.tick() => {}
+            Some(addr) = reply_rx.recv() => {
+                let pkt = build_announce(&identity, &info, p.port);
+                if let Some(s) = &fallback {
+                    if s.send_to(&pkt, addr).await.is_ok() {
+                        status.lock().unwrap().announces_sent += 1;
+                    }
+                }
+                continue;
+            }
+        }
+        n_tick += 1;
+        if last_enum.elapsed() > Duration::from_secs(20) {
+            last_enum = Instant::now();
+            let now_ifaces = netif::list(&p.include, &p.exclude);
+            let used: Vec<Ipv4Addr> = now_ifaces.iter().filter(|i| i.used).map(|i| i.ip).collect();
+            socks.retain(|ip, _| used.contains(ip));
+            for ip in &used {
+                if !socks.contains_key(ip) {
+                    match send_socket(*ip).and_then(UdpSocket::from_std) {
+                        Ok(s) => {
+                            socks.insert(*ip, s);
+                        }
+                        Err(e) => tracing::warn!(%ip, error = %e, "cannot bind discovery sender"),
+                    }
+                }
+                if p.multicast && !joined.contains(ip) {
+                    if let Some(rs) = &rsock {
+                        match rs.join_multicast_v4(MULTICAST_GROUP, *ip) {
+                            Ok(()) => joined.push(*ip),
+                            Err(e) => tracing::debug!(%ip, error = %e, "multicast join failed"),
+                        }
+                    }
+                }
+            }
+            if used.is_empty() {
+                tracing::warn!("no usable LAN interface found for discovery");
+            }
+            if format!("{:?}", now_ifaces.iter().map(|i| (&i.name, i.ip, i.used)).collect::<Vec<_>>())
+                != format!("{:?}", ifaces.iter().map(|i| (&i.name, i.ip, i.used)).collect::<Vec<_>>())
+            {
+                for i in &now_ifaces {
+                    tracing::info!(name = %i.name, friendly = %i.friendly_name, ip = %i.ip, bcast = %i.broadcast, used = i.used, reason = %i.reason, "interface");
+                }
+            }
+            ifaces = now_ifaces;
+            status.lock().unwrap().interfaces = ifaces.clone();
+        }
+        let pkt = build_announce(&identity, &info, p.port);
+        let mut sent = 0u64;
+        let mut errs = 0u64;
+        let mut last_err = String::new();
+        for itf in ifaces.iter().filter(|i| i.used) {
+            let Some(s) = socks.get(&itf.ip) else { continue };
+            let mut dests = vec![SocketAddr::from((itf.broadcast, p.port))];
+            if itf.broadcast != Ipv4Addr::BROADCAST {
+                dests.push(SocketAddr::from((Ipv4Addr::BROADCAST, p.port)));
+            }
+            if p.multicast {
+                dests.push(SocketAddr::from((MULTICAST_GROUP, p.port)));
+            }
+            for d in dests {
+                match s.send_to(&pkt, d).await {
+                    Ok(_) => sent += 1,
+                    Err(e) => {
+                        errs += 1;
+                        last_err = format!("{} -> {d}: {e}", itf.ip);
+                    }
+                }
+            }
+        }
+        if n_tick % targets_every == 0 {
+            if let Some(s) = &fallback {
+                for t in resolve_targets(&p.targets, p.port) {
+                    match s.send_to(&pkt, t).await {
+                        Ok(_) => sent += 1,
+                        Err(e) => {
+                            errs += 1;
+                            last_err = format!("-> {t}: {e}");
+                        }
+                    }
+                }
+            }
+        }
+        let mut st = status.lock().unwrap();
+        st.announces_sent += sent;
+        st.send_errors += errs;
+        if !last_err.is_empty() {
+            st.last_send_error = last_err;
+        }
+    }
 }

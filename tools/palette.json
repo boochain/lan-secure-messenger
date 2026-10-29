@@ -1,0 +1,273 @@
+{
+  "verification": {
+    "sources": {
+      "winui": "https://raw.githubusercontent.com/microsoft/microsoft-ui-xaml/main/controls/dev/CommonStyles/Common_themeresources_any.xaml",
+      "winui_tb": "https://raw.githubusercontent.com/microsoft/microsoft-ui-xaml/main/controls/dev/CommonStyles/TextBlock_themeresources.xaml",
+      "ms_type": "https://learn.microsoft.com/en-us/windows/apps/design/signature-experiences/typography",
+      "m3c": "https://raw.githubusercontent.com/material-components/material-components-android/master/lib/java/com/google/android/material/color/res/values/tokens.xml",
+      "m3t": "https://raw.githubusercontent.com/material-components/material-components-android/master/lib/java/com/google/android/material/typography/res/values/tokens.xml",
+      "adw": "https://gitlab.gnome.org/GNOME/libadwaita/-/raw/main/src/stylesheet/_colors.scss",
+      "adwdoc": "https://gnome.pages.gitlab.gnome.org/libadwaita/doc/main/css-variables.html",
+      "ap_c": "https://developer.apple.com/design/human-interface-guidelines/color.md",
+      "ap_t": "https://developer.apple.com/design/human-interface-guidelines/typography.md",
+      "ap_m": "https://developer.apple.com/design/human-interface-guidelines/materials.md"
+    },
+    "status": {
+      "winui_brushes": "VERIFIED (parsed Light + Default(dark) ThemeDictionaries)",
+      "winui_accent_hex": "UNVERIFIED: XAML binds AccentFillColorDefault to SystemAccentColorDark1 (light) / Light2 (dark), which are runtime OS-accent values. #005FB8 / #60CDFF are the commonly cited shades of the default Windows blue, but no official machine-readable source was found",
+      "winui_type": "VERIFIED (sizes from TextBlock_themeresources.xaml; line heights and weights from the MS Learn type ramp)",
+      "m3_colors": "VERIFIED (m3_sys_color_* resolved via m3_ref_palette_*)",
+      "m3_type": "VERIFIED (TextAppearance.M3.Sys.Typescale.*)",
+      "adwaita": "VERIFIED (_colors.scss + css-variables doc tables)",
+      "apple_accent_colors": "VERIFIED from HIG color.md (new 2025 values)",
+      "apple_label_background": "UNVERIFIED: the HIG only names the APIs and the UIKit doc pages require JavaScript. Hex values are from the old HIG tables",
+      "apple_type": "VERIFIED iOS Large (default) + macOS tables from typography.md",
+      "apple_liquid_glass": "VERIFIED text from materials.md"
+    }
+  },
+  "basis": "Microsoft Fluent 2 / WinUI 3 brushes (verified), alpha-composited: card/bubble/input = CardBackground/ControlFill over LayerFill over SolidBackgroundBase",
+  "colors": {
+    "light": {
+      "window_bg": "#F3F3F3",
+      "sidebar_bg": "#EEEEEE",
+      "card_bg": "#FBFBFB",
+      "chat_bg": "#F9F9F9",
+      "bubble_in_bg": "#FDFDFD",
+      "bubble_in_fg": "#1B1B1B",
+      "bubble_out_bg": "#005FB8",
+      "bubble_out_fg": "#FFFFFF",
+      "text_primary": "#1A1A1A",
+      "text_secondary": "#5C5C5C",
+      "text_tertiary": "#5C5C5C",
+      "accent": "#005FB8",
+      "button_bg": "#005FB8",
+      "button_fg": "#FFFFFF",
+      "input_bg": "#FDFDFD",
+      "input_fg": "#1B1B1B",
+      "divider": "#E5E5E5",
+      "online": "#0F7B0F",
+      "warning": "#9D5D00",
+      "error": "#C42B1C",
+      "badge_bg": "#C42B1C",
+      "badge_fg": "#FFFFFF"
+    },
+    "dark": {
+      "window_bg": "#202020",
+      "sidebar_bg": "#1C1C1C",
+      "card_bg": "#2B2B2B",
+      "chat_bg": "#282828",
+      "bubble_in_bg": "#333333",
+      "bubble_in_fg": "#FFFFFF",
+      "bubble_out_bg": "#60CDFF",
+      "bubble_out_fg": "#000000",
+      "text_primary": "#FFFFFF",
+      "text_secondary": "#CCCCCC",
+      "text_tertiary": "#CCCCCC",
+      "accent": "#60CDFF",
+      "button_bg": "#60CDFF",
+      "button_fg": "#000000",
+      "input_bg": "#353535",
+      "input_fg": "#FFFFFF",
+      "divider": "#323232",
+      "online": "#6CCB5F",
+      "warning": "#FCE100",
+      "error": "#FF99A4",
+      "badge_bg": "#FF99A4",
+      "badge_fg": "#000000"
+    }
+  },
+  "contrast": {
+    "light": {
+      "text_primary/window_bg": 15.68,
+      "text_secondary/window_bg": 6.03,
+      "text_tertiary/window_bg": 6.03,
+      "text_primary/sidebar_bg": 15.0,
+      "text_secondary/sidebar_bg": 5.76,
+      "text_primary/card_bg": 16.82,
+      "text_secondary/card_bg": 6.46,
+      "text_primary/chat_bg": 16.53,
+      "text_secondary/chat_bg": 6.35,
+      "bubble_in_fg/bubble_in_bg": 16.93,
+      "bubble_out_fg/bubble_out_bg": 6.31,
+      "button_fg/button_bg": 6.31,
+      "input_fg/input_bg": 16.93,
+      "badge_fg/badge_bg": 5.66,
+      "accent/window_bg": 5.68,
+      "accent/chat_bg": 5.99,
+      "error/window_bg": 5.1,
+      "warning/window_bg": 4.73,
+      "online/window_bg": 4.9
+    },
+    "dark": {
+      "text_primary/window_bg": 16.29,
+      "text_secondary/window_bg": 10.15,
+      "text_tertiary/window_bg": 10.15,
+      "text_primary/sidebar_bg": 17.04,
+      "text_secondary/sidebar_bg": 10.61,
+      "text_primary/card_bg": 14.16,
+      "text_secondary/card_bg": 8.82,
+      "text_primary/chat_bg": 14.74,
+      "text_secondary/chat_bg": 9.18,
+      "bubble_in_fg/bubble_in_bg": 12.63,
+      "bubble_out_fg/bubble_out_bg": 11.67,
+      "button_fg/button_bg": 11.67,
+      "input_fg/input_bg": 12.27,
+      "badge_fg/badge_bg": 10.34,
+      "accent/window_bg": 9.06,
+      "accent/chat_bg": 8.2,
+      "error/window_bg": 8.03,
+      "warning/window_bg": 12.34,
+      "online/window_bg": 8.03
+    }
+  },
+  "platform_tokens": {
+    "columns": [
+      "winui3",
+      "xp_win32",
+      "gtk_libadwaita",
+      "android_m3"
+    ],
+    "map": {
+      "window_bg": [
+        "SolidBackgroundFillColorBase",
+        "COLOR_3DFACE (system, high-contrast aware) / custom brush = unified hex",
+        "@window_bg_color",
+        "surface"
+      ],
+      "sidebar_bg": [
+        "SolidBackgroundFillColorSecondary",
+        "custom brush",
+        "@sidebar_bg_color",
+        "surfaceContainerLow"
+      ],
+      "card_bg": [
+        "CardBackgroundFillColorDefault",
+        "COLOR_WINDOW",
+        "@card_bg_color",
+        "surfaceContainer"
+      ],
+      "chat_bg": [
+        "LayerFillColorDefault",
+        "COLOR_WINDOW",
+        "@view_bg_color",
+        "surfaceContainerLowest"
+      ],
+      "bubble_in_bg": [
+        "CardBackgroundFillColorDefault",
+        "custom brush",
+        "@card_bg_color",
+        "surfaceContainerHigh"
+      ],
+      "bubble_out_bg": [
+        "AccentFillColorDefault",
+        "custom brush",
+        "@accent_bg_color",
+        "primary"
+      ],
+      "bubble_out_fg": [
+        "TextOnAccentFillColorPrimary",
+        "custom",
+        "@accent_fg_color",
+        "onPrimary"
+      ],
+      "text_primary": [
+        "TextFillColorPrimary",
+        "COLOR_WINDOWTEXT",
+        "@window_fg_color",
+        "onSurface"
+      ],
+      "text_secondary": [
+        "TextFillColorSecondary",
+        "COLOR_GRAYTEXT (only if >=4.5)",
+        "@window_fg_color + .dim-label",
+        "onSurfaceVariant"
+      ],
+      "accent": [
+        "AccentTextFillColorPrimary",
+        "COLOR_HOTLIGHT",
+        "@accent_color",
+        "primary"
+      ],
+      "divider": [
+        "DividerStrokeColorDefault",
+        "COLOR_3DSHADOW",
+        "@borders",
+        "outlineVariant"
+      ],
+      "online": [
+        "SystemFillColorSuccess",
+        "custom",
+        "@success_color",
+        "custom (M3 has no success role) = unified hex"
+      ],
+      "warning": [
+        "SystemFillColorCaution",
+        "custom",
+        "@warning_color",
+        "custom = unified hex"
+      ],
+      "error": [
+        "SystemFillColorCritical",
+        "custom",
+        "@error_color",
+        "error"
+      ],
+      "badge_bg": [
+        "SystemFillColorCritical",
+        "custom",
+        "@error_bg_color (bg) \u2014 use unified hex",
+        "error"
+      ]
+    }
+  },
+  "type_scale": [
+    {
+      "name": "caption",
+      "size_px": 12,
+      "line_height_px": 16,
+      "weight": 400
+    },
+    {
+      "name": "body",
+      "size_px": 14,
+      "line_height_px": 20,
+      "weight": 400
+    },
+    {
+      "name": "body_strong",
+      "size_px": 14,
+      "line_height_px": 20,
+      "weight": 600
+    },
+    {
+      "name": "subtitle",
+      "size_px": 20,
+      "line_height_px": 28,
+      "weight": 600
+    },
+    {
+      "name": "title",
+      "size_px": 28,
+      "line_height_px": 36,
+      "weight": 600
+    },
+    {
+      "name": "title_large",
+      "size_px": 40,
+      "line_height_px": 52,
+      "weight": 600
+    },
+    {
+      "name": "display",
+      "size_px": 68,
+      "line_height_px": 92,
+      "weight": 600
+    }
+  ],
+  "fonts": {
+    "winui3": "Segoe UI Variable Text/Display; zh: Microsoft YaHei UI",
+    "xp_win32": "Tahoma 8pt / Segoe UI if present; zh: SimSun 9pt (XP) or Microsoft YaHei if installed",
+    "gtk": "system (Cantarell/Adwaita Sans); zh: Noto Sans CJK SC",
+    "android": "Roboto/system; zh: Noto Sans CJK SC (system)"
+  }
+}
