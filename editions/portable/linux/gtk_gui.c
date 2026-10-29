@@ -13,6 +13,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include "../src/core.h"
+#include "upd_gio.h"
 
 #define APP_ID "io.github.frec86.LanMessenger"
 static lsm_core *C;
@@ -220,6 +221,11 @@ static gboolean on_drag_motion(GtkWidget *w, GdkDragContext *c, gint x, gint y, 
 static void on_drag_leave(GtkWidget *w, GdkDragContext *c, guint t, gpointer p){ (void)w;(void)c;(void)t;(void)p; gtk_widget_hide(drop_hint); }
 static void on_row(GtkListBox *lb, GtkListBoxRow *row, gpointer p){ const char *cv; (void)lb; (void)p; if(!row) return; cv=g_object_get_data(G_OBJECT(row),"conv"); if(!cv) return;
     snprintf(cur_conv,sizeof cur_conv,"%s",cv); refresh_chat(); if(lsm_mark_read(C,cur_conv)) list_dirty=1; gtk_widget_grab_focus(input); }
+static int peer_muted(const char *fp){ lsm_contact *k; int n,i,m=0; lsm_lock(C); n=lsm_contacts(C,&k); for(i=0;i<n;i++) if(!strcmp(k[i].fp,fp)){ m=k[i].muted; break; } lsm_unlock(C); return m; }
+static void upd_show(int newer, const char *msg, const char *url){ GtkWidget *d;
+    if(newer==0){ msgbox(GTK_MESSAGE_INFO,"%s",msg); return; }
+    d=gtk_message_dialog_new(GTK_WINDOW(win),GTK_DIALOG_MODAL,newer>0?GTK_MESSAGE_INFO:GTK_MESSAGE_WARNING,GTK_BUTTONS_YES_NO,"%s\n%s",msg,newer>0?"是否打开下载页？":"是否在浏览器中打开发布页？");
+    gtk_window_set_title(GTK_WINDOW(d),"检查更新"); if(gtk_dialog_run(GTK_DIALOG(d))==GTK_RESPONSE_YES) upd_open_url(url); gtk_widget_destroy(d); }
 static const char *sel_peer(void){ static char fp[FP_LEN]; if(strncmp(cur_conv,"dm:",3)){ msgbox(GTK_MESSAGE_INFO,"请先在左侧选择一个联系人。"); return NULL; } snprintf(fp,sizeof fp,"%s",cur_conv+3); return fp; }
 static const char *sel_group(void){ static char g[40]; if(strncmp(cur_conv,"group:",6)){ msgbox(GTK_MESSAGE_INFO,"请先在左侧选择一个群组。"); return NULL; } snprintf(g,sizeof g,"%s",cur_conv+6); return g; }
 
@@ -237,10 +243,13 @@ static void show_transfers(void){
     gtk_container_add(GTK_CONTAINER(sc),lb); gtk_box_pack_start(GTK_BOX(box),sc,TRUE,TRUE,0); gtk_window_set_default_size(GTK_WINDOW(d),560,380); gtk_widget_show_all(d);
     g_signal_connect(d,"response",G_CALLBACK(gtk_widget_destroy),NULL); }
 
-enum { A_ADDIP=1, A_TRUST, A_UNTRUST, A_BLOCK, A_PINOFFER, A_PINPAIR, A_GCREATE, A_GINVITE, A_GREMOVE, A_GLEAVE, A_NAME, A_XFERS, A_DLDIR, A_FIREWALL, A_ABOUT, A_QUIT };
+enum { A_ADDIP=1, A_TRUST, A_UNTRUST, A_BLOCK, A_PINOFFER, A_PINPAIR, A_GCREATE, A_GINVITE, A_GREMOVE, A_GLEAVE, A_NAME, A_XFERS, A_DLDIR, A_FIREWALL, A_ABOUT, A_QUIT, A_MUTE, A_DIAG, A_UPDATE };
 static void act(GtkWidget *w, gpointer p){ int id=GPOINTER_TO_INT(p); char err[256]=""; (void)w;
     switch(id){
     case A_ADDIP: { char *s=ask_text("按 IP 添加","输入对方 IP 地址（可带端口，如 192.168.1.20 或 192.168.1.20:41235）：",""); if(s){ if(lsm_add_addr(C,s,err)) msgbox(GTK_MESSAGE_WARNING,"%s",err); g_free(s);} break; }
+    case A_MUTE: { const char *fp=sel_peer(); if(fp){ lsm_set_muted(C,fp,!peer_muted(fp),err); list_dirty=chat_dirty=1; } break; }
+    case A_DIAG: { size_t need=lsm_diagnostics(C,NULL,0); char *d=g_malloc(need+1); lsm_diagnostics(C,d,need+1); msgbox(GTK_MESSAGE_INFO,"%s",d); g_free(d); break; }
+    case A_UPDATE: upd_start(upd_show); break;
     case A_TRUST: case A_UNTRUST: case A_BLOCK: { const char *fp=sel_peer(); if(fp){ lsm_set_trust(C,fp,id==A_TRUST?TRUST_TRUSTED:id==A_BLOCK?TRUST_BLOCKED:TRUST_UNKNOWN,err); list_dirty=chat_dirty=1; } break; }
     case A_PINOFFER: { char pin[8], mk[256]; GtkWidget *d; lsm_pin_offer(C,pin); d=gtk_message_dialog_new(GTK_WINDOW(win),GTK_DIALOG_MODAL,GTK_MESSAGE_INFO,GTK_BUTTONS_OK,"请把下面的 PIN 告诉对方");
         snprintf(mk,sizeof mk,"<span size='21504' weight='600' font_family='monospace'>%s</span>\n\n让对方在“输入 PIN 配对”中输入（5 分钟内有效）。",pin); gtk_message_dialog_format_secondary_markup(GTK_MESSAGE_DIALOG(d),"%s",mk); gtk_window_set_title(GTK_WINDOW(d),"PIN 配对"); gtk_dialog_run(GTK_DIALOG(d)); gtk_widget_destroy(d); break; }
@@ -265,7 +274,7 @@ static gboolean poll_cb(gpointer p){ char e[4096]; (void)p;
     while(lsm_poll_event(C,e,sizeof e)){
         if(!strncmp(e,"msg\t",4)||!strncmp(e,"msg_update\t",11)){ char *f[8]; int n=0; char *q=e; f[n++]=q; while(*q&&n<8){ if(*q=='\t'){ *q=0; f[n++]=q+1; } q++; }
             if(n>=7){ if(!strcmp(f[2],cur_conv)) chat_dirty=1; list_dirty=1;
-                if(!strcmp(f[0],"msg")&&!strcmp(f[3],"in")&&strcmp(f[5],"system")&&(strcmp(f[2],cur_conv)||!gtk_window_is_active(GTK_WINDOW(win)))) notify("新消息",!strcmp(f[5],"file")?"收到文件":f[6]); } }
+                if(!strcmp(f[0],"msg")&&!strcmp(f[3],"in")&&strcmp(f[5],"system")&&(strcmp(f[2],cur_conv)||!gtk_window_is_active(GTK_WINDOW(win)))&&!(!strncmp(f[2],"dm:",3)&&peer_muted(f[2]+3))) notify("新消息",!strcmp(f[5],"file")?"收到文件":f[6]); } }
         else if(!strncmp(e,"transfer\t",9)) chat_dirty=1;
         else if(!strncmp(e,"notice\t",7)) notify("提示",e+7);
         else if(!strncmp(e,"pin_result\t",11)){ notify("PIN 配对",strstr(e,"\tok")?"配对成功，已互相信任。":"配对失败（PIN 错误或已过期）。"); list_dirty=chat_dirty=1; }
@@ -305,10 +314,10 @@ static void activate(GtkApplication *a, gpointer p){
     gtk_box_pack_start(GTK_BOX(vb),title_lbl,FALSE,FALSE,0); gtk_box_pack_start(GTK_BOX(vb),sub_lbl,FALSE,FALSE,0); gtk_header_bar_set_custom_title(GTK_HEADER_BAR(hb),vb);
     mb=gtk_menu_button_new(); gtk_button_set_image(GTK_BUTTON(mb),gtk_image_new_from_icon_name("open-menu-symbolic",GTK_ICON_SIZE_BUTTON)); gtk_widget_set_tooltip_text(mb,"菜单");
     menu=gtk_menu_new();
-    mi(menu,"按 IP 添加…",A_ADDIP); sep(menu); mi(menu,"信任当前联系人",A_TRUST); mi(menu,"取消信任",A_UNTRUST); mi(menu,"屏蔽",A_BLOCK); sep(menu);
+    mi(menu,"按 IP 添加…",A_ADDIP); sep(menu); mi(menu,"信任当前联系人",A_TRUST); mi(menu,"取消信任",A_UNTRUST); mi(menu,"屏蔽",A_BLOCK); mi(menu,"免打扰 开/关",A_MUTE); sep(menu);
     mi(menu,"生成 PIN（让对方输入）",A_PINOFFER); mi(menu,"输入 PIN 配对…",A_PINPAIR); sep(menu);
     mi(menu,"创建群组…",A_GCREATE); mi(menu,"邀请成员…",A_GINVITE); mi(menu,"移除成员…",A_GREMOVE); mi(menu,"退出群组",A_GLEAVE); sep(menu);
-    mi(menu,"文件传输",A_XFERS); mi(menu,"打开接收文件夹",A_DLDIR); mi(menu,"修改昵称…",A_NAME); mi(menu,"设置防火墙（ufw / firewalld）…",A_FIREWALL); sep(menu); mi(menu,"关于",A_ABOUT); mi(menu,"退出",A_QUIT);
+    mi(menu,"文件传输",A_XFERS); mi(menu,"打开接收文件夹",A_DLDIR); mi(menu,"修改昵称…",A_NAME); mi(menu,"设置防火墙（ufw / firewalld）…",A_FIREWALL); sep(menu); mi(menu,"诊断信息",A_DIAG); mi(menu,"检查更新…",A_UPDATE); mi(menu,"关于",A_ABOUT); mi(menu,"退出",A_QUIT);
     gtk_widget_show_all(menu); gtk_widget_set_halign(menu,GTK_ALIGN_END); /* open leftwards, inside the window */ gtk_menu_button_set_popup(GTK_MENU_BUTTON(mb),menu); gtk_header_bar_pack_end(GTK_HEADER_BAR(hb),mb); menu_btn=mb;
     { GtkWidget *add=gtk_button_new_from_icon_name("list-add-symbolic",GTK_ICON_SIZE_BUTTON); gtk_widget_set_tooltip_text(add,"按 IP 添加"); g_signal_connect(add,"clicked",G_CALLBACK(act),GINT_TO_POINTER(A_ADDIP)); gtk_header_bar_pack_start(GTK_HEADER_BAR(hb),add); }
     gtk_window_set_titlebar(GTK_WINDOW(win),hb);
