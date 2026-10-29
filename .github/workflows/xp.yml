@@ -112,6 +112,12 @@ jobs:
         run: python3 tests/linux_gui_shots.py --rust-bin reference/v0.5/target/release --gui build/linux-rel/lan-messenger-gtk --out shots/linux
       - name: XP Win32 screenshots under wine (every screen, light + dark)
         run: bash tests/xp_ui_shots.sh reference/v0.5/target/release shots/xp
+      - name: XP basics under wine (Esc, Enter, menus, copy, tooltip, tray, single instance, placement, drop, delete confirmation)
+        run: |
+          make build/linux/lanmsg-cli
+          python3 tests/xp_basics.py build/x86/LanMessenger.exe build/linux/lanmsg-cli shots/xp-basics
+      - name: XP at 144 DPI under wine (X7 shots)
+        run: python3 tests/xp_dpi_shots.py build/x86/LanMessenger.exe build/linux/lanmsg-cli shots/xp-dpi
       - name: Audit (fails the job on any violation)
         run: |
           ls shots/linux/*.png shots/xp/*.png
@@ -212,12 +218,14 @@ jobs:
           cc -O2 -std=gnu99 -Isrc -DLSM_APP_VERSION='"ci"' -o build/linux-adw/lanmsg-cli src/cli.c src/core.c src/xcrypto.c src/third_party/monocypher.c src/third_party/monocypher-ed25519.c -lpthread
       - name: Shortcut runtime checks + screenshots (light + dark)
         run: python3 tests/adw_gui_shots.py build/linux-adw/lan-messenger-adw build/linux-adw/lanmsg-cli shots/adw
+      - name: GTK basics (Esc, Enter, copy, tooltip, background, single instance, size memory, notification click, drop, delete confirmation)
+        run: python3 tests/adw_basics.py build/linux-adw/lan-messenger-adw build/linux-adw/lanmsg-cli shots/adw-basics
       - name: Colour audit (gnome palette)
         # dialog-* shots are left out: the modal scrim dims the page behind on purpose
         run: python3 tools/ui_color_audit.py --palette tools/palettes/gnome.json --ignore-file shots/adw/audit_ignore.json --out ui-audit/adw shots/adw/page-*.png shots/adw/popup-*.png
       - uses: actions/upload-artifact@v4
         if: always()
-        with: { name: linux-adw-screenshots, path: "shots/adw\nui-audit/adw" }
+        with: { name: linux-adw-screenshots, path: "shots/adw\nshots/adw-basics\nui-audit/adw" }
   linux-adw-appimage:
     name: GTK 4 AppImage (bundled glib/GTK 4.12/libadwaita 1.4, built on debian:12)
     runs-on: ubuntu-24.04
