@@ -25,6 +25,7 @@ ap.add_argument("--work", default="/tmp/lsm-matrix")
 ap.add_argument("--relay", action="store_true", help="run every pair through the relay server")
 ap.add_argument("--relay-bin", help="relay-server binary (relay mode)")
 ap.add_argument("--pairs", help="only these pairs, e.g. rust-wine,native-linux")
+ap.add_argument("--no-resume-kinds", default="", help="kinds whose build has no CAP_RESUME (e.g. the frozen v0.5 Rust daemon): resume checks are not applicable to their pairs")
 args = ap.parse_args()
 W = args.work
 def sh(c, check=True):
@@ -362,7 +363,8 @@ for a, b in itertools.combinations_with_replacement(kinds, 2):
             name = f"mx_{d.replace('->','_')}.bin"; src = f"{W}/{name}"; open(src, "wb").write(os.urandom(1_500_000 + len(d)))
             X.sendfile(Y.fp, src)
             checks[f"file {d}"] = bool(wait(lambda: os.path.exists(Y.dlpath(name)) and os.path.getsize(Y.dlpath(name)) == os.path.getsize(src) and sha(Y.dlpath(name)) == sha(src), 60))
-        if not args.relay and "android" not in (a, b):
+        NORES = {k for k in args.no_resume_kinds.split(",") if k}
+        if not args.relay and "android" not in (a, b) and not (NORES & {a, b}):
             # true resume on the LAN: abort the TCP link at ~40% (ss -K), peers redial, transfer continues
             ok, det = resume_check(A, B, lambda: sh("ip netns exec mxA ss -K dst 10.78.0.2", False), f"lan_{tg}")
             checks["resume (LAN link cut at 40%)"] = ok; details[f"{pair} LAN resume"] = det; print("   ", det, flush=True)

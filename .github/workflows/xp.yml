@@ -72,7 +72,7 @@ jobs:
       - name: Cross-platform interop matrix (v0.5 Rust, C native, XP exe under wine, Linux edition CLI; Android slot)
         run: |
           mkdir -p /tmp/lx && tar -C /tmp/lx -xzf dist/linux/lan-messenger-*-linux-x86_64.tar.gz
-          sudo -E env "PATH=$PATH" python3 tests/matrix.py --rust-bin reference/v0.5/target/release --native-cli build/linux/lanmsg-cli --wine-exe build/x86/lanmsg-cli.exe --linux-cli $(ls -d /tmp/lx/*/bin)/lanmsg-cli --work /tmp/lsm-matrix
+          sudo -E env "PATH=$PATH" python3 tests/matrix.py --no-resume-kinds rust --rust-bin reference/v0.5/target/release --native-cli build/linux/lanmsg-cli --wine-exe build/x86/lanmsg-cli.exe --linux-cli $(ls -d /tmp/lx/*/bin)/lanmsg-cli --work /tmp/lsm-matrix
       - name: Batch-file encoding check (GBK, CRLF, no BOM) + package
         run: |
           python3 tools/package.py
@@ -189,7 +189,7 @@ jobs:
             adb push art/build/android/lanmsg-cli-x86_64 /data/local/tmp/lanmsg-cli && adb shell chmod 755 /data/local/tmp/lanmsg-cli
             python3 tests/android_theme_shots.py --out shots/android
             python3 -u tests/android_chat_shots.py --cli /data/local/tmp/lanmsg-cli --out shots/android
-            sudo -E env "PATH=$PATH" ADB=$(which adb) python3 tests/matrix.py --rust-bin reference/v0.5/target/release --native-cli build/linux/lanmsg-cli --android-cmd /data/local/tmp/lanmsg-cli --kinds rust,native,android --work /tmp/lsm-matrix-android
+            sudo -E env "PATH=$PATH" ADB=$(which adb) python3 tests/matrix.py --no-resume-kinds rust --rust-bin reference/v0.5/target/release --native-cli build/linux/lanmsg-cli --android-cmd /data/local/tmp/lanmsg-cli --kinds rust,native,android --work /tmp/lsm-matrix-android
       - name: Audit Android screenshots (light + dark)
         run: |
           python3 tools/ui_color_audit.py --self-test --out ui-audit/self-test
