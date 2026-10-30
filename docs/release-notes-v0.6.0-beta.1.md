@@ -1,7 +1,5 @@
 ## LAN Secure Messenger v0.6.0-beta.1（预发布 / 测试版）
 
-> 草稿：尚未发布。正式发布前请按实际 CI 结果核对下面的文件清单。
-
 从这个版本开始，**所有版本都在同一个仓库、同一个 Release 里发布**：Windows 10/11（x64 / arm64）、
 Windows XP、Linux（GTK 4 与 GTK 3 兼容版）、Android，以及新增的**中转服务器**。
 
@@ -34,7 +32,15 @@ Windows XP、Linux（GTK 4 与 GTK 3 兼容版）、Android，以及新增的**�
 | `relay-server-linux-*.tar.gz` / `relay-server-win-*.zip` | 中转服务器 |
 | `SHA256SUMS.txt` | 所有文件的 SHA-256 |
 
-### 界面改进
+### 其他新功能
+
+- **免打扰**：可按联系人开启，开启后该联系人的新消息不再弹出通知（Windows、XP、Linux、Android 均支持；Linux GTK 3 兼容版用 Ctrl+M 切换）
+- **诊断信息**：一键查看监听端口、局域网发现、中转服务器状态、各联系人的连接方式和延迟，方便排查连不上的问题
+- **检查更新**：从 GitHub Releases 检查新版本（Windows XP 系统本身不支持 GitHub 要求的 TLS 1.2，检查失败时可直接打开发布页）
+- **加密备份互通**：XP / Linux / Android 版（C 内核）现在可以导出和导入与 Windows 版相同格式的加密备份（Argon2id + ChaCha20-Poly1305），
+  身份、联系人（含信任 / 免打扰状态）、手动添加的地址和昵称可在各版本之间迁移
+- XP 版：点击「新消息」气泡会直接打开对应的聊天
+
 
 - 全平台统一使用「中转服务器」这一名称；联系人列表的简短标记为「经服务器」
 - Windows：设置页各分区标题样式统一；传输页暂停中的任务显示为暂停状态
@@ -48,5 +54,8 @@ Windows XP、Linux（GTK 4 与 GTK 3 兼容版）、Android，以及新增的**�
 
 ### 已知问题
 
-- Windows arm64 版目前只做了构建和打包检查，没有在 arm64 真机上做界面测试
+- 跨版本恢复备份时（Windows 版 ↔ XP / Linux / Android 版）**不包含群组和聊天记录**，两类数据格式不同；同一版本内备份恢复不受影响
+- Windows 版高 DPI（W7）的自动测试只在 96 DPI 下运行，更高缩放比例下的显示请以实际使用为准
+
+- Windows arm64 版：在 GitHub 的 Windows 11 arm64 运行器上构建、打包并运行界面冒烟测试，但该步骤因运行器限制（模拟输入 / 托盘不可用）不作为发布门槛，尚未在 arm64 真机上测试
 - 这是测试版，请先在非关键环境中使用；问题请到 Issues 反馈
