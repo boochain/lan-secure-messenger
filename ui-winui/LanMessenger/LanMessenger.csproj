@@ -27,7 +27,7 @@
     <PublishReadyToRun>false</PublishReadyToRun>
     <PublishSingleFile>false</PublishSingleFile>
     <Version>0.6.0-beta.2</Version>
-    <InformationalVersion>0.5.0-beta.2</InformationalVersion>
+    <InformationalVersion>0.6.0-beta.2</InformationalVersion>
     <Product>LAN Secure Messenger</Product>
     <Company>FREC86</Company>
     <SatelliteResourceLanguages>zh-Hans;en</SatelliteResourceLanguages>

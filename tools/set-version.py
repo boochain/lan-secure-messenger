@@ -12,7 +12,7 @@ m = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:-[a-z]+\.(\d+))?", V)
 if not m: sys.exit(f"bad version {V!r}")
 maj, mi, pa, pre = (int(x) if x else None for x in m.groups())
 CODE = maj * 1000000 + mi * 10000 + pa * 100 + (pre if pre is not None else 99)   # Android versionCode, monotonic
-NUM = f"{maj},{mi},{pa},{pre or 0}"
+NUM = f"{maj},{mi},{pa},{pre or 0}"; DOT = NUM.replace(",", ".")
 P = "editions/portable/"
 SITES = [  # (file, regex with one group to replace, replacement)
     ("VERSION", r"^(.*)$", V),
@@ -20,6 +20,10 @@ SITES = [  # (file, regex with one group to replace, replacement)
     ("relay-server/Cargo.toml", r'(?m)^version = "([^"]*)"', V),
     ("ui-winui/LanMessenger/LanMessenger.csproj", r"<Version>([^<]*)</Version>", V),
     (P + "src/core.h", r'#define LSM_APP_VERSION "([^"]*)"', V),
+    ("ui-winui/LanMessenger/LanMessenger.csproj", r"<InformationalVersion>([^<]*)</InformationalVersion>", V),
+    ("ui-winui/LanMessenger/app.manifest", r'<assemblyIdentity version="([^"]*)"', DOT),
+    (P + "src/app.manifest", r'<assemblyIdentity version="([^"]*)"', DOT),
+    (P + "linux/data/README-zh.txt", r"Linux 版 (\S+)", V),
     (P + "src/res.rc", r'VALUE "ProductVersion", "([^"]*)"', V),
     (P + "src/res.rc", r"FILEVERSION (\S+)", NUM),
     (P + "src/res.rc", r"PRODUCTVERSION (\S+)", NUM),

@@ -1,4 +1,4 @@
-局域网安全通讯 Linux 版 0.5.0-linux.1
+局域网安全通讯 Linux 版 0.6.0-beta.2
 =====================================
 
 与 Windows v0.5 和 XP 版完全互通（协议 v5，Noise_XX_25519_ChaChaPoly_BLAKE2s 端到端加密）。
