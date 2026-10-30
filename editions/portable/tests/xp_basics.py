@@ -114,7 +114,9 @@ check(bool(tt), "X11 hovering 发送 shows a tooltip")
 click(400, 210, "3"); time.sleep(0.8); xdo("key", "d"); pr = wait(lambda: wins("^删除消息$"), 5); shot("xp-basics-delete-confirm"); xdo("key", "Escape"); prg = wait(lambda: not wins("^删除消息$"), 5)
 check(bool(pr) and bool(prg), "X13 删除这条消息 asks for confirmation (删除消息 prompt), Esc cancels")
 # X5 close: hides to the notification area when there is one (else exits); X12 a second start re-opens the running window
-xdo("windowclose", wid); time.sleep(2); hidden = not wins("局域网安全通讯 XP"); alive = g.p.poll() is None
+# Alt+F4 -> WM_SYSCOMMAND SC_CLOSE -> WM_CLOSE, i.e. the real close path. (xdotool windowclose destroys the X11
+# window behind wine's back, so the hidden Win32 window could never be mapped again and X12 always failed.)
+xdo("windowfocus", "--sync", wid); time.sleep(0.3); xdo("key", "alt+F4"); time.sleep(2); hidden = not wins("局域网安全通讯 XP"); alive = g.p.poll() is None
 check(hidden and (alive or not tray_ok), f"X5 close hides the window and keeps running (hidden={hidden}, running={alive})" if alive else f"X5 close exits (no notification area; tray={tray_ok})")
 if alive:
     p2 = subprocess.Popen(["wine", exe], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); back = wait(lambda: wins("局域网安全通讯 XP"), 15)
@@ -136,3 +138,4 @@ open(f"{out}/gui-basics.log", "w").write("\n".join(g.lines) + "\n--- peer\n" + "
 subprocess.run(["wineserver", "-k"], env=env); A.p.kill()
 json.dump(ignore, open(f"{out}/audit_ignore.json", "w"), ensure_ascii=False, indent=1)
 trayp and trayp.kill(); xv.kill(); print("RESULT", "FAIL" if fails else "PASS", len(fails))
+sys.exit(1 if fails else 0)  # failures used to be printed only; the step must go red
