@@ -61,6 +61,13 @@ def resume_check(X, Y, interrupt, tag, max_latency=None):
     hit = wait(part_bytes, 120, 0.002)
     if not hit: return False, "never reached 40%"
     interrupt(); ti = time.time(); cut = hit[1]
+    if os.path.exists(Y.dlpath(name)) and not getattr(X, "_resume_retry", False):
+        # the whole file landed before the interruption took effect (fast veth): nothing was cut, so this attempt
+        # proves nothing either way -- run the scenario once more with a new file instead of judging it
+        print(f"    {tag}: transfer finished before the cut took effect; repeating once", flush=True)
+        X._resume_retry = True
+        try: return resume_check(X, Y, interrupt, tag + "_again", max_latency)
+        finally: X._resume_retry = False
     def progressed():
         if os.path.exists(Y.dlpath(name)): return True
         ps = glob.glob(f"{Y.dl}/.{name}*.part") if getattr(Y, "kind", "") != "android" else []
