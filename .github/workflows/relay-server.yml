@@ -10,7 +10,7 @@ defaults:
 jobs:
   linux-test:
     name: Linux tests (unit + integration + C interop + deploy.sh/systemd)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04   # pinned: ubuntu-latest's image no longer has qemu-user-static
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -33,7 +33,7 @@ jobs:
 
   linux-build:
     name: Linux musl ${{ matrix.arch }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04   # pinned: ubuntu-latest's image no longer has qemu-user-static
     strategy:
       fail-fast: false
       matrix:
@@ -190,7 +190,7 @@ jobs:
   linux-bundle:
     name: Linux all-in-one bundle
     needs: linux-build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04   # pinned: ubuntu-latest's image no longer has qemu-user-static
     steps:
       - uses: actions/download-artifact@v4
         with: { pattern: 'relay-server-linux-*', merge-multiple: true }

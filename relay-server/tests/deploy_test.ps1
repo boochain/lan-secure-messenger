@@ -61,7 +61,8 @@ $old = Start-Process -FilePath (Join-Path $leg 'relay-server.exe') -ArgumentList
 Start-Sleep 1
 $o = Deploy upgrade; $o | Set-Content -Encoding UTF8 (Join-Path $T 'upgrade.log')
 Check 'upgrade detected leftovers' { $o -match '检测到已有安装或残留' }
-Check 'upgrade report (old → new)' { $o -match 'unknown → 0\.1\.0' }
+$newV = ((Get-Content (Join-Path $PSScriptRoot '..\Cargo.toml')) | Select-String '^version = "(.*)"' | Select-Object -First 1).Matches[0].Groups[1].Value
+Check 'upgrade report (old → new)' { $o.Contains("unknown → $newV") }
 Check 'old service removed' { -not (Get-Service RelayServer -ErrorAction SilentlyContinue) }
 Check 'old task removed' { & cmd.exe /c 'schtasks /Query /TN RelayServer >nul 2>&1'; $LASTEXITCODE -ne 0 }
 Check 'old process stopped' { -not (Get-Process -Id $old.Id -ErrorAction SilentlyContinue) }

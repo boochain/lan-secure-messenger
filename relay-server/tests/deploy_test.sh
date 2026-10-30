@@ -65,7 +65,8 @@ cp "$T/legacy/relay-server" "$RELAY_HOME/bin/relay-server"           # old binar
 echo 999999 > "$T/legacy/stale.pid"                                   # stale PID file
 export RELAY_LEGACY_BINS="$T/legacy/relay-server" RELAY_LEGACY_PIDS="$T/legacy/stale.pid $T/legacy/old.pid"
 "$D" upgrade > "$T/upgrade.log" 2>&1
-check "upgrade reports old → new" "grep -q '0.0.9 → 0.1.0' '$T/upgrade.log'"
+NEWV=$(sed -n 's/^version = "\(.*\)"/\1/p' "$(dirname "$0")/../Cargo.toml" | head -1)   # the version of the binary under test
+check "upgrade reports old → new" "grep -qF '0.0.9 → $NEWV' '$T/upgrade.log'"
 check "config backed up" "ls '$RELAY_HOME/etc/' | grep -q 'relay.toml.bak'"
 check "kept port+pass" "grep -q 'port = 19711' '$RELAY_HOME/etc/relay.toml' && grep -q 'Test-Pass-1' '$RELAY_HOME/etc/relay.toml'"
 check "old process was running" "[ -n '$OLDPID' ]"
