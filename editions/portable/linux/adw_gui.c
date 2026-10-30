@@ -263,7 +263,11 @@ static void drop_leave(GtkDropTarget *t, gpointer p){ (void)t;(void)p; gtk_widge
 static void add_contact_go(void){ const char *s=gtk_editable_get_text(GTK_EDITABLE(add_entry)); char err[256]=""; if(!s||!*s) return;
     if(lsm_add_addr(C,s,err)) info("无法添加",err); else { gtk_editable_set_text(GTK_EDITABLE(add_entry),""); gtk_popover_popdown(GTK_POPOVER(add_popover)); toast("正在连接…"); } list_dirty=1; }
 static void upd_open_cb(gpointer u){ upd_open_url((const char*)u); }
+static void upd_test_note(int newer, const char *msg){ const char *tf=getenv("LSM_TEST_UPDCHECK"); FILE *f; /* CI release gate: record what the check said */
+    if(tf && *tf && (f=fopen(tf,"w"))){ fprintf(f,"newer=%d version=%s %s\n",newer,LSM_APP_VERSION,msg); fclose(f); } }
+static gboolean upd_test_start(gpointer p); 
 static void upd_show(int newer, const char *msg, const char *url){
+    upd_test_note(newer,msg);
     if(newer==0) info("检查更新",msg); else confirm(newer>0?"发现新版本":"检查更新失败",msg,newer>0?"打开下载页":"打开发布页",0,upd_open_cb,g_strdup(url),g_free); }
 static void trust_do(gpointer t){ char err[256]=""; if(!strncmp(cur_conv,"dm:",3)) lsm_set_trust(C,cur_conv+3,GPOINTER_TO_INT(t),err); list_dirty=chat_dirty=1; }
 static void details(void){ char b[2400]="", fp[200]=""; if(!cur_conv[0]) return; lsm_lock(C);
@@ -470,7 +474,7 @@ static void activate(GtkApplication *a, gpointer p){
       add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control>f","win.search"); add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control>n","win.add-contact");
       add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control>Tab","win.next-conv"); add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control>Page_Down","win.next-conv");
       add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control><Shift>ISO_Left_Tab","win.prev-conv"); add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control><Shift>Tab","win.prev-conv"); add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control>Page_Up","win.prev-conv");
-      add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control>o","win.send-file"); add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control>i","win.details"); add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"F10","win.menu");
+      add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control>o","win.send-file"); add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control>i","win.details"); add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"F10","win.menu"); add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"F1","win.about");
       add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control>q","win.quit"); add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control>w","win.close");
       gtk_widget_add_controller(win,sc2); }
 
@@ -544,7 +548,7 @@ static void activate(GtkApplication *a, gpointer p){
       adw_breakpoint_add_setter(bp,G_OBJECT(split),"collapsed",&v); g_value_unset(&v); adw_application_window_add_breakpoint(ADW_APPLICATION_WINDOW(win),bp); }
     adw_application_window_set_content(ADW_APPLICATION_WINDOW(win),split); (void)ov;
     load_window(); g_signal_connect(win,"close-request",G_CALLBACK(on_close),NULL);
-    gtk_window_present(GTK_WINDOW(win)); refresh_list(); refresh_chat();
+    gtk_window_present(GTK_WINDOW(win)); refresh_list(); refresh_chat(); if(getenv("LSM_TEST_UPDCHECK")) g_timeout_add(1500,upd_test_start,NULL);
     { const char *oc=getenv("LSM_OPEN_CONV"); if(oc) select_conv(oc); }
     { const char *ws=getenv("LSM_WINDOW_SIZE"); int w,h; if(ws && sscanf(ws,"%dx%d",&w,&h)==2) gtk_window_set_default_size(GTK_WINDOW(win),w,h); }  /* tests: fixed size beats window.ini */
     g_timeout_add(300,poll_cb,NULL); }
@@ -571,3 +575,5 @@ int main(int argc, char **argv){
     { char *av[]={argv[0],NULL}; st=g_application_run(G_APPLICATION(app),1,av); }
     if(C) lsm_stop(C);
     return st; }
+
+static gboolean upd_test_start(gpointer p){ (void)p; upd_start(upd_show); return G_SOURCE_REMOVE; }

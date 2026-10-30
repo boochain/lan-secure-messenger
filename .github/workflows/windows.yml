@@ -121,7 +121,7 @@ jobs:
         id: pkg
         shell: pwsh
         run: |
-          $ver = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}" } else { "v0.6.0-dev-" + "${{ github.sha }}".Substring(0,7) }
+          $ver = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}" } else { "v" + (Get-Content VERSION -Raw).Trim() }
           $out = "dist\LanMessenger"
           New-Item -ItemType Directory -Force $out | Out-Null
           Copy-Item publish\* $out -Recurse
@@ -144,7 +144,9 @@ jobs:
       - name: UI smoke in light + dark theme (screenshots, contrast check, live theme switch)
         id: uismoke
         shell: pwsh
-        run: ./scripts/ui_smoke_windows.ps1 -Dist dist\LanMessenger -Out ui-smoke -Relay rust-bin\relay-server.exe
+        run: |
+          $env:LSM_EXPECT_VERSION = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}".Substring(1) } else { (Get-Content VERSION -Raw).Trim() }
+          ./scripts/ui_smoke_windows.ps1 -Dist dist\LanMessenger -Out ui-smoke -Relay rust-bin\relay-server.exe
 
       - name: Collect UI diagnostics
         if: always()
@@ -232,7 +234,7 @@ jobs:
       - name: Assemble LanMessenger/ (arm64)
         shell: pwsh
         run: |
-          $ver = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}" } else { "v0.6.0-dev-" + "${{ github.sha }}".Substring(0,7) }
+          $ver = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}" } else { "v" + (Get-Content VERSION -Raw).Trim() }
           $out = "dist\LanMessenger"
           New-Item -ItemType Directory -Force $out | Out-Null
           Copy-Item publish-arm64\* $out -Recurse

@@ -115,6 +115,8 @@ public class DaemonTests
         Assert.True(MainViewModel.CompareVersions("v0.4.9", "v0.5.0-beta.1") < 0);
         Assert.True(MainViewModel.CompareVersions("v0.6.0-beta.10", "v0.6.0-beta.9") > 0);
         Assert.True(MainViewModel.CompareVersions("v0.6.0-beta.1", "v0.5.0") > 0);
+        Assert.Equal(0, MainViewModel.CompareVersions("v0.6.0-beta.2", "v0.6.0-beta.2"));
+        Assert.True(MainViewModel.CompareVersions("v0.6.0-beta.2", "v0.6.0-beta.1") > 0);
         Assert.Equal(0, MainViewModel.CompareVersions("v0.5.0-beta.1", "0.5.0-beta.1"));
     }
 

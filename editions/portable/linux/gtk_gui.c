@@ -222,7 +222,11 @@ static void on_drag_leave(GtkWidget *w, GdkDragContext *c, guint t, gpointer p){
 static void on_row(GtkListBox *lb, GtkListBoxRow *row, gpointer p){ const char *cv; (void)lb; (void)p; if(!row) return; cv=g_object_get_data(G_OBJECT(row),"conv"); if(!cv) return;
     snprintf(cur_conv,sizeof cur_conv,"%s",cv); refresh_chat(); if(lsm_mark_read(C,cur_conv)) list_dirty=1; gtk_widget_grab_focus(input); }
 static int peer_muted(const char *fp){ lsm_contact *k; int n,i,m=0; lsm_lock(C); n=lsm_contacts(C,&k); for(i=0;i<n;i++) if(!strcmp(k[i].fp,fp)){ m=k[i].muted; break; } lsm_unlock(C); return m; }
+static void upd_test_note(int newer, const char *msg){ const char *tf=getenv("LSM_TEST_UPDCHECK"); FILE *f; /* CI release gate: record what the check said */
+    if(tf && *tf && (f=fopen(tf,"w"))){ fprintf(f,"newer=%d version=%s %s\n",newer,LSM_APP_VERSION,msg); fclose(f); } }
+static gboolean upd_test_start(gpointer p); 
 static void upd_show(int newer, const char *msg, const char *url){ GtkWidget *d;
+    upd_test_note(newer,msg);
     if(newer==0){ msgbox(GTK_MESSAGE_INFO,"%s",msg); return; }
     d=gtk_message_dialog_new(GTK_WINDOW(win),GTK_DIALOG_MODAL,newer>0?GTK_MESSAGE_INFO:GTK_MESSAGE_WARNING,GTK_BUTTONS_YES_NO,"%s\n%s",msg,newer>0?"是否打开下载页？":"是否在浏览器中打开发布页？");
     gtk_window_set_title(GTK_WINDOW(d),"检查更新"); if(gtk_dialog_run(GTK_DIALOG(d))==GTK_RESPONSE_YES) upd_open_url(url); gtk_widget_destroy(d); }
@@ -354,7 +358,7 @@ static void activate(GtkApplication *a, gpointer p){
       gtk_box_pack_start(GTK_BOX(root),paned,TRUE,TRUE,0); gtk_box_pack_start(GTK_BOX(root),gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE,FALSE,0); gtk_box_pack_start(GTK_BOX(root),status_lbl,FALSE,FALSE,0); gtk_container_add(GTK_CONTAINER(win),root); }
     g_signal_connect(win,"delete-event",G_CALLBACK(on_delete),NULL); g_signal_connect(win,"key-press-event",G_CALLBACK(win_key),NULL); /* F10 opens the menu */
     setup_tray();
-    gtk_widget_show_all(win); refresh_list(); refresh_chat();
+    gtk_widget_show_all(win); refresh_list(); refresh_chat(); if(getenv("LSM_TEST_UPDCHECK")) g_timeout_add(1500,upd_test_start,NULL);
     g_timeout_add(300,poll_cb,NULL); }
 
 int main(int argc, char **argv){
@@ -377,3 +381,5 @@ int main(int argc, char **argv){
     { char *av[]={argv[0],NULL}; st=g_application_run(G_APPLICATION(app),1,av); }
     if(C) lsm_stop(C);
     return st; }
+
+static gboolean upd_test_start(gpointer p){ (void)p; upd_start(upd_show); return G_SOURCE_REMOVE; }

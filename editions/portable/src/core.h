@@ -5,7 +5,7 @@
 #include <stddef.h>
 
 #ifndef LSM_APP_VERSION
-#define LSM_APP_VERSION "0.5.0-xp.2" /* Linux builds pass -DLSM_APP_VERSION=\"0.5.0-linux.1\" */
+#define LSM_APP_VERSION "0.6.0-beta.2" /* Linux builds pass -DLSM_APP_VERSION=\"0.5.0-linux.1\" */
 #endif
 #define FP_LEN 20 /* "XXXX-XXXX-XXXX-XXXX" + NUL */
 

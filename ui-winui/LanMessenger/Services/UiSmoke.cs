@@ -128,6 +128,14 @@ public static class UiSmoke
                     Check(App.VM.RelayHasPassphrase && App.VM.RelayPassphrasePlaceholder.StartsWith("已设置") && App.VM.EditRelayPassphrase.Length == 0,
                           $"relay passphrase is write-only: field empty, placeholder '{App.VM.RelayPassphrasePlaceholder}'");
                 }
+                if (tag == "settings")
+                {
+                    // Release gate: About shows the build's version and the live update check calls it up to date.
+                    var want = Environment.GetEnvironmentVariable("LSM_EXPECT_VERSION");
+                    if (!string.IsNullOrEmpty(want)) Check(App.VM.Version == want, $"About version '{App.VM.Version}' == expected '{want}'");
+                    await App.VM.CheckUpdateCommand.ExecuteAsync(null);
+                    Check(App.VM.UpdateText.StartsWith("已是最新版本"), $"update check says up to date: '{App.VM.UpdateText}'");
+                }
                 if (tag is "settings" or "diag")
                 {
                     // Second capture scrolled to the bottom so every card of the long pages is checked.

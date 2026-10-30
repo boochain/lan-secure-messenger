@@ -34,7 +34,7 @@ Windows XP、Linux（GTK 4 与 GTK 3 兼容版）、Android，以及新增的**�
 
 ### 其他新功能
 
-- **免打扰**：可按联系人开启，开启后该联系人的新消息不再弹出通知（Windows、XP、Linux、Android 均支持；Linux GTK 3 兼容版用 Ctrl+M 切换）
+- **免打扰**：可按联系人开启，开启后该联系人的新消息不再弹出通知（Windows、XP、Linux、Android 均支持；Android 在聊天页右上角 ⋮ 菜单中切换，Linux GTK 3 兼容版用 Ctrl+M 切换）
 - **诊断信息**：一键查看监听端口、局域网发现、中转服务器状态、各联系人的连接方式和延迟，方便排查连不上的问题
 - **检查更新**：从 GitHub Releases 检查新版本（Windows XP 系统本身不支持 GitHub 要求的 TLS 1.2，检查失败时可直接打开发布页）
 - **加密备份互通**：XP / Linux / Android 版（C 内核）现在可以导出和导入与 Windows 版相同格式的加密备份（Argon2id + ChaCha20-Poly1305），

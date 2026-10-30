@@ -73,6 +73,9 @@ s = s.replace(_anchor, """      - name: Backup interop (C core <-> Rust lan-core
         run: |
           (cd $GITHUB_WORKSPACE && cargo build --release -p lan-core --example backup_tool)
           cc -Wall -Wno-misleading-indentation -Isrc -o /tmp/updcheck_test tests/updcheck_test.c && /tmp/updcheck_test
+          # live check against the real releases list with this build's version (VERSION, or the tag)
+          V=$(cat ../../VERSION); [ "${{ github.ref_type }}" = tag ] && V=${GITHUB_REF_NAME#v}
+          curl -fsSL -H 'User-Agent: lsm-ci' "https://api.github.com/repos/boochain/lan-secure-messenger/releases?per_page=10" -o /tmp/rel.json && /tmp/updcheck_test /tmp/rel.json "$V"
           python3 tests/backup_interop.py --cli build/linux/lanmsg-cli --rust-tool $GITHUB_WORKSPACE/target/release/examples/backup_tool
 """ + _anchor)
 s = "\n".join(l.replace("--no-resume-kinds rust ", "").replace("--rust-bin reference/v0.5/target/release", "--rust-bin $GITHUB_WORKSPACE/target/release") if "tests/matrix.py" in l else l

@@ -3,7 +3,7 @@
 # glib 2.78 + GTK 4.12 + libadwaita 1.4 are built from source into $PREFIX and bundled in usr/lib.
 # usage (as root in debian:12): sh linux/adw-appimage/build.sh   ->  dist/LanMessenger-adw-$VER-x86_64.AppImage
 set -eux
-VER=${VER:-0.6.0-linux.dev}; ARCH=x86_64; PREFIX=${PREFIX:-/opt/lsm-adw}
+VER=${VER:-0.6.0-beta.2}; ARCH=x86_64; PREFIX=${PREFIX:-/opt/lsm-adw}
 GLIB=2.78.6; GTK=4.12.5; ADW=1.4.7
 cd "$(dirname "$0")/../.."; ROOT=$PWD; OUT=$ROOT/build/linux-adw-appimage; DIST=$ROOT/dist; mkdir -p $OUT $DIST
 export DEBIAN_FRONTEND=noninteractive

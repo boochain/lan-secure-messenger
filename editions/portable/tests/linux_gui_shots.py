@@ -91,6 +91,16 @@ for th in a.themes.split(","):
     # drag-drop hint is only visible during a drag; tray shown top-right in stalonetray
     subprocess.run(["import", "-window", "root", "-crop", "200x40+1080+0", "-scale", "300%", f"{a.out}/{th}-08-tray-crop.png"], env=env)
     gui.terminate(); gui.wait(5); time.sleep(1)
+# release gate: live update check (GitHub releases API) with this build's version must say "up to date"
+UPD = f"{W}/upd.txt"; want = os.environ.get("LSM_EXPECT_VERSION") or (os.environ["GITHUB_REF_NAME"][1:] if os.environ.get("GITHUB_REF_TYPE") == "tag" else open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "VERSION")).read().strip())
+gui = bg([a.gui, "--data", f"{W}/gui-upd", "--name", "更新检查", "--port", "47340", "--disco-port", "47341", "--no-discovery"], env=dict(env, LSM_THEME="light", LSM_INSTANCE="upd", LSM_TEST_UPDCHECK=UPD))
+for _ in range(60):
+    if os.path.exists(UPD): break
+    time.sleep(0.5)
+time.sleep(1.5); CUR.clear(); shot("light-12-update-check")
+upd = open(UPD, encoding="utf-8").read().strip() if os.path.exists(UPD) else "(no result)"; print("update check:", upd)
+upd_ok = upd.startswith("newer=0") and "已是最新版本" in upd and (not want or f"version={want} " in upd)
+x("key", "Return"); time.sleep(0.5); gui.terminate(); gui.wait(5)
 print("history on v0.5 side:"); print(lm("history", json.load(open(f"{W}/ids.json"))["gfp"]))
 print("transfers on v0.5 side:"); print(lm("transfers"))
 print("gui downloads:", os.listdir(f"{W}/gui/downloads") if os.path.exists(f"{W}/gui/downloads") else None)
@@ -98,3 +108,4 @@ lm("shutdown")
 for p in procs[::-1]:
     try: p.terminate()
     except Exception: pass
+if not upd_ok: raise SystemExit(f"FAIL: update check / version gate: {upd!r} (expected version {want!r})")

@@ -4,7 +4,7 @@
 # and a bundled GTK breaks the user's theme (dark mode) and input methods (fcitx/ibus for Chinese).
 # Output: dist/linux/LanMessenger-<ver>-x86_64.AppImage and dist/linux/lan-messenger-<ver>-linux-<arch>.tar.gz
 set -eu
-VER=${VER:-0.5.0-linux.1}
+VER=${VER:-0.6.0-beta.2}
 ARCH=$(uname -m)
 cd "$(dirname "$0")/.."
 OUT=build/linux-rel; DIST=dist/linux; rm -rf "$OUT" "$DIST"; mkdir -p "$OUT" "$DIST"

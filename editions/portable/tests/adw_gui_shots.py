@@ -91,6 +91,8 @@ for i, theme in enumerate(["light", "dark"]):
     check(l is not None, f"[{theme}] shortcut Ctrl+I opens contact details"); time.sleep(0.8); shot("dialog-details", theme, g=g); xdo("key", "Escape"); time.sleep(0.4)
     gl = len(g.lines); xdo("key", "F10"); l = g.wait_for("UI menu", 5, gl)
     check(l is not None, f"[{theme}] shortcut F10 opens the main menu"); time.sleep(0.5); shot("popup-main-menu", theme, g=g); xdo("key", "Escape"); time.sleep(0.4)
+    gl = len(g.lines); xdo("key", "F1"); l = g.wait_for("UI about", 5, gl)
+    check(l is not None, f"[{theme}] F1 opens About"); time.sleep(0.8); shot("dialog-about", theme, g=g); xdo("key", "Escape"); time.sleep(0.4)
     gl = len(g.lines); xdo("mousemove", "420", "485", "click", "3"); l = g.wait_for("UI msg-menu", 5, gl)
     check(l is not None, f"[{theme}] right-click on a message (file card) opens its menu"); time.sleep(0.5); shot("popup-message-menu", theme, g=g); xdo("key", "Escape")
     xdo("key", "ctrl+q"); g.p.wait(10) if g.p.poll() is None else None
@@ -109,6 +111,17 @@ shot("page-chat-narrow", "light", "560x720", g)
 gl = len(g.lines); xdo("key", "ctrl+f"); check(g.wait_for("UI search", 5, gl) is not None, "[narrow] Ctrl+F goes back to the list and focuses search")
 time.sleep(0.8); shot("page-list-narrow", "light", "560x720", g)
 xdo("key", "ctrl+q"); time.sleep(1); g.p.poll() is None and g.p.kill(); A.cmd("quit", 10); A.p.kill()
+# release gate: live update check with this build's version must say "up to date"
+UPD = f"{W}/upd.txt"; want = os.environ.get("LSM_EXPECT_VERSION") or (os.environ["GITHUB_REF_NAME"][1:] if os.environ.get("GITHUB_REF_TYPE") == "tag" else open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "VERSION")).read().strip())
+g = Proc([gui, "--data", f"{W}/gui-upd", "--name", "Bill", "--no-discovery", "--port", str(base + 450), "--disco-port", str(base + 451)],
+         dict(env, LSM_THEME="light", LSM_UI_TEST="1", LSM_QUIT_ON_CLOSE="1", LSM_WINDOW_SIZE="1024x694", LSM_TEST_UPDCHECK=UPD))
+for _ in range(60):
+    if os.path.exists(UPD): break
+    time.sleep(0.5)
+time.sleep(1.5); shot("dialog-update-check", "light", g=g)
+upd = open(UPD, encoding="utf-8").read().strip() if os.path.exists(UPD) else "(no result)"
+check(upd.startswith("newer=0") and "已是最新版本" in upd and (not want or f"version={want} " in upd), f"update check up to date for {want or 'this build'}: {upd}")
+xdo("key", "Escape"); time.sleep(0.3); xdo("key", "ctrl+q"); time.sleep(1); g.p.poll() is None and g.p.kill()
 import json; json.dump(ignore, open(f"{out}/audit_ignore.json", "w"), ensure_ascii=False, indent=1)
 compp and compp.kill(); xv.kill(); subprocess.run(["kill", env.get("DBUS_SESSION_BUS_PID", "0")])
 print("RESULT", "FAIL" if fails else "PASS", len(fails)); sys.exit(1 if fails else 0)
