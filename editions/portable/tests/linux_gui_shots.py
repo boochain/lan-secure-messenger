@@ -97,7 +97,10 @@ gui = bg([a.gui, "--data", f"{W}/gui-upd", "--name", "更新检查", "--port", "
 for _ in range(60):
     if os.path.exists(UPD): break
     time.sleep(0.5)
-time.sleep(1.5); CUR.clear(); shot("light-12-update-check")
+time.sleep(1.5)
+# crop to the result dialog itself (smallest real window of our class; the 24 px tray icon is excluded) so no desktop pixels are audited
+wins = [w for w in x("search", "--onlyvisible", "--classname", "lan-messenger-gtk").split("\n") if w and area(w) > 100 * 100]
+CUR["wid"] = min(wins, key=area) if wins else None; shot("light-12-update-check")
 upd = open(UPD, encoding="utf-8").read().strip() if os.path.exists(UPD) else "(no result)"; print("update check:", upd)
 upd_ok = upd.startswith("newer=0") and "已是最新版本" in upd and (not want or f"version={want} " in upd)
 x("key", "Return"); time.sleep(0.5); gui.terminate(); gui.wait(5)
