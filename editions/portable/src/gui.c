@@ -67,6 +67,7 @@ static int tmsg(const wchar_t *title, const wchar_t *text, int cancel);
 static UINT WM_TASKBARCREATED; static int tray_added;
 static void fit_vscroll(HWND e);
 static int peer_muted(const char *fp);
+static char balloon_conv[128]; /* chat of the last 新消息 balloon: clicking it opens that chat (X17) */
 static void msgbox(const char *t, UINT f);
 #include <winhttp.h>
 #include "updcheck.h"
@@ -494,7 +495,7 @@ static void poll_events(void){
     while(lsm_poll_event(C,e,sizeof e)){
         if(!strncmp(e,"msg\t",4)||!strncmp(e,"msg_update\t",11)){ char *f[8]; int n=0; char *p=e; f[n++]=p; while(*p && n<8){ if(*p=='\t'){*p=0; f[n++]=p+1;} p++; }
             if(n>=7){ if(!strcmp(f[2],cur_conv)) chat_dirty=1; list_dirty=1;
-                if(!strcmp(f[0],"msg") && !strcmp(f[3],"in") && strcmp(f[5],"system") && (strcmp(f[2],cur_conv) || GetForegroundWindow()!=hMain) && !(!strncmp(f[2],"dm:",3) && peer_muted(f[2]+3))){ tray_balloon("新消息",f[6]); FlashWindow(hMain,TRUE); } /* 免打扰: no balloon/flash */ } }
+                if(!strcmp(f[0],"msg") && !strcmp(f[3],"in") && strcmp(f[5],"system") && (strcmp(f[2],cur_conv) || GetForegroundWindow()!=hMain) && !(!strncmp(f[2],"dm:",3) && peer_muted(f[2]+3))){ snprintf(balloon_conv,sizeof balloon_conv,"%s",f[2]); tray_balloon("新消息",f[6]); FlashWindow(hMain,TRUE); } /* 免打扰: no balloon/flash */ } }
         else if(!strncmp(e,"transfer\t",9)) chat_dirty=1;
         else if(!strncmp(e,"notice\t",7)){ tray_balloon("提示",e+7); }
         else if(!strncmp(e,"pin_result\t",11)){ msgbox(strstr(e,"\tok")?"PIN 配对成功，已互相信任。":"PIN 配对失败（PIN 错误或已过期）。",MB_ICONINFORMATION); list_dirty=1; }
@@ -690,7 +691,7 @@ static void ui_icons_dump(void){ static char last[4096]; char buf[4096]; int n=0
         n+=snprintf(buf+n,sizeof buf-n,"ICON system-frame %ld,%ld,%ld,%ld\n",dr.left-wr.left,dr.top-wr.top,dr.right-dr.left,a.y-dr.top);
         if(hRelayStatus){ GetWindowRect(hRelayStatus,&sr); MapWindowPoints(NULL,hRelayDlg,(POINT*)&sr,2); d2.left=scale_px(14); d2.top=sr.top+scale_px(6); d2.right=d2.left+scale_px(10); d2.bottom=d2.top+scale_px(10); ADDR(hRelayDlg,d2,"relay-status-dot"); } }
 #undef ADDR
-    (void)o; if(!strcmp(buf,last)) return; strcpy(last,buf); f=fopen(ui_icons_path,"w"); if(f){ fputs(buf,f); fclose(f); } }
+    (void)o; n+=snprintf(buf+n,sizeof buf-n,"CONV %s\n",cur_conv); if(!strcmp(buf,last)) return; strcpy(last,buf); f=fopen(ui_icons_path,"w"); if(f){ fputs(buf,f); fclose(f); } }
 
 static WNDPROC oldInputProc, oldSearchProc;
 /* search placeholder in the theme's secondary text colour (EM_SETCUEBANNER uses a fixed system grey: 2.6:1 on the dark field) */
@@ -772,6 +773,10 @@ static void contact_menu(LPARAM l){ POINT pt; int s=-1, dm, cmd; HMENU pm;
 
 /* LSM_UI_TEST_DROP=<path> (test only): once a chat is open, hand that path to the real WM_DROPFILES handler in a
    shell-style HDROP (DROPFILES + wide path list), exactly what Explorer posts on a drag & drop (X8) */
+/* test hook (X17): when the file named by LSM_UI_TEST_BALLOON_CLICK appears, deliver the shell's balloon-click
+ * notification (WM_TRAY / NIN_BALLOONUSERCLICK) exactly as Explorer does; wine has no clickable balloons. */
+static void test_balloon_click(HWND h){ wchar_t p[MAX_PATH]; if(!GetEnvironmentVariableW(L"LSM_UI_TEST_BALLOON_CLICK",p,MAX_PATH)) return;
+    if(GetFileAttributesW(p)==INVALID_FILE_ATTRIBUTES) return; DeleteFileW(p); PostMessageW(h,WM_TRAY,0,NIN_BALLOONUSERCLICK); }
 static void test_drop(HWND h){ static int done; wchar_t p[MAX_PATH]; DWORD n; HGLOBAL g; DROPFILES *df; if(done || !cur_conv[0]) return;
     n=GetEnvironmentVariableW(L"LSM_UI_TEST_DROP",p,MAX_PATH); if(!n || n>=MAX_PATH) { done=1; return; } done=1;
     g=GlobalAlloc(GMEM_MOVEABLE|GMEM_ZEROINIT,sizeof(DROPFILES)+(n+2)*sizeof(wchar_t)); if(!g) return; df=(DROPFILES*)GlobalLock(g); df->pFiles=sizeof(DROPFILES); df->fWide=TRUE;
@@ -807,7 +812,7 @@ static LRESULT CALLBACK MainProc(HWND h, UINT m, WPARAM w, LPARAM l){
     case WM_SIZE: if(w!=SIZE_MINIMIZED){ if(hTip) SendMessageW(hTip,TTM_POP,0,0); layout(LOWORD(l),HIWORD(l)); if(C) refresh_chat(); fit_vscroll(hInput); InvalidateRect(h,NULL,TRUE); } else ShowWindow(h,SW_HIDE); return 0;
     case WM_GETMINMAXINFO: ((MINMAXINFO*)l)->ptMinTrackSize.x=640; ((MINMAXINFO*)l)->ptMinTrackSize.y=420; return 0;
     case WM_SETFOCUS: SetFocus(hList); return 0; /* keyboard users land in the contact list */
-    case WM_TIMER: if(!tray_added) tray_add(); poll_events(); ui_icons_dump(); test_drop(h); return 0;
+    case WM_TIMER: if(!tray_added) tray_add(); poll_events(); ui_icons_dump(); test_drop(h); test_balloon_click(h); return 0;
     /* system colours only: readable in any theme incl. high-contrast */
     case WM_CTLCOLORSTATIC: case WM_CTLCOLORBTN: case WM_CTLCOLORDLG: return ctl_color((HDC)w,(HWND)l,0);
     case WM_CTLCOLOREDIT: return ctl_color((HDC)w,(HWND)l,1);
@@ -833,7 +838,8 @@ static LRESULT CALLBACK MainProc(HWND h, UINT m, WPARAM w, LPARAM l){
         do_command(LOWORD(w)); return 0;
     case WM_UPDRES: upd_done((char*)l); return 0;
     case WM_TRAY:
-        if(l==WM_LBUTTONDBLCLK||l==NIN_BALLOONUSERCLICK) do_command(IDM_SHOW);
+        if(l==WM_LBUTTONDBLCLK) do_command(IDM_SHOW);
+        else if(l==NIN_BALLOONUSERCLICK){ int i; do_command(IDM_SHOW); if(balloon_conv[0]){ refresh_list(); for(i=0;i<nlist;i++) if(!strcmp(list_ids[i],balloon_conv)){ select_conv(i); break; } } }
         else if(l==WM_RBUTTONUP){ POINT pt; HMENU pm=CreatePopupMenu(); AM(pm,MF_STRING,IDM_SHOW,L"显示主窗口"); AM(pm,MF_SEPARATOR,0,NULL); AM(pm,MF_STRING,IDM_EXIT,L"退出"); menu_bg(pm); GetCursorPos(&pt); SetForegroundWindow(h); TrackPopupMenu(pm,TPM_RIGHTBUTTON,pt.x,pt.y,0,h,NULL); DestroyMenu(pm); }
         return 0;
     case WM_CLOSE: win_save(); if(!tray_added) tray_add(); if(!tray_added){ DestroyWindow(h); return 0; } /* no notification area: close really exits (never hide with no way back) */

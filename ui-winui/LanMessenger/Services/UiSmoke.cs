@@ -107,6 +107,7 @@ public static class UiSmoke
                             Check(!App.VM.SelectedSubtitle.Contains("指纹") && !App.VM.SelectedSubtitle.Contains(" ms"), $"chat header subtitle has no fingerprint/latency ('{App.VM.SelectedSubtitle}')");
                             { var open = DialogOpen(w); await KeysAsync(VK_ESCAPE); await Task.Delay(600); Check(open && !DialogOpen(w), $"Esc closes the contact-details dialog (open before={open})"); }
                             await ContextMenuChecksAsync(w, cp, dir, label, theme);
+                            if (!_basicsDone) { _basicsDone = true; await BasicsChecksAsync(w, cp); }
                             await ComposerKeysCheckAsync(cp);
                             if (!string.IsNullOrWhiteSpace(relayEnv)) await RelayChatChecksAsync(w, dir, label, theme);
                         }
@@ -156,6 +157,7 @@ public static class UiSmoke
             if (Environment.GetEnvironmentVariable("LSM_UI_SMOKE_LIVE_FLIP") == "1")
                 await LiveFlipAsync(w, dir, theme);
             await TrayCloseCheckAsync(w);
+            await SingleInstanceAndToastChecksAsync(w);
             await WindowMemoryCheckAsync(w);
 
             Log.Add($"peers={App.VM.Peers.Count} online={App.VM.OnlineCount} conversations={App.VM.Conversations.Count} messages={App.VM.Messages.Count}");
@@ -277,6 +279,91 @@ public static class UiSmoke
             await Task.Delay(1500);
         }
         catch (Exception e) { Check(false, "shortcuts: " + e.Message); }
+    }
+
+    private static bool _basicsDone;
+
+    /// <summary>W7 DPI, W11 tooltip on hover, W8 drop, W13 destructive confirm (run once, in the DM).</summary>
+    private static async Task BasicsChecksAsync(MainWindow w, ChatPage cp)
+    {
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(w);
+        try
+        {   // W7: XAML renders at the window's real DPI (per-monitor aware), not a bitmap-stretched 96
+            var dpi = GetDpiForWindow(hwnd); var scale = w.Content.XamlRoot.RasterizationScale;
+            Check(dpi >= 96 && Math.Abs(scale - dpi / 96.0) < 0.01, $"W7 per-monitor DPI: window dpi={dpi}, XAML scale={scale:0.00}");
+        }
+        catch (Exception e) { Check(false, "W7 DPI: " + e.Message); }
+        try
+        {   // W11: every icon-only button names itself, and a real hover over 发送 opens its tooltip
+            var root = (FrameworkElement)w.Content;
+            var unnamed = Descendants(root).OfType<Button>().Where(b => b.Content is FontIcon && b.ActualWidth > 0
+                && ToolTipService.GetToolTip(b) == null).Count();
+            var send = Descendants(root).OfType<Button>().FirstOrDefault(b => Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(b) == "发送");
+            if (send == null) Check(false, "W11 tooltip: no 发送 button");
+            else
+            {
+                SetForegroundWindow(hwnd);
+                var sc = send.XamlRoot.RasterizationScale; var c = send.TransformToVisual(null).TransformPoint(new Point(send.ActualWidth / 2, send.ActualHeight / 2));
+                var pt = new POINT { X = (int)(c.X * sc), Y = (int)(c.Y * sc) }; ClientToScreen(hwnd, ref pt);
+                SetCursorPos(pt.X - 6, pt.Y); await Task.Delay(150); SetCursorPos(pt.X, pt.Y);
+                bool tip = false;
+                for (int i = 0; i < 20 && !tip; i++) { await Task.Delay(150); tip = VisualTreeHelper.GetOpenPopupsForXamlRoot(w.Content.XamlRoot).Any(p => p.Child is ToolTip || FindDescendant<ToolTip>(p.Child) != null); }
+                Check(tip && unnamed == 0, $"W11 hovering 发送 shows its tooltip (shown={tip}); icon buttons without a tooltip: {unnamed}");
+                SetCursorPos(0, 0); await Task.Delay(300);
+            }
+        }
+        catch (Exception e) { Check(false, "W11 tooltip: " + e.Message); }
+        try
+        {   // W8: the drop handler (minus the OLE transport) sends a dropped file into the open chat
+            var f = Path.Combine(Path.GetTempPath(), "lsm-smoke-drop.txt"); File.WriteAllText(f, "drag & drop smoke " + DateTime.Now.Ticks);
+            int before = App.VM.Messages.Count(m => m.IsOutgoing && m.IsFile);
+            await cp.SendDroppedAsync(new IStorageItem[] { await StorageFile.GetFileFromPathAsync(f) });
+            for (int i = 0; i < 40 && App.VM.Messages.Count(m => m.IsOutgoing && m.IsFile) == before; i++) await Task.Delay(250);
+            Check(App.VM.Messages.Count(m => m.IsOutgoing && m.IsFile) == before + 1, $"W8 a dropped file is sent to the open chat (outgoing files {before} -> {App.VM.Messages.Count(m => m.IsOutgoing && m.IsFile)})");
+        }
+        catch (Exception e) { Check(false, "W8 drop: " + e.Message); }
+        try
+        {   // W13: 删除（仅本机）… from a real right-click asks first; Esc (the default 取消) keeps the message
+            var row = Descendants(cp.SmokeMessageList).OfType<ListViewItem>()
+                .FirstOrDefault(i => (i.Content ?? i.DataContext) is MessageItem m && m.IsText && !m.IsSystem && i.ActualHeight > 0 && Center(i).Y > 0 && Center(i).Y < ((FrameworkElement)w.Content).ActualHeight);
+            if (row == null) { Check(false, "W13: no visible text message row"); return; }
+            int count = App.VM.Messages.Count;
+            await RightClickAsync(w, row);
+            var del = VisualTreeHelper.GetOpenPopupsForXamlRoot(w.Content.XamlRoot).SelectMany(p => p.Child == null ? Enumerable.Empty<MenuFlyoutItem>() : Descendants(p.Child).OfType<MenuFlyoutItem>()).FirstOrDefault(i => i.Text == "删除（仅本机）…");
+            if (del == null) { Check(false, "W13: 删除（仅本机）… not in the message menu"); await KeysAsync(VK_ESCAPE); return; }
+            ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)new Microsoft.UI.Xaml.Automation.Peers.MenuFlyoutItemAutomationPeer(del)).Invoke();
+            bool asked = false; for (int i = 0; i < 20 && !asked; i++) { await Task.Delay(150); asked = DialogOpen(w); }
+            await KeysAsync(VK_ESCAPE); await Task.Delay(800);
+            Check(asked && !DialogOpen(w) && App.VM.Messages.Count == count, $"W13 删除这条消息 asks for confirmation, Esc cancels and keeps it (asked={asked}, messages {count} -> {App.VM.Messages.Count})");
+        }
+        catch (Exception e) { Check(false, "W13 confirm: " + e.Message); }
+    }
+
+    /// <summary>W12 a second start re-shows the hidden window and exits; W17 a toast click shows the window and opens that chat.</summary>
+    private static async Task SingleInstanceAndToastChecksAsync(MainWindow w)
+    {
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(w);
+        try
+        {
+            PostMessage(hwnd, 0x0010 /* WM_CLOSE: hide to tray */, IntPtr.Zero, IntPtr.Zero); await Task.Delay(1500);
+            var hidden = !IsWindowVisible(hwnd);
+            var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false });
+            bool exited = await Task.Run(() => p!.WaitForExit(20000));
+            bool shown = false; for (int i = 0; i < 40 && !shown; i++) { await Task.Delay(250); shown = IsWindowVisible(hwnd); }
+            Check(hidden && exited && shown, $"W12 second start exits and re-shows the running window (hidden={hidden}, exited={exited}, shown={shown})");
+        }
+        catch (Exception e) { Check(false, "W12 single instance: " + e.Message); }
+        try
+        {
+            var target = App.VM.Conversations.FirstOrDefault(c => !ReferenceEquals(c, App.VM.SelectedConversation));
+            if (target == null) { Check(false, "W17: needs a second conversation"); return; }
+            PostMessage(hwnd, 0x0010, IntPtr.Zero, IntPtr.Zero); await Task.Delay(1500);
+            var hidden = !IsWindowVisible(hwnd);
+            Toasts.Activate(target.Id);
+            bool ok = false; for (int i = 0; i < 40 && !ok; i++) { await Task.Delay(250); ok = IsWindowVisible(hwnd) && App.VM.SelectedConversation?.Id == target.Id; }
+            Check(hidden && ok, $"W17 notification click shows the hidden window and opens that chat (hidden={hidden}, selected={App.VM.SelectedConversation?.Id} want {target.Id})");
+        }
+        catch (Exception e) { Check(false, "W17 toast click: " + e.Message); }
     }
 
     private static bool DialogOpen(MainWindow w) =>
@@ -796,6 +883,7 @@ public static class UiSmoke
     [DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr h);
+    [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr h);
     [DllImport("user32.dll")] private static extern bool ClientToScreen(IntPtr h, ref POINT p);
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr h);
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr h, out RECT r);

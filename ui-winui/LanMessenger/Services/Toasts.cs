@@ -16,11 +16,7 @@ public static class Toasts
             AppNotificationManager.Default.NotificationInvoked += (_, args) =>
             {
                 args.Arguments.TryGetValue("conv", out var conv);
-                dq.TryEnqueue(() =>
-                {
-                    App.MainWin?.ShowAndFocus();
-                    if (!string.IsNullOrEmpty(conv)) App.MainWin?.OpenConversation(conv);
-                });
+                dq.TryEnqueue(() => Activate(conv));
             };
             AppNotificationManager.Default.Register();
             _ok = true;
@@ -29,6 +25,13 @@ public static class Toasts
         {
             CrashLog.Write("toast register", e);
         }
+    }
+
+    /// <summary>A toast click: show the window and open that chat (W17; the smoke check calls this too).</summary>
+    public static void Activate(string? conv)
+    {
+        App.MainWin?.ShowAndFocus();
+        if (!string.IsNullOrEmpty(conv)) App.MainWin?.OpenConversation(conv);
     }
 
     public static void Show(string title, string body, string conversationId)

@@ -67,7 +67,7 @@ exe_dir_txt = os.path.join(os.path.dirname(exe), "window.txt")
 if os.path.exists(exe_dir_txt): os.remove(exe_dir_txt)
 icons_file = os.path.join(env["WINEPREFIX"], "drive_c", data[3:], "ui_icons.txt")
 def start(extra=None):
-    g = Proc(["wine", exe, "--data", data, "--name", "Bill", "--port", str(port), "--disco-port", str(port + 1), "--theme", theme, "--auto-trust"], dict(env, LSM_UI_TEST="1", **(extra or {})))
+    g = Proc(["wine", exe, "--data", data, "--name", "Bill", "--port", str(port), "--disco-port", str(port + 1), "--theme", theme, "--auto-trust"], dict(env, LSM_UI_TEST="1", LSM_UI_TEST_BALLOON_CLICK=r"Z:\tmp\xp-balloon-click", **(extra or {})))
     w = wait(lambda: (wins("局域网安全通讯 XP") or [None])[0], 40); return g, w
 dropf = "/tmp/xp-drop-测试文件.txt"; open(dropf, "w").write("drop test\n")
 g, wid = start({"LSM_UI_TEST_DROP": "Z:" + dropf.replace("/", "\\")}); check(bool(wid), "XP window appeared")
@@ -126,6 +126,20 @@ if alive:
         g.p.kill(); subprocess.run(["wineserver", "-k"], env=env); g, _w = start(); wid = _w
     wid = (wins("局域网安全通讯 XP") or [wid])[0]
 if not alive: g, wid = start(); time.sleep(2)
+# X17 balloon click opens that chat: hide to the tray, a SECOND contact (李四) writes -> 新消息 balloon; the shell's
+# balloon-click notification (delivered by the LSM_UI_TEST_BALLOON_CLICK hook) must show the window on 李四's chat
+B = peer("b", "李四", port + 4); B.cmd(f"add 127.0.0.1:{port}")
+bfp = B.fp
+wait(lambda: any(l.startswith("PEER") and "\tonline" in l for l in B.cmd("peers")), 20)
+xdo("windowfocus", "--sync", wid); time.sleep(0.3); xdo("key", "alt+F4"); time.sleep(2); hid = not wins("局域网安全通讯 XP")
+B.cmd(f"send {xfp[:12]} 气泡点击测试"); time.sleep(6)
+def conv_now():
+    try: return next((l.split()[1] for l in open(icons_file, encoding="utf-8") if l.startswith("CONV ")), "")
+    except OSError: return ""
+open("/tmp/xp-balloon-click", "w").close()
+opened = wait(lambda: wins("局域网安全通讯 XP") and conv_now() == "dm:" + (bfp or "?"), 15)
+check(bool(bfp) and hid and bool(opened), f"X17 balloon click shows the hidden window on that chat (hidden={hid}, conv={conv_now()!r} want dm:{bfp})")
+wid = (wins("局域网安全通讯 XP") or [wid])[0]
 # X6 window memory: move/resize, 文件 > 退出, restart at the same place
 xdo("windowmove", wid, "60", "50"); xdo("windowsize", wid, "900", "640"); time.sleep(1.5); want = geom(wid)
 click(30, 46); time.sleep(0.8); xdo("key", "x"); ex = wait(lambda: g.p.poll() is not None, 15); check(bool(ex), "文件 > 退出 exits")
@@ -135,7 +149,7 @@ g, wid = start(); time.sleep(2); have = geom(wid) if wid else {}
 check(bool(wid) and abs(have.get("X", 0) - want["X"]) <= 4 and abs(have.get("Y", 0) - want["Y"]) <= 4 and abs(have.get("WIDTH", 0) - want["WIDTH"]) <= 4 and abs(have.get("HEIGHT", 0) - want["HEIGHT"]) <= 4,
       f"X6 window placement restored ({want['X']},{want['Y']} {want['WIDTH']}x{want['HEIGHT']} -> {have.get('X')},{have.get('Y')} {have.get('WIDTH')}x{have.get('HEIGHT')})")
 open(f"{out}/gui-basics.log", "w").write("\n".join(g.lines) + "\n--- peer\n" + "\n".join(A.lines))
-subprocess.run(["wineserver", "-k"], env=env); A.p.kill()
+subprocess.run(["wineserver", "-k"], env=env); A.p.kill(); B.p.kill()
 json.dump(ignore, open(f"{out}/audit_ignore.json", "w"), ensure_ascii=False, indent=1)
 trayp and trayp.kill(); xv.kill(); print("RESULT", "FAIL" if fails else "PASS", len(fails))
 sys.exit(1 if fails else 0)  # failures used to be printed only; the step must go red

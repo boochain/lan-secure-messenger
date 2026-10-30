@@ -275,7 +275,13 @@ public sealed partial class ChatPage : Page
     private async void Conversation_Drop(object sender, DragEventArgs e)
     {
         if (!VM.HasSelection || !e.DataView.Contains(StandardDataFormats.StorageItems)) return;
-        var items = await e.DataView.GetStorageItemsAsync();
+        await SendDroppedAsync(await e.DataView.GetStorageItemsAsync());
+    }
+
+    /// <summary>Everything a drop does after the OLE transfer (also driven by the W8 smoke check).</summary>
+    internal async Task SendDroppedAsync(IReadOnlyList<IStorageItem> items)
+    {
+        if (!VM.HasSelection) return;
         var paths = items.OfType<StorageFile>().Select(f => f.Path).Where(p => !string.IsNullOrEmpty(p)).ToList();
         if (items.OfType<StorageFolder>().Any()) VM.ShowStatus("暂不支持直接发送文件夹，请先压缩", true);
         if (paths.Count > 0) await VM.SendFilesAsync(paths);

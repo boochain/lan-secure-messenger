@@ -122,3 +122,4 @@ check(bool(want) and want == have, f"G6 window size restored after restart ({wan
 open(f"{out}/gui-basics.log", "w").write("\n".join(g.lines) + "\n--- peer\n" + "\n".join(A.lines))
 for q in (g, A, B): q.p.kill()
 xv.kill(); compp and compp.kill(); print("RESULT", "FAIL" if fails else "PASS", len(fails))
+sys.exit(1 if fails else 0)  # the step must go red on any failure
