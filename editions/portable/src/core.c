@@ -964,6 +964,13 @@ static uint32_t first_lan_ip(void){
     ULONG len=0; IP_ADAPTER_INFO *ai,*a; GetAdaptersInfo(NULL,&len); ai=(IP_ADAPTER_INFO*)malloc(len?len:sizeof(IP_ADAPTER_INFO));
     if(ai && GetAdaptersInfo(ai,&len)==NO_ERROR){ for(a=ai;a&&n<32;a=a->Next){ IP_ADDR_STRING *s; for(s=&a->IpAddressList;s&&n<32;s=s->Next){ uint32_t ip=inet_addr(s->IpAddress.String); if(ip&&ip!=INADDR_NONE) ips[n++]=ip; } } }
     free(ai);
+#elif defined(__ANDROID__)
+    { int fd=socket(AF_INET,SOCK_DGRAM,0); struct ifreq rq[32]; struct ifconf ic; int k;
+      if(fd>=0){ ic.ifc_len=sizeof rq; ic.ifc_req=rq; if(ioctl(fd,SIOCGIFCONF,&ic)==0){ k=ic.ifc_len/(int)sizeof(struct ifreq);
+          for(i=0;i<k && n<32;i++){ struct ifreq f=rq[i]; uint32_t ip; if(rq[i].ifr_addr.sa_family!=AF_INET) continue; ip=((struct sockaddr_in*)&rq[i].ifr_addr)->sin_addr.s_addr;
+              if(ioctl(fd,SIOCGIFFLAGS,&f)!=0 || (f.ifr_flags&IFF_LOOPBACK) || !(f.ifr_flags&IFF_UP)) continue;
+              ips[n++]=ip; } }
+        close(fd); } }
 #else
     struct ifaddrs *ia,*p; if(getifaddrs(&ia)==0){ for(p=ia;p&&n<32;p=p->ifa_next){ if(!p->ifa_addr||p->ifa_addr->sa_family!=AF_INET||(p->ifa_flags&IFF_LOOPBACK)||!(p->ifa_flags&IFF_UP)) continue; ips[n++]=((struct sockaddr_in*)p->ifa_addr)->sin_addr.s_addr; } freeifaddrs(ia); }
 #endif
