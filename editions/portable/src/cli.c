@@ -90,6 +90,12 @@ static int run_cmd(char *line){
         lsm_lock(C); n=lsm_messages(C,&m); for(i=0;i<n;i++) if(!strcmp(m[i].conv,cv)) cnt++; start=cnt-lim; cnt=0;
         for(i=0;i<n;i++) if(!strcmp(m[i].conv,cv)){ if(cnt++<start) continue; outf("MSG %s\t%s\t%s\t%s\t%s\t%s\n",m[i].id,m[i].out?"out":"in",STS[m[i].status],m[i].sender_name,m[i].kind==1?"[file]":"",m[i].kind==1?m[i].file_name:(m[i].body?m[i].body:"")); }
         lsm_unlock(C); outf("OK history\n"); return 0; }
+    /* v0.6.1 P1 */
+    if(!strcmp(cmd,"reply")){ char *who=next_tok(&s), *rid=next_tok(&s), id[40]; const char *cv; while(s&&*s==' ') s++; if(!who||!rid||!s||!(cv=conv_of(who,buf))){ outf("ERR usage: reply <peer|group> <msg-id> <text>\n"); return 0; } if(lsm_send_text2(C,cv,s,rid,NULL,id,err)) outf("ERR %s\n",err); else outf("OK reply %s\n",id); return 0; }
+    if(!strcmp(cmd,"react")){ char *id=next_tok(&s); while(s&&*s==' ') s++; if(!id){ outf("ERR usage: react <msg-id> [emoji]\n"); return 0; } if(lsm_react(C,id,s?s:"",err)) outf("ERR %s\n",err); else outf("OK react\n"); return 0; }
+    if(!strcmp(cmd,"edit")){ char *id=next_tok(&s); while(s&&*s==' ') s++; if(!id||!s||!*s){ outf("ERR usage: edit <msg-id> <text>\n"); return 0; } if(lsm_edit_message(C,id,s,err)) outf("ERR %s\n",err); else outf("OK edit\n"); return 0; }
+    if(!strcmp(cmd,"recall")){ char *id=next_tok(&s); if(!id){ outf("ERR usage: recall <msg-id>\n"); return 0; } if(lsm_recall_message(C,id,err)) outf("ERR %s\n",err); else outf("OK recall\n"); return 0; }
+    if(!strcmp(cmd,"msginfo")){ char *id=next_tok(&s); lsm_msg *m; int n,i; if(!id){ outf("ERR usage\n"); return 0; } lsm_lock(C); n=lsm_messages(C,&m); for(i=n-1;i>=0;i--) if(!strcmp(m[i].id,id)){ outf("MSGX %s\treply_to=%s\tquote=%s\treactions=%s\tedited=%d\trecalled=%d\tbody=%s\n",m[i].id,m[i].reply_to,m[i].quote,m[i].reactions,m[i].edited,m[i].recalled,m[i].body?m[i].body:""); break; } lsm_unlock(C); outf(i<0?"ERR not found\n":"OK msginfo\n"); return 0; }
     if(!strcmp(cmd,"initials")){ char o[8]; lsm_initials(s?s:"",o); outf("OK initials %s\n",o); return 0; }
     if(!strcmp(cmd,"delete")){ char *id=next_tok(&s); if(!id){ outf("ERR usage: delete <msg-id>\n"); return 0; } outf(lsm_delete_message(C,id)?"ERR not found\n":"OK delete\n"); return 0; }
     if(!strcmp(cmd,"read")){ const char *cv=conv_of(s,buf); if(!cv){ outf("ERR unknown target\n"); return 0; } outf("OK read %d\n",lsm_mark_read(C,cv)); return 0; }

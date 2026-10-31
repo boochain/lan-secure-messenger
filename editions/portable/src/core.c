@@ -60,7 +60,8 @@ typedef int sock_t;
 #define PROTO 5
 #define CAP_RESUME 1u  /* byte-offset file resume (frame 16 FileResume) */
 #define CAP_PROFILE 2u /* 个人主页 sync (frame 17 Profile) */
-#define MY_CAPS (CAP_RESUME|CAP_PROFILE)
+#define CAP_EXT 4u /* Payload::Ext (reply/react/edit/recall) */
+#define MY_CAPS (CAP_RESUME|CAP_PROFILE|CAP_EXT)
 #define CHUNK (32*1024)
 #define WINDOW (4ull*1024*1024)
 #define PROGRESS_EVERY (256*1024)
@@ -276,10 +277,10 @@ static lsm_contact *contact_entry(lsm_core *c, const char *fp){ lsm_contact *k=c
 static int trust_of(lsm_core *c, const char *fp){ lsm_contact *k=contact_get(c,fp); return k?k->trust:TRUST_UNKNOWN; }
 static void save_contacts(lsm_core *c){ buf_t b={0}; int i; char ed[65];
     for(i=0;i<c->ncontacts;i++){ lsm_contact *k=&c->contacts[i]; if(k->has_ed) hex_enc(k->ed,32,ed); else ed[0]=0;
-        bfmt(&b,"%s\t",k->fp); esc_put(&b,k->name); bfmt(&b,"\t%s\t%d\t%s\t%lld\t%d\t",ed,k->trust,k->addr,(long long)k->last_seen_ms,k->muted); esc_put(&b,k->remark); b_u8(&b,'\t'); esc_put(&b,k->signature); bfmt(&b,"\t%d\n",k->has_avatar); } /* 7th column (muted) is ignored by older versions */
+        bfmt(&b,"%s\t",k->fp); esc_put(&b,k->name); bfmt(&b,"\t%s\t%d\t%s\t%lld\t%d\t",ed,k->trust,k->addr,(long long)k->last_seen_ms,k->muted); esc_put(&b,k->remark); b_u8(&b,'\t'); esc_put(&b,k->signature); bfmt(&b,"\t%d\t%u\n",k->has_avatar,k->caps); } /* 7th column (muted) is ignored by older versions */
     save_sealed(c,"contacts.dat",&b); b_free(&b); }
 static void load_contacts(lsm_core *c){ char *t=load_sealed(c,"contacts.dat"), *line, *nx; if(!t) return;
-    for(line=t; line && *line; line=nx){ char *f[12]; int n; nx=strchr(line,'\n'); if(nx) *nx++=0; n=split_tabs(line,f,12); if(n>=6){ lsm_contact *k=contact_entry(c,f[0]); scpy(k->name,f[1],sizeof k->name); if(strlen(f[2])==64 && !hex_dec(f[2],k->ed,32)) k->has_ed=1; k->trust=atoi(f[3]); scpy(k->addr,f[4],sizeof k->addr); k->last_seen_ms=atoll(f[5]); if(n>=7) k->muted=atoi(f[6])!=0; if(n>=10){ scpy(k->remark,f[7],sizeof k->remark); scpy(k->signature,f[8],sizeof k->signature); k->has_avatar=atoi(f[9])!=0; } } }
+    for(line=t; line && *line; line=nx){ char *f[12]; int n; nx=strchr(line,'\n'); if(nx) *nx++=0; n=split_tabs(line,f,12); if(n>=6){ lsm_contact *k=contact_entry(c,f[0]); scpy(k->name,f[1],sizeof k->name); if(strlen(f[2])==64 && !hex_dec(f[2],k->ed,32)) k->has_ed=1; k->trust=atoi(f[3]); scpy(k->addr,f[4],sizeof k->addr); k->last_seen_ms=atoll(f[5]); if(n>=7) k->muted=atoi(f[6])!=0; if(n>=10){ scpy(k->remark,f[7],sizeof k->remark); scpy(k->signature,f[8],sizeof k->signature); k->has_avatar=atoi(f[9])!=0; } if(n>=11) k->caps=(uint32_t)strtoul(f[10],NULL,10); } }
     free(t); }
 
 static lsm_group *group_get(lsm_core *c, const uint8_t id[16]){ int i; for(i=0;i<c->ngroups;i++) if(!memcmp(c->groups[i].id,id,16)) return &c->groups[i]; return NULL; }
@@ -321,6 +322,7 @@ static void file_sync(FILE *f){
     fsync(fileno(f));
 #endif
 }
+static void load_ext_rec(lsm_core *c, char **f, int k);
 static void hist_append(lsm_core *c, buf_t *rec){ char p[600]; size_t sn; uint8_t *s=seal_rand(c->store_key,rec->p,rec->n,&sn); FILE *f; uint8_t l[4]; int i;
     path_join(p,sizeof p,c->data_dir,"history.dat"); f=ufopen(p,"ab"); if(f){ for(i=0;i<4;i++) l[i]=(uint8_t)(sn>>(8*i)); fwrite(l,1,4,f); fwrite(s,1,sn,f); fflush(f); file_sync(f); fclose(f);} free(s); }
 static lsm_msg *msg_get(lsm_core *c, const char *id){ int i; for(i=c->nmsgs-1;i>=0;i--) if(!strcmp(c->msgs[i].id,id)) return &c->msgs[i]; return NULL; }
@@ -332,10 +334,11 @@ static void hist_rec_upd(lsm_core *c, lsm_msg *m){ buf_t b={0}; bfmt(&b,"S\t%s\t
 static lsm_msg *msg_push(lsm_core *c){ lsm_msg *m; c->msgs=(lsm_msg*)xrealloc(c->msgs,sizeof(lsm_msg)*(c->nmsgs+1)); m=&c->msgs[c->nmsgs++]; memset(m,0,sizeof *m); return m; }
 static void tomb_add(lsm_core *c, const char *id); static int msg_unlink(lsm_core *c, const char *id);
 static void load_history(lsm_core *c){ char p[600]; size_t n,off=0; uint8_t *d; path_join(p,sizeof p,c->data_dir,"history.dat"); d=read_file(p,&n); if(!d) return;
-    while(off+4<=n){ size_t l=d[off]|(d[off+1]<<8)|(d[off+2]<<16)|((size_t)d[off+3]<<24), pn; char *pl, *f[16]; int k; off+=4; if(off+l>n) break;
-        pl=(char*)open_rand(c->store_key,d+off,l,&pn); off+=l; if(!pl) continue; k=split_tabs(pl,f,16);
+    while(off+4<=n){ size_t l=d[off]|(d[off+1]<<8)|(d[off+2]<<16)|((size_t)d[off+3]<<24), pn; char *pl, *f[20]; int k; off+=4; if(off+l>n) break;
+        pl=(char*)open_rand(c->store_key,d+off,l,&pn); off+=l; if(!pl) continue; k=split_tabs(pl,f,20);
         if(f[0][0]=='M' && k>=14){ lsm_msg *m=msg_get(c,f[1]); /* a later M record for the same id is an update (file fields arrive after the first record) */
             if(m){ m->kind=atoi(f[6]); scpy(m->file_tid,f[10],40); scpy(m->file_name,f[11],260); m->file_size=strtoull(f[12],NULL,10); if(f[13][0]) scpy(m->file_path,f[13],520); free(pl); continue; } m=msg_push(c); scpy(m->id,f[1],40); scpy(m->conv,f[2],64); m->out=atoi(f[3]); scpy(m->sender_fp,f[4],FP_LEN); scpy(m->sender_name,f[5],200); m->kind=atoi(f[6]); m->body=xstrdup(f[7]); m->ts_ms=atoll(f[8]); m->status=atoi(f[9]); scpy(m->file_tid,f[10],40); scpy(m->file_name,f[11],260); m->file_size=strtoull(f[12],NULL,10); scpy(m->file_path,f[13],520); }
+        else if(f[0][0]=='X'){ load_ext_rec(c,f,k); }
         else if(f[0][0]=='D' && k>=2){ tomb_add(c,f[1]); msg_unlink(c,f[1]); }
         else if(f[0][0]=='S' && k>=5){ lsm_msg *m=msg_get(c,f[1]); if(m){ m->status=atoi(f[2]); m->unread=atoi(f[3]); if(f[4][0]) scpy(m->file_path,f[4],520);} }
         free(pl); }
@@ -423,6 +426,7 @@ static void dial_failed(lsm_core *c, const char *key, const char *why){
 static void fail_transfers_for(lsm_core *c, const char *fp, const char *why);
 static void on_link_up(lsm_core *c, conn *k);
 static void on_frame(lsm_core *c, conn *k, rd_t *r);
+static void ext_recv(lsm_core *c, const char *fp, const char *ids, rd_t *r);
 static void profile_send(lsm_core *c, conn *k); static void profile_recv(lsm_core *c, conn *k, rd_t *r); static void load_profile(lsm_core *c);
 
 struct relay_cl; static void rl_on_link_closed(lsm_core *c, conn *k); static void rl_flush_link(lsm_core *c, conn *k); static void conn_parse(lsm_core *c, conn *k);
@@ -813,6 +817,7 @@ static void on_link_up(lsm_core *c, conn *k){
     r=rt_entry(c,k->fp); r->dialing=0; r->failures=0; r->next_attempt=0;
     { char as[64]; if(k->via_relay) scpy(as,"relay",sizeof as); else addr_str(&k->addr,as,sizeof as); emit(c,"peer\t%s\tonline\t%s\t%s\t%s",k->fp,ct->name,as,k->rver);
       emit(c,"peer\t%s\tpath\t%s",k->fp,k->via_relay?"relay":"direct"); }
+    { lsm_contact *ct=contact_entry(c,k->fp); if(ct->caps!=k->rcaps){ ct->caps=k->rcaps; save_contacts(c); } }
     profile_send(c,k); flush_outbox(c,k->fp); resend_offers(c,k->fp); }
 
 static void on_payload(lsm_core *c, const char *fp, const uint8_t id[16], rd_t *r){
@@ -861,6 +866,7 @@ static void on_payload(lsm_core *c, const char *fp, const uint8_t id[16], rd_t *
         if(!strcmp(g->creator_fp,c->fp)) remove_member_rekey(c,g,fp);
         else { char u[37]; group_remove_member(g,fp); save_groups(c); lsm_uuid_str(gid,u); emit(c,"group\t%s\t%s",u,g->name); }
         system_msg(c,conv,"%s \xe9\x80\x80\xe5\x87\xba\xe4\xba\x86\xe7\xbe\xa4\xe7\xbb\x84",peer_name(c,fp)); break; }
+    case 6: ext_recv(c,fp,ids,r); break;
     case 5: { uint64_t n=r_u64(r), i; if(n>100000) return; for(i=0;i<n && !r->err;i++){ uint8_t u[16]; char s[37]; lsm_msg *m; r_uuid(r,u); lsm_uuid_str(u,s); m=msg_get(c,s); if(m && m->out) set_status(c,m,ST_READ); } break; }
     } }
 
@@ -1338,6 +1344,7 @@ void lsm_initials(const char *name, char out[8]){
 
 #include "resume.c"
 #include "profile_hist.c"
+#include "ext.c"
 #include "backup.c"
 
 /* ------------------------------------------------------------ diagnostics (诊断) */
