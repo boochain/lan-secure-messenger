@@ -2,25 +2,23 @@
 name: v061-gui-android
 on:
   push:
-    branches: ["work/v061-all14", "work/**"]
+    branches: ["work/v061-all14", "work/**", main]
   pull_request:
   workflow_dispatch:
 jobs:
-  linux-gtk-adw:
+  linux-gtk:
     runs-on: ubuntu-24.04
+    container: ubuntu:20.04
     steps:
-      - uses: actions/checkout@v4
-      - name: Deps
+      - name: Toolchain
+        working-directory: /
         run: |
-          sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq gcc make pkg-config libgtk-3-dev libadwaita-1-dev curl file
-      - name: Build GTK3 GUI + CLI
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq && apt-get install -y -qq gcc make pkg-config libgtk-3-dev musl-tools curl file ca-certificates git
+      - uses: actions/checkout@v4
+      - name: Build GTK GUI + static CLI, AppImage + tarball
         working-directory: editions/portable
         run: sh linux/build.sh
-      - name: Build ADW GUI (best-effort)
-        working-directory: editions/portable
-        run: |
-          if [ -x linux/build-adw.sh ]; then sh linux/build-adw.sh || echo "adw build soft-fail"; else echo "no adw script"; fi
       - name: Upload linux dist + overflow checklist
         uses: actions/upload-artifact@v4
         with:
@@ -33,15 +31,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
-        with: { distribution: temurin, java-version: "17" }
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-      - name: Assemble debug APK
+        with: { distribution: temurin, java-version: "21" }
+      - name: SDK packages (NDK, CMake)
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" "ndk;26.3.11579264" "cmake;3.22.1" > /dev/null
+      - name: Assemble release APK
         working-directory: editions/portable/android
-        run: |
-          chmod +x gradlew || true
-          ./gradlew assembleDebug --no-daemon
+        run: ./gradlew --no-daemon assembleRelease
       - uses: actions/upload-artifact@v4
         with:
-          name: v061-android-debug
-          path: editions/portable/android/app/build/outputs/apk/debug/*.apk
+          name: v061-android
+          path: editions/portable/android/app/build/outputs/apk/release/app-release.apk

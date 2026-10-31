@@ -1186,6 +1186,47 @@ int lsm_cleanup_storage(lsm_core *c, int orphans, int finished_transfers){
     mu_unlock(&c->mu); return removed;
 }
 
+int lsm_set_trust(lsm_core *c, const char *fp, int trust, char *err){ lsm_contact *k; (void)err; mu_lock(&c->mu); k=contact_entry(c,fp); k->trust=trust; save_contacts(c);
+    if(trust==TRUST_BLOCKED){ conn *x=conn_by_fp(c,fp); if(x) conn_close(c,x,"blocked",1); }
+    emit(c,"peer\t%s\ttrust\t%s",fp,trust==1?"trusted":trust==2?"blocked":"unknown"); mu_unlock(&c->mu); return 0; }
+int lsm_pin_offer(lsm_core *c, char pin_out[8]){ uint32_t r; mu_lock(&c->mu); rand_bytes(&r,4); snprintf(c->pin,sizeof c->pin,"%06u",r%1000000u); c->pin_time=mono_ms(); c->pin_tries=0; scpy(pin_out,c->pin,8); mu_unlock(&c->mu); return 0; }
+int lsm_pin_pair(lsm_core *c, const char *fp, const char *pin, char *err){ buf_t f={0}; int ok; char t[16]; scpy(t,pin,sizeof t); { char *s=t, *e; while(*s==' ') s++; e=s+strlen(s); while(e>s&&e[-1]==' ') e--; *e=0; memmove(t,s,strlen(s)+1); }
+    mu_lock(&c->mu); b_u32(&f,13); b_str(&f,t); ok=send_to_fp(c,fp,&f); b_free(&f); mu_unlock(&c->mu); if(!ok){ E("\xe5\xaf\xb9\xe6\x96\xb9\xe4\xb8\x8d\xe5\x9c\xa8\xe7\xba\xbf"); return -1; } return 0; }
+int lsm_group_create(lsm_core *c, const char *name, const char **fps, int n, char *gid_out, char *err){ lsm_group g; int i; buf_t p={0}; uint8_t id[16]; char conv[64];
+    mu_lock(&c->mu);
+    for(i=0;i<n;i++) if(trust_of(c,fps[i])!=TRUST_TRUSTED){ char e[256]; snprintf(e,sizeof e,"\xe6\x88\x90\xe5\x91\x98 %s \xe5\xb0\x9a\xe6\x9c\xaa\xe4\xbf\xa1\xe4\xbb\xbb\xef\xbc\x8c\xe8\xaf\xb7\xe5\x85\x88\xe4\xbf\xa1\xe4\xbb\xbb\xe5\x90\x8e\xe5\x86\x8d\xe5\xbb\xba\xe7\xbe\xa4",peer_name(c,fps[i])); E(e); mu_unlock(&c->mu); return -1; }
+    memset(&g,0,sizeof g); uuid_new(g.id); sanitize_name(name,g.name,sizeof g.name); scpy(g.creator_fp,c->fp,FP_LEN);
+    for(i=0;i<n && i<63;i++) scpy(g.members[g.nmembers++],fps[i],FP_LEN); scpy(g.members[g.nmembers++],c->fp,FP_LEN); group_sort(&g);
+    rand_bytes(g.key,32); g.created_ms=wall_ms(); g.key_epoch=0;
+    c->groups=(lsm_group*)xrealloc(c->groups,sizeof(lsm_group)*(c->ngroups+1)); c->groups[c->ngroups++]=g; save_groups(c);
+    payload_invite(c,&g,&p); for(i=0;i<g.nmembers;i++) if(strcmp(g.members[i],c->fp)){ uuid_new(id); send_reliable(c,g.members[i],&p,id,NULL); }
+    b_free(&p); lsm_uuid_str(g.id,gid_out); emit(c,"group\t%s\t%s",gid_out,g.name); conv_group(g.id,conv);
+    system_msg(c,conv,"\xe4\xbd\xa0\xe5\x88\x9b\xe5\xbb\xba\xe4\xba\x86\xe7\xbe\xa4\xe7\xbb\x84\xe3\x80\x8c%s\xe3\x80\x8d",g.name);
+    mu_unlock(&c->mu); return 0; }
+int lsm_group_invite(lsm_core *c, const char *gids, const char **fps, int n, char *err){ uint8_t gid[16]; lsm_group *g; int i; buf_t p={0}; uint8_t id[16];
+    mu_lock(&c->mu); if(lsm_uuid_parse(gids,gid)||!(g=group_get(c,gid))){ E("\xe7\xbe\xa4\xe7\xbb\x84\xe4\xb8\x8d\xe5\xad\x98\xe5\x9c\xa8"); mu_unlock(&c->mu); return -1; }
+    if(strcmp(g->creator_fp,c->fp)){ E("\xe5\x8f\xaa\xe6\x9c\x89\xe7\xbe\xa4\xe4\xb8\xbb\xe5\x8f\xaf\xe4\xbb\xa5\xe9\x82\x80\xe8\xaf\xb7\xe6\x88\x90\xe5\x91\x98"); mu_unlock(&c->mu); return -1; }
+    for(i=0;i<n;i++){ if(trust_of(c,fps[i])!=TRUST_TRUSTED){ E("\xe6\x88\x90\xe5\x91\x98\xe5\xb0\x9a\xe6\x9c\xaa\xe4\xbf\xa1\xe4\xbb\xbb"); mu_unlock(&c->mu); return -1; } if(!group_is_member(g,fps[i]) && g->nmembers<64) scpy(g->members[g->nmembers++],fps[i],FP_LEN); }
+    group_sort(g); g->key_epoch++; save_groups(c);
+    payload_invite(c,g,&p); for(i=0;i<g->nmembers;i++) if(strcmp(g->members[i],c->fp)){ uuid_new(id); send_reliable(c,g->members[i],&p,id,NULL); }
+    b_free(&p); emit(c,"group\t%s\t%s",gids,g->name); mu_unlock(&c->mu); return 0; }
+int lsm_group_remove(lsm_core *c, const char *gids, const char *fp, char *err){ uint8_t gid[16]; lsm_group *g;
+    mu_lock(&c->mu); if(lsm_uuid_parse(gids,gid)||!(g=group_get(c,gid))){ E("group not found"); mu_unlock(&c->mu); return -1; }
+    if(strcmp(g->creator_fp,c->fp)){ E("only creator can remove members"); mu_unlock(&c->mu); return -1; }
+    if(!strcmp(fp,c->fp)||!group_is_member(g,fp)){ E("not a member"); mu_unlock(&c->mu); return -1; }
+    remove_member_rekey(c,g,fp); mu_unlock(&c->mu); return 0; }
+int lsm_group_leave(lsm_core *c, const char *gids, char *err){ uint8_t gid[16], id[16]; lsm_group *g; int i; buf_t p={0};
+    mu_lock(&c->mu); if(lsm_uuid_parse(gids,gid)||!(g=group_get(c,gid))){ E("\xe7\xbe\xa4\xe7\xbb\x84\xe4\xb8\x8d\xe5\xad\x98\xe5\x9c\xa8"); mu_unlock(&c->mu); return -1; }
+    b_u32(&p,4); b_uuid(&p,gid); for(i=0;i<g->nmembers;i++) if(strcmp(g->members[i],c->fp)){ uuid_new(id); send_reliable(c,g->members[i],&p,id,NULL); }
+    b_free(&p); group_delete(c,gid); save_groups(c); emit(c,"group_removed\t%s",gids); mu_unlock(&c->mu); return 0; }
+/* delete one message on this device only (the peer keeps its copy); leaves a synced tombstone record */
+int lsm_delete_message(lsm_core *c, const char *id){ char conv[64]; lsm_msg *m; buf_t b={0}; mu_lock(&c->mu); m=msg_get(c,id);
+    if(!m){ mu_unlock(&c->mu); return -1; } scpy(conv,m->conv,64); msg_unlink(c,id); tomb_add(c,id);
+    bfmt(&b,"D\t%s",id); hist_append(c,&b); b_free(&b); emit(c,"msg_delete\t%s\t%s",id,conv); mu_unlock(&c->mu); return 0; }
+int lsm_clear_conversation(lsm_core *c, const char *conv){ int i, n=0; char id[40]; buf_t b={0}; mu_lock(&c->mu);
+    for(i=c->nmsgs-1;i>=0;i--){ if(strcmp(c->msgs[i].conv,conv)) continue; scpy(id,c->msgs[i].id,40); msg_unlink(c,id); tomb_add(c,id); b.n=0; bfmt(&b,"D\t%s",id); hist_append(c,&b); emit(c,"msg_delete\t%s\t%s",id,conv); n++; }
+    b_free(&b); mu_unlock(&c->mu); return n; }
+
 static void fmt_bytes(uint64_t b, char *o, size_t n){ if(b>=1073741824ull) snprintf(o,n,"%.2f GB",b/1073741824.0); else if(b>=1048576) snprintf(o,n,"%.1f MB",b/1048576.0); else if(b>=1024) snprintf(o,n,"%.0f KB",b/1024.0); else snprintf(o,n,"%u B",(unsigned)b); }
 void lsm_transfer_status(lsm_core *c, lsm_transfer *t, char *out, size_t n){
     char a[32], b[32], r[32], eta[32]="", path[32]=""; const char *st; int i, pct=t->size?(int)(t->transferred*100/t->size):0; int64_t now=mono_ms();
