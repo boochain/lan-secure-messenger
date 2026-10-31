@@ -81,6 +81,7 @@ static int peer_filter_match(const char *name){ const char *q; gchar *a,*b; int 
     if(!peer_search) return 1; q=gtk_entry_get_text(GTK_ENTRY(peer_search)); if(!q||!*q) return 1;
     a=g_utf8_strdown(name?name:"",-1); b=g_utf8_strdown(q,-1); ok=(strstr(a,b)!=NULL); g_free(a); g_free(b); return ok; }
 static void peer_search_changed(GtkEditable *e, gpointer p){ (void)e;(void)p; refresh_list(); }
+static void p2_decorate(const char *conv, char *t, size_t n); static void p2_mark_rows(void);
 static void refresh_list(void){
     GList *ch=gtk_container_get_children(GTK_CONTAINER(peer_list)), *it; lsm_contact *k; lsm_group *g; int n,i; GtkListBoxRow *sel=NULL;
     for(it=ch;it;it=it->next) gtk_widget_destroy(GTK_WIDGET(it->data)); g_list_free(ch);
