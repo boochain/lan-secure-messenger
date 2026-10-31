@@ -193,6 +193,7 @@ fun ConvRow(c: Conv, click: () -> Unit) {
                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
                 if (c.trusted) Ic(R.drawable.ms_trusted, "已验证身份", p.online, 16.dp, Modifier.padding(start = 4.dp))
                 if (c.via) ViaBadge(Modifier.padding(start = 6.dp))
+                if (c.pinned) Text("📌", fontSize = 12.sp, modifier = Modifier.padding(start = 6.dp).semantics { contentDescription = "已置顶" })
               }
                 Spacer(Modifier.width(8.dp))
                 if (m != null) Text(listTime(m.ts), fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = .4.sp, color = if (unread) p.accent else p.fg2, fontWeight = if (unread) FontWeight.Bold else FontWeight.Normal)
@@ -203,7 +204,8 @@ fun ConvRow(c: Conv, click: () -> Unit) {
                 val from = if (c.group && m != null) (if (m.out) "我" else m.sender) + ": " else ""
                 val txt = when { m == null -> if (c.group) "${c.members} 位成员" else if (c.online) "在线" else "离线"; m.kind == 1 -> if (isImage(m.file)) "照片" else m.file; else -> m.body.replace('\n', ' ') }
                 if (m != null && m.kind == 1 && from.isEmpty()) { Ic(fileIcon(m.file), null, pv, 18.dp); Spacer(Modifier.width(4.dp)) }
-                Text(from + txt, fontSize = 14.sp, lineHeight = 20.sp, letterSpacing = .25.sp, color = pv, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                if (c.draft.isNotEmpty()) Text("[草稿] ", fontSize = 14.sp, lineHeight = 20.sp, color = p.error)
+                Text(if (c.draft.isNotEmpty()) c.draft.replace('\n', ' ') else from + txt, fontSize = 14.sp, lineHeight = 20.sp, letterSpacing = .25.sp, color = pv, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 if (unread) { Spacer(Modifier.width(8.dp)); CountBadge(c.unread) }
             }
         }

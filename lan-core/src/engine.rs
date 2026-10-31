@@ -18,6 +18,7 @@ use crate::history::HistoryStore;
 use crate::identity::Identity;
 use crate::link::{self, Link, LinkWriter};
 mod ext;
+mod p2;
 mod files;
 pub use files::sanitize_filename;
 mod relay;
@@ -198,6 +199,7 @@ pub struct Engine {
     outbox: Vec<Outgoing>,
     unread: HashMap<String, Vec<Uuid>>,
     pub(crate) transfers: HashMap<Uuid, TransferRt>,
+    pub(crate) conv_prefs: p2::ConvPrefs,
     next_conn_id: u64,
     tcp_error: String,
     disco: Discovery,
@@ -228,6 +230,7 @@ pub async fn start(opts: EngineOptions) -> Result<EngineHandle> {
     let contacts = ContactStore::load(&paths)?;
     let history = HistoryStore::load(&paths, settings.history_enabled)?;
     let groups = GroupStore::load(&paths)?;
+    let conv_prefs = p2::ConvPrefs::load(&paths.base, crate::history::load_or_create_key(&paths.history_key)?);
     let (tx, mut rx) = mpsc::unbounded_channel();
     let (events, _) = broadcast::channel(4096);
     let shutdown = Arc::new(Notify::new());
@@ -342,6 +345,7 @@ pub async fn start(opts: EngineOptions) -> Result<EngineHandle> {
         outbox: Vec::new(),
         unread: HashMap::new(),
         transfers: HashMap::new(),
+        conv_prefs,
         next_conn_id: 1,
         tcp_error,
         disco,
@@ -1011,7 +1015,7 @@ impl Engine {
             if let Ok(u) = Uuid::parse_str(&m.id) {
                 self.unread.entry(conv.clone()).or_default().push(u);
             }
-            if notify && !self.is_muted(&conv) {
+            if notify && (!self.is_muted(&conv) || m.ext.mentions_me) {
                 let title = if conv.starts_with("group:") {
                     format!("{} · {}", self.conv_title(&conv), m.sender_name)
                 } else {
@@ -1733,6 +1737,8 @@ impl Engine {
         let last = self.history.last_in(conv);
         let is_group = conv.starts_with("group:");
         Conversation {
+            pinned: self.conv_prefs.pinned.contains(conv),
+            draft: self.conv_prefs.drafts.get(conv).cloned().unwrap_or_default(),
             id: conv.to_string(),
             kind: if is_group { "group".into() } else { "dm".into() },
             title: self.conv_title(conv),
@@ -1783,7 +1789,7 @@ impl Engine {
         let mut convs: Vec<String> = self.visible_peers().iter().map(|f| dm_conv(f)).collect();
         convs.extend(self.groups.list().iter().map(|g| group_conv(&g.id)));
         let mut conversations: Vec<Conversation> = convs.iter().map(|c| self.conv_view(c)).collect();
-        conversations.sort_by(|a, b| b.last_ts_ms.cmp(&a.last_ts_ms));
+        conversations.sort_by(|a, b| b.pinned.cmp(&a.pinned).then(b.last_ts_ms.cmp(&a.last_ts_ms)));
         let mut transfers: Vec<Transfer> = self.transfers.values().map(|t| t.view()).collect();
         transfers.sort_by(|a, b| b.started_ms.cmp(&a.started_ms));
         transfers.truncate(300);
@@ -2558,6 +2564,7 @@ impl Engine {
                 ok(json!({"ok": true}))
             }
             "react" | "edit_message" | "recall_message" => self.rpc_ext(method, params).unwrap(),
+            "set_conv_pinned" | "set_draft" | "set_message_flags" | "send_typing" | "list_flagged" | "forward_message" => self.rpc_p2(method, params).unwrap(),
             "history_query" => {
                 let q: crate::history::HistoryQuery = p(params)?;
                 ok(self.history.query(&q))

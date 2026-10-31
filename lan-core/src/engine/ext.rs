@@ -98,7 +98,7 @@ impl Engine {
                     ts_ms: if ts_ms > 0 { ts_ms } else { now_ms() },
                     status: MsgStatus::Received,
                     file: None,
-                    ext: MsgExt { reply_to, quote, mentions, ..Default::default() },
+                    ext: MsgExt { reply_to, quote, mentions_me: mentions.iter().any(|m| *m == self.me), mentions, forwarded: op.get("fwd").and_then(|v| v.as_bool()).unwrap_or(false), ..Default::default() },
                 };
                 self.add_message(m, true);
             }
@@ -132,6 +132,10 @@ impl Engine {
                     }
                 });
                 let _ = self.history.flush(false);
+            }
+            "typing" => {
+                let name = self.peer_name(fp);
+                self.emit(Event::Typing { conversation: conv, fingerprint: fp.to_string(), name });
             }
             _ => tracing::debug!(%fp, k, "unknown ext op ignored"),
         }

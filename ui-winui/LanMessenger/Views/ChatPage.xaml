@@ -106,6 +106,7 @@
                 <Border HorizontalAlignment="Left" Margin="4,2,4,0" CornerRadius="10" Padding="8,1" Background="{ThemeResource LsmInputBackgroundBrush}" Visibility="{x:Bind HasReactions, Mode=OneWay}">
                     <TextBlock Text="{x:Bind ReactionsText, Mode=OneWay}" FontSize="13" />
                 </Border>
+                <TextBlock HorizontalAlignment="Left" Margin="6,1,6,0" Text="{x:Bind TagsText, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{x:Bind HasTags, Mode=OneWay}" />
             </StackPanel>
         </DataTemplate>
 
@@ -171,6 +172,7 @@
                 <Border HorizontalAlignment="Right" Margin="4,2,4,0" CornerRadius="10" Padding="8,1" Background="{ThemeResource LsmInputBackgroundBrush}" Visibility="{x:Bind HasReactions, Mode=OneWay}">
                     <TextBlock Text="{x:Bind ReactionsText, Mode=OneWay}" FontSize="13" />
                 </Border>
+                <TextBlock HorizontalAlignment="Right" Margin="6,1,6,0" Text="{x:Bind TagsText, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{x:Bind HasTags, Mode=OneWay}" />
             </StackPanel>
         </DataTemplate>
 
@@ -264,6 +266,7 @@
                                     <TextBlock Text="{x:Bind Title, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                                     <FontIcon Tag="lsm-icon" Foreground="{ThemeResource SystemFillColorSuccessBrush}" Glyph="&#xEA18;" FontSize="12" Visibility="{x:Bind IsTrusted, Mode=OneWay}" ToolTipService.ToolTip="已验证身份" AutomationProperties.Name="已验证身份" />
                                     <FontIcon Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE74F;" FontSize="12" Visibility="{x:Bind Muted, Mode=OneWay}" ToolTipService.ToolTip="免打扰" />
+                                    <FontIcon Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE718;" FontSize="12" Visibility="{x:Bind Pinned, Mode=OneWay}" ToolTipService.ToolTip="已置顶" AutomationProperties.Name="已置顶" />
                                     <!-- relay peer: same list, same row; small 经服务器 chip (icon + text) -->
                                     <Border Background="{ThemeResource LsmChipBackgroundBrush}" CornerRadius="8" Padding="6,1,6,1" VerticalAlignment="Center"
                                             Visibility="{x:Bind ViaServer, Mode=OneWay}" ToolTipService.ToolTip="经服务器中转（端到端加密，局域网直连恢复后自动切换）" AutomationProperties.Name="经服务器">
@@ -274,7 +277,7 @@
                                     </Border>
                                 </StackPanel>
                                 <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" MaxLines="1" FontSize="13">
-                                    <Run Text="{x:Bind local:B.Tick(LastTick), Mode=OneWay}" /><Run Text="{x:Bind LastFrom, Mode=OneWay}" /><Run Text="{x:Bind Preview, Mode=OneWay}" />
+                                    <Run Text="{x:Bind local:B.DraftTag(HasDraft), Mode=OneWay}" Foreground="{ThemeResource SystemFillColorCriticalBrush}" /><Run Text="{x:Bind local:B.TickUnlessDraft(HasDraft, LastTick), Mode=OneWay}" /><Run Text="{x:Bind local:B.UnlessDraft(HasDraft, LastFrom), Mode=OneWay}" /><Run Text="{x:Bind local:B.DraftOr(HasDraft, Draft, Preview), Mode=OneWay}" />
                                 </TextBlock>
                             </StackPanel>
                             <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Spacing="4">
@@ -334,7 +337,8 @@
                         <FontIcon x:Name="HeaderRelayIcon" Glyph="&#xE753;" FontSize="12" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                   Visibility="{x:Bind local:B.Both(VM.SelectedViaServer, VM.SelectedOnline), Mode=OneWay}"
                                   ToolTipService.ToolTip="经服务器中转（端到端加密）" AutomationProperties.Name="经服务器" />
-                        <TextBlock Text="{x:Bind VM.SelectedSubtitle, Mode=OneWay}" Style="{StaticResource SecondaryCaptionStyle}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{x:Bind VM.SelectedSubtitle, Mode=OneWay}" Style="{StaticResource SecondaryCaptionStyle}" TextTrimming="CharacterEllipsis" Visibility="{x:Bind local:B.Not(VM.HasTyping), Mode=OneWay}" />
+                        <TextBlock Text="{x:Bind VM.TypingText, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" TextTrimming="CharacterEllipsis" Visibility="{x:Bind VM.HasTyping, Mode=OneWay}" />
                     </StackPanel>
                 </StackPanel>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
@@ -351,6 +355,18 @@
                                 <MenuFlyoutItem Text="消息历史…" Click="History_Click">
                                     <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE81C;" /></MenuFlyoutItem.Icon>
                                     <MenuFlyoutItem.KeyboardAccelerators><KeyboardAccelerator Modifiers="Control,Shift" Key="F" /></MenuFlyoutItem.KeyboardAccelerators>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem Text="置顶 / 取消置顶会话" Click="PinConv_Click">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE718;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem Text="置顶消息…" Click="PinnedList_Click">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE840;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem Text="收藏的消息…" Click="StarredList_Click">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE734;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem Text="多选消息" Click="MultiSelect_Click">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE762;" /></MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
                                 <MenuFlyoutItem Text="联系人详情" Click="Details_Click">
                                     <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE946;" /></MenuFlyoutItem.Icon>
@@ -379,7 +395,7 @@
                 </StackPanel>
             </Grid>
 
-            <ListView x:Name="MessageList" Grid.Row="1" RightTapped="MessageList_RightTapped" Padding="16,8" SelectionMode="None" IsItemClickEnabled="False"
+            <ListView x:Name="MessageList" Grid.Row="1" RightTapped="MessageList_RightTapped" SelectionChanged="MessageList_SelectionChanged" Padding="16,8" SelectionMode="None" IsItemClickEnabled="False"
                       ItemsSource="{x:Bind VM.Messages}" ItemTemplateSelector="{StaticResource MessageSelector}"
                       Visibility="{x:Bind VM.HasSelection, Mode=OneWay}">
                 <ListView.ItemContainerTransitions>
@@ -396,6 +412,26 @@
                 </ListView.ItemContainerStyle>
             </ListView>
 
+            <!-- v0.6.1 P2: pinned banner (top) and multi-select bar (bottom) -->
+            <Button Grid.Row="1" VerticalAlignment="Top" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,6" CornerRadius="0" BorderThickness="0,0,0,1"
+                    Background="{ThemeResource LsmListBackgroundBrush}" BorderBrush="{ThemeResource LsmDividerBrush}" Click="PinnedList_Click"
+                    Visibility="{x:Bind VM.HasPinned, Mode=OneWay}" ToolTipService.ToolTip="查看本会话的置顶消息" AutomationProperties.Name="置顶消息">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon Glyph="&#xE840;" FontSize="13" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                    <TextBlock Text="{x:Bind VM.PinnedText, Mode=OneWay}" TextTrimming="CharacterEllipsis" MaxLines="1" />
+                </StackPanel>
+            </Button>
+            <Grid Grid.Row="1" VerticalAlignment="Bottom" Padding="12,6" ColumnSpacing="8" Background="{ThemeResource LsmListBackgroundBrush}" BorderBrush="{ThemeResource LsmDividerBrush}" BorderThickness="0,1,0,0"
+                  Visibility="{x:Bind VM.IsMultiSelect, Mode=OneWay}">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <TextBlock VerticalAlignment="Center" Text="{x:Bind local:B.Picked(VM.PickedCount), Mode=OneWay}" />
+                <Button Grid.Column="1" Content="转发…" Click="ForwardPicked_Click" Style="{StaticResource AccentButtonStyle}" />
+                <Button Grid.Column="2" Content="收藏" Click="StarPicked_Click" />
+                <Button Grid.Column="3" Content="删除…" Click="DeletePicked_Click" />
+                <Button Grid.Column="4" Style="{StaticResource LsmIconButton}" Click="EndMulti_Click" ToolTipService.ToolTip="退出多选 (Esc)" AutomationProperties.Name="退出多选">
+                    <FontIcon Glyph="&#xE711;" FontSize="14" />
+                </Button>
+            </Grid>
             <!-- v0.6.1 P1: reply / edit bar above the composer -->
             <Grid Grid.Row="1" VerticalAlignment="Bottom" Padding="12,6" ColumnSpacing="8" Background="{ThemeResource LsmListBackgroundBrush}" BorderBrush="{ThemeResource LsmDividerBrush}" BorderThickness="0,1,0,0"
                   Visibility="{x:Bind VM.HasReplyBar, Mode=OneWay}">
@@ -455,7 +491,7 @@
                 <TextBox x:Name="Composer" Grid.Column="2" Background="{ThemeResource LsmInputBackgroundBrush}" AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="160" MinHeight="40" CornerRadius="20" Padding="16,9,16,6"
                          PlaceholderText="输入消息" VerticalContentAlignment="Center"
                          Text="{x:Bind VM.ComposeText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                         PreviewKeyDown="Composer_PreviewKeyDown" />
+                         PreviewKeyDown="Composer_PreviewKeyDown" TextChanged="Composer_TextChanged" />
                 <TextBlock Grid.Column="2" Text="Enter 发送 · Shift+Enter 换行" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,16,0"
                            FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" IsHitTestVisible="False"
                            Visibility="{x:Bind local:B.Empty(VM.ComposeText.Length), Mode=OneWay}" />

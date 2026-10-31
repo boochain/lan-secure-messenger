@@ -50,6 +50,7 @@ typedef struct {
     char reply_to[40];      /* replied-to message id */
     char quote[400];        /* "name：preview" */
     char mentions[512];     /* comma-separated fingerprints */
+    int forwarded, pinned, starred, mentions_me; /* v0.6.1 P2 (pinned/starred: this device only) */
     char reactions[400];    /* "fp=emoji;fp=emoji" */
     int edited, recalled;
     char file_path[520];
@@ -204,6 +205,20 @@ int lsm_send_text2(lsm_core *c, const char *conv, const char *text, const char *
 int lsm_react(lsm_core *c, const char *id, const char *emoji, char *err);   /* same emoji again = remove */
 int lsm_edit_message(lsm_core *c, const char *id, const char *body, char *err);  /* own text, within 24 h */
 int lsm_recall_message(lsm_core *c, const char *id, char *err);
+/* v0.6.1 P2: pinned chats, drafts (sealed on disk), message flags, typing, forward */
+int  lsm_set_conv_pinned(lsm_core *c, const char *conv, int on);
+int  lsm_conv_pinned(lsm_core *c, const char *conv);
+int  lsm_set_draft(lsm_core *c, const char *conv, const char *text);       /* "" clears */
+int  lsm_get_draft(lsm_core *c, const char *conv, char *out, size_t n);    /* 1 if one exists */
+int  lsm_set_msg_flags(lsm_core *c, const char *id, int pinned, int starred, char *err); /* -1 = keep */
+int  lsm_send_typing(lsm_core *c, const char *conv);                       /* throttled 3 s; online CAP_EXT peers only */
+int  lsm_forward(lsm_core *c, const char *id, const char *conv, char *msgid_out, char *err);
+/* events: "typing\t<conv>\t<fp>\t<name>" */
+/* P2 UI helpers, caller holds lsm_lock: flagged messages newest first (which: 1 pinned, 2 starred, 3 either);
+ * @mention candidates for a group; fingerprints whose "@name" occurs in text (comma separated) */
+int  lsm_flagged(lsm_core *c, const char *conv, int which, int *idx, int max);
+int  lsm_mention_candidates(lsm_core *c, const char *conv, char names[][128], char fps[][FP_LEN], int max);
+void lsm_mentions_in(lsm_core *c, const char *conv, const char *text, char *csv, size_t n);
 /* P1 UI helpers */
 int  lsm_voice_secs(const char *name);                 /* -1 unless "lsm-voice-<N>s-…" */
 void lsm_voice_name(int secs, const char *ext, char *out, size_t n);

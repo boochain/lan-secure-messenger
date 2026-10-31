@@ -236,7 +236,7 @@ public partial class MainViewModel : ObservableObject
         Sync(Peers, s.Peers, p => p.Fingerprint, (p) => new PeerItem(p), (i, p) => i.Update(p), (i) => i.Fingerprint);
         Sync(Groups, s.Groups, g => g.Id, g => new GroupItem(g), (i, g) => i.Update(g), i => i.Id);
         Conversations.Clear();
-        foreach (var c in s.Conversations.OrderByDescending(c => c.LastTsMs)) Conversations.Add(new ConversationItem(c));
+        foreach (var c in s.Conversations.OrderByDescending(c => c.Pinned).ThenByDescending(c => c.LastTsMs)) Conversations.Add(new ConversationItem(c));
         SyncConversationTrust();
         Transfers.Clear();
         foreach (var t in s.Transfers.OrderByDescending(t => t.StartedMs)) Transfers.Add(new TransferItem(t));
@@ -409,12 +409,15 @@ public partial class MainViewModel : ObservableObject
                 SyncConversationTrust();
                 // Keep newest first (Move keeps the ListView selection intact).
                 var idx = Conversations.IndexOf(item);
-                var target = Conversations.Count(x => x != item && x.LastTsMs > item.LastTsMs);
+                var target = ConvTarget(item);
                 if (target != idx) Conversations.Move(idx, target);
                 if (SelectedConversation == item) UpdateSelectionHeader();
                 UpdateCounters();
                 break;
             }
+            case "typing":
+                OnTyping(e.GetString("conversation"), e.GetString("name"));
+                break;
             case "message_added":
             {
                 var m = e.Get<Message>("message");
@@ -433,6 +436,7 @@ public partial class MainViewModel : ObservableObject
                 var m = e.Get<Message>("message");
                 if (m == null) break;
                 Messages.FirstOrDefault(x => x.Id == m.Id)?.Update(m);
+                RefreshPinned();
                 break;
             }
             case "transfer_updated":
@@ -563,6 +567,7 @@ public partial class MainViewModel : ObservableObject
         HasSelection = value != null;
         Messages.Clear();
         UpdateSelectionHeader();
+        LoadDraft(value);
         if (value != null) _ = LoadMessagesAsync(value.Id);
     }
 
@@ -638,6 +643,7 @@ public partial class MainViewModel : ObservableObject
                 var items = list.Select(m => new MessageItem(m)).ToList();
                 Grouping.Apply(items);
                 foreach (var m in items) Messages.Add(m);
+                RefreshPinned();
                 MessagesAppended?.Invoke();
             });
             await c.MarkReadAsync(conv);
@@ -672,7 +678,7 @@ public partial class MainViewModel : ObservableObject
         if (EditItem != null || ReplyItem != null) { await SendP1Async(client, c.Id, text); return; }
         try
         {
-            await client.SendTextAsync(c.Id, text.TrimEnd());
+            await SendTextP2Async(client, c.Id, text, null);
         }
         catch (Exception e)
         {

@@ -81,6 +81,7 @@ static int peer_filter_match(const char *name){ const char *q; gchar *a,*b; int 
     if(!peer_search) return 1; q=gtk_entry_get_text(GTK_ENTRY(peer_search)); if(!q||!*q) return 1;
     a=g_utf8_strdown(name?name:"",-1); b=g_utf8_strdown(q,-1); ok=(strstr(a,b)!=NULL); g_free(a); g_free(b); return ok; }
 static void peer_search_changed(GtkEditable *e, gpointer p){ (void)e;(void)p; refresh_list(); }
+static void p2_decorate(const char *conv, char *t, size_t n); static void p2_mark_rows(void);
 static void refresh_list(void){
     GList *ch=gtk_container_get_children(GTK_CONTAINER(peer_list)), *it; lsm_contact *k; lsm_group *g; int n,i; GtkListBoxRow *sel=NULL;
     for(it=ch;it;it=it->next) gtk_widget_destroy(GTK_WIDGET(it->data)); g_list_free(ch);
@@ -91,6 +92,7 @@ static void refresh_list(void){
         if(!peer_filter_match(lsm_display_name(&k[i])) && !peer_filter_match(k[i].name)) continue;
         { gchar *e=g_markup_escape_text(lsm_display_name(&k[i]),-1); snprintf(esc_n,sizeof esc_n,"%s",e); g_free(e); }
         snprintf(t,sizeof t,"<b>%s</b>%s\n<small>%s · %s</small>",esc_n,unread?"  •":"",k[i].trust==TRUST_TRUSTED?"已信任":k[i].trust==TRUST_BLOCKED?"已屏蔽":"未信任",k[i].online?"在线":"离线");
+        p2_decorate(conv,t,sizeof t);
         gtk_label_set_markup(GTK_LABEL(lab),t); gtk_label_set_xalign(GTK_LABEL(lab),0); gtk_label_set_ellipsize(GTK_LABEL(lab),PANGO_ELLIPSIZE_END);
         gtk_style_context_add_class(gtk_widget_get_style_context(dot),k[i].online?"online":"offline");
         gtk_box_pack_start(GTK_BOX(h),dot,FALSE,FALSE,0); gtk_box_pack_start(GTK_BOX(h),lab,TRUE,TRUE,0); gtk_widget_set_margin_start(h,10); gtk_widget_set_margin_end(h,10); gtk_widget_set_margin_top(h,6); gtk_widget_set_margin_bottom(h,6);
@@ -99,10 +101,12 @@ static void refresh_list(void){
     n=lsm_groups(C,&g);
     for(i=0;i<n;i++){ char u[37], conv[64], t[700]; GtkWidget *row=gtk_list_box_row_new(), *h=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,8), *dot=gtk_label_new("#"), *lab=gtk_label_new(NULL); gchar *e;
         if(!peer_filter_match(g[i].name)) continue; lsm_uuid_str(g[i].id,u); snprintf(conv,64,"group:%s",u); e=g_markup_escape_text(g[i].name,-1); snprintf(t,sizeof t,"<b>%s</b>\n<small>群组 · %d 人</small>",e,g[i].nmembers); g_free(e);
+        p2_decorate(conv,t,sizeof t);
         gtk_label_set_markup(GTK_LABEL(lab),t); gtk_label_set_xalign(GTK_LABEL(lab),0); gtk_label_set_ellipsize(GTK_LABEL(lab),PANGO_ELLIPSIZE_END);
         gtk_box_pack_start(GTK_BOX(h),dot,FALSE,FALSE,0); gtk_box_pack_start(GTK_BOX(h),lab,TRUE,TRUE,0); gtk_widget_set_margin_start(h,10); gtk_widget_set_margin_end(h,10); gtk_widget_set_margin_top(h,6); gtk_widget_set_margin_bottom(h,6);
         gtk_container_add(GTK_CONTAINER(row),h); g_object_set_data_full(G_OBJECT(row),"conv",g_strdup(conv),g_free); gtk_list_box_insert(GTK_LIST_BOX(peer_list),row,-1);
         if(!strcmp(conv,cur_conv)) sel=GTK_LIST_BOX_ROW(row); }
+    p2_mark_rows();
     { char st[600]; snprintf(st,sizeof st,"我：%s    指纹 %s    TCP %d    版本 %s",lsm_my_name(C),lsm_my_fp(C),lsm_listen_port(C),LSM_APP_VERSION); gtk_label_set_text(GTK_LABEL(status_lbl),st); }
     lsm_unlock(C);
     gtk_widget_show_all(peer_list);
@@ -137,11 +141,12 @@ static void refresh_chat(void);
 static char jump_id[40]; static gboolean jump_later(gpointer p);
 /* 删除这条消息（仅本机）: runs from idle so the bubble that owns the menu is not destroyed inside its own signal */
 #include "gtk_p1.inc"
+#include "gtk_p2.inc"
 static gboolean delete_msg_idle(gpointer id){
     if(confirm("删除这条消息？","只会从本机删除，对方仍保留这条消息。此操作无法撤销。","删除")){ if(lsm_delete_message(C,(const char*)id)) msgbox(GTK_MESSAGE_WARNING,"删除失败：消息不存在。"); refresh_chat(); }
     g_free(id); return G_SOURCE_REMOVE; }
 static void delete_msg_cb(GtkMenuItem *mi_, gpointer id){ (void)mi_; g_idle_add(delete_msg_idle,g_strdup((const char*)id)); }
-static void add_delete_item(GtkMenuShell *menu, const char *id){ GtkWidget *it; p1_menu_items(menu,id); it=gtk_menu_item_new_with_mnemonic("删除这条消息（仅本机）(_D)…");
+static void add_delete_item(GtkMenuShell *menu, const char *id){ GtkWidget *it; p1_menu_items(menu,id); p2_menu_items(menu,id); it=gtk_menu_item_new_with_mnemonic("删除这条消息（仅本机）(_D)…");
     g_signal_connect_data(it,"activate",G_CALLBACK(delete_msg_cb),g_strdup(id),(GClosureNotify)g_free,0); gtk_menu_shell_append(menu,gtk_separator_menu_item_new()); gtk_menu_shell_append(menu,it); gtk_widget_show_all(GTK_WIDGET(menu)); }
 /* selectable text labels have their own 复制/全选 menu: extend it */
 static void label_popup_cb(GtkLabel *l, GtkMenu *menu, gpointer id){ (void)l; add_delete_item(GTK_MENU_SHELL(menu),(const char*)id); }
@@ -170,8 +175,8 @@ static void refresh_chat(void){
         localtime_r(&t,&tmv); strftime(ts,sizeof ts,"%m-%d %H:%M",&tmv);
         if(m[i].kind==K_SYSTEM){ char b[1200]; snprintf(b,sizeof b,"%s · %s",ts,m[i].body?m[i].body:""); body=gtk_label_new(b); gtk_label_set_line_wrap(GTK_LABEL(body),TRUE); gtk_style_context_add_class(gtk_widget_get_style_context(body),"sysmsg"); gtk_widget_set_halign(body,GTK_ALIGN_CENTER); gtk_box_pack_start(GTK_BOX(chat_box),body,FALSE,FALSE,0); continue; }
         row=gtk_box_new(GTK_ORIENTATION_VERTICAL,2); bub=gtk_box_new(GTK_ORIENTATION_VERTICAL,4);
-        gtk_style_context_add_class(gtk_widget_get_style_context(bub),"bubble"); gtk_style_context_add_class(gtk_widget_get_style_context(bub),m[i].out?"out":"in");
-        { gchar *e=g_markup_escape_text(m[i].out?"我":m[i].sender_name,-1); snprintf(mt,sizeof mt,"<small>%s · %s%s%s</small>",e,ts,m[i].out?" · ":"",m[i].out?status_txt(m[i].status):""); g_free(e); }
+        gtk_style_context_add_class(gtk_widget_get_style_context(bub),"bubble"); gtk_style_context_add_class(gtk_widget_get_style_context(bub),m[i].out?"out":"in"); if(m[i].mentions_me) gtk_style_context_add_class(gtk_widget_get_style_context(bub),"mention");
+        { gchar *e=g_markup_escape_text(m[i].out?"我":m[i].sender_name,-1); snprintf(mt,sizeof mt,"<small>%s · %s%s%s%s</small>",e,ts,m[i].out?" · ":"",m[i].out?status_txt(m[i].status):"",p2_tags(&m[i])); g_free(e); }
         meta=gtk_label_new(NULL); gtk_label_set_markup(GTK_LABEL(meta),mt); gtk_style_context_add_class(gtk_widget_get_style_context(meta),"meta"); gtk_widget_set_halign(meta,m[i].out?GTK_ALIGN_END:GTK_ALIGN_START);
         if(m[i].kind==K_FILE){ lsm_transfer *tr; int nt=lsm_transfers(C,&tr),j; char fs[200]="", line[800]; const char *path=NULL; static const char *TS[]={"等待接收","传输中","校验中","完成","失败","已拒收","已取消"};
             for(j=0;j<nt;j++) if(!strcmp(tr[j].msg_id,m[i].id)){ lsm_transfer_status(C,&tr[j],fs,sizeof fs); if(tr[j].state==TS_DONE||tr[j].out) path=tr[j].path; }
@@ -196,6 +201,7 @@ static void refresh_chat(void){
           if(m[i].kind==K_FILE && m[i].file_path[0] && access(m[i].file_path,R_OK)==0) g_object_set_data_full(G_OBJECT(eb),"path",g_strdup(m[i].file_path),g_free);
           g_signal_connect_data(eb,"button-press-event",G_CALLBACK(bubble_press_cb),g_strdup(m[i].id),(GClosureNotify)g_free,0); gtk_box_pack_start(GTK_BOX(chat_box),eb,FALSE,FALSE,0); } }
     lsm_unlock(C);
+    p2_sub_typing(sub,sizeof sub); p2_pin_banner();
     gtk_label_set_text(GTK_LABEL(title_lbl),title); gtk_label_set_text(GTK_LABEL(sub_lbl),sub);
     gtk_widget_show_all(chat_box); if(jump_id[0]) g_timeout_add(60,jump_later,NULL); else g_idle_add(scroll_later,NULL); }
 
@@ -210,7 +216,7 @@ static void find_icon(void){ /* AppImage: $APPDIR/lan-messenger.png ; tarball: n
         snprintf(icon_path,sizeof icon_path,"%s/../share/icons/hicolor/256x256/apps/lan-messenger.png",exe); if(access(icon_path,R_OK)==0) return; } }
     icon_path[0]=0; }
 static void show_main(void){ gtk_widget_show(win); gtk_window_present(GTK_WINDOW(win)); }
-static void quit_app(void){ g_application_quit(G_APPLICATION(app)); }
+static void quit_app(void){ p2_save_draft(); g_application_quit(G_APPLICATION(app)); }
 static void tray_popup(GtkStatusIcon *si, guint b, guint t, gpointer menu){ gtk_menu_popup(GTK_MENU(menu),NULL,NULL,gtk_status_icon_position_menu,si,b,t); }
 static void setup_tray(void){
     GtkWidget *menu=gtk_menu_new(), *a=gtk_menu_item_new_with_label("显示主窗口"), *q=gtk_menu_item_new_with_label("退出");
@@ -248,7 +254,7 @@ static void apply_theme(void){
 static void send_current(void){
     GtkTextBuffer *b=gtk_text_view_get_buffer(GTK_TEXT_VIEW(input)); GtkTextIter s,e; char *t, err[256], id[40];
     if(!cur_conv[0]) return; gtk_text_buffer_get_bounds(b,&s,&e); t=gtk_text_buffer_get_text(b,&s,&e,FALSE);
-    if(t && *g_strstrip(t)){ if(reply_id[0]?lsm_send_text2(C,cur_conv,t,reply_id,NULL,id,err):lsm_send_text(C,cur_conv,t,id,err)) msgbox(GTK_MESSAGE_WARNING,"%s",err); else { gtk_text_buffer_set_text(b,"",-1); p1_set_reply(NULL); } }
+    if(t && *g_strstrip(t)){ if(p2_send_text(t,id,err)) msgbox(GTK_MESSAGE_WARNING,"%s",err); else { p2_loading=1; gtk_text_buffer_set_text(b,"",-1); p2_loading=0; p1_set_reply(NULL); lsm_set_draft(C,cur_conv,""); list_dirty=1; } }
     g_free(t); refresh_chat(); }
 static gboolean input_key(GtkWidget *w, GdkEventKey *ev, gpointer p){ (void)w; (void)p; if((ev->state&GDK_CONTROL_MASK)&&(ev->keyval==GDK_KEY_v||ev->keyval==GDK_KEY_V)){ paste_clipboard(); return TRUE; } if((ev->keyval==GDK_KEY_Return||ev->keyval==GDK_KEY_KP_Enter) && !(ev->state&GDK_SHIFT_MASK)){ send_current(); return TRUE; }
     if(ev->keyval==GDK_KEY_Escape && reply_id[0]){ p1_set_reply(NULL); return TRUE; }
@@ -281,7 +287,7 @@ static void on_drop(GtkWidget *w, GdkDragContext *ctx, gint x, gint y, GtkSelect
 static gboolean on_drag_motion(GtkWidget *w, GdkDragContext *c, gint x, gint y, guint t, gpointer p){ (void)w;(void)c;(void)x;(void)y;(void)t;(void)p; if(cur_conv[0]) gtk_widget_show(drop_hint); return FALSE; }
 static void on_drag_leave(GtkWidget *w, GdkDragContext *c, guint t, gpointer p){ (void)w;(void)c;(void)t;(void)p; gtk_widget_hide(drop_hint); }
 static void on_row(GtkListBox *lb, GtkListBoxRow *row, gpointer p){ const char *cv; (void)lb; (void)p; if(!row) return; cv=g_object_get_data(G_OBJECT(row),"conv"); if(!cv) return;
-    snprintf(cur_conv,sizeof cur_conv,"%s",cv); refresh_chat(); if(lsm_mark_read(C,cur_conv)) list_dirty=1; gtk_widget_grab_focus(input); }
+    if(strcmp(cur_conv,cv)){ p2_save_draft(); snprintf(cur_conv,sizeof cur_conv,"%s",cv); p2_load_draft(); list_dirty=1; } refresh_chat(); if(lsm_mark_read(C,cur_conv)) list_dirty=1; gtk_widget_grab_focus(input); }
 static int peer_muted(const char *fp){ lsm_contact *k; int n,i,m=0; lsm_lock(C); n=lsm_contacts(C,&k); for(i=0;i<n;i++) if(!strcmp(k[i].fp,fp)){ m=k[i].muted; break; } lsm_unlock(C); return m; }
 static void upd_test_note(int newer, const char *msg){ const char *tf=getenv("LSM_TEST_UPDCHECK"); FILE *f; /* CI release gate: record what the check said */
     if(tf && *tf && (f=fopen(tf,"w"))){ fprintf(f,"newer=%d version=%s %s\n",newer,LSM_APP_VERSION,msg); fclose(f); } }
@@ -308,7 +314,7 @@ static void show_transfers(void){
     gtk_container_add(GTK_CONTAINER(sc),lb); gtk_box_pack_start(GTK_BOX(box),sc,TRUE,TRUE,0); gtk_window_set_default_size(GTK_WINDOW(d),560,380); gtk_widget_show_all(d);
     g_signal_connect(d,"response",G_CALLBACK(gtk_widget_destroy),NULL); }
 
-enum { A_ADDIP=1, A_TRUST, A_UNTRUST, A_BLOCK, A_PINOFFER, A_PINPAIR, A_GCREATE, A_GINVITE, A_GREMOVE, A_GLEAVE, A_NAME, A_XFERS, A_DLDIR, A_FIREWALL, A_ABOUT, A_QUIT, A_MUTE, A_DIAG, A_UPDATE, A_CLEAR, A_REFRESH, A_STORAGE, A_EMOJI, A_HISTORY, A_PROFILE, A_CPROFILE };
+enum { A_ADDIP=1, A_TRUST, A_UNTRUST, A_BLOCK, A_PINOFFER, A_PINPAIR, A_GCREATE, A_GINVITE, A_GREMOVE, A_GLEAVE, A_NAME, A_XFERS, A_DLDIR, A_FIREWALL, A_ABOUT, A_QUIT, A_MUTE, A_DIAG, A_UPDATE, A_CLEAR, A_REFRESH, A_STORAGE, A_EMOJI, A_HISTORY, A_PROFILE, A_CPROFILE, A_PINCONV, A_STARRED, A_PINNED, A_MULTI };
 
 static void storage_dialog(void){
     char info[2048]={0}, msg[2400]; GtkWidget *d; int n; size_t need=lsm_storage_info(C,info,sizeof info);
@@ -378,6 +384,10 @@ static void act(GtkWidget *w, gpointer p){ int id=GPOINTER_TO_INT(p); char err[2
     case A_NAME: { char *s, init[300]; lsm_lock(C); snprintf(init,sizeof init,"%s",lsm_my_name(C)); lsm_unlock(C); if((s=ask_text("修改昵称","新的显示名称：",init))){ lsm_set_name(C,s); g_free(s); list_dirty=1; } break; }
     case A_XFERS: show_transfers(); break;
     case A_HISTORY: history_dialog(); break;
+    case A_PINCONV: p2_toggle_conv_pin(); break;
+    case A_STARRED: p2_flag_dialog(2,NULL); break;
+    case A_PINNED: if(cur_conv[0]) p2_flag_dialog(1,cur_conv); break;
+    case A_MULTI: p2_multi(); break;
     case A_PROFILE: my_profile_dialog(); break;
     case A_CPROFILE: contact_profile_dialog(); break;
     case A_DLDIR: { char d[600]; gchar *u; lsm_lock(C); snprintf(d,sizeof d,"%s",lsm_download_dir(C)); lsm_unlock(C); u=g_filename_to_uri(d,NULL,NULL); if(u){ g_app_info_launch_default_for_uri(u,NULL,NULL); g_free(u);} break; }
@@ -404,6 +414,7 @@ static gboolean poll_cb(gpointer p){ char e[4096]; (void)p;
         if(!strncmp(e,"msg\t",4)||!strncmp(e,"msg_update\t",11)){ char *f[8]; int n=0; char *q=e; f[n++]=q; while(*q&&n<8){ if(*q=='\t'){ *q=0; f[n++]=q+1; } q++; }
             if(n>=7){ if(!strcmp(f[2],cur_conv)) chat_dirty=1; list_dirty=1;
                 if(!strcmp(f[0],"msg")&&!strcmp(f[3],"in")&&strcmp(f[5],"system")&&(strcmp(f[2],cur_conv)||!gtk_window_is_active(GTK_WINDOW(win)))&&!(!strncmp(f[2],"dm:",3)&&peer_muted(f[2]+3))) notify("新消息",!strcmp(f[5],"file")?"收到文件":f[6]); } }
+        else if(!strncmp(e,"typing\t",7)) p2_on_typing(e);
         else if(!strncmp(e,"transfer\t",9)) chat_dirty=1;
         else if(!strncmp(e,"notice\t",7)) notify("提示",e+7);
         else if(!strncmp(e,"pin_result\t",11)){ notify("PIN 配对",strstr(e,"\tok")?"配对成功，已互相信任。":"配对失败（PIN 错误或已过期）。"); list_dirty=chat_dirty=1; }
@@ -447,6 +458,7 @@ static void activate(GtkApplication *a, gpointer p){
     mi(menu,"按 IP 添加…",A_ADDIP); sep(menu); mi(menu,"信任当前联系人",A_TRUST); mi(menu,"取消信任",A_UNTRUST); mi(menu,"屏蔽",A_BLOCK); sep(menu);
     mi(menu,"生成 PIN（让对方输入）",A_PINOFFER); mi(menu,"输入 PIN 配对…",A_PINPAIR); sep(menu);
     mi(menu,"创建群组…",A_GCREATE); mi(menu,"邀请成员…",A_GINVITE); mi(menu,"移除成员…",A_GREMOVE); mi(menu,"退出群组",A_GLEAVE); sep(menu);
+    mi(menu,"置顶 / 取消置顶当前会话",A_PINCONV); mi(menu,"本会话的置顶消息…",A_PINNED); mi(menu,"收藏的消息…",A_STARRED); mi(menu,"多选消息…",A_MULTI); sep(menu);
     mi(menu,"清空聊天记录…",A_CLEAR); mi(menu,"文件传输",A_XFERS); mi(menu,"打开接收文件夹",A_DLDIR); mi(menu,"个人资料…",A_PROFILE); mi(menu,"设置防火墙（ufw / firewalld）…",A_FIREWALL); sep(menu); mi(menu,"关于",A_ABOUT); mi(menu,"退出",A_QUIT);
     gtk_widget_show_all(menu); gtk_widget_set_halign(menu,GTK_ALIGN_END); /* open leftwards, inside the window */ gtk_menu_button_set_popup(GTK_MENU_BUTTON(mb),menu); gtk_header_bar_pack_end(GTK_HEADER_BAR(hb),mb); menu_btn=mb;
     { GtkWidget *add=gtk_button_new_from_icon_name("list-add-symbolic",GTK_ICON_SIZE_BUTTON); gtk_widget_set_tooltip_text(add,"按 IP 添加"); g_signal_connect(add,"clicked",G_CALLBACK(act),GINT_TO_POINTER(A_ADDIP)); gtk_header_bar_pack_start(GTK_HEADER_BAR(hb),add); }
@@ -470,11 +482,12 @@ static void activate(GtkApplication *a, gpointer p){
     gtk_drag_dest_set(overlay,GTK_DEST_DEFAULT_ALL,tg,1,GDK_ACTION_COPY); g_signal_connect(overlay,"drag-data-received",G_CALLBACK(on_drop),NULL); g_signal_connect(overlay,"drag-motion",G_CALLBACK(on_drag_motion),NULL); g_signal_connect(overlay,"drag-leave",G_CALLBACK(on_drag_leave),NULL);
     { GtkWidget *chat=gtk_box_new(GTK_ORIENTATION_VERTICAL,0); ib=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,6); gtk_container_set_border_width(GTK_CONTAINER(ib),8);
       tv=gtk_scrolled_window_new(NULL,NULL); input=gtk_text_view_new(); gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(input),GTK_WRAP_WORD_CHAR); gtk_container_add(GTK_CONTAINER(tv),input); gtk_widget_set_size_request(tv,-1,64);
-      gtk_scrolled_window_set_shadow_type(GTK_SCROLLED_WINDOW(tv),GTK_SHADOW_IN); g_signal_connect(input,"key-press-event",G_CALLBACK(input_key),NULL);
+      gtk_scrolled_window_set_shadow_type(GTK_SCROLLED_WINDOW(tv),GTK_SHADOW_IN); g_signal_connect(input,"key-press-event",G_CALLBACK(input_key),NULL); g_signal_connect(gtk_text_view_get_buffer(GTK_TEXT_VIEW(input)),"changed",G_CALLBACK(p2_input_changed),NULL); g_signal_connect(gtk_text_view_get_buffer(GTK_TEXT_VIEW(input)),"insert-text",G_CALLBACK(p2_insert_text),NULL);
       { GtkWidget *bb=gtk_box_new(GTK_ORIENTATION_VERTICAL,6), *eb; btn=gtk_button_new_with_label("发送"); gtk_style_context_add_class(gtk_widget_get_style_context(btn),"suggested-action"); fbtn=gtk_button_new_with_label("发送文件…");
         eb=gtk_button_new_with_label("表情…"); gtk_widget_set_tooltip_text(eb,"插入表情或本地贴纸"); g_signal_connect(eb,"clicked",G_CALLBACK(act),GINT_TO_POINTER(A_EMOJI));
         g_signal_connect_swapped(btn,"clicked",G_CALLBACK(send_current),NULL); g_signal_connect_swapped(fbtn,"clicked",G_CALLBACK(send_file_dlg),NULL); gtk_box_pack_start(GTK_BOX(bb),btn,FALSE,FALSE,0); gtk_box_pack_start(GTK_BOX(bb),fbtn,FALSE,FALSE,0); gtk_box_pack_start(GTK_BOX(bb),eb,FALSE,FALSE,0);
         gtk_box_pack_start(GTK_BOX(ib),tv,TRUE,TRUE,0); gtk_box_pack_start(GTK_BOX(ib),bb,FALSE,FALSE,0); }
+      gtk_box_pack_start(GTK_BOX(chat),p2_pin_bar_new(),FALSE,FALSE,0);
       gtk_box_pack_start(GTK_BOX(chat),overlay,TRUE,TRUE,0); gtk_box_pack_start(GTK_BOX(chat),gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE,FALSE,0); { GtkWidget *x=gtk_button_new_with_label("✕"); reply_bar=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,6); gtk_container_set_border_width(GTK_CONTAINER(reply_bar),4); reply_lbl=gtk_label_new(""); gtk_label_set_ellipsize(GTK_LABEL(reply_lbl),PANGO_ELLIPSIZE_END); gtk_label_set_xalign(GTK_LABEL(reply_lbl),0);
         gtk_style_context_add_class(gtk_widget_get_style_context(reply_bar),"quote"); gtk_button_set_relief(GTK_BUTTON(x),GTK_RELIEF_NONE); gtk_widget_set_tooltip_text(x,"取消回复 (Esc)"); g_signal_connect_swapped(x,"clicked",G_CALLBACK(p1_set_reply),NULL);
         gtk_box_pack_start(GTK_BOX(reply_bar),reply_lbl,TRUE,TRUE,0); gtk_box_pack_start(GTK_BOX(reply_bar),x,FALSE,FALSE,0); gtk_box_pack_start(GTK_BOX(chat),reply_bar,FALSE,FALSE,0); gtk_widget_show(reply_lbl); gtk_widget_show(x); gtk_widget_set_no_show_all(reply_bar,TRUE); }

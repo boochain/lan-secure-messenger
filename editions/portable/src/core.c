@@ -208,6 +208,7 @@ struct lsm_core {
     char name[300];
     uint8_t store_key[32];
     int hash_busy; /* resume.c hashing jobs pending: poll without sleeping */
+    struct p2st *p2; /* v0.6.1 P2 per-conversation prefs (p2.c) */
     sock_t lsock, usock, ufallback; int lport;
     iface ifs[32]; int nifs; int64_t last_enum; uint32_t joined[32]; int njoined;
     reply_mark replies[64];
@@ -1345,6 +1346,7 @@ void lsm_initials(const char *name, char out[8]){
 #include "resume.c"
 #include "profile_hist.c"
 #include "ext.c"
+#include "p2.c"
 #include "backup.c"
 
 /* ------------------------------------------------------------ diagnostics (诊断) */

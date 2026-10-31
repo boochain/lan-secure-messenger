@@ -77,6 +77,9 @@ public partial class ConversationItem : ObservableObject
     [ObservableProperty] private int _lastTick;          // 0 none, 1 sent/queued, 2 delivered, 3 read, 4 failed
     [ObservableProperty] private bool _isTrusted;        // set by the view model from the peer list
     [ObservableProperty] private bool _viaServer;        // online and the live link goes through the relay server (Peer.via_relay)
+    [ObservableProperty] private bool _pinned;           // v0.6.1 P2: pinned chat (sorted first)
+    [ObservableProperty] private string _draft = "";
+    [ObservableProperty] private bool _hasDraft;
     public bool IsDm => !IsGroup;
     public bool ShowOfflineDot => false;                 // WhatsApp/Telegram: only online is marked
     public bool ShowOnlineDot => IsDm && Online;
@@ -103,6 +106,7 @@ public partial class ConversationItem : ObservableObject
         Online = c.Online;
         Muted = c.Muted;
         Initial = Fmt.Initials(c.Title);
+        Pinned = c.Pinned; Draft = c.Draft.Replace('\n', ' '); HasDraft = c.Draft.Trim().Length > 0;
         OnPropertyChanged(nameof(ShowOfflineDot));
         OnPropertyChanged(nameof(ShowOnlineDot));
     }
@@ -193,6 +197,8 @@ public partial class MessageItem : ObservableObject
         TsMs = m.TsMs;
         RawBody = m.Body;
         IsRecalled = m.Recalled; IsEdited = m.Edited && !m.Recalled;
+        IsPinned = m.Pinned; IsStarred = m.Starred; MentionsMe = m.MentionsMe;
+        TagsText = m.Recalled ? "" : string.Concat(m.Forwarded ? "↪ 转发  " : "", m.Pinned ? "📌  " : "", m.Starred ? "⭐  " : "", m.MentionsMe ? "@我" : "").Trim(); HasTags = TagsText.Length > 0;
         Body = m.Recalled ? (m.Direction == Direction.Out ? "你撤回了一条消息" : "对方撤回了一条消息") : m.Edited ? m.Body + "（已编辑）" : m.Body;
         HasQuote = !string.IsNullOrEmpty(m.ReplyTo) && !m.Recalled; QuoteText = m.Quote.Length > 0 ? m.Quote : "原消息";
         var groups = m.Recalled ? new List<string>() : m.Reactions.Where(r => r.Emoji.Length > 0).GroupBy(r => r.Emoji).Select(g => $"{g.Key} {g.Count()}").ToList();
@@ -367,4 +373,15 @@ public sealed class PickPeer : ObservableObject
     public string Name { get; init; } = "";
     private bool _selected;
     public bool Selected { get => _selected; set => SetProperty(ref _selected, value); }
+}
+
+public partial class MessageItem
+{
+    // v0.6.1 P2
+    [ObservableProperty] private bool _isPinned;
+    [ObservableProperty] private bool _isStarred;
+    [ObservableProperty] private bool _mentionsMe;
+    [ObservableProperty] private string _tagsText = "";
+    [ObservableProperty] private bool _hasTags;
+    [ObservableProperty] private bool _isPicked;   // multi-select
 }
