@@ -141,7 +141,7 @@ Changing any relay field reconnects the relay immediately; `relay_enabled:false`
 {"enabled":true,"state":"online","detail":"relay.example.com:9443","server":"relay.example.com:9443","peers":3,"relayed_links":1}
 ```
 * `state`: `off` | `connecting` | `online` | `auth_failed` | `error`.
-  Suggested copy: off 未启用 · connecting 正在连接中转服务器… · online 已连接中转服务器 · auth_failed 网络口令错误 · error 无法连接中转服务器 (show `detail` as secondary text/tooltip).
+  Suggested copy: off 未启用 · connecting 正在连接中转服务器… · online 已连接中转服务器 · auth_failed 中转服务器拒绝连接 · error 无法连接中转服务器 (show `detail` as secondary text/tooltip).
 * `detail`: human-readable Chinese/English detail (server address when online, reason on error).
 * `peers`: peers currently present on the server; `relayed_links`: live links carried by the relay.
 * Sources: `get_snapshot().relay` (initial), RPC `relay_status` (any time), and event

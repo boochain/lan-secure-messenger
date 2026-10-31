@@ -112,6 +112,7 @@ fun Chat(st: AppState, conv: String, back: () -> Unit) {
                             DropdownMenuItem({ Text("取消信任") }, { menu = false; Native.setTrust(contact.fp, 0); Repo.refresh() }, leadingIcon = { Ic(R.drawable.ms_offline) })
                             DropdownMenuItem({ Text(if (Native.isMuted(contact.fp)) "关闭免打扰" else "免打扰") }, { menu = false; Native.setMuted(contact.fp, !Native.isMuted(contact.fp)); Repo.refresh() }, leadingIcon = { Ic(R.drawable.ms_mute) })
                             DropdownMenuItem({ Text("诊断信息") }, { menu = false; dlg = "diag" }, leadingIcon = { Ic(R.drawable.ms_lock) })
+                            DropdownMenuItem({ Text("清空聊天记录") }, { menu = false; dlg = "clear" }, leadingIcon = { Ic(R.drawable.ms_delete) })
                             DropdownMenuItem({ Text("屏蔽") }, { menu = false; dlg = "block" }, leadingIcon = { Ic(R.drawable.ms_mute) })
                             DropdownMenuItem({ Text("输入 PIN 配对") }, { menu = false; dlg = "pin" }, leadingIcon = { Ic(R.drawable.ms_lock) })
                             DropdownMenuItem({ Text("查看指纹") }, { menu = false; dlg = "fp" }, leadingIcon = { Ic(R.drawable.ms_info) })
@@ -185,6 +186,9 @@ fun Chat(st: AppState, conv: String, back: () -> Unit) {
             dismissButton = { TextButton({ delMsg = null }) { Text("取消") } })
     }
     when (dlg) {
+        "clear" -> LsmAlertDialog(onDismissRequest = { dlg = "" }, title = { Text("清空聊天记录？") }, text = { Text("将删除本机上与此会话的全部聊天记录（对方仍保留）。此操作无法撤销。") },
+            confirmButton = { TextButton({ dlg = ""; val n = Native.clearConversation(conv); Repo.toast.value = "已清空 $n 条记录"; Repo.refresh() }) { Text("清空", color = p.error) } },
+            dismissButton = { TextButton({ dlg = "" }) { Text("取消") } })
         "diag" -> LsmAlertDialog(onDismissRequest = { dlg = "" }, title = { Text("诊断信息") },
             text = { Text(Native.diagnostics(), fontSize = 11.sp, modifier = Modifier.verticalScroll(rememberScrollState())) },
             confirmButton = { TextButton({ dlg = "" }) { Text("关闭") } })

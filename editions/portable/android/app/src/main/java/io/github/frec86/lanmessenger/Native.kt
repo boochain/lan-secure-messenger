@@ -25,6 +25,7 @@ object Native {
     @JvmStatic external fun markRead(conv: String)
     /** delete one message on this device only (tombstoned in the core); false if not found */
     @JvmStatic external fun deleteMessage(id: String): Boolean
+    @JvmStatic external fun clearConversation(conv: String): Int
     @JvmStatic external fun setName(name: String)
     @JvmStatic external fun cancelTransfer(tid: String): String
     /** Relay server settings. [pass] null = keep the stored passphrase, "" = clear it. Write-only: read [RelayInfo.hasPassphrase]. */

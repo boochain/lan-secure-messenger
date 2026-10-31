@@ -1047,8 +1047,8 @@ int lsm_send_file(lsm_core *c, const char *conv, const char *path, char *err){
     mu_lock(&c->mu);
     if(!strncmp(conv,"dm:",3)){
         int tr=trust_of(c,conv+3);
-        if(tr==TRUST_BLOCKED){ E("è¯¥èç³»äººå·²è¢«å±è½"); rc=-1; goto out; } /* 该联系人已被屏蔽 */
-        if(tr!=TRUST_TRUSTED){ E("å¯¹æ¹å°æªä¿¡ä»»ï¼æ æ³åéå¾ç/æä»¶ãè¯·åå¨èç³»äººèåä¸­ä¿¡ä»»å¯¹æ¹ï¼æå®æ PIN éå¯¹ï¼ã"); rc=-1; goto out; } /* 对方尚未信任… */
+        if(tr==TRUST_BLOCKED){ E("该联系人已被屏蔽"); rc=-1; goto out; } /* 该联系人已被屏蔽 */
+        if(tr!=TRUST_TRUSTED){ E("对方尚未信任，无法发送图片/文件。请先在联系人菜单中信任对方（或完成 PIN 配对）。"); rc=-1; goto out; } /* 对方尚未信任… */
         targets[nt++]=conv+3;
     }
     else if(!strncmp(conv,"group:",6) && !lsm_uuid_parse(conv+6,gid) && (g=group_get(c,gid))){ for(i=0;i<g->nmembers && nt<64;i++) if(strcmp(g->members[i],c->fp)) targets[nt++]=g->members[i]; }
@@ -1109,6 +1109,9 @@ int lsm_group_leave(lsm_core *c, const char *gids, char *err){ uint8_t gid[16], 
 int lsm_delete_message(lsm_core *c, const char *id){ char conv[64]; lsm_msg *m; buf_t b={0}; mu_lock(&c->mu); m=msg_get(c,id);
     if(!m){ mu_unlock(&c->mu); return -1; } scpy(conv,m->conv,64); msg_unlink(c,id); tomb_add(c,id);
     bfmt(&b,"D\t%s",id); hist_append(c,&b); b_free(&b); emit(c,"msg_delete\t%s\t%s",id,conv); mu_unlock(&c->mu); return 0; }
+int lsm_clear_conversation(lsm_core *c, const char *conv){ int i, n=0; char id[40]; buf_t b={0}; mu_lock(&c->mu);
+    for(i=c->nmsgs-1;i>=0;i--){ if(strcmp(c->msgs[i].conv,conv)) continue; scpy(id,c->msgs[i].id,40); msg_unlink(c,id); tomb_add(c,id); b.n=0; bfmt(&b,"D\t%s",id); hist_append(c,&b); emit(c,"msg_delete\t%s\t%s",id,conv); n++; }
+    b_free(&b); mu_unlock(&c->mu); return n; }
 int lsm_mark_read(lsm_core *c, const char *conv){ int i, n=0; buf_t p={0}, f={0}; uint8_t id[16];
     mu_lock(&c->mu);
     /* group the unread incoming ids by sender, one Read receipt per sender */

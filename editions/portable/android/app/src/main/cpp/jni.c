@@ -84,6 +84,7 @@ JNIEXPORT jstring JNICALL FN(groupInvite)(JNIEnv *e, jclass k, jstring gid, jstr
 JNIEXPORT jstring JNICALL FN(groupRemove)(JNIEnv *e, jclass k, jstring gid, jstring fp){ char *g=U(e,gid), *f=U(e,fp), err[256]=""; int rc=C?lsm_group_remove(C,g,f,err):1; (void)k; free(g); free(f); return J(e,rc?(err[0]?err:"failed"):""); }
 JNIEXPORT jstring JNICALL FN(groupLeave)(JNIEnv *e, jclass k, jstring gid){ char *g=U(e,gid), err[256]=""; int rc=C?lsm_group_leave(C,g,err):1; (void)k; free(g); return J(e,rc?(err[0]?err:"failed"):""); }
 JNIEXPORT jboolean JNICALL FN(deleteMessage)(JNIEnv *e, jclass k, jstring id){ char *s=U(e,id); int rc=C?lsm_delete_message(C,s):-1; (void)k; free(s); return rc==0?JNI_TRUE:JNI_FALSE; }
+JNIEXPORT jint JNICALL FN(clearConversation)(JNIEnv *e, jclass k, jstring conv){ char *s=U(e,conv); int n=C?lsm_clear_conversation(C,s):0; (void)k; free(s); return n; }
 JNIEXPORT void JNICALL FN(markRead)(JNIEnv *e, jclass k, jstring conv){ char *c=U(e,conv); (void)k; if(C) lsm_mark_read(C,c); free(c); }
 JNIEXPORT void JNICALL FN(setName)(JNIEnv *e, jclass k, jstring n){ char *s=U(e,n); (void)k; if(C) lsm_set_name(C,s); free(s); }
 /* pass == null keeps the stored passphrase, "" clears it (write-only: there is no getter) */

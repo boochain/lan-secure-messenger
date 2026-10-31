@@ -356,6 +356,14 @@ public sealed partial class ChatPage : Page
         if (!string.IsNullOrEmpty(fp)) { App.Platform.CopyToClipboard(fp); VM.ShowStatus("已复制对方指纹"); }
     }
 
+    private async void ClearChat_Click(object sender, RoutedEventArgs e)
+    {
+        if (VM.SelectedConversation == null) return;
+        var d = Services.ThemeService.Prepare(new ContentDialog { XamlRoot = XamlRoot, Title = "清空聊天记录？", Content = "将删除本机上与此会话的全部聊天记录（对方仍保留）。此操作无法撤销。",
+            PrimaryButtonText = "清空", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close });
+        if (await d.ShowAsync() == ContentDialogResult.Primary) await VM.ClearConversationAsync();
+    }
+
     private async void Forget_Click(object sender, RoutedEventArgs e)
     {
         var c = VM.SelectedConversation;

@@ -7,7 +7,7 @@
 int main(void){
     char err[256]="", dir[]="/tmp/lsm-trustXXXXXX"; lsm_opts o={0}; lsm_core *c; lsm_msg *m; int n, f=0;
     if(!mkdtemp(dir)){ perror("mkdtemp"); return 1; }
-    o.data_dir=dir; o.display_name="A"; o.listen_port=0; o.discovery_port=0; o.no_discovery=1;
+    o.data_dir=dir; o.name="A"; o.listen_port=47611; o.discovery_port=47610; o.no_discovery=1;
     c=lsm_start(&o,err,sizeof err); if(!c){ printf("start %s\n",err); return 1; }
     /* invented peer fp (64 hex) — not trusted */
     char conv[80]; snprintf(conv,sizeof conv,"dm:%s","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");

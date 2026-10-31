@@ -12,7 +12,7 @@ data class Transfer(val id: String, val msg: String, val name: String, val out: 
 }
 /** Relay server status (docs/ipc.md): state off | connecting | online | auth_failed | error. The passphrase itself is never read back. */
 data class RelayInfo(val enabled: Boolean = false, val host: String = "", val port: Int = 9443, val hasPassphrase: Boolean = false, val state: String = "off", val detail: String = "", val peers: Int = 0)
-fun relayStateZh(s: String) = when (s) { "connecting" -> "正在连接中转服务器…"; "online" -> "已连接中转服务器"; "auth_failed" -> "网络口令错误"; "error" -> "无法连接中转服务器"; else -> "未启用" }
+fun relayStateZh(s: String) = when (s) { "connecting" -> "正在连接中转服务器…"; "online" -> "已连接中转服务器"; "auth_failed" -> "中转服务器拒绝连接"; "error" -> "无法连接中转服务器"; else -> "未启用" }
 data class Msg(val id: String, val out: Boolean, val kind: Int, val status: String, val ts: Long, val sender: String, val body: String, val file: String, val size: Long, val path: String)
 data class Me(val fp: String = "", val name: String = "", val port: Int = 0, val version: String = "", val downloads: String = "")
 data class AppState(val me: Me = Me(), val contacts: List<Contact> = emptyList(), val groups: List<Group> = emptyList(), val transfers: List<Transfer> = emptyList(), val running: Boolean = false, val error: String = "",

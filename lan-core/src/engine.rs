@@ -1804,6 +1804,16 @@ impl Engine {
                     None => Err(RpcError::new(-32000, "消息不存在")),
                 }
             }
+            "clear_conversation" => {
+                let a: ConvP = p(params)?;
+                let ids: Vec<String> = self.history.conversation(&a.conversation, None, usize::MAX).into_iter().map(|m| m.id).collect();
+                let n = ids.len();
+                for id in &ids { self.history.remove(id); }
+                self.unread.remove(&a.conversation);
+                let _ = self.history.flush(true);
+                self.emit_conv(&a.conversation);
+                ok(json!({"ok": true, "removed": n}))
+            }
             "mark_read" => {
                 let a: ConvP = p(params)?;
                 let ids = self.unread.remove(&a.conversation).unwrap_or_default();

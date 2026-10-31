@@ -40,6 +40,7 @@
 #define IDM_DLDIR 215
 #define IDM_MUTE 242
 #define IDM_DIAG 243
+#define IDM_CLEAR 245
 #define IDM_UPDATE 244
 #define WM_UPDRES (WM_APP+7)
 #define IDM_SHOW 216
@@ -568,7 +569,7 @@ static int relay_clear_pending; static char relay_state[16]="off";
 static void relay_status_text(wchar_t *o, int n){ char det[256]="", host[256]=""; const char *st; int en=0, port=0, hp=0, peers=0; const wchar_t *t;
     lsm_relay_get(C,&en,host,sizeof host,&port,&hp); lsm_lock(C); st=lsm_relay_status(C,det,sizeof det); peers=lsm_relay_peers(C); lsm_unlock(C);
     snprintf(relay_state,sizeof relay_state,"%s",st); if(hRelayDlg) InvalidateRect(hRelayDlg,NULL,FALSE);
-    t=!strcmp(st,"online")?L"已连接中转服务器":!strcmp(st,"connecting")?L"正在连接中转服务器…":!strcmp(st,"auth_failed")?L"网络口令错误":!strcmp(st,"error")?L"无法连接中转服务器":L"未启用";
+    t=!strcmp(st,"online")?L"已连接中转服务器":!strcmp(st,"connecting")?L"正在连接中转服务器…":!strcmp(st,"auth_failed")?L"中转服务器拒绝连接":!strcmp(st,"error")?L"无法连接中转服务器":L"未启用";
     if(!strcmp(st,"online")) _snwprintf(o,n,L"%s  ·  %s:%d · 服务器上 %d 人",t,W(host),port,peers); else if(det[0] && strcmp(st,"off")) _snwprintf(o,n,L"%s  ·  %s",t,W(det)); else _snwprintf(o,n,L"%s",t); o[n-1]=0; }
 static LRESULT CALLBACK RelayProc(HWND h, UINT m, WPARAM w, LPARAM l){
     switch(m){
@@ -653,6 +654,7 @@ static void do_command(int id){
     case IDM_DLDIR: { lsm_lock(C); strcpy(u8,lsm_download_dir(C)); lsm_unlock(C); ShellExecuteW(hMain,L"open",W(u8),NULL,NULL,SW_SHOWNORMAL); break; }
     case IDM_MUTE: { const char *fp=selected_peer(); if(fp){ lsm_set_muted(C,fp,!peer_muted(fp),err); refresh_list(); } break; }
     case IDM_UPDATE: { HANDLE th=CreateThread(NULL,0,upd_thread,hMain,0,NULL); if(th) CloseHandle(th); else upd_done(NULL); break; }
+    case IDM_CLEAR: if(cur_conv[0] && tmsg(L"清空聊天记录",L"将删除本机上与此会话的全部聊天记录（对方仍保留）。此操作无法撤销。确定清空？",1)==1){ lsm_clear_conversation(C,cur_conv); refresh_chat(); refresh_list(); } break;
     case IDM_DIAG: { size_t need=lsm_diagnostics(C,NULL,0); char *d=(char*)malloc(need+1); if(d){ lsm_diagnostics(C,d,need+1); msgbox(d,MB_ICONINFORMATION); free(d); } break; }
     case IDM_ABOUT: msgbox("局域网安全通讯 XP 版 " LSM_APP_VERSION "\r\n\r\n所有版本互通（协议 v5）：Noise_XX_25519_ChaChaPoly_BLAKE2s 加密、自动发现、按 IP 添加、PIN 配对、群组、文件传输、送达/已读回执。\r\n\r\n支持 Windows XP SP3 及以上。",MB_ICONINFORMATION); break;
     } }
@@ -838,7 +840,7 @@ static void contact_menu(LPARAM l){ POINT pt; int s=-1, dm, cmd; HMENU pm;
     if(l==(LPARAM)-1){ RECT ir; s=(int)SendMessageW(hList,LB_GETCURSEL,0,0); if(s<0) return; SendMessageW(hList,LB_GETITEMRECT,s,(LPARAM)&ir); pt.x=ir.left+scale_px(48); pt.y=ir.top+scale_px(28); ClientToScreen(hList,&pt); }
     else { POINT c; DWORD r; pt.x=(short)LOWORD(l); pt.y=(short)HIWORD(l); c=pt; ScreenToClient(hList,&c); r=(DWORD)SendMessageW(hList,LB_ITEMFROMPOINT,0,MAKELPARAM(c.x,c.y)); if(HIWORD(r)) return; s=LOWORD(r); }
     if(s<0||s>=nlist) return; select_conv(s); dm=!strncmp(cur_conv,"dm:",3);
-    pm=CreatePopupMenu(); AM(pm,MF_STRING,IDM_OPENCHAT,L"打开聊天(&O)"); AM(pm,MF_SEPARATOR,0,NULL);
+    pm=CreatePopupMenu(); AM(pm,MF_STRING,IDM_OPENCHAT,L"打开聊天(&O)"); AM(pm,MF_STRING,IDM_CLEAR,L"清空聊天记录(&E)..."); AM(pm,MF_SEPARATOR,0,NULL);
     if(dm){ AM(pm,MF_STRING,IDM_TRUST,L"信任(&T)"); AM(pm,MF_STRING,IDM_UNTRUST,L"取消信任(&U)"); AM(pm,MF_STRING,IDM_PINPAIR,L"输入 PIN 配对(&I)..."); AM(pm,MF_STRING,IDM_COPYFP,L"复制指纹(&F)"); AM(pm,MF_STRING|(peer_muted(cur_conv+3)?MF_CHECKED:0),IDM_MUTE,L"免打扰(&M)"); AM(pm,MF_SEPARATOR,0,NULL); AM(pm,MF_STRING,IDM_BLOCK,L"屏蔽(&B)"); }
     else { AM(pm,MF_STRING,IDM_GINVITE,L"邀请成员(&I)..."); AM(pm,MF_STRING,IDM_GREMOVE,L"移除成员(&R)..."); AM(pm,MF_SEPARATOR,0,NULL); AM(pm,MF_STRING,IDM_GLEAVE,L"退出群组(&L)"); }
     menu_bg(pm); cmd=TrackPopupMenu(pm,TPM_RIGHTBUTTON|TPM_RETURNCMD|TPM_NONOTIFY,pt.x,pt.y,0,hMain,NULL); DestroyMenu(pm);

@@ -141,6 +141,7 @@ int lsm_mark_read(lsm_core *c, const char *conv);
 /* avatar initials, shared rule (WinUI Fmt.Initials, Android initials()): CJK first -> 1 char; Latin -> up to 2 Latin
  * word initials, never mixed with CJK; else the first code point. out gets UTF-8, NUL-terminated (needs 8 bytes). */
 void lsm_initials(const char *name, char out[8]);
+int lsm_clear_conversation(lsm_core *c, const char *conv); /* this device only; returns count removed */
 int lsm_delete_message(lsm_core *c, const char *id);   /* this device only; tombstoned; emits "msg_delete\t<id>\t<conv>" */
 int lsm_set_name(lsm_core *c, const char *name);
 int lsm_transfer_cancel(lsm_core *c, const char *tid, char *err);

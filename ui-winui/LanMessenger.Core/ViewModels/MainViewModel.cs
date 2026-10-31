@@ -313,7 +313,7 @@ public partial class MainViewModel : ObservableObject
     {
         "connecting" => "正在连接中转服务器…",
         "online" => "已连接中转服务器",
-        "auth_failed" => "网络口令错误",
+        "auth_failed" => "中转服务器拒绝连接",
         "error" => "无法连接中转服务器",
         _ => "未启用",
     };
@@ -699,6 +699,15 @@ public partial class MainViewModel : ObservableObject
         var c = SelectedConversation!;
         foreach (var p in paths)
             await SafeCall(x => x.SendFileAsync(c.Id, p));
+    }
+
+    /// <summary>Clear this conversation's history on this device (caller confirms).</summary>
+    public async Task ClearConversationAsync()
+    {
+        if (SelectedConversation is not { } c) return;
+        await SafeCall(x => x.ClearConversationAsync(c.Id));
+        Messages.Clear();
+        ShowStatus("已清空聊天记录");
     }
 
     /// <summary>Delete a message locally (the caller confirms first). Keeps grouping/date separators consistent.</summary>

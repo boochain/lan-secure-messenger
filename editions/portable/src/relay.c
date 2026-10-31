@@ -134,7 +134,7 @@ static void rl_on_frame(lsm_core *c, uint8_t ty, const uint8_t *b, size_t n){
         rl_frame(r,RT_AUTH,hdr,99,info,il); r->st=RS_AUTH; return; }
     if(r->st==RS_AUTH){
         uint8_t mac[32];
-        if(ty==RT_AUTH_FAIL){ rl_fail(c,n&&b[0]==1?"auth_failed":"error",n&&b[0]==1?"\xe7\xbd\x91\xe7\xbb\x9c\xe5\x8f\xa3\xe4\xbb\xa4\xe9\x94\x99\xe8\xaf\xaf":"\xe6\x9c\x8d\xe5\x8a\xa1\xe5\x99\xa8\xe6\x8b\x92\xe7\xbb\x9d"); return; } /* 网络口令错误 / 服务器拒绝 */
+        if(ty==RT_AUTH_FAIL){ rl_fail(c,n&&b[0]==1?"auth_failed":"error",n&&b[0]==1?"\xe7\xbd\x91\xe7\xbb\x9c\xe5\x8f\xa3\xe4\xbb\xa4\xe9\x94\x99\xe8\xaf\xaf":"\xe6\x9c\x8d\xe5\x8a\xa1\xe5\x99\xa8\xe6\x8b\x92\xe7\xbb\x9d"); return; } /* 中转服务器拒绝连接 / 服务器拒绝 */
         if(ty!=RT_AUTH_OK || n<38){ rl_fail(c,"error","unexpected reply"); return; }
         rl_mac(mac,r->key,"LSMR-v1-server",r->cn,r->sn,r->myid);
         if(crypto_verify32(mac,b)){ rl_fail(c,"auth_failed","\xe6\x9c\x8d\xe5\x8a\xa1\xe5\x99\xa8\xe6\x9c\xaa\xe9\x80\x9a\xe8\xbf\x87\xe5\x8f\xa3\xe4\xbb\xa4\xe9\xaa\x8c\xe8\xaf\x81"); return; } /* 服务器未通过口令验证 */

@@ -329,6 +329,7 @@
                                 <MenuFlyoutSeparator />
                                 <MenuFlyoutItem Text="取消信任" Command="{x:Bind VM.UntrustSelectedCommand}" />
                                 <MenuFlyoutItem Text="屏蔽" Command="{x:Bind VM.BlockSelectedCommand}" />
+                                <MenuFlyoutItem Text="清空聊天记录…" Click="ClearChat_Click" />
                                 <MenuFlyoutItem Text="忘记此联系人" Click="Forget_Click" />
                             </MenuFlyout>
                         </Button.Flyout>

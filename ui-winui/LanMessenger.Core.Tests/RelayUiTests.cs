@@ -32,7 +32,7 @@ public class RelayUiTests
     [InlineData("off", "未启用")]
     [InlineData("connecting", "正在连接中转服务器…")]
     [InlineData("online", "已连接中转服务器")]
-    [InlineData("auth_failed", "网络口令错误")]
+    [InlineData("auth_failed", "中转服务器拒绝连接")]
     [InlineData("error", "无法连接中转服务器")]
     public void RelayStateCopy(string state, string want) => Assert.Equal(want, MainViewModel.RelayStateLabel(state));
 
