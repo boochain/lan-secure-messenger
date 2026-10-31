@@ -704,6 +704,8 @@ public partial class MainViewModel : ObservableObject
         await SendFilesAsync(files);
     }
 
+    public Task SendFileAsync(string path) => SendFilesAsync(new[] { path });
+
     public async Task SendFilesAsync(IEnumerable<string> paths)
     {
         if (!EnsureCanSendFile()) return;
