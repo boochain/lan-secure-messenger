@@ -55,7 +55,7 @@ static const char *TST[]={"offered","active","verifying","done","failed","reject
 static void help(void){ outf("commands: id | peers | add <ip[:port]> | trust/untrust/block <peer> | mute/unmute <peer> | diag | backup <password> <file> | send <peer> <text> | sendgroup <group> <text> |\n"
     " sendfile <peer|group> <path> | pin-offer | pin-pair <peer> <pin> | group-create <name> <peer,peer..> | group-invite <group> <peer,..> |\n"
     " group-remove <group> <peer> | group-leave <group> | groups | history <peer|group> [n] | read <peer|group> | transfers | name <new name> |\n"
-    " firewall-setup [--open-firewall] | drop-links | sleep <ms> | quit\n"); }
+    " firewall-setup [--open-firewall] | drop-links | storage | cleanup-storage | sleep <ms> | quit\n"); }
 
 static int run_cmd(char *line){
     char *s=line, *cmd=next_tok(&s), err[256]="", buf[64], fp[FP_LEN];
@@ -145,6 +145,7 @@ int main(int argc, char **argv){
         else if(!strcmp(argv[i],"--disco-port")&&i+1<argc) o.discovery_port=atoi(argv[++i]);
         else if(!strcmp(argv[i],"--port")&&i+1<argc) o.listen_port=atoi(argv[++i]);
         else if(!strcmp(argv[i],"--targets")&&i+1<argc) o.announce_targets=argv[++i];
+        else if(!strcmp(argv[i],"--bind")&&i+1<argc) o.bind_lan_ip=argv[++i];
         else if(!strcmp(argv[i],"--announce-ms")&&i+1<argc) o.announce_ms=atoi(argv[++i]);
         else if(!strcmp(argv[i],"--no-discovery")) o.no_discovery=1;
         else if(!strcmp(argv[i],"--auto-trust")) o.auto_trust=1;

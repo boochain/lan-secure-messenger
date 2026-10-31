@@ -111,6 +111,11 @@ public partial class ConversationItem : ObservableObject
 public partial class ConversationItem
 {
     public static bool IsImageName(string n) => Path.GetExtension(n ?? "").ToLowerInvariant() is ".png" or ".jpg" or ".jpeg" or ".gif" or ".bmp" or ".webp";
+    partial void OnOnlineChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowOnlineDot));
+        OnPropertyChanged(nameof(ShowOfflineDot));
+    }
 }
 
 public partial class MessageItem : ObservableObject
@@ -152,6 +157,7 @@ public partial class MessageItem : ObservableObject
     [ObservableProperty] private string _dateLabel = "";
     [ObservableProperty] private bool _showE2E;
     [ObservableProperty] private string _clockText = "";
+    [ObservableProperty] private bool _isRead;
     [ObservableProperty] private int _tick;              // 0 none, 1 sent/queued, 2 delivered, 3 read, 4 failed
     [ObservableProperty] private bool _isFileCard;
     [ObservableProperty] private string _fileExt = "";
@@ -169,6 +175,7 @@ public partial class MessageItem : ObservableObject
         TimeText = Fmt.Time(m.TsMs);
         ClockText = Fmt.Clock(m.TsMs);
         Tick = !IsOutgoing ? 0 : m.Status switch { MsgStatus.Read => 3, MsgStatus.Delivered => 2, MsgStatus.Failed or MsgStatus.Rejected => 4, _ => 1 };
+        IsRead = Tick == 3;
         IsFailed = m.Status is MsgStatus.Failed or MsgStatus.Rejected;
         StatusText = !IsOutgoing ? "" : m.Status switch
         {
@@ -230,12 +237,18 @@ public partial class TransferItem : ObservableObject
         IsOutgoing = t.Direction == Direction.Out;
         DirectionText = IsOutgoing ? $"发送给 {t.PeerName}" : $"来自 {t.PeerName}";
         Progress = t.Size == 0 ? (t.State == TransferState.Done ? 100 : 0) : Math.Min(100.0, t.Transferred * 100.0 / t.Size);
-        var speed = t.State == TransferState.Active && t.BytesPerSec > 0 ? $" · {Fmt.Bytes(t.BytesPerSec)}/s" : "";
+        // Sender must not show own/peer receive speeds — only meaningful progress (#2).
+        // Receiver may show local write throughput.
+        var speed = "";
         var eta = "";
-        if (t.State == TransferState.Active && t.BytesPerSec > 0 && t.Size > t.Transferred)
+        if (!IsOutgoing && t.State == TransferState.Active && t.BytesPerSec > 0)
         {
-            var sec = (t.Size - t.Transferred) / t.BytesPerSec;
-            eta = sec >= 3600 ? $" · 剩余 {sec / 3600}h{sec % 3600 / 60:00}m" : sec >= 60 ? $" · 剩余 {sec / 60}m{sec % 60:00}s" : $" · 剩余 {sec}s";
+            speed = $" · {Fmt.Bytes(t.BytesPerSec)}/s";
+            if (t.Size > t.Transferred)
+            {
+                var sec = (t.Size - t.Transferred) / t.BytesPerSec;
+                eta = sec >= 3600 ? $" · 剩余 {sec / 3600}h{sec % 3600 / 60:00}m" : sec >= 60 ? $" · 剩余 {sec / 60}m{sec % 60:00}s" : $" · 剩余 {sec}s";
+            }
         }
         var pctNow = t.Size == 0 ? 0 : (int)(t.Transferred * 100 / t.Size);
         ProgressText = $"{pctNow}% · {Fmt.Bytes(t.Transferred)} / {Fmt.Bytes(t.Size)}{speed}{eta}";

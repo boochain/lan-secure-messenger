@@ -89,6 +89,14 @@ pub struct Settings {
     pub include_interfaces: Vec<String>,
     /// Interface name substrings to always exclude.
     pub exclude_interfaces: Vec<String>,
+    /// Prefer this IPv4 for LAN listen/dial/discovery (empty = any). Helps bypass VPN hijack.
+    pub bind_lan_ip: String,
+    /// `lan` | `server_lan` — when relay is on, server_lan treats relay as equal parallel path.
+    pub transport_mode: String,
+    /// Optional relay account username (fingerprint restore). Empty = anonymous relay.
+    pub account_user: String,
+    /// Default retain policy for new messages: `ends_only` | `server_retain`.
+    pub default_retain: String,
     /// Accept files from trusted peers automatically.
     pub auto_accept_files: bool,
     pub max_file_bytes: u64,
@@ -139,6 +147,10 @@ impl Default for Settings {
             announce_targets: Vec::new(),
             include_interfaces: Vec::new(),
             exclude_interfaces: Vec::new(),
+            bind_lan_ip: String::new(),
+            transport_mode: "lan".into(),
+            account_user: String::new(),
+            default_retain: "ends_only".into(),
             auto_accept_files: true,
             max_file_bytes: 4 * 1024 * 1024 * 1024,
             download_dir: None,
@@ -146,7 +158,7 @@ impl Default for Settings {
             first_run_done: false,
             auto_trust: false,
             check_updates: true,
-            announce_interval_secs: 3,
+            announce_interval_secs: 2,
             relay_enabled: false,
             relay_host: String::new(),
             relay_port: 9443,

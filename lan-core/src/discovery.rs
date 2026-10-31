@@ -25,6 +25,7 @@ pub struct Seen {
     pub fp: Fingerprint,
     pub name: String,
     pub ed25519_pk: [u8; 32],
+    pub x25519_pk: [u8; 32],
     /// Where to dial (source ip + advertised TCP port).
     pub dial: SocketAddr,
     pub src: SocketAddr,
@@ -39,6 +40,8 @@ pub struct DiscoParams {
     pub targets: Vec<String>,
     pub include: Vec<String>,
     pub exclude: Vec<String>,
+    /// When set, only announce from this LAN IPv4 (VPN bypass).
+    pub bind_ip: Option<Ipv4Addr>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, serde::Deserialize)]
@@ -65,6 +68,8 @@ pub struct Discovery {
     pub status: Arc<Mutex<DiscoStatus>>,
     pub info: Arc<Mutex<AnnounceInfo>>,
     reply_tx: mpsc::UnboundedSender<SocketAddr>,
+    /// Force an immediate announce + interface re-enumeration (manual UI refresh).
+    nudge_tx: mpsc::UnboundedSender<()>,
 }
 
 impl Discovery {
@@ -73,21 +78,29 @@ impl Discovery {
         let _ = self.reply_tx.send(addr);
     }
 
+    /// Kick discovery now (re-enumerate NICs + broadcast announce). Used by the UI「刷新」按钮.
+    pub fn nudge(&self) {
+        let _ = self.nudge_tx.send(());
+    }
+
     pub fn start(identity: Identity, params: DiscoParams, info: AnnounceInfo, tx: mpsc::UnboundedSender<Seen>) -> Self {
         let status = Arc::new(Mutex::new(DiscoStatus { enabled: true, port: params.port, multicast: params.multicast, ..Default::default() }));
         let info = Arc::new(Mutex::new(info));
         let (reply_tx, reply_rx) = mpsc::unbounded_channel();
-        let d = Discovery { status: status.clone(), info: info.clone(), reply_tx: reply_tx.clone() };
-        tokio::spawn(run(identity, params, info, status, tx, reply_rx, reply_tx));
+        let (nudge_tx, nudge_rx) = mpsc::unbounded_channel();
+        let d = Discovery { status: status.clone(), info: info.clone(), reply_tx: reply_tx.clone(), nudge_tx };
+        tokio::spawn(run(identity, params, info, status, tx, reply_rx, reply_tx, nudge_rx));
         d
     }
 
     pub fn disabled() -> Self {
         let (reply_tx, _rx) = mpsc::unbounded_channel();
+        let (nudge_tx, _nudge_rx) = mpsc::unbounded_channel();
         Discovery {
             status: Arc::new(Mutex::new(DiscoStatus::default())),
             info: Arc::new(Mutex::new(AnnounceInfo { name: String::new(), tcp_port: 0 })),
             reply_tx,
+            nudge_tx,
         }
     }
 }
@@ -176,6 +189,7 @@ async fn run(
     tx: mpsc::UnboundedSender<Seen>,
     mut reply_rx: mpsc::UnboundedReceiver<SocketAddr>,
     reply_tx: mpsc::UnboundedSender<SocketAddr>,
+    mut nudge_rx: mpsc::UnboundedReceiver<()>,
 ) {
     let me = identity.fingerprint().clone();
     // Receiver.
@@ -215,7 +229,7 @@ async fn run(
                     continue;
                 }
                 status.lock().unwrap().announces_received += 1;
-                let reply_due = a.want_reply && last_reply.get(&src.ip()).map(|t| t.elapsed() > Duration::from_secs(10)).unwrap_or(true);
+                let reply_due = a.want_reply && last_reply.get(&src.ip()).map(|t| t.elapsed() > Duration::from_secs(2)).unwrap_or(true);
                 if reply_due && a.disco_port != 0 {
                     last_reply.insert(src.ip(), Instant::now());
                     let _ = reply_tx.send(SocketAddr::new(src.ip(), a.disco_port));
@@ -224,6 +238,7 @@ async fn run(
                     fp,
                     name: crate::util::sanitize_display_name(&a.name),
                     ed25519_pk: a.ed25519_pk,
+                    x25519_pk: a.x25519_pk,
                     dial: SocketAddr::new(src.ip(), a.tcp_port),
                     src,
                 });
@@ -240,6 +255,7 @@ async fn run(
     let targets_every = 1u64;
     let mut n_tick: u64 = 0;
     loop {
+        let mut force_enum = false;
         tokio::select! {
             _ = tick.tick() => {}
             Some(addr) = reply_rx.recv() => {
@@ -251,11 +267,26 @@ async fn run(
                 }
                 continue;
             }
+            Some(()) = nudge_rx.recv() => {
+                // Drain a burst of nudges into one announce cycle.
+                while nudge_rx.try_recv().is_ok() {}
+                force_enum = true;
+            }
         }
         n_tick += 1;
-        if last_enum.elapsed() > Duration::from_secs(20) {
+        if force_enum || last_enum.elapsed() > Duration::from_secs(8) {
             last_enum = Instant::now();
-            let now_ifaces = netif::list(&p.include, &p.exclude);
+            let mut now_ifaces = netif::list(&p.include, &p.exclude);
+            if let Some(want) = p.bind_ip {
+                if now_ifaces.iter().any(|i| i.used && i.ip == want) {
+                    for i in now_ifaces.iter_mut() {
+                        if i.ip != want {
+                            i.used = false;
+                            i.reason = "非选定局域网网卡".into();
+                        }
+                    }
+                }
+            }
             let used: Vec<Ipv4Addr> = now_ifaces.iter().filter(|i| i.used).map(|i| i.ip).collect();
             socks.retain(|ip, _| used.contains(ip));
             for ip in &used {

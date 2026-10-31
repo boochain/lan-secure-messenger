@@ -59,12 +59,16 @@ fun Home(st: AppState, open: (String) -> Unit) {
             } else {
                 if (tab == 3 && dlg == "relay") IconButton({ dlg = "" }) { Ic(R.drawable.ms_back, "返回", p.fg) }
                 Text(if (tab == 3 && dlg == "relay") "中转服务器（可选）" else when (tab) { 1 -> "群组"; 2 -> "文件传输"; 3 -> "设置"; else -> "局域网安全通讯" }, style = MaterialTheme.typography.titleLarge, color = p.fg, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (tab <= 1) IconButton({ searching = true }) { Ic(R.drawable.ms_search, "搜索", p.fg) }
+                if (tab <= 1) {
+                    IconButton({ Native.refreshPeers(); Repo.refresh(); Repo.toast.value = "已刷新联系人" }) { Ic(R.drawable.ms_network, "刷新联系人", p.fg) }
+                    IconButton({ searching = true }) { Ic(R.drawable.ms_search, "搜索", p.fg) }
+                }
             }
             Box {
                 IconButton({ menu = true }) { Ic(R.drawable.ms_more, "菜单", p.fg) }
                 DropdownMenu(menu, { menu = false }) {
                     DropdownMenuItem({ Text("按 IP 添加") }, { menu = false; dlg = "add" }, leadingIcon = { Ic(R.drawable.ms_add_contact) })
+                    DropdownMenuItem({ Text("刷新联系人") }, { menu = false; Native.refreshPeers(); Repo.refresh(); Repo.toast.value = "已刷新联系人" }, leadingIcon = { Ic(R.drawable.ms_network) })
                     DropdownMenuItem({ Text("生成 PIN（让对方输入）") }, { menu = false; dlg = "pin" }, leadingIcon = { Ic(R.drawable.ms_lock) })
                     DropdownMenuItem({ Text("创建群组") }, { menu = false; dlg = "group" }, leadingIcon = { Ic(R.drawable.ms_groups) })
                     DropdownMenuItem({ Text("修改昵称") }, { menu = false; dlg = "name" }, leadingIcon = { Ic(R.drawable.ms_edit) })
@@ -249,6 +253,26 @@ fun Transfers(st: AppState) {
 @Composable
 fun Settings(st: AppState, dlg: (String) -> Unit) {
     val p = LocalPalette.current
+    var storageSub by remember { mutableStateOf("查看占用并清理半成品") }
+    var storageAsk by remember { mutableStateOf(false) }
+    fun refreshStorage() {
+        val raw = Native.storageInfo()
+        var hist = 0L; var dl = 0L; var part = 0L; var orph = 0L; var tot = 0L
+        for (line in raw.lineSequence()) {
+            val i = line.indexOf('\t'); if (i < 0) continue
+            val k = line.substring(0, i); val v = line.substring(i + 1)
+            when (k) {
+                "history_bytes" -> hist = v.toLongOrNull() ?: 0
+                "downloads_bytes" -> dl = v.toLongOrNull() ?: 0
+                "partials_bytes" -> part = v.toLongOrNull() ?: 0
+                "orphan_partials_bytes" -> orph = v.toLongOrNull() ?: 0
+                "total_bytes" -> tot = v.toLongOrNull() ?: 0
+            }
+        }
+        fun mb(n: Long) = if (n >= 1048576) "%.1f MB".format(n / 1048576.0) else if (n >= 1024) "%.0f KB".format(n / 1024.0) else "$n B"
+        storageSub = "合计 ${mb(tot)} · 下载 ${mb(dl)} · 半成品 ${mb(part)}（孤儿 ${mb(orph)}）· 记录 ${mb(hist)}"
+    }
+    LaunchedEffect(Unit) { refreshStorage() }
     @Composable fun SettingRow(icon: Int, title: String, sub: String?, click: (() -> Unit)?) =
         Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).ifThen(click != null) { clickable { click!!() } }.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Ic(icon, null, p.fg2); Spacer(Modifier.width(16.dp))
@@ -266,6 +290,21 @@ fun Settings(st: AppState, dlg: (String) -> Unit) {
         item { SettingRow(R.drawable.ms_via_server, "中转服务器（可选）", if (st.relay.enabled) relayStateZh(st.relay.state) + (if (st.relay.host.isNotEmpty()) " · ${st.relay.host}" else "") else "未启用 · 局域网直连优先") { dlg("relay") } }
         item { SettingRow(R.drawable.ms_network, "本机端口", "TCP ${st.me.port}", null) }
         item { SettingRow(R.drawable.ms_open_folder, "接收的文件", st.me.downloads, null) }
+        item { SettingRow(R.drawable.ms_delete, "存储管理", storageSub) { storageAsk = true } }
         item { SettingRow(R.drawable.ms_info, "关于", "版本 ${st.me.version}") { dlg("about") } }
+    }
+    if (storageAsk) {
+        AlertDialog(
+            onDismissRequest = { storageAsk = false },
+            title = { Text("存储管理") },
+            text = { Text(storageSub + "\n\n清理孤儿半成品并清除已完成的传输列表项？") },
+            confirmButton = {
+                TextButton({
+                    val n = Native.cleanupStorage(true, true)
+                    Repo.toast.value = "已清理 $n 项"; refreshStorage(); storageAsk = false
+                }) { Text("清理") }
+            },
+            dismissButton = { TextButton({ storageAsk = false }) { Text("取消") } }
+        )
     }
 }

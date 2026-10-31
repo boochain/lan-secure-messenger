@@ -27,6 +27,7 @@ use crate::APP_VERSION;
 use anyhow::Result;
 use ed25519_dalek::VerifyingKey;
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::{SocketAddr, ToSocketAddrs};
@@ -34,12 +35,12 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::{TcpListener, TcpSocket, TcpStream};
 use tokio::sync::{broadcast, mpsc, oneshot, Notify};
 use uuid::Uuid;
 
-const PING_EVERY: Duration = Duration::from_secs(5);
-const DEAD_AFTER: Duration = Duration::from_secs(20);
+const PING_EVERY: Duration = Duration::from_secs(4);
+const DEAD_AFTER: Duration = Duration::from_secs(30);
 const STALE_FOR_TIEBREAK: Duration = Duration::from_secs(12);
 const BULK_QUEUE: usize = 64;
 
@@ -110,6 +111,8 @@ pub(crate) enum EngineMsg {
     Seen(Seen),
     Transfer(TransferEvt),
     Relay(relay::RelayEvt),
+    /// Opaque retain blob pulled from relay for this device.
+    RetainBlob { id: Vec<u8>, blob: Vec<u8> },
     Tick,
 }
 
@@ -207,6 +210,7 @@ pub struct Engine {
     /// fingerprint -> name of peers currently present on the relay server.
     relay_peers: HashMap<String, String>,
     relay_last_open: Instant,
+    retain_last_pull: Instant,
 }
 
 pub async fn start(opts: EngineOptions) -> Result<EngineHandle> {
@@ -227,14 +231,28 @@ pub async fn start(opts: EngineOptions) -> Result<EngineHandle> {
     let shutdown = Arc::new(Notify::new());
     let me = identity.fingerprint().to_string();
 
-    // TCP listener: preferred port, else ephemeral.
+    // TCP listener: bind to LAN IP when set (VPN bypass); preferred port, else ephemeral.
     let mut tcp_error = String::new();
-    let listener = match TcpListener::bind(("0.0.0.0", settings.listen_port)).await {
-        Ok(l) => l,
+    let bind_ip = crate::netif::preferred_lan_ip(&settings.include_interfaces, &settings.exclude_interfaces, &settings.bind_lan_ip);
+    let listen_host = bind_ip.map(|ip| ip.to_string()).unwrap_or_else(|| "0.0.0.0".into());
+    let listener = match TcpListener::bind((listen_host.as_str(), settings.listen_port)).await {
+        Ok(l) => {
+            if let Some(ip) = bind_ip {
+                tracing::info!(%ip, "TCP listen bound to LAN interface (VPN bypass)");
+            }
+            l
+        }
         Err(e) => {
-            tcp_error = format!("TCP {} 被占用 ({e})，改用随机端口", settings.listen_port);
+            tcp_error = format!("TCP {}@{} 绑定失败 ({e})，改用随机端口", settings.listen_port, listen_host);
             tracing::warn!("{tcp_error}");
-            TcpListener::bind(("0.0.0.0", 0)).await?
+            let fallback = bind_ip.map(|ip| ip.to_string()).unwrap_or_else(|| "0.0.0.0".into());
+            match TcpListener::bind((fallback.as_str(), 0u16)).await {
+                Ok(l) => l,
+                Err(e2) => {
+                    tracing::warn!("bind {fallback}:0 failed ({e2}); falling back to 0.0.0.0");
+                    TcpListener::bind(("0.0.0.0", 0)).await?
+                }
+            }
         }
     };
     let port = listener.local_addr()?.port();
@@ -253,6 +271,7 @@ pub async fn start(opts: EngineOptions) -> Result<EngineHandle> {
                 targets: settings.announce_targets.clone(),
                 include: settings.include_interfaces.clone(),
                 exclude: settings.exclude_interfaces.clone(),
+                bind_ip: crate::netif::parse_bind_ip(&settings.bind_lan_ip),
             },
             AnnounceInfo { name: settings.display_name.clone(), tcp_port: port },
             seen_tx,
@@ -343,6 +362,7 @@ pub async fn start(opts: EngineOptions) -> Result<EngineHandle> {
         relay_state: ("off".into(), String::new()),
         relay_peers: HashMap::new(),
         relay_last_open: Instant::now(),
+        retain_last_pull: Instant::now() - Duration::from_secs(60),
     };
     eng.rebuild_outbox();
     eng.restore_partials();
@@ -454,6 +474,7 @@ impl Engine {
             EngineMsg::Seen(s) => self.on_seen(s),
             EngineMsg::Transfer(ev) => self.on_transfer_evt(ev),
             EngineMsg::Relay(ev) => self.on_relay(ev),
+            EngineMsg::RetainBlob { id, blob } => self.on_retain_blob(id, blob),
             EngineMsg::Tick => self.on_tick(),
         }
         false
@@ -585,6 +606,7 @@ impl Engine {
             let c = self.contacts.entry(&fp);
             c.name = hello.name.clone();
             c.ed25519_pk = hex::encode(hello.ed25519_pk);
+            c.x25519_pk = hex::encode(link.remote_x25519);
             c.last_seen_ms = now_ms();
             if auto && c.trust == Trust::Unknown {
                 c.trust = Trust::Trusted;
@@ -655,10 +677,24 @@ impl Engine {
     fn spawn_dial(&self, key: DialKey, addrs: Vec<SocketAddr>) {
         let tx = self.tx.clone();
         let shared = self.shared.clone();
+        let local = crate::netif::preferred_lan_ip(
+            &self.settings.include_interfaces,
+            &self.settings.exclude_interfaces,
+            &self.settings.bind_lan_ip,
+        );
         tokio::spawn(async move {
             let mut last = String::from("no address");
             for a in addrs {
-                match tokio::time::timeout(Duration::from_secs(3), TcpStream::connect(a)).await {
+                let connect = async {
+                    if let Some(ip) = local {
+                        let sock = TcpSocket::new_v4().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                        sock.bind(SocketAddr::new(std::net::IpAddr::V4(ip), 0)).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                        sock.connect(a).await
+                    } else {
+                        TcpStream::connect(a).await
+                    }
+                };
+                match tokio::time::timeout(Duration::from_secs(3), connect).await {
                     Ok(Ok(s)) => match link::establish(s, &shared.identity, shared.hello(), true).await {
                         Ok(l) => {
                             let _ = tx.send(EngineMsg::LinkUp { link: Box::new(l), initiator: true, key: Some(key) });
@@ -706,14 +742,29 @@ impl Engine {
         for fp in dead {
             self.drop_conn(&fp, "心跳超时");
         }
-        // Relay fallback: ask for a session to every relay peer we have no link with.
+        // Relay sessions: server_lan = equal parallel; lan = fallback when no fresh LAN announce/candidates.
         if !self.relay_peers.is_empty() && self.relay_last_open.elapsed() >= Duration::from_secs(2) {
             self.relay_last_open = now;
-            for fp in self.relay_peers.keys() {
-                if !self.conns.contains_key(fp) && self.contacts.trust(fp) != Trust::Blocked {
-                    let _ = self.relay.send(relay::RelayCmd::Open(fp.clone()));
+            let parallel = self.settings.transport_mode == "server_lan";
+            for fp in self.relay_peers.keys().cloned().collect::<Vec<_>>() {
+                if self.conns.contains_key(&fp) || self.contacts.trust(&fp) == Trust::Blocked {
+                    continue;
+                }
+                if parallel {
+                    let _ = self.relay.send(relay::RelayCmd::Open(fp));
+                    continue;
+                }
+                let lan_fresh = self.rt.get(&fp).and_then(|r| r.last_announce).map(|t| t.elapsed() < Duration::from_secs(15)).unwrap_or(false);
+                let has_cand = !self.candidates(&fp).is_empty();
+                if !lan_fresh || !has_cand {
+                    let _ = self.relay.send(relay::RelayCmd::Open(fp));
                 }
             }
+        }
+
+        if self.relay_state.0 == "online" && self.retain_last_pull.elapsed() >= Duration::from_secs(45) {
+            self.retain_last_pull = now;
+            self.kick_retain_pull();
         }
         // Dial peers that should be online.
         let mut to_dial = vec![];
@@ -792,6 +843,13 @@ impl Engine {
         let fp = s.fp.to_string();
         if fp == self.me {
             return;
+        }
+        {
+            let c = self.contacts.entry(&fp);
+            if c.name.is_empty() { c.name = s.name.clone(); }
+            c.ed25519_pk = hex::encode(s.ed25519_pk);
+            c.x25519_pk = hex::encode(s.x25519_pk);
+            let _ = self.contacts.save();
         }
         let online = self.conns.contains_key(&fp);
         let r = self.rt.entry(fp.clone()).or_default();
@@ -1268,8 +1326,12 @@ impl Engine {
                 if state == "auth_failed" && self.relay_state.0 != "auth_failed" {
                     self.notice("error", &format!("中转服务器认证失败: {detail}"));
                 }
+                let went_online = state == "online" && self.relay_state.0 != "online";
                 self.relay_state = (state, detail);
                 self.emit_relay();
+                if went_online {
+                    self.kick_retain_pull();
+                }
             }
             R::PeerJoin { fp, name } => {
                 if fp == self.me {
@@ -1327,6 +1389,240 @@ impl Engine {
             rtt_ms: conn.and_then(|c| c.rtt_ms),
             app_version: conn.map(|c| c.app_version.clone()).unwrap_or_default(),
         }
+    }
+
+
+
+    /// Full 32-byte relay peer id = SHA-256(x25519 public).
+    fn relay_peer_id(&self, fp: &str) -> Option<[u8; 32]> {
+        let hexpk = self.contacts.get(fp).map(|c| c.x25519_pk.as_str()).filter(|s| !s.is_empty())?;
+        let bytes = hex::decode(hexpk).ok()?;
+        if bytes.len() != 32 { return None; }
+        let mut pk = [0u8; 32];
+        pk.copy_from_slice(&bytes);
+        let dig = Sha256::digest(pk);
+        let mut out = [0u8; 32];
+        out.copy_from_slice(&dig);
+        Some(out)
+    }
+
+
+    fn kick_retain_pull(&self) {
+        if !self.settings.relay_enabled { return; }
+        let relay = self.relay.clone();
+        let tx = self.tx.clone();
+        tokio::spawn(async move {
+            let (ltx, lrx) = oneshot::channel();
+            if relay.send(relay::RelayCmd::ListRetain { reply: ltx }).is_err() { return; }
+            let ids = match tokio::time::timeout(std::time::Duration::from_secs(20), lrx).await {
+                Ok(Ok(Ok(ids))) => ids,
+                _ => return,
+            };
+            for id in ids {
+                let (ftx, frx) = oneshot::channel();
+                if relay.send(relay::RelayCmd::Fetch { id: id.clone(), reply: ftx }).is_err() { break; }
+                match tokio::time::timeout(std::time::Duration::from_secs(20), frx).await {
+                    Ok(Ok(Ok(Some(blob)))) => { let _ = tx.send(EngineMsg::RetainBlob { id, blob }); }
+                    Ok(Ok(Ok(None))) => {}
+                    _ => {}
+                }
+            }
+        });
+    }
+
+    fn on_retain_blob(&mut self, id: Vec<u8>, blob: Vec<u8>) {
+        let id_str = String::from_utf8_lossy(&id).to_string();
+        if self.history.get(&id_str).is_some() {
+            let _ = self.relay.send(relay::RelayCmd::StoreDel { id });
+            return;
+        }
+        // Try open with each known peer x25519 (sender's key).
+        let my_sk = self.shared.identity.x25519_secret_bytes();
+        let mut plain: Option<Vec<u8>> = None;
+        let mut from_fp = String::new();
+        for (fp, c) in self.contacts.contacts.iter() {
+            if c.x25519_pk.is_empty() { continue; }
+            let Ok(pk_bytes) = hex::decode(&c.x25519_pk) else { continue };
+            if pk_bytes.len() != 32 { continue; }
+            let mut peer_pk = [0u8; 32];
+            peer_pk.copy_from_slice(&pk_bytes);
+            if let Ok(p) = crate::crypto::open_retain(&my_sk, &peer_pk, &blob) {
+                plain = Some(p);
+                from_fp = fp.clone();
+                break;
+            }
+        }
+        let Some(plain) = plain else {
+            tracing::debug!(%id_str, "retain blob decrypt failed");
+            return;
+        };
+        let Ok(v) = serde_json::from_slice::<Value>(&plain) else { return };
+        let kind = v.get("kind").and_then(|x| x.as_str()).unwrap_or("text");
+        let body = v.get("body").and_then(|x| x.as_str()).unwrap_or("").to_string();
+        let from = v.get("from").and_then(|x| x.as_str()).unwrap_or(&from_fp).to_string();
+        let ts = v.get("ts_ms").and_then(|x| x.as_i64()).unwrap_or_else(now_ms);
+        let conv = format!("dm:{from}");
+        if kind == "text" || kind == "file" {
+            let m = Message {
+                id: id_str.clone(),
+                conversation: conv.clone(),
+                direction: Direction::In,
+                sender_fp: from.clone(),
+                sender_name: self.peer_name(&from),
+                kind: if kind == "file" { MsgKind::File } else { MsgKind::Text },
+                body: if kind == "file" { format!("[服务器保留文件] {body}") } else { body },
+                ts_ms: ts,
+                status: MsgStatus::Received,
+                file: None,
+            };
+            self.add_message(m, true);
+            self.notice("info", &format!("已从中转拉取保留消息（来自 {}）", self.peer_name(&from)));
+        }
+        let _ = self.relay.send(relay::RelayCmd::StoreDel { id });
+    }
+
+    fn maybe_retain_message(&self, id: &str, dest_fp: &str, body: &str) {
+        if !self.settings.relay_enabled {
+            return;
+        }
+        let Some(pk_hex) = self.contacts.get(dest_fp).map(|c| c.x25519_pk.clone()).filter(|s| !s.is_empty()) else { return };
+        let Ok(pk_bytes) = hex::decode(&pk_hex) else { return };
+        if pk_bytes.len() != 32 { return; }
+        let mut peer_pk = [0u8; 32];
+        peer_pk.copy_from_slice(&pk_bytes);
+        let my_sk = self.shared.identity.x25519_secret_bytes();
+        let payload = json!({"v":1,"kind":"text","id":id,"from":self.me,"to":dest_fp,"body":body,"ts_ms":now_ms()});
+        let Ok(plain) = serde_json::to_vec(&payload) else { return };
+        let Ok(blob) = crate::crypto::seal_retain(&my_sk, &peer_pk, &plain) else { return };
+        let Some(dest) = self.relay_peer_id(dest_fp) else { return };
+        let (tx, _rx) = oneshot::channel();
+        let _ = self.relay.send(relay::RelayCmd::Store {
+            id: id.as_bytes().to_vec(),
+            blob,
+            ttl: 7 * 24 * 3600,
+            dest: Some(dest),
+            reply: tx,
+        });
+    }
+
+    fn dir_size(path: &std::path::Path) -> u64 {
+        fn walk(p: &std::path::Path, acc: &mut u64) {
+            let Ok(rd) = std::fs::read_dir(p) else { return };
+            for e in rd.flatten() {
+                let path = e.path();
+                if path.is_dir() {
+                    walk(&path, acc);
+                } else if let Ok(m) = e.metadata() {
+                    *acc += m.len();
+                }
+            }
+        }
+        let mut n = 0u64;
+        walk(path, &mut n);
+        n
+    }
+
+    fn storage_view(&self) -> Value {
+        let dl = self.settings.download_dir(&self.paths);
+        let data = self.paths.data.clone();
+        let history = self.paths.history.metadata().map(|m| m.len()).unwrap_or(0);
+        let downloads = Self::dir_size(&dl);
+        let mut partials = 0u64;
+        let mut orphan_partials = 0u64;
+        if let Ok(rd) = std::fs::read_dir(&dl) {
+            for e in rd.flatten() {
+                let name = e.file_name().to_string_lossy().to_string();
+                if name.starts_with('.') && (name.ends_with(".part") || name.ends_with(".part.resume")) {
+                    if let Ok(m) = e.metadata() {
+                        partials += m.len();
+                        if name.ends_with(".part") {
+                            let side2 = std::path::PathBuf::from(format!("{}.resume", e.path().display()));
+                            if !side2.exists() {
+                                orphan_partials += m.len();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let outgoing = Self::dir_size(&data.join("outgoing"));
+        let total = Self::dir_size(&data) + if dl.starts_with(&data) { 0 } else { downloads };
+        json!({
+            "data_dir": data.display().to_string(),
+            "download_dir": dl.display().to_string(),
+            "history_bytes": history,
+            "downloads_bytes": downloads,
+            "partials_bytes": partials,
+            "orphan_partials_bytes": orphan_partials,
+            "outgoing_bytes": outgoing,
+            "total_bytes": total,
+        })
+    }
+
+    fn cleanup_storage(&mut self, failed_partials: bool, orphans: bool, finished_transfers: bool) -> Value {
+        let mut removed = 0u64;
+        let mut files = 0u32;
+        let dl = self.settings.download_dir(&self.paths);
+        if failed_partials || orphans {
+            if let Ok(rd) = std::fs::read_dir(&dl) {
+                for e in rd.flatten() {
+                    let path = e.path();
+                    let name = e.file_name().to_string_lossy().to_string();
+                    if !(name.starts_with('.') && (name.ends_with(".part") || name.ends_with(".part.resume"))) {
+                        continue;
+                    }
+                    let side2 = std::path::PathBuf::from(format!("{}.resume", path.display()));
+                    let is_orphan = name.ends_with(".part") && !side2.exists();
+                    let drop = (orphans && is_orphan) || (failed_partials && is_orphan);
+                    if drop {
+                        if let Ok(m) = e.metadata() { removed += m.len(); }
+                        let _ = std::fs::remove_file(&path);
+                        files += 1;
+                    }
+                }
+            }
+        }
+        if finished_transfers {
+            let finished: Vec<Uuid> = self.transfers.iter()
+                .filter(|(_, t)| matches!(t.state, TransferState::Done | TransferState::Failed | TransferState::Cancelled | TransferState::Rejected))
+                .map(|(id, _)| *id).collect();
+            for id in finished {
+                self.transfers.remove(&id);
+                files += 1;
+            }
+        }
+        json!({ "ok": true, "removed_bytes": removed, "removed_files": files, "storage": self.storage_view() })
+    }
+
+    /// Force LAN re-announce, clear dial backoffs, and push a fresh peer/conversation snapshot to UIs.
+    fn refresh_peers(&mut self) {
+        self.disco.nudge();
+        let now = Instant::now();
+        for r in self.rt.values_mut() {
+            r.next_attempt = Some(now);
+            r.failures = r.failures.min(1);
+        }
+        for m in self.manual_rt.values_mut() {
+            m.next_attempt = Some(now);
+            m.failures = m.failures.min(1);
+        }
+        let fps: Vec<String> = self
+            .contacts
+            .contacts
+            .keys()
+            .cloned()
+            .chain(self.rt.keys().cloned())
+            .chain(self.conns.keys().cloned())
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        for fp in &fps {
+            self.emit_peer(fp);
+        }
+        self.emit(Event::Notice {
+            level: "info".into(),
+            text: "已刷新局域网发现与联系人状态".into(),
+        });
     }
 
     fn emit_peer(&self, fp: &str) {
@@ -1547,6 +1843,250 @@ impl Engine {
                 });
                 return;
             }
+            "account_register" | "account_login" => {
+                #[derive(Deserialize)]
+                struct P { user: String, password: String }
+                let a: P = match serde_json::from_value(params) {
+                    Ok(v) => v,
+                    Err(e) => { let _ = reply.send(Err(RpcError::invalid(e.to_string()))); return; }
+                };
+                if a.user.trim().is_empty() || a.password.chars().count() < 6 {
+                    let _ = reply.send(Err(RpcError::invalid("用户名与密码（至少 6 字符）必填")));
+                    return;
+                }
+                let (tx, rx) = oneshot::channel();
+                let cmd = if method == "account_register" {
+                    relay::RelayCmd::AccountRegister { user: a.user.trim().to_string(), pass: a.password, reply: tx }
+                } else {
+                    relay::RelayCmd::AccountLogin { user: a.user.trim().to_string(), pass: a.password, reply: tx }
+                };
+                if self.relay.send(cmd).is_err() {
+                    let _ = reply.send(Err(RpcError::new(-32020, "中转未启用")));
+                    return;
+                }
+                tokio::spawn(async move {
+                    let r = tokio::time::timeout(std::time::Duration::from_secs(45), rx).await;
+                    let _ = reply.send(match r {
+                        Ok(Ok(Ok(()))) => Ok(json!({"ok": true})),
+                        Ok(Ok(Err(e))) => Err(RpcError::new(-32020, e)),
+                        Ok(Err(_)) => Err(RpcError::new(-32020, "中转无响应")),
+                        Err(_) => Err(RpcError::new(-32020, "账号操作超时")),
+                    });
+                });
+                return;
+            }
+            "account_revoke" => {
+                #[derive(Deserialize)]
+                struct P { user: String, password: String }
+                let a: P = match serde_json::from_value(params) {
+                    Ok(v) => v,
+                    Err(e) => { let _ = reply.send(Err(RpcError::invalid(e.to_string()))); return; }
+                };
+                let (tx, rx) = oneshot::channel();
+                if self.relay.send(relay::RelayCmd::AccountRevoke { user: a.user.trim().to_string(), pass: a.password, reply: tx }).is_err() {
+                    let _ = reply.send(Err(RpcError::new(-32020, "中转未启用")));
+                    return;
+                }
+                tokio::spawn(async move {
+                    let r = tokio::time::timeout(std::time::Duration::from_secs(45), rx).await;
+                    let _ = reply.send(match r {
+                        Ok(Ok(Ok(()))) => Ok(json!({"ok": true})),
+                        Ok(Ok(Err(e))) => Err(RpcError::new(-32020, e)),
+                        _ => Err(RpcError::new(-32020, "吊销失败或超时")),
+                    });
+                });
+                return;
+            }
+            "account_backup_put" => {
+                #[derive(Deserialize)]
+                struct P { user: String, password: String }
+                let a: P = match serde_json::from_value(params) {
+                    Ok(v) => v,
+                    Err(e) => { let _ = reply.send(Err(RpcError::invalid(e.to_string()))); return; }
+                };
+                let tmp = self.paths.root.join("account-backup.tmp");
+                if let Err(e) = crate::backup::export_backup(&self.paths, &a.password, &tmp) {
+                    let _ = reply.send(Err(RpcError::new(-32021, format!("{e:#}"))));
+                    return;
+                }
+                let blob = match std::fs::read(&tmp) {
+                    Ok(b) => b,
+                    Err(e) => { let _ = reply.send(Err(RpcError::new(-32021, e.to_string()))); return; }
+                };
+                let _ = std::fs::remove_file(&tmp);
+                let (tx, rx) = oneshot::channel();
+                if self.relay.send(relay::RelayCmd::AccountPutBackup { user: a.user.trim().to_string(), blob, reply: tx }).is_err() {
+                    let _ = reply.send(Err(RpcError::new(-32020, "中转未启用")));
+                    return;
+                }
+                tokio::spawn(async move {
+                    let r = tokio::time::timeout(std::time::Duration::from_secs(60), rx).await;
+                    let _ = reply.send(match r {
+                        Ok(Ok(Ok(()))) => Ok(json!({"ok": true})),
+                        Ok(Ok(Err(e))) => Err(RpcError::new(-32020, e)),
+                        _ => Err(RpcError::new(-32020, "上传备份失败或超时")),
+                    });
+                });
+                return;
+            }
+            "account_backup_get" => {
+                #[derive(Deserialize)]
+                struct P { user: String, password: String }
+                let a: P = match serde_json::from_value(params) {
+                    Ok(v) => v,
+                    Err(e) => { let _ = reply.send(Err(RpcError::invalid(e.to_string()))); return; }
+                };
+                let (tx, rx) = oneshot::channel();
+                if self.relay.send(relay::RelayCmd::AccountGetBackup { user: a.user.trim().to_string(), reply: tx }).is_err() {
+                    let _ = reply.send(Err(RpcError::new(-32020, "中转未启用")));
+                    return;
+                }
+                let paths = self.paths.clone();
+                let pass = a.password;
+                tokio::spawn(async move {
+                    let r = tokio::time::timeout(std::time::Duration::from_secs(60), rx).await;
+                    let res = match r {
+                        Ok(Ok(Ok(blob))) => {
+                            let tmp = paths.root.join("account-restore.tmp");
+                            if let Err(e) = std::fs::write(&tmp, &blob) {
+                                Err(RpcError::new(-32021, e.to_string()))
+                            } else {
+                                match crate::backup::import_backup(&paths, &pass, &tmp) {
+                                    Ok(()) => {
+                                        let _ = std::fs::remove_file(&tmp);
+                                        Ok(json!({"ok": true, "restart_required": true}))
+                                    }
+                                    Err(e) => {
+                                        let _ = std::fs::remove_file(&tmp);
+                                        Err(RpcError::new(-32021, format!("{e:#}")))
+                                    }
+                                }
+                            }
+                        }
+                        Ok(Ok(Err(e))) => Err(RpcError::new(-32020, e)),
+                        _ => Err(RpcError::new(-32020, "下载备份失败或超时")),
+                    };
+                    let _ = reply.send(res);
+                });
+                return;
+            }
+            "retain_store" => {
+                #[derive(Deserialize)]
+                struct P {
+                    id: String,
+                    #[serde(default)]
+                    blob_b64: String,
+                    #[serde(default)]
+                    ttl_secs: Option<u32>,
+                    #[serde(default)]
+                    dest_fingerprint: Option<String>,
+                }
+                let a: P = match serde_json::from_value(params) {
+                    Ok(v) => v,
+                    Err(e) => { let _ = reply.send(Err(RpcError::invalid(e.to_string()))); return; }
+                };
+                let raw = a.blob_b64.trim();
+                let blob = match hex::decode(raw) {
+                    Ok(b) => b,
+                    Err(_) => {
+                        // accept url-safe/std base64 without extra crate
+                        fn b64_decode(s: &str) -> Option<Vec<u8>> {
+                            let s = s.as_bytes();
+                            let mut out = Vec::with_capacity(s.len() * 3 / 4);
+                            let mut buf = 0u32;
+                            let mut n = 0;
+                            for &c in s {
+                                let v = match c {
+                                    b'A'..=b'Z' => c - b'A',
+                                    b'a'..=b'z' => c - b'a' + 26,
+                                    b'0'..=b'9' => c - b'0' + 52,
+                                    b'+' | b'-' => 62,
+                                    b'/' | b'_' => 63,
+                                    b'=' => continue,
+                                    _ if c.is_ascii_whitespace() => continue,
+                                    _ => return None,
+                                } as u32;
+                                buf = (buf << 6) | v;
+                                n += 1;
+                                if n == 4 {
+                                    out.push((buf >> 16) as u8);
+                                    out.push((buf >> 8) as u8);
+                                    out.push(buf as u8);
+                                    n = 0; buf = 0;
+                                }
+                            }
+                            if n == 2 { out.push((buf << 12 >> 16) as u8); }
+                            else if n == 3 { out.push((buf << 6 >> 16) as u8); out.push((buf << 6 >> 8) as u8); }
+                            else if n == 1 { return None; }
+                            Some(out)
+                        }
+                        match b64_decode(raw) {
+                            Some(b) => b,
+                            None => { let _ = reply.send(Err(RpcError::invalid("blob_b64/hex 无效"))); return; }
+                        }
+                    }
+                };
+                let dest = if let Some(fp) = a.dest_fingerprint.as_deref() {
+                    match self.relay_peer_id(fp) {
+                        Some(id) => Some(id),
+                        None => { let _ = reply.send(Err(RpcError::invalid("未知目标指纹或缺少公钥"))); return; }
+                    }
+                } else { None };
+                let (tx, rx) = oneshot::channel();
+                if self.relay.send(relay::RelayCmd::Store {
+                    id: a.id.into_bytes(),
+                    blob,
+                    ttl: a.ttl_secs.unwrap_or(7 * 24 * 3600),
+                    dest,
+                    reply: tx,
+                }).is_err() {
+                    let _ = reply.send(Err(RpcError::new(-32020, "中转未启用")));
+                    return;
+                }
+                tokio::spawn(async move {
+                    let r = tokio::time::timeout(std::time::Duration::from_secs(30), rx).await;
+                    let _ = reply.send(match r {
+                        Ok(Ok(Ok(()))) => Ok(json!({"ok": true})),
+                        Ok(Ok(Err(e))) => Err(RpcError::new(-32020, e)),
+                        _ => Err(RpcError::new(-32020, "retain store 失败或超时")),
+                    });
+                });
+                return;
+            }
+            "retain_fetch" => {
+                #[derive(Deserialize)]
+                struct P { id: String }
+                let a: P = match serde_json::from_value(params) {
+                    Ok(v) => v,
+                    Err(e) => { let _ = reply.send(Err(RpcError::invalid(e.to_string()))); return; }
+                };
+                let (tx, rx) = oneshot::channel();
+                if self.relay.send(relay::RelayCmd::Fetch { id: a.id.into_bytes(), reply: tx }).is_err() {
+                    let _ = reply.send(Err(RpcError::new(-32020, "中转未启用")));
+                    return;
+                }
+                tokio::spawn(async move {
+                    let r = tokio::time::timeout(std::time::Duration::from_secs(30), rx).await;
+                    let _ = reply.send(match r {
+                        Ok(Ok(Ok(Some(blob)))) => Ok(json!({"ok": true, "blob_hex": hex::encode(&blob)})),
+                        Ok(Ok(Ok(None))) => Ok(json!({"ok": true, "miss": true})),
+                        Ok(Ok(Err(e))) => Err(RpcError::new(-32020, e)),
+                        _ => Err(RpcError::new(-32020, "retain fetch 失败或超时")),
+                    });
+                });
+                return;
+            }
+            "retain_del" => {
+                #[derive(Deserialize)]
+                struct P { id: String }
+                let a: P = match serde_json::from_value(params) {
+                    Ok(v) => v,
+                    Err(e) => { let _ = reply.send(Err(RpcError::invalid(e.to_string()))); return; }
+                };
+                let _ = self.relay.send(relay::RelayCmd::StoreDel { id: a.id.into_bytes() });
+                let _ = reply.send(Ok(json!({"ok": true})));
+                return;
+            }
             "pin_pair" => {
                 #[derive(Deserialize)]
                 struct P {
@@ -1590,6 +2130,21 @@ impl Engine {
         match method {
             "hello" => ok(json!({ "daemon_version": APP_VERSION, "protocol": PROTO_VERSION, "fingerprint": self.me, "ipc_version": 1 })),
             "get_snapshot" => ok(self.snapshot()),
+            "refresh_peers" => {
+                self.refresh_peers();
+                ok(json!({ "ok": true }))
+            }
+            "get_storage" => ok(self.storage_view()),
+            "cleanup_storage" => {
+                #[derive(Deserialize)]
+                struct P {
+                    #[serde(default)] failed_partials: bool,
+                    #[serde(default)] orphans: bool,
+                    #[serde(default)] finished_transfers: bool,
+                }
+                let a: P = p(params)?;
+                ok(self.cleanup_storage(a.failed_partials, a.orphans, a.finished_transfers))
+            }
             "get_messages" => {
                 #[derive(Deserialize)]
                 struct P {
@@ -1605,9 +2160,12 @@ impl Engine {
                 struct P {
                     conversation: String,
                     body: String,
+                    #[serde(default)]
+                    retain: Option<bool>,
                 }
                 let a: P = p(params)?;
                 let body = a.body.trim_end().to_string();
+                let want_retain = a.retain.unwrap_or(self.settings.default_retain == "server_retain");
                 if body.trim().is_empty() {
                     return Err(RpcError::invalid("消息不能为空"));
                 }
@@ -1639,9 +2197,12 @@ impl Engine {
                     if self.contacts.get(&fp).is_none() && !self.rt.contains_key(&fp) {
                         return Err(RpcError::invalid("未知联系人"));
                     }
-                    let online = self.send_reliable(&fp, Payload::Text { body, ts_ms: ts }, id, Some(m.id.clone()));
+                    let online = self.send_reliable(&fp, Payload::Text { body: body.clone(), ts_ms: ts }, id, Some(m.id.clone()));
                     if online {
                         m.status = MsgStatus::Sent;
+                    }
+                    if want_retain {
+                        self.maybe_retain_message(&m.id, &fp, &body);
                     }
                 } else if let Some(gid) = a.conversation.strip_prefix("group:").and_then(|g| Uuid::parse_str(g).ok()) {
                     let g = self.groups.get(&gid).cloned().ok_or_else(|| RpcError::invalid("群组不存在"))?;
@@ -1668,10 +2229,19 @@ impl Engine {
                 struct P {
                     conversation: String,
                     path: String,
+                    #[serde(default)]
+                    retain: Option<bool>,
                 }
                 let a: P = p(params)?;
-                let t = self.send_file(&a.conversation, PathBuf::from(a.path), None)?;
-                ok(t)
+                let want_retain = a.retain.unwrap_or(self.settings.default_retain == "server_retain");
+                let tr = self.send_file(&a.conversation, PathBuf::from(&a.path), None)?;
+                if want_retain {
+                    if let Some(fp) = a.conversation.strip_prefix("dm:") {
+                        let meta = json!({"v":1,"kind":"file","id":tr.id,"path":a.path}).to_string();
+                        self.maybe_retain_message(&tr.id, fp, &meta);
+                    }
+                }
+                ok(tr)
             }
             "cancel_transfer" | "retry_transfer" | "accept_transfer" | "reject_transfer" => {
                 #[derive(Deserialize)]
@@ -1823,8 +2393,16 @@ impl Engine {
                     }
                     let fp = fp.to_string();
                     self.emit_peer(&fp);
-                } else if let Some(id) = a.conversation.strip_prefix("group:").and_then(|g| Uuid::parse_str(g).ok()) {
-                    self.emit_group(&id);
+                } else if let Some(gid) = a.conversation.strip_prefix("group:").and_then(|g| Uuid::parse_str(g).ok()) {
+                    // Group read receipts: fan-out same Payload::Read to online members (protocol already supports it).
+                    if !ids.is_empty() {
+                        if let Some(g) = self.groups.get(&gid).cloned() {
+                            for mem in g.members.iter().filter(|m| **m != self.me) {
+                                let _ = self.send_ctrl(mem, Frame::Msg { id: Uuid::new_v4(), payload: Payload::Read { ids: ids.clone() } });
+                            }
+                        }
+                    }
+                    self.emit_group(&gid);
                 }
                 self.emit_conv(&a.conversation);
                 ok(json!({"ok": true}))

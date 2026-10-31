@@ -39,6 +39,24 @@ pub mod t {
     pub const SEND: u8 = 0x10;
     pub const LIST: u8 = 0x30;
     pub const BYE: u8 = 0x7F;
+    // account / fingerprint restore (optional)
+    pub const ACCOUNT_REGISTER: u8 = 0x60;
+    pub const ACCOUNT_LOGIN: u8 = 0x61;
+    pub const ACCOUNT_OK: u8 = 0x62;
+    pub const ACCOUNT_FAIL: u8 = 0x63;
+    pub const ACCOUNT_PUT_BACKUP: u8 = 0x64;
+    pub const ACCOUNT_GET_BACKUP: u8 = 0x65;
+    pub const ACCOUNT_BACKUP: u8 = 0x66;
+    // server-retain encrypted blobs (optional)
+    pub const STORE: u8 = 0x70;
+    pub const STORE_OK: u8 = 0x71;
+    pub const FETCH: u8 = 0x72;
+    pub const FETCH_DATA: u8 = 0x73;
+    pub const FETCH_MISS: u8 = 0x74;
+    pub const STORE_DEL: u8 = 0x75;
+    pub const LIST_RETAIN: u8 = 0x76;
+    pub const LIST_RETAIN_DATA: u8 = 0x77;
+    pub const ACCOUNT_REVOKE: u8 = 0x67;
     // both directions
     pub const PING: u8 = 0x20;
     pub const PONG: u8 = 0x21;

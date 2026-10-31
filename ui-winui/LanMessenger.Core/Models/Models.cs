@@ -159,6 +159,10 @@ public sealed class Settings
     public List<string> AnnounceTargets { get; set; } = new();
     public List<string> IncludeInterfaces { get; set; } = new();
     public List<string> ExcludeInterfaces { get; set; } = new();
+    public string BindLanIp { get; set; } = "";
+    public string TransportMode { get; set; } = "lan";
+    public string AccountUser { get; set; } = "";
+    public string DefaultRetain { get; set; } = "ends_only";
     public bool AutoAcceptFiles { get; set; } = true;
     public ulong MaxFileBytes { get; set; }
     public string? DownloadDir { get; set; }

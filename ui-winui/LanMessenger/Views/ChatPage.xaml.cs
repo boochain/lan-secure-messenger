@@ -307,6 +307,46 @@ public sealed partial class ChatPage : Page
     }
 
     /// <summary>Ctrl+V: send clipboard bitmap or file paths (same trust gate as drag-drop).</summary>
+    
+    private static readonly string[] Emojis = "😀 😃 😄 😁 😆 😅 😂 🙂 😉 😊 😇 🥰 😍 🤩 😘 😋 😜 🤗 🤔 😴 🥳 😎 😢 😭 😤 👍 👎 👏 🙏 💪 ❤️ 🔥 ⭐ ✨ 🎉 ✅ ❌ 💯".Split(' ');
+
+    private void Emoji_Click(object sender, RoutedEventArgs e)
+    {
+        if (EmojiGrid.Items.Count == 0)
+            foreach (var x in Emojis) EmojiGrid.Items.Add(x);
+    }
+
+    
+    private async void Sticker_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button b || b.Tag is not string name) return;
+        try
+        {
+            var uri = new Uri($"ms-appx:///Assets/stickers/{name}.png");
+            var file = await Windows.Storage.StorageFile.GetFileFromApplicationUriAsync(uri);
+            var dest = Path.Combine(Path.GetTempPath(), $"lsm-sticker-{name}.png");
+            using (var src = await file.OpenStreamForReadAsync())
+            using (var dst = File.Create(dest))
+                await src.CopyToAsync(dst);
+            await VM.SendFileAsync(dest);
+            EmojiFlyout.Hide();
+        }
+        catch (Exception ex)
+        {
+            VM.ShowStatus($"贴纸发送失败: {ex.Message}", true);
+        }
+    }
+
+    private void Emoji_ItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is string s)
+        {
+            VM.ComposeText = (VM.ComposeText ?? "") + s;
+            EmojiFlyout.Hide();
+            Composer.Focus(FocusState.Programmatic);
+        }
+    }
+
     private async Task PasteClipboardAsync()
     {
         if (!VM.HasSelection) { VM.ShowStatus("请先选择联系人或群组", true); return; }

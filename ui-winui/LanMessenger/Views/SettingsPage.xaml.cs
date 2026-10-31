@@ -13,6 +13,13 @@ public sealed partial class SettingsPage : Page
     public SettingsPage()
     {
         InitializeComponent();
+        Loaded += (_, __) => {
+            if (VM.RefreshStorageCommand.CanExecute(null)) _ = VM.RefreshStorageCommand.ExecuteAsync(null);
+            if (NotifyStatusText != null)
+                NotifyStatusText.Text = Services.Toasts.Available
+                    ? "系统通知：可用（Windows App SDK）"
+                    : "系统通知：不可用 — 将尝试托盘气泡；请检查系统通知权限 / 打包身份";
+        };
         CloseToTraySwitch.IsOn = Services.UiPrefs.Current.CloseToTray;
         _loadingTheme = true;
         ThemeChoice.SelectedIndex = (int)LanMessenger.Services.ThemeService.Mode;
@@ -102,4 +109,16 @@ public sealed partial class SettingsPage : Page
         if (Services.UiPrefs.Current.CloseToTray == CloseToTraySwitch.IsOn) return;
         Services.UiPrefs.Current.CloseToTray = CloseToTraySwitch.IsOn; Services.UiPrefs.Current.Save();
     }
+
+    private string _accountPass = "";
+    private void AccountPass_Changed(object sender, RoutedEventArgs e)
+    {
+        if (sender is PasswordBox pb) _accountPass = pb.Password ?? "";
+    }
+
+    private async void AccountRegister_Click(object sender, RoutedEventArgs e) => await VM.AccountRegisterAsync(_accountPass);
+    private async void AccountLogin_Click(object sender, RoutedEventArgs e) => await VM.AccountLoginAsync(_accountPass);
+    private async void AccountBackupPut_Click(object sender, RoutedEventArgs e) => await VM.AccountBackupPutAsync(_accountPass);
+    private async void AccountBackupGet_Click(object sender, RoutedEventArgs e) => await VM.AccountBackupGetAsync(_accountPass);
+    private async void AccountRevoke_Click(object sender, RoutedEventArgs e) => await VM.AccountRevokeAsync(_accountPass);
 }

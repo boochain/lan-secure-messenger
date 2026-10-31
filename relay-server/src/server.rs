@@ -1,5 +1,6 @@
 //! Relay server core: auth, presence, forwarding, limits, status endpoint.
 use crate::config::Config;
+use crate::account::{self, AccountStore};
 use crate::proto::{self, code, t, Auth, Frame, Hello, PeerId, ReadErr};
 use anyhow::Result;
 use rand::RngCore;
@@ -40,6 +41,7 @@ struct Hub {
     cfg: Config,
     key: [u8; 32],
     salt: [u8; 16],
+    accounts: AccountStore,
     peers: Mutex<HashMap<PeerId, PeerHandle>>,
     per_ip: Mutex<HashMap<IpAddr, usize>>,
     auth_fail: Mutex<HashMap<IpAddr, (u32, Instant)>>,
@@ -210,9 +212,11 @@ pub async fn start(cfg: Config) -> Result<Running> {
         .map_err(|e| anyhow::anyhow!("无法监听 {bind} (cannot listen): {e}"))?;
     let addr = listener.local_addr()?;
     let (tx, rx) = watch::channel(false);
+    let data_dir = if cfg.server.data_dir.is_empty() { std::path::PathBuf::from("relay-data") } else { std::path::PathBuf::from(&cfg.server.data_dir) };
     let hub = Arc::new(Hub {
         key,
         salt,
+        accounts: AccountStore::new(data_dir),
         peers: Mutex::new(HashMap::new()),
         per_ip: Mutex::new(HashMap::new()),
         auth_fail: Mutex::new(HashMap::new()),
@@ -467,6 +471,114 @@ async fn handle_conn(sock: TcpStream, peer: SocketAddr, hub: &Arc<Hub>, mut shut
                 let _ = ctx.try_send(hub.peer_list(&me).encode());
             }
             t::BYE => break Ok(()),
+            t::ACCOUNT_REGISTER | t::ACCOUNT_LOGIN => {
+                // body: u16 user_len | user | u16 pass_len | pass
+                let body = &f.body;
+                if body.len() < 4 { let _ = ctx.try_send(account::account_fail("malformed").encode()); continue; }
+                let ul = u16::from_be_bytes([body[0], body[1]]) as usize;
+                if body.len() < 2 + ul + 2 { let _ = ctx.try_send(account::account_fail("malformed").encode()); continue; }
+                let user = String::from_utf8_lossy(&body[2..2+ul]).to_string();
+                let rest = &body[2+ul..];
+                let pl = u16::from_be_bytes([rest[0], rest[1]]) as usize;
+                if rest.len() < 2 + pl { let _ = ctx.try_send(account::account_fail("malformed").encode()); continue; }
+                let pass = String::from_utf8_lossy(&rest[2..2+pl]).to_string();
+                let r = if f.ty == t::ACCOUNT_REGISTER { hub.accounts.register(&user, &pass, &me) } else { hub.accounts.login(&user, &pass, &me) };
+                let _ = ctx.try_send(match r { Ok(()) => account::account_ok().encode(), Err(e) => account::account_fail(e).encode() });
+            }
+            t::ACCOUNT_PUT_BACKUP => {
+                // body: u16 user_len | user | blob
+                let body = &f.body;
+                if body.len() < 2 { let _ = ctx.try_send(account::account_fail("malformed").encode()); continue; }
+                let ul = u16::from_be_bytes([body[0], body[1]]) as usize;
+                if body.len() < 2 + ul { let _ = ctx.try_send(account::account_fail("malformed").encode()); continue; }
+                let user = String::from_utf8_lossy(&body[2..2+ul]).to_string();
+                let blob = &body[2+ul..];
+                let _ = ctx.try_send(match hub.accounts.put_backup(&user, blob) { Ok(()) => account::account_ok().encode(), Err(e) => account::account_fail(e).encode() });
+            }
+            t::ACCOUNT_GET_BACKUP => {
+                let body = &f.body;
+                if body.len() < 2 { let _ = ctx.try_send(account::account_fail("malformed").encode()); continue; }
+                let ul = u16::from_be_bytes([body[0], body[1]]) as usize;
+                if body.len() < 2 + ul { let _ = ctx.try_send(account::account_fail("malformed").encode()); continue; }
+                let user = String::from_utf8_lossy(&body[2..2+ul]).to_string();
+                match hub.accounts.get_backup(&user) {
+                    Ok(blob) => { let _ = ctx.try_send(Frame::new(t::ACCOUNT_BACKUP, blob).encode()); }
+                    Err(e) => { let _ = ctx.try_send(account::account_fail(e).encode()); }
+                }
+            }
+            t::STORE => {
+                // body: u16 id_len | id | u32 ttl | u8 flags | [32 dest if flags&1] | blob
+                // flags&1: store under dest peer id so recipient can fetch (E2E ciphertext).
+                let body = &f.body;
+                if body.len() < 2 + 4 + 1 { continue; }
+                let il = u16::from_be_bytes([body[0], body[1]]) as usize;
+                if body.len() < 2 + il + 4 + 1 { continue; }
+                let id = &body[2..2+il];
+                let ttl = u32::from_be_bytes(body[2+il..2+il+4].try_into().unwrap());
+                let flags = body[2+il+4];
+                let mut off = 2 + il + 5;
+                let owner: PeerId = if flags & 1 != 0 {
+                    if body.len() < off + 32 { continue; }
+                    let mut d = [0u8; 32];
+                    d.copy_from_slice(&body[off..off+32]);
+                    off += 32;
+                    d
+                } else { me };
+                let blob = &body[off..];
+                match hub.accounts.store_blob(&owner, id, blob, ttl) {
+                    Ok(()) => { let _ = ctx.try_send(Frame::new(t::STORE_OK, id.to_vec()).encode()); }
+                    Err(_) => { let _ = ctx.try_send(Frame::new(t::ERROR, proto::fail_body(code::MALFORMED, "store")).encode()); }
+                }
+            }
+            t::FETCH => {
+                let body = &f.body;
+                if body.len() < 2 { continue; }
+                let il = u16::from_be_bytes([body[0], body[1]]) as usize;
+                if body.len() < 2 + il { continue; }
+                let id = &body[2..2+il];
+                match hub.accounts.fetch_blob(&me, id) {
+                    Ok(blob) => {
+                        let mut out = (id.len() as u16).to_be_bytes().to_vec();
+                        out.extend_from_slice(id);
+                        out.extend_from_slice(&blob);
+                        let _ = ctx.try_send(Frame::new(t::FETCH_DATA, out).encode());
+                    }
+                    Err(_) => { let _ = ctx.try_send(Frame::new(t::FETCH_MISS, id.to_vec()).encode()); }
+                }
+            }
+            t::STORE_DEL => {
+                let body = &f.body;
+                if body.len() >= 2 {
+                    let il = u16::from_be_bytes([body[0], body[1]]) as usize;
+                    if body.len() >= 2 + il { hub.accounts.del_blob(&me, &body[2..2+il]); }
+                }
+            }
+            t::LIST_RETAIN => {
+                let _ = hub.accounts.gc_expired();
+                let ids = hub.accounts.list_blobs(&me);
+                let mut out = Vec::new();
+                out.extend_from_slice(&(ids.len() as u16).to_be_bytes());
+                for id in &ids {
+                    out.extend_from_slice(&(id.len() as u16).to_be_bytes());
+                    out.extend_from_slice(id);
+                }
+                let _ = ctx.try_send(Frame::new(t::LIST_RETAIN_DATA, out).encode());
+            }
+            t::ACCOUNT_REVOKE => {
+                let body = &f.body;
+                if body.len() < 4 { let _ = ctx.try_send(account::account_fail("malformed").encode()); continue; }
+                let ul = u16::from_be_bytes([body[0], body[1]]) as usize;
+                if body.len() < 2 + ul + 2 { let _ = ctx.try_send(account::account_fail("malformed").encode()); continue; }
+                let user = String::from_utf8_lossy(&body[2..2+ul]).to_string();
+                let rest = &body[2+ul..];
+                let pl = u16::from_be_bytes([rest[0], rest[1]]) as usize;
+                if rest.len() < 2 + pl { let _ = ctx.try_send(account::account_fail("malformed").encode()); continue; }
+                let pass = String::from_utf8_lossy(&rest[2..2+pl]).to_string();
+                let _ = ctx.try_send(match hub.accounts.revoke_devices(&user, &pass) {
+                    Ok(()) => account::account_ok().encode(),
+                    Err(e) => account::account_fail(e).encode(),
+                });
+            }
             t::SEND => {
                 if f.body.len() < 32 {
                     hub.stats.protocol_errors.fetch_add(1, Ordering::Relaxed);

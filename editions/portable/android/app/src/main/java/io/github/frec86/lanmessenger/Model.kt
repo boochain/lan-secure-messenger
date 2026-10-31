@@ -31,6 +31,7 @@ object Repo {
     val revision = MutableStateFlow(0L)       // bumps on every event so open chats reload
     val toast = MutableStateFlow<String?>(null)
     var openConv: String? = null
+    @Volatile var appForeground: Boolean = true
 
     fun refresh() {
         if (!Native.running()) { state.value = state.value.copy(running = false); return }

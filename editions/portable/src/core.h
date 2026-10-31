@@ -97,6 +97,7 @@ typedef struct {
     const char *name;       /* initial display name if none stored */
     int no_discovery;
     int auto_trust;
+    const char *bind_lan_ip; /* empty/NULL = any; "auto" = first non-virtual; else IPv4 */
 } lsm_opts;
 
 lsm_core *lsm_start(const lsm_opts *o, char *err, size_t errn);
@@ -121,6 +122,12 @@ const char *lsm_download_dir(lsm_core *c);
 int lsm_send_text(lsm_core *c, const char *conv, const char *text, char *msgid_out, char *err);
 int lsm_send_file(lsm_core *c, const char *conv, const char *path, char *err);
 int lsm_add_addr(lsm_core *c, const char *addr, char *err);
+/* Force UDP announce + interface re-enum + reset dial backoffs; emits peer events so UIs refresh. */
+int lsm_refresh_peers(lsm_core *c);
+/* Fill UTF-8 lines: key\tvalue (bytes / paths). Returns bytes written. */
+size_t lsm_storage_info(lsm_core *c, char *buf, size_t n);
+/* orphans/failed partials + optional clear finished transfer rows. Returns files removed. */
+int lsm_cleanup_storage(lsm_core *c, int orphans, int finished_transfers);
 int lsm_set_trust(lsm_core *c, const char *fp, int trust, char *err);
 /* 免打扰 on/off for a peer (local only, like the Rust core's contact.muted); emits "peer\t<fp>\tmuted\t0|1" */
 int lsm_set_muted(lsm_core *c, const char *fp, int muted, char *err);

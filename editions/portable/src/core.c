@@ -34,6 +34,7 @@ typedef SOCKET sock_t;
 #include <net/if.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <dirent.h>
 #include <errno.h>
 #include <pthread.h>
 #include <time.h>
@@ -62,8 +63,8 @@ typedef int sock_t;
 #define CHUNK (32*1024)
 #define WINDOW (4ull*1024*1024)
 #define PROGRESS_EVERY (256*1024)
-#define PING_EVERY 5000
-#define DEAD_AFTER 20000
+#define PING_EVERY 4000
+#define DEAD_AFTER 30000
 #define STALE_TIEBREAK 12000
 #define HS_TIMEOUT 10000
 #define MAX_WIRE (65535+4)
@@ -200,7 +201,7 @@ typedef struct { uint32_t ip; int64_t t; } reply_mark;
 
 struct lsm_core {
     mutex_t mu;
-    lsm_opts o; char data_dir[520], dl_dir[520], announce_targets[1024];
+    lsm_opts o; char data_dir[520], dl_dir[520], announce_targets[1024]; uint32_t bind4; /* htonl LAN bind or 0 */
     uint8_t x_sk[32], x_pk[32], ed_seed[32], ed_sk[64], ed_pk[32]; char fp[FP_LEN];
     char name[300];
     uint8_t store_key[32];
@@ -906,7 +907,7 @@ static void on_tick(lsm_core *c){
         m->dialing=1; m->next_attempt=now+5000; snprintf(key,sizeof key,"addr:%s",m->addr); dial(c,&m->sa,key);
         { conn *x; int started=0; for(x=c->conns;x;x=x->next) if(x->state!=9 && !strcmp(x->dial_key,key)) started=1; if(!started){ m->dialing=0; m->failures++; } } }
     if(!c->o.no_discovery){
-        if(now-c->last_enum>20000){ c->last_enum=now; enum_ifaces(c); }
+        if(now-c->last_enum>10000){ c->last_enum=now; enum_ifaces(c); }
         if(now-c->last_announce>=c->o.announce_ms){ c->last_announce=now; send_announces(c); } }
     else if(c->announce_targets[0] || c->nmanual){ if(now-c->last_announce>=c->o.announce_ms){ c->last_announce=now; send_announces(c);} }
     rl_tick(c);
@@ -956,6 +957,25 @@ static DWORD WINAPI thread_main(LPVOID p){ lsm_core *c=(lsm_core*)p; while(!c->s
 static void *thread_main(void *p){ lsm_core *c=(lsm_core*)p; while(!c->stop) loop_once(c); return NULL; }
 #endif
 
+
+static uint32_t first_lan_ip(void){
+    uint32_t ips[32]; int n=0,i;
+#ifdef _WIN32
+    ULONG len=0; IP_ADAPTER_INFO *ai,*a; GetAdaptersInfo(NULL,&len); ai=(IP_ADAPTER_INFO*)malloc(len?len:sizeof(IP_ADAPTER_INFO));
+    if(ai && GetAdaptersInfo(ai,&len)==NO_ERROR){ for(a=ai;a&&n<32;a=a->Next){ IP_ADDR_STRING *s; for(s=&a->IpAddressList;s&&n<32;s=s->Next){ uint32_t ip=inet_addr(s->IpAddress.String); if(ip&&ip!=INADDR_NONE) ips[n++]=ip; } } }
+    free(ai);
+#else
+    struct ifaddrs *ia,*p; if(getifaddrs(&ia)==0){ for(p=ia;p&&n<32;p=p->ifa_next){ if(!p->ifa_addr||p->ifa_addr->sa_family!=AF_INET||(p->ifa_flags&IFF_LOOPBACK)||!(p->ifa_flags&IFF_UP)) continue; ips[n++]=((struct sockaddr_in*)p->ifa_addr)->sin_addr.s_addr; } freeifaddrs(ia); }
+#endif
+    for(i=0;i<n;i++){ uint32_t hip=ntohl(ips[i]); if((hip>>24)==127||(hip>>16)==0xA9FE) continue; return ips[i]; }
+    return 0;
+}
+static int parse_bind4(const char *s, uint32_t *out){
+    if(!s||!*s) return 0;
+    if(!strcmp(s,"auto")){ uint32_t ip=first_lan_ip(); if(!ip) return 0; *out=ip; return 1; }
+    { unsigned a,b,c,d; if(sscanf(s,"%u.%u.%u.%u",&a,&b,&c,&d)!=4||a>255||b>255||c>255||d>255) return 0;
+      *out=htonl((a<<24)|(b<<16)|(c<<8)|d); return 1; }
+}
 lsm_core *lsm_start(const lsm_opts *o, char *err, size_t errn){
     lsm_core *c=(lsm_core*)xcalloc(1,sizeof(lsm_core)); struct sockaddr_in a; int one=1; char p[600];
 #ifdef _WIN32
@@ -964,7 +984,7 @@ lsm_core *lsm_start(const lsm_opts *o, char *err, size_t errn){
     /* a peer or the relay server closing mid-send must surface as EPIPE, not kill the process */
     signal(SIGPIPE, SIG_IGN);
 #endif
-    mu_init(&c->mu); c->o=*o; if(!c->o.discovery_port) c->o.discovery_port=41234; if(!c->o.listen_port) c->o.listen_port=41235; if(!c->o.announce_ms) c->o.announce_ms=3000;
+    mu_init(&c->mu); c->o=*o; if(!c->o.discovery_port) c->o.discovery_port=41234; if(!c->o.listen_port) c->o.listen_port=41235; if(!c->o.announce_ms) c->o.announce_ms=2000;
     scpy(c->data_dir,o->data_dir,sizeof c->data_dir); umkdir(c->data_dir); path_join(c->dl_dir,sizeof c->dl_dir,c->data_dir,"downloads"); umkdir(c->dl_dir);
     if(o->announce_targets) scpy(c->announce_targets,o->announce_targets,sizeof c->announce_targets);
     c->ev_cap=4096; c->events=(char**)xcalloc(c->ev_cap,sizeof(char*));
@@ -975,13 +995,18 @@ lsm_core *lsm_start(const lsm_opts *o, char *err, size_t errn){
     { char *t=load_sealed(c,"manual.dat"), *l, *nx; for(l=t; l && *l; l=nx){ manual_rt m; nx=strchr(l,'\n'); if(nx) *nx++=0; memset(&m,0,sizeof m); if(resolve(l,41235,&m.sa)) continue; scpy(m.addr,l,sizeof m.addr);
         c->manual=(manual_rt*)xrealloc(c->manual,sizeof(manual_rt)*(c->nmanual+1)); c->manual[c->nmanual++]=m; } free(t); }
     { int i; for(i=0;i<c->ncontacts;i++){ c->contacts[i].online=0; c->contacts[i].rtt_ms=-1; } }
-    /* TCP listener: preferred port, fallback ephemeral */
+    /* TCP listener: optional LAN bind (VPN bypass); preferred port, fallback ephemeral */
+    c->bind4=0; if(o->bind_lan_ip) parse_bind4(o->bind_lan_ip,&c->bind4);
     c->lsock=socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
-    memset(&a,0,sizeof a); a.sin_family=AF_INET; a.sin_addr.s_addr=INADDR_ANY; a.sin_port=htons((unsigned short)c->o.listen_port);
+    memset(&a,0,sizeof a); a.sin_family=AF_INET; a.sin_addr.s_addr=c->bind4?c->bind4:INADDR_ANY; a.sin_port=htons((unsigned short)c->o.listen_port);
 #ifndef _WIN32
     setsockopt(c->lsock,SOL_SOCKET,SO_REUSEADDR,(const char*)&one,sizeof one);
 #endif
-    if(bind(c->lsock,(struct sockaddr*)&a,sizeof a)){ a.sin_port=0; if(bind(c->lsock,(struct sockaddr*)&a,sizeof a)){ scpy(err,"cannot bind TCP listener",errn); return NULL; } }
+    if(bind(c->lsock,(struct sockaddr*)&a,sizeof a)){
+        if(c->bind4){ a.sin_addr.s_addr=INADDR_ANY; c->bind4=0; }
+        a.sin_port=htons((unsigned short)c->o.listen_port);
+        if(bind(c->lsock,(struct sockaddr*)&a,sizeof a)){ a.sin_port=0; if(bind(c->lsock,(struct sockaddr*)&a,sizeof a)){ scpy(err,"cannot bind TCP listener",errn); return NULL; } }
+    }
     listen(c->lsock,16); set_nonblock(c->lsock);
     { socklen_t al=sizeof a; getsockname(c->lsock,(struct sockaddr*)&a,&al); c->lport=ntohs(a.sin_port); }
     /* UDP discovery receiver */
@@ -1072,46 +1097,94 @@ int lsm_add_addr(lsm_core *c, const char *addr, char *err){ struct sockaddr_in a
     mu_unlock(&c->mu); return 0; }
 int lsm_set_muted(lsm_core *c, const char *fp, int muted, char *err){ lsm_contact *k; (void)err; mu_lock(&c->mu); k=contact_entry(c,fp); k->muted=muted!=0; save_contacts(c);
     emit(c,"peer\t%s\tmuted\t%d",fp,k->muted); mu_unlock(&c->mu); return 0; }
-int lsm_set_trust(lsm_core *c, const char *fp, int trust, char *err){ lsm_contact *k; (void)err; mu_lock(&c->mu); k=contact_entry(c,fp); k->trust=trust; save_contacts(c);
-    if(trust==TRUST_BLOCKED){ conn *x=conn_by_fp(c,fp); if(x) conn_close(c,x,"blocked",1); }
-    emit(c,"peer\t%s\ttrust\t%s",fp,trust==1?"trusted":trust==2?"blocked":"unknown"); mu_unlock(&c->mu); return 0; }
-int lsm_pin_offer(lsm_core *c, char pin_out[8]){ uint32_t r; mu_lock(&c->mu); rand_bytes(&r,4); snprintf(c->pin,sizeof c->pin,"%06u",r%1000000u); c->pin_time=mono_ms(); c->pin_tries=0; scpy(pin_out,c->pin,8); mu_unlock(&c->mu); return 0; }
-int lsm_pin_pair(lsm_core *c, const char *fp, const char *pin, char *err){ buf_t f={0}; int ok; char t[16]; scpy(t,pin,sizeof t); { char *s=t, *e; while(*s==' ') s++; e=s+strlen(s); while(e>s&&e[-1]==' ') e--; *e=0; memmove(t,s,strlen(s)+1); }
-    mu_lock(&c->mu); b_u32(&f,13); b_str(&f,t); ok=send_to_fp(c,fp,&f); b_free(&f); mu_unlock(&c->mu); if(!ok){ E("\xe5\xaf\xb9\xe6\x96\xb9\xe4\xb8\x8d\xe5\x9c\xa8\xe7\xba\xbf"); return -1; } return 0; }
-int lsm_group_create(lsm_core *c, const char *name, const char **fps, int n, char *gid_out, char *err){ lsm_group g; int i; buf_t p={0}; uint8_t id[16]; char conv[64];
+
+int lsm_refresh_peers(lsm_core *c){
+    int i; int64_t now;
+    if(!c) return -1;
     mu_lock(&c->mu);
-    for(i=0;i<n;i++) if(trust_of(c,fps[i])!=TRUST_TRUSTED){ char e[256]; snprintf(e,sizeof e,"\xe6\x88\x90\xe5\x91\x98 %s \xe5\xb0\x9a\xe6\x9c\xaa\xe4\xbf\xa1\xe4\xbb\xbb\xef\xbc\x8c\xe8\xaf\xb7\xe5\x85\x88\xe4\xbf\xa1\xe4\xbb\xbb\xe5\x90\x8e\xe5\x86\x8d\xe5\xbb\xba\xe7\xbe\xa4",peer_name(c,fps[i])); E(e); mu_unlock(&c->mu); return -1; }
-    memset(&g,0,sizeof g); uuid_new(g.id); sanitize_name(name,g.name,sizeof g.name); scpy(g.creator_fp,c->fp,FP_LEN);
-    for(i=0;i<n && i<63;i++) scpy(g.members[g.nmembers++],fps[i],FP_LEN); scpy(g.members[g.nmembers++],c->fp,FP_LEN); group_sort(&g);
-    rand_bytes(g.key,32); g.created_ms=wall_ms(); g.key_epoch=0;
-    c->groups=(lsm_group*)xrealloc(c->groups,sizeof(lsm_group)*(c->ngroups+1)); c->groups[c->ngroups++]=g; save_groups(c);
-    payload_invite(c,&g,&p); for(i=0;i<g.nmembers;i++) if(strcmp(g.members[i],c->fp)){ uuid_new(id); send_reliable(c,g.members[i],&p,id,NULL); }
-    b_free(&p); lsm_uuid_str(g.id,gid_out); emit(c,"group\t%s\t%s",gid_out,g.name); conv_group(g.id,conv);
-    system_msg(c,conv,"\xe4\xbd\xa0\xe5\x88\x9b\xe5\xbb\xba\xe4\xba\x86\xe7\xbe\xa4\xe7\xbb\x84\xe3\x80\x8c%s\xe3\x80\x8d",g.name);
-    mu_unlock(&c->mu); return 0; }
-int lsm_group_invite(lsm_core *c, const char *gids, const char **fps, int n, char *err){ uint8_t gid[16]; lsm_group *g; int i; buf_t p={0}; uint8_t id[16];
-    mu_lock(&c->mu); if(lsm_uuid_parse(gids,gid)||!(g=group_get(c,gid))){ E("\xe7\xbe\xa4\xe7\xbb\x84\xe4\xb8\x8d\xe5\xad\x98\xe5\x9c\xa8"); mu_unlock(&c->mu); return -1; }
-    if(strcmp(g->creator_fp,c->fp)){ E("\xe5\x8f\xaa\xe6\x9c\x89\xe7\xbe\xa4\xe4\xb8\xbb\xe5\x8f\xaf\xe4\xbb\xa5\xe9\x82\x80\xe8\xaf\xb7\xe6\x88\x90\xe5\x91\x98"); mu_unlock(&c->mu); return -1; }
-    for(i=0;i<n;i++){ if(trust_of(c,fps[i])!=TRUST_TRUSTED){ E("\xe6\x88\x90\xe5\x91\x98\xe5\xb0\x9a\xe6\x9c\xaa\xe4\xbf\xa1\xe4\xbb\xbb"); mu_unlock(&c->mu); return -1; } if(!group_is_member(g,fps[i]) && g->nmembers<64) scpy(g->members[g->nmembers++],fps[i],FP_LEN); }
-    group_sort(g); g->key_epoch++; save_groups(c);
-    payload_invite(c,g,&p); for(i=0;i<g->nmembers;i++) if(strcmp(g->members[i],c->fp)){ uuid_new(id); send_reliable(c,g->members[i],&p,id,NULL); }
-    b_free(&p); emit(c,"group\t%s\t%s",gids,g->name); mu_unlock(&c->mu); return 0; }
-int lsm_group_remove(lsm_core *c, const char *gids, const char *fp, char *err){ uint8_t gid[16]; lsm_group *g;
-    mu_lock(&c->mu); if(lsm_uuid_parse(gids,gid)||!(g=group_get(c,gid))){ E("group not found"); mu_unlock(&c->mu); return -1; }
-    if(strcmp(g->creator_fp,c->fp)){ E("only creator can remove members"); mu_unlock(&c->mu); return -1; }
-    if(!strcmp(fp,c->fp)||!group_is_member(g,fp)){ E("not a member"); mu_unlock(&c->mu); return -1; }
-    remove_member_rekey(c,g,fp); mu_unlock(&c->mu); return 0; }
-int lsm_group_leave(lsm_core *c, const char *gids, char *err){ uint8_t gid[16], id[16]; lsm_group *g; int i; buf_t p={0};
-    mu_lock(&c->mu); if(lsm_uuid_parse(gids,gid)||!(g=group_get(c,gid))){ E("\xe7\xbe\xa4\xe7\xbb\x84\xe4\xb8\x8d\xe5\xad\x98\xe5\x9c\xa8"); mu_unlock(&c->mu); return -1; }
-    b_u32(&p,4); b_uuid(&p,gid); for(i=0;i<g->nmembers;i++) if(strcmp(g->members[i],c->fp)){ uuid_new(id); send_reliable(c,g->members[i],&p,id,NULL); }
-    b_free(&p); group_delete(c,gid); save_groups(c); emit(c,"group_removed\t%s",gids); mu_unlock(&c->mu); return 0; }
-/* delete one message on this device only (the peer keeps its copy); leaves a synced tombstone record */
-int lsm_delete_message(lsm_core *c, const char *id){ char conv[64]; lsm_msg *m; buf_t b={0}; mu_lock(&c->mu); m=msg_get(c,id);
-    if(!m){ mu_unlock(&c->mu); return -1; } scpy(conv,m->conv,64); msg_unlink(c,id); tomb_add(c,id);
-    bfmt(&b,"D\t%s",id); hist_append(c,&b); b_free(&b); emit(c,"msg_delete\t%s\t%s",id,conv); mu_unlock(&c->mu); return 0; }
-int lsm_clear_conversation(lsm_core *c, const char *conv){ int i, n=0; char id[40]; buf_t b={0}; mu_lock(&c->mu);
-    for(i=c->nmsgs-1;i>=0;i--){ if(strcmp(c->msgs[i].conv,conv)) continue; scpy(id,c->msgs[i].id,40); msg_unlink(c,id); tomb_add(c,id); b.n=0; bfmt(&b,"D\t%s",id); hist_append(c,&b); emit(c,"msg_delete\t%s\t%s",id,conv); n++; }
-    b_free(&b); mu_unlock(&c->mu); return n; }
+    now=mono_ms();
+    enum_ifaces(c); c->last_enum=now;
+    send_announces(c); c->last_announce=now;
+    for(i=0;i<c->nrt;i++){ c->rt[i].next_attempt=now; if(c->rt[i].failures>1) c->rt[i].failures=1; }
+    for(i=0;i<c->nmanual;i++){ c->manual[i].next_attempt=now; if(c->manual[i].failures>1) c->manual[i].failures=1; }
+    for(i=0;i<c->ncontacts;i++){
+        lsm_contact *k=&c->contacts[i];
+        if(k->online){
+            char as[64]; if(k->via_relay) scpy(as,"relay",sizeof as); else scpy(as,k->addr[0]?k->addr:"-",sizeof as);
+            emit(c,"peer\t%s\tonline\t%s\t%s\t%s",k->fp,k->name,as,k->app_version);
+            emit(c,"peer\t%s\tpath\t%s",k->fp,k->via_relay?"relay":"direct");
+        } else emit(c,"peer\t%s\toffline\trefresh",k->fp);
+    }
+    notice(c,"已刷新局域网发现与联系人状态");
+    mu_unlock(&c->mu);
+    return 0;
+}
+
+
+static uint64_t dir_bytes(const char *dir){
+    uint64_t n=0;
+#if defined(_WIN32)
+    WIN32_FIND_DATAW fd; HANDLE h; wchar_t *wd=widen(dir), pat[600];
+    _snwprintf(pat,600,L"%s\\*",wd); free(wd);
+    h=FindFirstFileW(pat,&fd); if(h==INVALID_HANDLE_VALUE) return 0;
+    do{ char name[600], sub[600]; if(fd.cFileName[0]==L'.'&&(fd.cFileName[1]==0||(fd.cFileName[1]==L'.'&&fd.cFileName[2]==0))) continue;
+        WideCharToMultiByte(CP_UTF8,0,fd.cFileName,-1,name,600,0,0);
+        if(fd.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY){ snprintf(sub,sizeof sub,"%s" PATHSEP "%s",dir,name); n+=dir_bytes(sub); }
+        else n+=(((uint64_t)fd.nFileSizeHigh)<<32)|fd.nFileSizeLow;
+    } while(FindNextFileW(h,&fd)); FindClose(h);
+#else
+    DIR *d=opendir(dir); struct dirent *e; if(!d) return 0;
+    while((e=readdir(d))){ char p[600]; struct stat st; if(!strcmp(e->d_name,".")||!strcmp(e->d_name,"..")) continue;
+        snprintf(p,sizeof p,"%s/%s",dir,e->d_name); if(stat(p,&st)) continue; if(S_ISDIR(st.st_mode)) n+=dir_bytes(p); else n+=(uint64_t)st.st_size; }
+    closedir(d);
+#endif
+    return n;
+}
+
+size_t lsm_storage_info(lsm_core *c, char *buf, size_t n){
+    buf_t b={0}; uint64_t hist=0, dl=0, part=0, orphan=0, outg=0, total=0;
+    if(!c){ if(buf&&n) buf[0]=0; return 0; }
+    mu_lock(&c->mu);
+    { char p[600]; path_join(p,sizeof p,c->data_dir,"history.dat"); FILE *f=ufopen(p,"rb"); if(f){ fseek(f,0,SEEK_END); hist=(uint64_t)ftell(f); fclose(f);} }
+    dl=dir_bytes(c->dl_dir);
+#if defined(_WIN32)
+    { WIN32_FIND_DATAW fd; HANDLE h; wchar_t *wd=widen(c->dl_dir), pat[600];
+      _snwprintf(pat,600,L"%s\\*",wd); free(wd); h=FindFirstFileW(pat,&fd);
+      if(h!=INVALID_HANDLE_VALUE){ do{ char name[600], full[600], side[600]; WideCharToMultiByte(CP_UTF8,0,fd.cFileName,-1,name,600,0,0);
+          if(name[0]=='.' && strstr(name,".part")){ uint64_t sz=(((uint64_t)fd.nFileSizeHigh)<<32)|fd.nFileSizeLow; part+=sz;
+            if(!strstr(name,".resume")){ snprintf(full,sizeof full,"%s" PATHSEP "%s",c->dl_dir,name); snprintf(side,sizeof side,"%s.resume",full); if(!uexists(side)) orphan+=sz; } }
+        } while(FindNextFileW(h,&fd)); FindClose(h); } }
+#else
+    { DIR *d=opendir(c->dl_dir); struct dirent *e; if(d){ while((e=readdir(d))){ char p[600], side[600]; struct stat st; if(e->d_name[0]!='.'||!strstr(e->d_name,".part")) continue;
+        snprintf(p,sizeof p,"%s/%s",c->dl_dir,e->d_name); if(stat(p,&st)) continue; part+=(uint64_t)st.st_size;
+        if(!strstr(e->d_name,".resume")){ snprintf(side,sizeof side,"%s.resume",p); if(access(side,F_OK)!=0) orphan+=(uint64_t)st.st_size; } } closedir(d); } }
+#endif
+    { char p[600]; path_join(p,sizeof p,c->data_dir,"outgoing"); outg=dir_bytes(p); }
+    total=dir_bytes(c->data_dir);
+    bfmt(&b,"data_dir\t%s\ndownload_dir\t%s\nhistory_bytes\t%llu\ndownloads_bytes\t%llu\npartials_bytes\t%llu\norphan_partials_bytes\t%llu\noutgoing_bytes\t%llu\ntotal_bytes\t%llu\n",
+         c->data_dir,c->dl_dir,(unsigned long long)hist,(unsigned long long)dl,(unsigned long long)part,(unsigned long long)orphan,(unsigned long long)outg,(unsigned long long)total);
+    mu_unlock(&c->mu);
+    { size_t need=b.n; if(buf&&n){ if(need>=n) need=n-1; memcpy(buf,b.p?b.p:(const uint8_t*)"",need); buf[need]=0; } b_free(&b); return need; }
+}
+
+int lsm_cleanup_storage(lsm_core *c, int orphans, int finished_transfers){
+    int removed=0,i;
+    if(!c) return 0; mu_lock(&c->mu);
+    if(orphans){
+#if defined(_WIN32)
+      WIN32_FIND_DATAW fd; HANDLE h; wchar_t *wd=widen(c->dl_dir), pat[600];
+      _snwprintf(pat,600,L"%s\\*",wd); free(wd); h=FindFirstFileW(pat,&fd);
+      if(h!=INVALID_HANDLE_VALUE){ do{ char name[600], full[600], side[600]; WideCharToMultiByte(CP_UTF8,0,fd.cFileName,-1,name,600,0,0);
+          if(name[0]=='.' && strstr(name,".part") && !strstr(name,".resume")){ snprintf(full,sizeof full,"%s" PATHSEP "%s",c->dl_dir,name); snprintf(side,sizeof side,"%s.resume",full);
+            if(!uexists(side) && !uremove(full)) removed++; } } while(FindNextFileW(h,&fd)); FindClose(h); }
+#else
+      DIR *d=opendir(c->dl_dir); struct dirent *e; if(d){ while((e=readdir(d))){ char p[600], side[600]; if(e->d_name[0]!='.'||!strstr(e->d_name,".part")||strstr(e->d_name,".resume")) continue;
+        snprintf(p,sizeof p,"%s/%s",c->dl_dir,e->d_name); snprintf(side,sizeof side,"%s.resume",p); if(access(side,F_OK)==0) continue; if(!uremove(p)) removed++; } closedir(d); }
+#endif
+    }
+    if(finished_transfers){ for(i=c->nxfers-1;i>=0;i--){ lsm_transfer *t=&c->xfers[i]; if(t->state==TS_DONE||t->state==TS_FAILED||t->state==TS_CANCELLED||t->state==TS_REJECTED){ c->xfers[i]=c->xfers[--c->nxfers]; removed++; } } }
+    mu_unlock(&c->mu); return removed;
+}
 
 static void fmt_bytes(uint64_t b, char *o, size_t n){ if(b>=1073741824ull) snprintf(o,n,"%.2f GB",b/1073741824.0); else if(b>=1048576) snprintf(o,n,"%.1f MB",b/1048576.0); else if(b>=1024) snprintf(o,n,"%.0f KB",b/1024.0); else snprintf(o,n,"%u B",(unsigned)b); }
 void lsm_transfer_status(lsm_core *c, lsm_transfer *t, char *out, size_t n){
@@ -1131,7 +1204,8 @@ void lsm_transfer_status(lsm_core *c, lsm_transfer *t, char *out, size_t n){
     if(t->state!=TS_ACTIVE || t->hashing){ snprintf(out,n,"%s%s%s",st,path[0]?" · ":"",path); if(t->state==TS_OFFERED && t->transferred){ size_t l=strlen(out); snprintf(out+l,n-l," · 已传 %s/%s (%d%%)",a,b,pct); } return; }
     fmt_bytes(t->rate_bps,r,sizeof r);
     if(t->rate_bps && t->size>t->transferred){ uint64_t s=(t->size-t->transferred)/t->rate_bps; if(s>=3600) snprintf(eta,sizeof eta," · 剩余 %uh%02um",(unsigned)(s/3600),(unsigned)(s%3600/60)); else if(s>=60) snprintf(eta,sizeof eta," · 剩余 %um%02us",(unsigned)(s/60),(unsigned)(s%60)); else snprintf(eta,sizeof eta," · 剩余 %us",(unsigned)s); }
-    snprintf(out,n,"%s %d%% · %s/%s · %s/s%s%s%s",st,pct,a,b,t->rate_bps?r:"--",eta,path[0]?" · ":"",path); }
+    if(t->out) snprintf(out,n,"%s %d%% · %s/%s%s%s",st,pct,a,b,path[0]?" · ":"",path);
+    else snprintf(out,n,"%s %d%% · %s/%s · %s/s%s%s%s",st,pct,a,b,t->rate_bps?r:"--",eta,path[0]?" · ":"",path); }
 int lsm_mark_read(lsm_core *c, const char *conv){ int i, n=0; buf_t p={0}, f={0}; uint8_t id[16];
     mu_lock(&c->mu);
     /* group the unread incoming ids by sender, one Read receipt per sender */

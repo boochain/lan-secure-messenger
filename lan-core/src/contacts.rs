@@ -24,6 +24,8 @@ pub struct Contact {
     pub trust: Trust,
     /// Hex ed25519 public key (from Hello), used to verify group signatures.
     pub ed25519_pk: String,
+    /// Hex x25519 public key (from Hello), used for retain seal / relay id.
+    pub x25519_pk: String,
     /// Last addresses we successfully connected on / were announced from (`ip:port`), newest first.
     pub last_addrs: Vec<String>,
     pub last_seen_ms: i64,

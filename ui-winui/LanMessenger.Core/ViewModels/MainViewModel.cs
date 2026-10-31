@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Net.Http;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -75,6 +76,11 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _addPeerAddress = "";
     [ObservableProperty] private string _searchText = "";
     [ObservableProperty] private bool _hasTransfersActive;
+    [ObservableProperty] private string _storageSummary = "";
+    [ObservableProperty] private string _bindLanIp = "";
+    [ObservableProperty] private string _transportMode = "lan";
+    [ObservableProperty] private string _accountUser = "";
+    [ObservableProperty] private bool _serverRetainDefault;
     [ObservableProperty] private string _transfersSummary = "";
     [ObservableProperty] private int _onlineCount;
     // redesign: chat header (avatar + presence + status line), E2E notice, unread total for the nav badge
@@ -286,6 +292,10 @@ public partial class MainViewModel : ObservableObject
         EditTargets = string.Join(Environment.NewLine, s.AnnounceTargets);
         EditInclude = string.Join(", ", s.IncludeInterfaces);
         EditExclude = string.Join(", ", s.ExcludeInterfaces);
+        BindLanIp = s.BindLanIp ?? "";
+        TransportMode = string.IsNullOrEmpty(s.TransportMode) ? "lan" : s.TransportMode;
+        AccountUser = s.AccountUser ?? "";
+        ServerRetainDefault = string.Equals(s.DefaultRetain, "server_retain", StringComparison.OrdinalIgnoreCase);
         EditMaxFileMb = s.MaxFileBytes / 1024.0 / 1024.0;
         EditCheckUpdates = s.CheckUpdates;
         EditRelayEnabled = s.RelayEnabled;
@@ -509,6 +519,7 @@ public partial class MainViewModel : ObservableObject
             var p = c.IsDm ? Peers.FirstOrDefault(x => x.Fingerprint == c.PeerFingerprint) : null;
             c.IsTrusted = p?.IsTrusted ?? false;
             c.ViaServer = p?.ViaRelay ?? false;   // 经服务器 badge; switches live when a direct link takes over
+            if (c.IsDm && p != null) c.Online = p.Online;
         }
     }
 
@@ -698,7 +709,21 @@ public partial class MainViewModel : ObservableObject
         if (!EnsureCanSendFile()) return;
         var c = SelectedConversation!;
         foreach (var p in paths)
+        {
+            try
+            {
+                var len = new FileInfo(p).Length;
+                if (len >= 100L * 1024 * 1024)
+                {
+                    var mb = len / (1024.0 * 1024.0);
+                    var ok = await _platform.ConfirmAsync("发送大文件？",
+                        $"「{Path.GetFileName(p)}」约 {mb:0.#} MB。大文件需双方保持在线，传输时间较长。是否继续？");
+                    if (!ok) continue;
+                }
+            }
+            catch { /* size probe best-effort */ }
             await SafeCall(x => x.SendFileAsync(c.Id, p));
+        }
     }
 
     /// <summary>Clear this conversation's history on this device (caller confirms).</summary>
@@ -719,17 +744,68 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void OpenMessageFile(MessageItem? m)
+    private async Task OpenMessageFile(MessageItem? m)
     {
         if (m == null || string.IsNullOrEmpty(m.FilePath)) return;
-        if (File.Exists(m.FilePath)) _platform.OpenPath(m.FilePath);
-        else ShowStatus("文件尚未接收完成或已被移动", true);
+        if (!File.Exists(m.FilePath)) { ShowStatus("文件尚未接收完成或已被移动", true); return; }
+        if (FileRisk.IsDangerous(m.FilePath))
+        {
+            var ok = await _platform.ConfirmAsync("打开可执行/脚本文件？",
+                $"“{m.FileName}”可能是可执行或脚本文件。仅在信任来源时打开。\n\n仍要打开吗？");
+            if (!ok) { _platform.RevealInFolder(m.FilePath); ShowStatus("已在文件夹中显示，未直接打开"); return; }
+        }
+        _platform.OpenPath(m.FilePath);
     }
 
     [RelayCommand]
     private void RevealMessageFile(MessageItem? m)
     {
         if (m != null && !string.IsNullOrEmpty(m.FilePath)) _platform.RevealInFolder(m.FilePath);
+    }
+
+
+    [RelayCommand]
+    private async Task RefreshStorage()
+    {
+        await SafeCall(async c =>
+        {
+            var s = await c.GetStorageAsync();
+            string FmtB(ulong n) => Fmt.Bytes(n);
+            ulong U(string k) => s.TryGetProperty(k, out var v) && v.TryGetUInt64(out var n) ? n : 0;
+            _ui.Post(() => StorageSummary =
+                $"合计 {FmtB(U("total_bytes"))} · 下载 {FmtB(U("downloads_bytes"))} · 临时/半成品 {FmtB(U("partials_bytes"))}（孤儿 {FmtB(U("orphan_partials_bytes"))}） · 历史 {FmtB(U("history_bytes"))}");
+        });
+    }
+
+    [RelayCommand]
+    private async Task CleanupStorage()
+    {
+        await SafeCall(async c =>
+        {
+            var r = await c.CleanupStorageAsync(true, true, true);
+            ulong removed = r.TryGetProperty("removed_bytes", out var b) && b.TryGetUInt64(out var n) ? n : 0;
+            uint files = r.TryGetProperty("removed_files", out var f) && f.TryGetUInt32(out var m) ? m : 0;
+            _ui.Post(() =>
+            {
+                ShowStatus($"已清理 {files} 项，释放 {Fmt.Bytes(removed)}");
+                _ = RefreshStorageCommand.ExecuteAsync(null);
+            });
+        });
+    }
+
+    [RelayCommand]
+    private async Task RefreshPeers()
+    {
+        await SafeCall(async c =>
+        {
+            await c.RefreshPeersAsync();
+            var snap = await c.GetSnapshotAsync();
+            _ui.Post(() =>
+            {
+                ApplySnapshot(snap);
+                ShowStatus("已刷新联系人列表");
+            });
+        });
     }
 
     [RelayCommand]
@@ -809,9 +885,16 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private Task RetryTransferAsync(TransferItem? t) => t == null ? Task.CompletedTask : SafeCall(x => x.RetryTransferAsync(t.Id));
     [RelayCommand]
-    private void OpenTransfer(TransferItem? t)
+    private async Task OpenTransfer(TransferItem? t)
     {
-        if (t != null && t.CanOpen) _platform.OpenPath(t.Path);
+        if (t == null || !t.CanOpen || string.IsNullOrEmpty(t.Path)) return;
+        if (FileRisk.IsDangerous(t.Path))
+        {
+            var ok = await _platform.ConfirmAsync("打开可执行/脚本文件？",
+                $"“{t.Name}”可能是可执行或脚本文件。仅在信任来源时打开。\n\n仍要打开吗？");
+            if (!ok) { _platform.RevealInFolder(t.Path); ShowStatus("已在文件夹中显示，未直接打开"); return; }
+        }
+        _platform.OpenPath(t.Path);
     }
     [RelayCommand]
     private void RevealTransfer(TransferItem? t)
@@ -868,6 +951,10 @@ public partial class MainViewModel : ObservableObject
             ["announce_targets"] = SplitList(EditTargets),
             ["include_interfaces"] = SplitList(EditInclude),
             ["exclude_interfaces"] = SplitList(EditExclude),
+            ["bind_lan_ip"] = BindLanIp?.Trim() ?? "",
+            ["transport_mode"] = TransportMode ?? "lan",
+            ["account_user"] = AccountUser?.Trim() ?? "",
+            ["default_retain"] = ServerRetainDefault ? "server_retain" : "ends_only",
             ["max_file_bytes"] = (ulong)Math.Max(1, EditMaxFileMb) * 1024UL * 1024UL,
             ["check_updates"] = EditCheckUpdates,
         };
@@ -1096,4 +1183,36 @@ public partial class MainViewModel : ObservableObject
     }
 
     public Task RemoveManualPeerAsync(string addr) => SafeCall(async x => { await x.RemoveManualPeerAsync(addr); await RefreshDiagnosticsAsync(true); });
+
+    public async Task AccountRegisterAsync(string password)
+    {
+        if (string.IsNullOrWhiteSpace(AccountUser) || string.IsNullOrEmpty(password)) { ShowStatus("请填写账号用户名与密码", true); return; }
+        await SafeCall(x => x.AccountRegisterAsync(AccountUser.Trim(), password), "账号已注册");
+    }
+
+    public async Task AccountLoginAsync(string password)
+    {
+        if (string.IsNullOrWhiteSpace(AccountUser) || string.IsNullOrEmpty(password)) { ShowStatus("请填写账号用户名与密码", true); return; }
+        await SafeCall(x => x.AccountLoginAsync(AccountUser.Trim(), password), "账号已登录");
+    }
+
+    public async Task AccountBackupPutAsync(string password)
+    {
+        if (string.IsNullOrWhiteSpace(AccountUser) || string.IsNullOrEmpty(password)) { ShowStatus("请填写账号用户名与备份密码", true); return; }
+        await SafeCall(x => x.AccountBackupPutAsync(AccountUser.Trim(), password), "身份备份已上传到中转");
+    }
+
+    public async Task AccountBackupGetAsync(string password)
+    {
+        if (string.IsNullOrWhiteSpace(AccountUser) || string.IsNullOrEmpty(password)) { ShowStatus("请填写账号用户名与备份密码", true); return; }
+        await SafeCall(x => x.AccountBackupGetAsync(AccountUser.Trim(), password), "身份已恢复，请重启应用");
+    }
+
+    public async Task AccountRevokeAsync(string password)
+    {
+        if (string.IsNullOrWhiteSpace(AccountUser) || string.IsNullOrEmpty(password)) { ShowStatus("请填写账号用户名与密码", true); return; }
+        var ok = await _platform.ConfirmAsync("吊销设备指纹？", "将清除中转上登记的设备指纹，需重新登录后才能用账号功能。");
+        if (!ok) return;
+        await SafeCall(x => x.AccountRevokeAsync(AccountUser.Trim(), password), "已吊销设备指纹");
+    }
 }

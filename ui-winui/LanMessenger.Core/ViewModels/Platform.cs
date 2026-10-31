@@ -22,9 +22,25 @@ public interface IPlatform
     Task<string?> PickOpenFileAsync();
     void OpenPath(string path);
     void RevealInFolder(string path);
+    /// <summary>Modal yes/no. Returns true when the user confirms.</summary>
+    Task<bool> ConfirmAsync(string title, string message);
     void CopyToClipboard(string text);
     void ShowToast(string title, string body, string conversationId);
     bool IsWindowActive { get; }
+}
+
+public static class FileRisk
+{
+    static readonly HashSet<string> Dangerous = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".exe",".bat",".cmd",".com",".msi",".scr",".ps1",".vbs",".js",".jse",".wsf",".wsh",
+        ".cpl",".msc",".jar",".apk",".app",".dmg",".pkg",".sh",".bash",".command",".reg",".lnk",".hta"
+    };
+    public static bool IsDangerous(string path)
+    {
+        var ext = System.IO.Path.GetExtension(path ?? "");
+        return ext.Length > 0 && Dangerous.Contains(ext);
+    }
 }
 
 public static class Fmt

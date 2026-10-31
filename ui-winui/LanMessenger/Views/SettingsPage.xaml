@@ -128,6 +128,55 @@
                 </StackPanel>
             </Border>
 
+
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="存储管理" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock Text="{x:Bind VM.StorageSummary, Mode=OneWay}" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="刷新用量" Command="{x:Bind VM.RefreshStorageCommand}" />
+                        <Button Content="清理半成品与已完成传输" Command="{x:Bind VM.CleanupStorageCommand}"
+                                ToolTipService.ToolTip="删除孤儿 .part、失败残留，并清除已完成的传输列表项" />
+                    </StackPanel>
+                    <TextBlock Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap"
+                               Text="传输失败或取消的未续传半成品会自动删除；可续传的中断文件会保留直到成功或手动清理。" />
+                </StackPanel>
+            </Border>
+
+                        <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="局域网与 VPN" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap"
+                               Text="绑定本机局域网 IPv4（或 auto）可让发现/监听/拨号绕过 VPN 虚拟网卡。留空则使用系统默认路由。" />
+                    <TextBox Header="局域网绑定 IP" Text="{x:Bind VM.BindLanIp, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="留空 / auto / 192.168.x.x" />
+                    <TextBlock Text="传输与账号" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,8,0,0" />
+                    <ComboBox Header="传输模式" SelectedValue="{x:Bind VM.TransportMode, Mode=TwoWay}" SelectedValuePath="Tag" Width="280">
+                        <ComboBoxItem Content="仅局域网" Tag="lan" />
+                        <ComboBoxItem Content="服务器 + 局域网（对等）" Tag="server_lan" />
+                    </ComboBox>
+                    <TextBox Header="中转账号用户名（可选，用于指纹恢复）" Text="{x:Bind VM.AccountUser, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="留空=匿名中转" />
+                    <PasswordBox x:Name="AccountPassBox" Header="中转账号密码" PasswordChanged="AccountPass_Changed" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="注册账号" Click="AccountRegister_Click" />
+                        <Button Content="登录账号" Click="AccountLogin_Click" />
+                        <Button Content="上传身份备份" Click="AccountBackupPut_Click" />
+                        <Button Content="恢复身份备份" Click="AccountBackupGet_Click" />
+                        <Button Content="吊销设备指纹" Click="AccountRevoke_Click" />
+                    </StackPanel>
+                    <ToggleSwitch Header="新消息默认留在服务器（需中转账号）" IsOn="{x:Bind VM.ServerRetainDefault, Mode=TwoWay}" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="通知" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock x:Name="NotifyStatusText" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap"
+                               Text="正在检测通知通道…" />
+                    <TextBlock Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap"
+                               Text="新消息在窗口未聚焦或未打开该会话时弹出系统通知；若系统通知不可用，会尝试托盘气泡提示。" />
+                </StackPanel>
+            </Border>
+
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
                     <TextBlock Text="关于" Style="{StaticResource SubtitleTextBlockStyle}" />
@@ -146,6 +195,7 @@
                     </StackPanel>
                 </StackPanel>
             </Border>
-        </StackPanel>
+
+            </StackPanel>
     </ScrollViewer>
 </Page>

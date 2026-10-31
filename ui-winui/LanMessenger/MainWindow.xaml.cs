@@ -58,6 +58,8 @@ public sealed partial class MainWindow : Window
             _active = e.WindowActivationState != WindowActivationState.Deactivated;
             // Inactive title: secondary text brush (theme-aware), never a fixed colour.
             AppTitleText.Style = (Style)Application.Current.Resources[_active ? "TitleBarActiveTextStyle" : "TitleBarInactiveTextStyle"];
+            if (ConnectionStatusText != null)
+                ConnectionStatusText.Style = (Style)Application.Current.Resources[_active ? "TitleBarActiveTextStyle" : "TitleBarInactiveTextStyle"];
             if (_active) VM.OnWindowActivated();
         };
 
@@ -148,6 +150,19 @@ public sealed partial class MainWindow : Window
         {
             CrashLog.Write("tray", e);
             _tray = null;
+        }
+    }
+
+    /// <summary>Fallback when App SDK toasts are unavailable (W12).</summary>
+    internal void ShowTrayTip(string title, string body)
+    {
+        try
+        {
+            _tray?.ShowNotification(title ?? "", body ?? "", H.NotifyIcon.Core.NotificationIcon.Info);
+        }
+        catch (Exception e)
+        {
+            CrashLog.Write("tray tip", e);
         }
     }
 

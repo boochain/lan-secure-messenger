@@ -27,7 +27,7 @@ static char *U(JNIEnv *e, jstring s){ jclass sc; jmethodID gb; jbyteArray a; jsi
 
 JNIEXPORT jstring JNICALL FN(start)(JNIEnv *e, jclass k, jstring dir, jstring name, jstring targets, jint port){
     lsm_opts o; char err[256]=""; char *d=U(e,dir), *n=U(e,name), *t=U(e,targets); (void)k;
-    if(C) return J(e,""); memset(&o,0,sizeof o); o.data_dir=d; o.name=n; o.announce_targets=*t?t:NULL; o.listen_port=port;
+    if(C) return J(e,""); memset(&o,0,sizeof o); o.data_dir=d; o.name=n; o.announce_targets=*t?t:NULL; o.listen_port=port; o.bind_lan_ip="auto";
     C=lsm_start(&o,err,sizeof err); /* the core keeps the opts pointers: intentionally not freed */ if(!C){ free(d); free(n); free(t); } return J(e,C?"":(err[0]?err:"start failed")); }
 JNIEXPORT void JNICALL FN(stop)(JNIEnv *e, jclass k){ (void)e;(void)k; if(C){ lsm_stop(C); C=NULL; } }
 JNIEXPORT jboolean JNICALL FN(running)(JNIEnv *e, jclass k){ (void)e;(void)k; return C!=NULL; }
@@ -71,6 +71,7 @@ JNIEXPORT jstring JNICALL FN(messages)(JNIEnv *e, jclass k, jstring conv){
 JNIEXPORT jstring JNICALL FN(sendText)(JNIEnv *e, jclass k, jstring conv, jstring text){ char id[40], *c=U(e,conv), *t=U(e,text), err[256]=""; int rc=C?lsm_send_text(C,c,t,id,err):1; (void)k; free(c); free(t); return J(e,rc?(err[0]?err:"failed"):""); }
 JNIEXPORT jstring JNICALL FN(sendFile)(JNIEnv *e, jclass k, jstring conv, jstring path){ char *c=U(e,conv), *p=U(e,path), err[256]=""; int rc=C?lsm_send_file(C,c,p,err):1; (void)k; free(c); free(p); return J(e,rc?(err[0]?err:"failed"):""); }
 JNIEXPORT jstring JNICALL FN(addAddr)(JNIEnv *e, jclass k, jstring a){ char *s=U(e,a), err[256]=""; int rc=C?lsm_add_addr(C,s,err):1; (void)k; free(s); return J(e,rc?(err[0]?err:"failed"):""); }
+JNIEXPORT void JNICALL FN(refreshPeers)(JNIEnv *e, jclass k){ (void)e; (void)k; if(C) lsm_refresh_peers(C); }
 JNIEXPORT jstring JNICALL FN(setTrust)(JNIEnv *e, jclass k, jstring fp, jint t){ char *s=U(e,fp), err[256]=""; int rc=C?lsm_set_trust(C,s,t,err):1; (void)k; free(s); return J(e,rc?(err[0]?err:"failed"):""); }
 JNIEXPORT jstring JNICALL FN(setMuted)(JNIEnv *e, jclass k, jstring fp, jboolean m){ char *s=U(e,fp), err[256]=""; int rc=C?lsm_set_muted(C,s,m?1:0,err):1; (void)k; free(s); return J(e,rc?(err[0]?err:"failed"):""); }
 JNIEXPORT jboolean JNICALL FN(isMuted)(JNIEnv *e, jclass k, jstring fp){ char *s=U(e,fp); int m=0, i, n; lsm_contact *ks; (void)k; if(C){ lsm_lock(C); n=lsm_contacts(C,&ks); for(i=0;i<n;i++) if(!strcmp(ks[i].fp,s)){ m=ks[i].muted; break; } lsm_unlock(C); } free(s); return m?JNI_TRUE:JNI_FALSE; }
@@ -91,3 +92,5 @@ JNIEXPORT void JNICALL FN(setName)(JNIEnv *e, jclass k, jstring n){ char *s=U(e,
 JNIEXPORT jstring JNICALL FN(relaySet)(JNIEnv *e, jclass k, jboolean on, jstring host, jint port, jstring pass){ char *h=U(e,host), *pw=pass?U(e,pass):NULL, err[256]=""; int rc=C?lsm_relay_set(C,on?1:0,h,port,pw,err):1; (void)k;
     free(h); if(pw){ memset(pw,0,strlen(pw)); free(pw); } return J(e,rc?(err[0]?err:"failed"):""); }
 JNIEXPORT jstring JNICALL FN(cancelTransfer)(JNIEnv *e, jclass k, jstring tid){ char *s=U(e,tid), err[256]=""; int rc=C?lsm_transfer_cancel(C,s,err):1; (void)k; free(s); return J(e,rc?(err[0]?err:"failed"):""); }
+JNIEXPORT jstring JNICALL FN(storageInfo)(JNIEnv *e, jclass k){ size_t n; char *b; jstring r; (void)k; if(!C) return J(e,""); n=lsm_storage_info(C,NULL,0); b=(char*)malloc(n+1); if(!b) return J(e,""); lsm_storage_info(C,b,n+1); r=J(e,b); free(b); return r; }
+JNIEXPORT jint JNICALL FN(cleanupStorage)(JNIEnv *e, jclass k, jboolean orphans, jboolean finished){ (void)e;(void)k; return C?lsm_cleanup_storage(C,orphans?1:0,finished?1:0):0; }

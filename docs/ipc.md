@@ -57,6 +57,9 @@ because every event carries the full object.)
 | `hello` | `{}` | `{daemon_version, protocol, ipc_version, fingerprint}` |
 | `subscribe` | `{}` | `{ok}` then event stream |
 | `get_snapshot` | `{}` | `Snapshot` |
+| `refresh_peers` | `{}` | `{ok}` — force LAN announce + clear dial backoff + re-emit peer/conversation events |
+| `get_storage` | `{}` | `{data_dir,download_dir,history_bytes,downloads_bytes,partials_bytes,orphan_partials_bytes,outgoing_bytes,total_bytes}` |
+| `cleanup_storage` | `{failed_partials?,orphans?,finished_transfers?}` | `{ok,removed_bytes,removed_files,storage}` — delete orphan/failed `.part` piles and/or finished transfer rows |
 | `get_messages` | `{conversation, before_ts?, limit?=200}` | `Message[]` (oldest first) |
 | `send_text` | `{conversation, body}` | `Message` (status `queued` if peer offline — delivered automatically later) |
 | `send_file` | `{conversation, path}` | `Transfer` (first recipient; groups fan out) |
@@ -75,6 +78,12 @@ because every event carries the full object.)
 | `leave_group` | `{group_id}` | `{ok}` |
 | `search` | `{query, limit?}` | `Message[]` |
 | `backup` / `restore` | `{path, password}` | `{ok}` / `{ok, restart_required:true}` |
+| `account_register` / `account_login` | `{user, password}` | `{ok}` — relay online required |
+| `account_backup_put` / `account_backup_get` | `{user, password}` | `{ok}` / `{ok, restart_required:true}` — identity via relay |
+| `account_revoke` | `{user, password}` | `{ok}` — clear stored device fingerprint on relay |
+| `retain_store` | `{id, blob_b64|hex, ttl_secs?, dest_fingerprint?}` | `{ok}` — opaque E2E blob on relay |
+| `retain_fetch` / `retain_del` | `{id}` | `{ok, blob_hex?}` / `{ok}` |
+| `send_text` / `send_file` | `…, retain?:bool` | per-item server-retain override (default from settings) |
 | `pin_offer` | `{}` | `{pin, expires_in_secs}` |
 | `pin_pair` | `{fingerprint, pin}` | `{ok:bool}` (both sides become trusted on success) |
 | `update_settings` | `{settings:{…partial Settings…}}` | `{ok, restart_required}` |

@@ -15,6 +15,10 @@ public sealed class DaemonClient
     public Task<JsonElement> HelloAsync() => Call("hello", new { client = "LanMessenger", version = 1 });
     public Task SubscribeAsync() => Call("subscribe");
     public Task<Snapshot> GetSnapshotAsync() => Call<Snapshot>("get_snapshot");
+    public Task RefreshPeersAsync() => Call("refresh_peers");
+    public Task<JsonElement> GetStorageAsync() => Call("get_storage");
+    public Task<JsonElement> CleanupStorageAsync(bool failedPartials = true, bool orphans = true, bool finishedTransfers = false)
+        => Call("cleanup_storage", new { failed_partials = failedPartials, orphans, finished_transfers = finishedTransfers });
     public Task<List<Message>> GetMessagesAsync(string conversation, int limit = 200, long? beforeTs = null)
         => Call<List<Message>>("get_messages", new { conversation, limit, before_ts = beforeTs });
     public Task<Message> SendTextAsync(string conversation, string body) => Call<Message>("send_text", new { conversation, body });
@@ -40,6 +44,11 @@ public sealed class DaemonClient
     public Task LeaveGroupAsync(string groupId) => Call("leave_group", new { group_id = groupId });
     public Task<List<Message>> SearchAsync(string query, int limit = 100) => Call<List<Message>>("search", new { query, limit });
     public Task BackupAsync(string path, string password) => Call("backup", new { path, password });
+    public Task AccountRegisterAsync(string user, string password) => Call("account_register", new { user, password });
+    public Task AccountLoginAsync(string user, string password) => Call("account_login", new { user, password });
+    public Task AccountBackupPutAsync(string user, string password) => Call("account_backup_put", new { user, password });
+    public Task AccountBackupGetAsync(string user, string password) => Call("account_backup_get", new { user, password });
+    public Task AccountRevokeAsync(string user, string password) => Call("account_revoke", new { user, password });
     public Task<JsonElement> RestoreAsync(string path, string password) => Call("restore", new { path, password });
     public async Task<string> PinOfferAsync() => (await Call("pin_offer")).GetProperty("pin").GetString() ?? "";
     public async Task<bool> PinPairAsync(string fingerprint, string pin) => (await Call("pin_pair", new { fingerprint, pin })).GetProperty("ok").GetBoolean();

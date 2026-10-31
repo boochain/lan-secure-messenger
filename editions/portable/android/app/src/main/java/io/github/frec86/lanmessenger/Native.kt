@@ -12,6 +12,7 @@ object Native {
     @JvmStatic external fun sendText(conv: String, text: String): String
     @JvmStatic external fun sendFile(conv: String, path: String): String
     @JvmStatic external fun addAddr(addr: String): String
+    @JvmStatic external fun refreshPeers()
     @JvmStatic external fun setTrust(fp: String, trust: Int): String
     @JvmStatic external fun setMuted(fp: String, muted: Boolean): String
     @JvmStatic external fun isMuted(fp: String): Boolean
@@ -28,6 +29,8 @@ object Native {
     @JvmStatic external fun clearConversation(conv: String): Int
     @JvmStatic external fun setName(name: String)
     @JvmStatic external fun cancelTransfer(tid: String): String
+    @JvmStatic external fun storageInfo(): String
+    @JvmStatic external fun cleanupStorage(orphans: Boolean, finishedTransfers: Boolean): Int
     /** Relay server settings. [pass] null = keep the stored passphrase, "" = clear it. Write-only: read [RelayInfo.hasPassphrase]. */
     @JvmStatic external fun relaySet(enabled: Boolean, host: String, port: Int, pass: String?): String
 }

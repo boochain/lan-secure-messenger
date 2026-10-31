@@ -637,6 +637,12 @@ impl Engine {
         if size > self.settings.max_file_bytes {
             return Err(RpcError::invalid(format!("文件过大 (上限 {} MB)", self.settings.max_file_bytes / 1024 / 1024)));
         }
+        if size >= 100 * 1024 * 1024 {
+            let mb = size as f64 / (1024.0 * 1024.0);
+            self.notice("info", &format!(
+                "正在发送大文件（{mb:.0} MB），请保持双方在线；可在设置中调整大小上限。"
+            ));
+        }
         let name = sanitize_filename(&path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default());
         let mime = mime_guess(&name);
         let (recipients, group_id): (Vec<String>, Option<Uuid>) = if let Some((_, only)) = &reuse_msg {
@@ -823,9 +829,15 @@ impl Engine {
         t.error = why.to_string();
         t.cancel.store(true, Ordering::Relaxed);
         t.credit = None;
+        // Dropping chunk_tx ends recv_task → RecvInterrupted deletes .part when state != Offered+resumable.
+        // Also clear any held resume_part (Offered/paused) so cancel never leaves orphans.
+        let drop_part = t.resume_part.take().map(|r| r.part);
         t.chunk_tx = None;
         let fp = t.peer_fp.clone();
         self.send_ctrl(&fp, Frame::FileCancel { tid, reason: why.to_string() });
+        if let Some(part) = drop_part {
+            remove_part_and_sidecar(&part, false);
+        }
         self.emit_transfer(tid, true);
         self.mark_file_msg_failed(tid);
         Ok(())
@@ -1107,7 +1119,11 @@ impl Engine {
                     t.error = format!("对方取消: {reason}");
                     t.cancel.store(true, Ordering::Relaxed);
                     t.credit = None;
+                    let drop_part = t.resume_part.take().map(|r| r.part);
                     t.chunk_tx = None;
+                    if let Some(part) = drop_part {
+                        remove_part_and_sidecar(&part, false);
+                    }
                     self.emit_transfer(tid, true);
                     self.mark_file_msg_failed(tid);
                 }

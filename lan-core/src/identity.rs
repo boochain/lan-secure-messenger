@@ -170,6 +170,10 @@ impl Identity {
         *self.inner.x25519_public.as_bytes()
     }
 
+    pub fn x25519_secret_bytes(&self) -> [u8; 32] {
+        self.inner.x25519_secret.to_bytes()
+    }
+
     pub fn ed25519_public_bytes(&self) -> [u8; 32] {
         self.inner.ed25519_verifying.to_bytes()
     }

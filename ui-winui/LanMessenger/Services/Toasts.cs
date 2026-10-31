@@ -8,6 +8,7 @@ namespace LanMessenger.Services;
 public static class Toasts
 {
     private static bool _ok;
+    public static bool Available => _ok;
 
     public static void Init(DispatcherQueue dq)
     {
@@ -36,7 +37,12 @@ public static class Toasts
 
     public static void Show(string title, string body, string conversationId)
     {
-        if (!_ok) return;
+        if (!_ok)
+        {
+            CrashLog.Write("toast unavailable", new InvalidOperationException("AppNotificationManager not registered; check Windows App SDK / notification permission"));
+            App.MainWin?.ShowTrayTip(title, body);
+            return;
+        }
         try
         {
             var n = new AppNotificationBuilder()
@@ -49,6 +55,7 @@ public static class Toasts
         catch (Exception e)
         {
             CrashLog.Write("toast show", e);
+            App.MainWin?.ShowTrayTip(title, body);
         }
     }
 

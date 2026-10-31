@@ -26,15 +26,17 @@ window, .sidebar-pane { background-color: @lsm_window; }
 .chat-sub { color: @lsm_fg2; font-size: 13px; }
 .chatbg, .chatbg > viewport { background-color: @lsm_chat; }
 .chatlist { padding: 12px 16px; }
-.msg-row { margin-top: 3px; }
-.bubble { border-radius: 12px; padding: 7px 10px; }
+.msg-row { margin-top: 3px; transition: opacity 120ms ease-out; }
+.msg-row.enter { opacity: 0; }
+.bubble { border-radius: 12px; padding: 7px 10px; max-width: min(720px, 92%); }
+.bubble label, .bubble .body { wrap-mode: word-char; }
 .bubble.first { margin-top: 9px; }
 .bubble.theirs { background-color: @lsm_theirs; color: @lsm_theirsfg; box-shadow: 0 1px 1px alpha(black, 0.10); }
 .bubble.mine { background-color: @lsm_mine; color: @lsm_minefg; }
 /* image bubbles: the photo itself is the bubble - no grey mat, just a 1px edge (mockup) */
 .bubble.image, .bubble.image.theirs, .bubble.image.mine { padding: 0; background-color: transparent; box-shadow: none; border: 1px solid @lsm_stroke; border-radius: 12px; }
 .bubble .thumb { border-radius: 11px; }
-.bubble.file { min-width: 264px; }
+.bubble.file { min-width: 264px; max-width: min(480px, 92%); }
 .bubble .sender { color: @lsm_accenttext; font-weight: 700; font-size: 0.85em; }
 .bubble.theirs .meta, .bubble.theirs .file-size { color: @lsm_meta; font-size: 12px; }
 .bubble.mine .meta, .bubble.mine .file-size { color: @lsm_minemeta; font-size: 12px; }
@@ -75,3 +77,6 @@ popover entry { background-color: @lsm_field; border: 1px solid @lsm_fieldborder
 progressbar.xfer > trough { min-height: 3px; background-color: @lsm_stroke; border-radius: 2px; margin-top: 4px; }
 progressbar.xfer > trough > progress { min-height: 3px; background-color: @lsm_accent; border-radius: 2px; }
 progressbar.xfer.paused > trough > progress { background-color: @lsm_fg2; }
+
+.meta.read { color: @lsm_read; }
+.bubble.mine .meta.read { color: @lsm_read; }

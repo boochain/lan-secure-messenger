@@ -25,6 +25,8 @@ pub struct ServerCfg {
     pub salt: String,
     /// Local status endpoint (状态接口), "" disables. Default 127.0.0.1:<port+1>.
     pub status_addr: String,
+    /// Directory for optional accounts + retain blobs (empty = ./relay-data).
+    pub data_dir: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,7 +61,7 @@ impl Default for Config {
 }
 impl Default for ServerCfg {
     fn default() -> Self {
-        ServerCfg { bind: "0.0.0.0".into(), port: 9443, passphrase: String::new(), salt: String::new(), status_addr: String::new() }
+        ServerCfg { bind: "0.0.0.0".into(), port: 9443, passphrase: String::new(), salt: String::new(), status_addr: String::new(), data_dir: String::new() }
     }
 }
 impl Default for Limits {
