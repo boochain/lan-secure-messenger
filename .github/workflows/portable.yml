@@ -34,10 +34,6 @@ jobs:
     container: ${{ matrix.image }}
     steps:
       - uses: actions/checkout@v4
-      - name: Interop under wine, P1 (x86 exe <-> current lan-daemon, CAP_EXT reply/react/edit/recall)
-        run: sudo -E env "PATH=$PATH" python3 tests/interop.py --p1 --rust-bin $GITHUB_WORKSPACE/target/release --exe build/x86/lanmsg-cli.exe --work /tmp/lsm-interop-p1
-      - name: C unit tests (filename vectors, history query, ext JSON/reactions)
-        run: cc -std=gnu99 -Isrc -DLSM_APP_VERSION='"test"' -o /tmp/c_unit_test tests/c_unit_test.c src/xcrypto.c src/third_party/monocypher.c src/third_party/monocypher-ed25519.c -lpthread && /tmp/c_unit_test $GITHUB_WORKSPACE/lan-core/tests/data/filename_vectors.json
       - uses: actions/download-artifact@v4
         with: { name: linux-x86_64, path: editions/portable/dist/linux }
       - name: Launch AppImage GUI under Xvfb + static CLI
@@ -85,6 +81,10 @@ jobs:
         run: sudo -E env "PATH=$PATH" python3 tests/interop.py --rust-bin reference/v0.5/target/release --exe build/x86/lanmsg-cli.exe --work /tmp/lsm-interop
       - name: Interop native (same core, Linux build)
         run: sudo -E env "PATH=$PATH" python3 tests/interop.py --native --rust-bin reference/v0.5/target/release --exe build/linux/lanmsg-cli --work /tmp/lsm-interop-native
+      - name: Interop under wine, P1 (x86 exe <-> current lan-daemon, CAP_EXT reply/react/edit/recall)
+        run: sudo -E env "PATH=$PATH" python3 tests/interop.py --p1 --rust-bin $GITHUB_WORKSPACE/target/release --exe build/x86/lanmsg-cli.exe --work /tmp/lsm-interop-p1
+      - name: C unit tests (filename vectors, history query, ext JSON/reactions)
+        run: cc -std=gnu99 -Isrc -DLSM_APP_VERSION='"test"' -o /tmp/c_unit_test tests/c_unit_test.c src/xcrypto.c src/third_party/monocypher.c src/third_party/monocypher-ed25519.c -lpthread && /tmp/c_unit_test $GITHUB_WORKSPACE/lan-core/tests/data/filename_vectors.json
       - uses: actions/download-artifact@v4
         with: { name: linux-x86_64, path: editions/portable/dist/linux }
       - name: Cross-platform interop matrix (v0.5 Rust, C native, XP exe under wine, Linux edition CLI; Android slot)

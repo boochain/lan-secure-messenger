@@ -19,7 +19,7 @@ import os, re, sys, pefile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SPECDIR = os.path.join(HERE, "xp_exports", "reactos")
-XP_DLLS = {"kernel32","user32","gdi32","ws2_32","advapi32","shell32","comctl32","comdlg32","iphlpapi","msvcrt"}
+XP_DLLS = {"kernel32","user32","gdi32","ws2_32","advapi32","shell32","comctl32","comdlg32","iphlpapi","msvcrt","winmm"}
 DENY = {"GetTickCount64","inet_pton","inet_ntop","InitializeConditionVariable","SleepConditionVariableCS","WakeConditionVariable",
         "InitializeSRWLock","AcquireSRWLockExclusive","AcquireSRWLockShared","CancelIoEx","InitOnceExecuteOnce","GetAdaptersAddresses_Vista",
         "BCryptGenRandom","BCryptOpenAlgorithmProvider","WSAPoll","GetFileInformationByHandleEx","CreateSymbolicLinkW","FlsAlloc_Vista",

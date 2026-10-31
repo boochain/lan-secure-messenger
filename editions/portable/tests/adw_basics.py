@@ -93,7 +93,7 @@ xdo("mousemove", "428", "167", "click", "3"); time.sleep(1.2); snap("adw-basics-
 xdo("mousemove", "600", "663", "click", "1"); time.sleep(0.4); xdo("key", "ctrl+v"); time.sleep(0.4); xdo("key", "Return")
 check(bool(wait(lambda: any("\tin\t" in l and "基础检查：请回复。" in l for l in A.lines), 8)), "G10 bubble menu 复制 copies the text (pasted with Ctrl+V and received by the peer)")
 # G13 destructive action confirmed: bubble menu -> 删除这条消息（仅本机）… opens an alert dialog, Esc cancels
-xdo("mousemove", "428", "167", "click", "3"); time.sleep(1.2); xdo("key", "Down"); time.sleep(0.3); xdo("key", "Return"); time.sleep(1.2); d = fresh(g, "dialogs"); snap("adw-basics-delete-confirm")
+xdo("mousemove", "428", "167", "click", "3"); time.sleep(1.2); xdo("key", "alt+d"); time.sleep(1.2); d = fresh(g, "dialogs"); snap("adw-basics-delete-confirm")
 xdo("key", "Escape"); time.sleep(1); d2 = fresh(g, "dialogs")
 check(d == "1" and d2 == "0", f"G13 删除这条消息 asks for confirmation, Esc cancels (dialogs {d} -> {d2})")
 # G11 tooltip on the send button
