@@ -71,7 +71,7 @@ because every event carries the full object.)
 | `set_display_name` | `{name}` | `Me` |
 | `complete_first_run` | `{name?}` | `Me` |
 | `set_muted` | `{conversation, muted}` | `{ok}` |
-| `mark_read` | `{conversation}` | `{ok}` (sends read receipts for DMs) |
+| `mark_read` | `{conversation}` | `{ok}` (DM + group: fans out `Payload::Read` to online peers/members) |
 | `create_group` | `{name, members:[fp]}` | `Group` (members must be trusted) |
 | `invite_to_group` | `{group_id, members:[fp]}` | `Group` (creator only) |
 | `remove_group_member` | `{group_id, fingerprint}` | `{ok}` (creator only; rotates group key) |

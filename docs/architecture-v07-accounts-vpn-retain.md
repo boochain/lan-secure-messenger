@@ -60,4 +60,6 @@
 ## 残留（联调/增强）
 - [x] 吊销设备指纹 UI + LIST 时 GC 过期 blob
 - [x] 收端自动 FETCH（relay online + 45s 轮询 LIST_RETAIN）
+- [x] 群已读回执：`mark_read` 对群会话向在线成员扇出 `Payload::Read`（协议本就支持）
+- [x] 大文件 >100MB 发送确认 + Android/桌面通知路径
 - [ ] 群消息 retain（默认仍 ends-only）
