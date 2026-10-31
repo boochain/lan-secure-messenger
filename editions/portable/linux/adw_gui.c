@@ -64,7 +64,10 @@ static GtkWidget *avatar(const char *name, const char *key, int size, int online
 static void toast(const char *t){ (void)t; /* status line for now */ if(status_lbl) gtk_label_set_text(GTK_LABEL(status_lbl),t); }
 static void notify_conv(const char *title, const char *body, const char *conv){ GNotification *n=g_notification_new(title); g_notification_set_body(n,body);
     if(conv&&*conv) g_notification_set_default_action_and_target(n,"app.open-conv","s",conv);   /* click opens that chat (G17) */
-    g_application_send_notification(G_APPLICATION(app),"msg",n); g_object_unref(n); }
+    if(app) g_application_send_notification(G_APPLICATION(app),"msg",n); g_object_unref(n);
+    if(!app || getenv("LSM_FORCE_NOTIFY_SEND")){ gchar *tq=g_shell_quote(title?title:""), *bq=g_shell_quote(body?body:""), *cmd;
+      cmd=g_strdup_printf("notify-send -a '局域网安全通讯' -i mail-message-new %s %s >/dev/null 2>&1 &",tq,bq);
+      g_spawn_command_line_async(cmd,NULL); g_free(cmd); g_free(tq); g_free(bq); } }
 static void notify(const char *title, const char *body){ notify_conv(title,body,NULL); }
 #include "upd_gio.h"
 static int peer_muted(const char *fp){ lsm_contact *k; int n,i,m=0; lsm_lock(C); n=lsm_contacts(C,&k); for(i=0;i<n;i++) if(!strcmp(k[i].fp,fp)){ m=k[i].muted; break; } lsm_unlock(C); return m; }
@@ -444,12 +447,25 @@ static void storage_dialog(void){
     confirm("存储管理",msg,"清理",0,storage_cleanup_do,NULL,NULL);
 }
 
+
+static void emoji_pick(GtkButton *b, gpointer p){ const char *e=(const char*)p; GtkTextBuffer *buf; GtkTextIter end; (void)b;
+    if(!input) return; buf=gtk_text_view_get_buffer(GTK_TEXT_VIEW(input)); gtk_text_buffer_get_end_iter(buf,&end); gtk_text_buffer_insert(buf,&end,e,-1); }
+static void emoji_dialog(void){
+    static const char *E[]={"😀","😂","🥰","😍","😎","🤔","😴","🥳","😢","😭","👍","👎","👏","🙏","❤️","🔥","⭐","🎉","✅","❌",NULL};
+    GtkWidget *d=adw_window_new(), *tv=adw_toolbar_view_new(), *hb=adw_header_bar_new(), *box=gtk_flow_box_new(); int i;
+    gtk_window_set_transient_for(GTK_WINDOW(d),GTK_WINDOW(win)); gtk_window_set_modal(GTK_WINDOW(d),TRUE); gtk_window_set_default_size(GTK_WINDOW(d),360,220);
+    adw_header_bar_set_title_widget(ADW_HEADER_BAR(hb),gtk_label_new("表情")); adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(tv),hb);
+    gtk_flow_box_set_max_children_per_line(GTK_FLOW_BOX(box),8); gtk_flow_box_set_selection_mode(GTK_FLOW_BOX(box),GTK_SELECTION_NONE);
+    for(i=0;E[i];i++){ GtkWidget *b=gtk_button_new_with_label(E[i]); g_signal_connect(b,"clicked",G_CALLBACK(emoji_pick),(gpointer)E[i]); g_signal_connect_swapped(b,"clicked",G_CALLBACK(gtk_window_destroy),d); gtk_flow_box_append(GTK_FLOW_BOX(box),b); }
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(tv),box); adw_window_set_content(ADW_WINDOW(d),tv); gtk_window_present(GTK_WINDOW(d));
+}
 static void win_act(GSimpleAction *a, GVariant *v, gpointer p){ const char *n=g_action_get_name(G_ACTION(a)); (void)v;(void)p;
     g_timeout_add(400,test_log_later,(gpointer)n);
     if(!strcmp(n,"search")){ adw_navigation_split_view_set_show_content(ADW_NAVIGATION_SPLIT_VIEW(split),FALSE); gtk_widget_grab_focus(search); }
     else if(!strcmp(n,"add-contact")){ adw_navigation_split_view_set_show_content(ADW_NAVIGATION_SPLIT_VIEW(split),FALSE); gtk_popover_popup(GTK_POPOVER(add_popover)); gtk_widget_grab_focus(add_entry); }
     else if(!strcmp(n,"refresh")){ lsm_refresh_peers(C); list_dirty=chat_dirty=1; toast("已刷新联系人"); }
     else if(!strcmp(n,"storage")){ storage_dialog(); }
+    else if(!strcmp(n,"emoji")){ emoji_dialog(); }
     else if(!strcmp(n,"relay")) relay_dialog();
     else if(!strcmp(n,"next-conv")) cycle(+1);
     else if(!strcmp(n,"prev-conv")) cycle(-1);
@@ -537,7 +553,7 @@ static void install_icons(void){
 static void activate(GtkApplication *a, gpointer p){
     GtkWidget *sidebar_tv, *sb_hdr, *sb_box, *sc, *content_tv, *ct_hdr, *tbox, *tv, *composer, *ov, *send, *attach, *chat_ov, *empty, *add_btn, *ab, *frame;
     lsm_opts o; char err[256]; GMenu *menu, *sec; (void)p;
-    static const char *acts[]={"search","add-contact","refresh","next-conv","prev-conv","send-file","paste","clear-chat","details","trust","untrust","block","mute","diagnostics","check-update","pin-offer","relay","downloads","storage","menu","close","about","quit"};
+    static const char *acts[]={"search","add-contact","refresh","next-conv","prev-conv","send-file","paste","clear-chat","details","trust","untrust","block","mute","diagnostics","check-update","pin-offer","relay","downloads","storage","emoji","menu","close","about","quit"};
     if(win){ gtk_window_present(GTK_WINDOW(win)); return; }
     { const char *t=getenv("LSM_THEME"); AdwStyleManager *sm=adw_style_manager_get_default(); if(t&&!strcmp(t,"dark")) adw_style_manager_set_color_scheme(sm,ADW_COLOR_SCHEME_FORCE_DARK); else if(t&&!strcmp(t,"light")) adw_style_manager_set_color_scheme(sm,ADW_COLOR_SCHEME_FORCE_LIGHT);
       g_signal_connect(sm,"notify::dark",G_CALLBACK(on_dark),NULL); }
@@ -568,7 +584,7 @@ static void activate(GtkApplication *a, gpointer p){
       gtk_box_append(GTK_BOX(hb),add_entry); gtk_box_append(GTK_BOX(hb),go); gtk_box_append(GTK_BOX(ab),t); gtk_box_append(GTK_BOX(ab),d); gtk_box_append(GTK_BOX(ab),hb); }
     gtk_popover_set_child(GTK_POPOVER(add_popover),ab); gtk_menu_button_set_popover(GTK_MENU_BUTTON(add_btn),add_popover); adw_header_bar_pack_start(ADW_HEADER_BAR(sb_hdr),add_btn);
     { GtkWidget *rf=icon_btn("view-refresh-symbolic","刷新联系人","win.refresh"); adw_header_bar_pack_start(ADW_HEADER_BAR(sb_hdr),rf); }
-    menu=g_menu_new(); sec=g_menu_new(); g_menu_append(sec,"发送文件… (Ctrl+O)","win.send-file"); g_menu_append(sec,"打开接收文件夹","win.downloads"); g_menu_append(sec,"存储管理…","win.storage"); g_menu_append_section(menu,NULL,G_MENU_MODEL(sec)); g_object_unref(sec);
+    menu=g_menu_new(); sec=g_menu_new(); g_menu_append(sec,"发送文件… (Ctrl+O)","win.send-file"); g_menu_append(sec,"插入表情…","win.emoji"); g_menu_append(sec,"打开接收文件夹","win.downloads"); g_menu_append(sec,"存储管理…","win.storage"); g_menu_append_section(menu,NULL,G_MENU_MODEL(sec)); g_object_unref(sec);
     sec=g_menu_new(); g_menu_append(sec,"生成 PIN（让对方输入）","win.pin-offer"); g_menu_append(sec,"中转服务器…","win.relay"); g_menu_append_section(menu,NULL,G_MENU_MODEL(sec)); g_object_unref(sec);
     sec=g_menu_new(); g_menu_append(sec,"诊断信息","win.diagnostics"); g_menu_append(sec,"检查更新…","win.check-update"); g_menu_append(sec,"关于","win.about"); g_menu_append(sec,"退出 (Ctrl+Q)","win.quit"); g_menu_append_section(menu,NULL,G_MENU_MODEL(sec)); g_object_unref(sec);
     menu_btn=gtk_menu_button_new(); gtk_menu_button_set_icon_name(GTK_MENU_BUTTON(menu_btn),"open-menu-symbolic"); gtk_widget_set_tooltip_text(menu_btn,"主菜单 (F10)"); gtk_menu_button_set_menu_model(GTK_MENU_BUTTON(menu_btn),G_MENU_MODEL(menu)); g_object_unref(menu);

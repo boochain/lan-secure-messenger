@@ -13,7 +13,13 @@ public sealed partial class SettingsPage : Page
     public SettingsPage()
     {
         InitializeComponent();
-        Loaded += (_, __) => { if (VM.RefreshStorageCommand.CanExecute(null)) _ = VM.RefreshStorageCommand.ExecuteAsync(null); };
+        Loaded += (_, __) => {
+            if (VM.RefreshStorageCommand.CanExecute(null)) _ = VM.RefreshStorageCommand.ExecuteAsync(null);
+            if (NotifyStatusText != null)
+                NotifyStatusText.Text = Services.Toasts.Available
+                    ? "系统通知：可用（Windows App SDK）"
+                    : "系统通知：不可用 — 将尝试托盘气泡；请检查系统通知权限 / 打包身份";
+        };
         CloseToTraySwitch.IsOn = Services.UiPrefs.Current.CloseToTray;
         _loadingTheme = true;
         ThemeChoice.SelectedIndex = (int)LanMessenger.Services.ThemeService.Mode;

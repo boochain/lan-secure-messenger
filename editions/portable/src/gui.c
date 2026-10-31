@@ -43,6 +43,7 @@
 #define IDM_CLEAR 245
 #define IDM_REFRESH 246
 #define IDM_STORAGE 247
+#define IDM_EMOJI 248
 #define IDM_UPDATE 244
 #define WM_UPDRES (WM_APP+7)
 #define IDM_SHOW 216
@@ -565,6 +566,17 @@ static int pick_peers(const wchar_t *title, const wchar_t *label, int trusted_on
     return p.nsel; }
 
 
+
+static void emoji_insert(void){
+    static const char *E[]={"😀","😂","🥰","😍","😎","🤔","👍","👎","👏","🙏","❤️","🔥","⭐","🎉","✅","❌",NULL};
+    const char *items[32]; int i,n=0; prompt_t p; memset(&p,0,sizeof p);
+    for(i=0;E[i]&&n<32;i++) items[n++]=E[i];
+    p.items=items; p.nitems=n; p.multi=0;
+    if(prompt(L"插入表情",L"选择一个表情插入到输入框：",NULL,&p,0) && p.nsel>0 && hInput){
+        wchar_t *w=W(items[p.sel[0]]); int len=GetWindowTextLengthW(hInput);
+        SendMessageW(hInput,EM_SETSEL,len,len); SendMessageW(hInput,EM_REPLACESEL,FALSE,(LPARAM)w); SetFocus(hInput);
+    }
+}
 static void storage_dialog(void){
     char info[2048]={0}, msg[2400]; int n; size_t need;
     need=lsm_storage_info(C,info,sizeof info);
@@ -681,6 +693,7 @@ static void do_command(int id){
           { int rc=lsm_firewall_apply(fc,rep,sizeof rep); char m[2300]; snprintf(m,sizeof m,"%s\r\n\r\n%s",rc==0?"已添加防火墙例外。":"添加失败（可能需要以管理员身份运行）。",rep); msgbox(m,rc==0?MB_ICONINFORMATION:MB_ICONWARNING); } } break; }
     case IDM_REFRESH: lsm_refresh_peers(C); refresh_list(); refresh_chat(); tray_balloon("局域网安全通讯","已刷新联系人列表"); break;
     case IDM_STORAGE: storage_dialog(); break;
+    case IDM_EMOJI: emoji_insert(); break;
     case IDM_ADDIP: if(prompt(L"按 IP 添加",L"输入对方 IP 地址（可带端口，如 192.168.1.20 或 192.168.1.20:41235）：",L"",&p,1)){ if(lsm_add_addr(C,U(p.text,u8,sizeof u8),err)) msgbox(err,MB_ICONWARNING); } break;
     case IDM_TRUST: case IDM_UNTRUST: case IDM_BLOCK: { const char *fp=selected_peer(); if(fp){ lsm_set_trust(C,fp,id==IDM_TRUST?1:id==IDM_BLOCK?2:0,err); refresh_list(); } break; }
     case IDM_PINOFFER: { char pin[8], m[256]; lsm_pin_offer(C,pin); snprintf(m,sizeof m,"请把下面的 PIN 告诉对方，并让对方在“输入 PIN 配对”中输入（5 分钟内有效）：\r\n\r\n        %s",pin); msgbox(m,MB_ICONINFORMATION); break; }
@@ -841,7 +854,7 @@ static void open_menu(int i){ RECT r; GetWindowRect(hMenuBtn[i],&r); SendMessage
 
 static HMENU build_menu(void){
     HMENU m=CreateMenu(), f=CreatePopupMenu(), c=CreatePopupMenu(), g=CreatePopupMenu(), s=CreatePopupMenu(), h=CreatePopupMenu();
-    AM(f,MF_STRING,IDM_DLDIR,L"打开接收文件夹(&D)"); AM(f,MF_STRING,IDM_STORAGE,L"存储管理(&S)…"); AM(f,MF_STRING,IDM_FIREWALL,L"设置防火墙例外(&F)..."); AM(f,MF_SEPARATOR,0,NULL); AM(f,MF_STRING,IDM_EXIT,L"退出(&X)");
+    AM(f,MF_STRING,IDM_DLDIR,L"打开接收文件夹(&D)"); AM(f,MF_STRING,IDM_STORAGE,L"存储管理(&S)…"); AM(f,MF_STRING,IDM_EMOJI,L"插入表情(&E)…"); AM(f,MF_STRING,IDM_FIREWALL,L"设置防火墙例外(&F)..."); AM(f,MF_SEPARATOR,0,NULL); AM(f,MF_STRING,IDM_EXIT,L"退出(&X)");
     AM(c,MF_STRING,IDM_ADDIP,L"按 IP 添加(&A)..."); AM(c,MF_STRING,IDM_REFRESH,L"刷新联系人(&R)"); AM(c,MF_SEPARATOR,0,NULL); AM(c,MF_STRING,IDM_TRUST,L"信任(&T)"); AM(c,MF_STRING,IDM_UNTRUST,L"取消信任(&U)"); AM(c,MF_STRING,IDM_BLOCK,L"屏蔽(&B)"); AM(c,MF_STRING,IDM_MUTE,L"免打扰 开/关(&M)");
     AM(c,MF_SEPARATOR,0,NULL); AM(c,MF_STRING,IDM_PINOFFER,L"生成 PIN（让对方输入）(&P)"); AM(c,MF_STRING,IDM_PINPAIR,L"输入 PIN 配对(&I)...");
     AM(g,MF_STRING,IDM_GCREATE,L"创建群组(&C)..."); AM(g,MF_STRING,IDM_GINVITE,L"邀请成员(&I)..."); AM(g,MF_STRING,IDM_GREMOVE,L"移除成员(&R)..."); AM(g,MF_STRING,IDM_GLEAVE,L"退出群组(&L)");

@@ -307,6 +307,25 @@ public sealed partial class ChatPage : Page
     }
 
     /// <summary>Ctrl+V: send clipboard bitmap or file paths (same trust gate as drag-drop).</summary>
+    
+    private static readonly string[] Emojis = "😀 😃 😄 😁 😆 😅 😂 🙂 😉 😊 😇 🥰 😍 🤩 😘 😋 😜 🤗 🤔 😴 🥳 😎 😢 😭 😤 👍 👎 👏 🙏 💪 ❤️ 🔥 ⭐ ✨ 🎉 ✅ ❌ 💯".Split(' ');
+
+    private void Emoji_Click(object sender, RoutedEventArgs e)
+    {
+        if (EmojiGrid.Items.Count == 0)
+            foreach (var x in Emojis) EmojiGrid.Items.Add(x);
+    }
+
+    private void Emoji_ItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is string s)
+        {
+            VM.ComposeText = (VM.ComposeText ?? "") + s;
+            EmojiFlyout.Hide();
+            Composer.Focus(FocusState.Programmatic);
+        }
+    }
+
     private async Task PasteClipboardAsync()
     {
         if (!VM.HasSelection) { VM.ShowStatus("请先选择联系人或群组", true); return; }

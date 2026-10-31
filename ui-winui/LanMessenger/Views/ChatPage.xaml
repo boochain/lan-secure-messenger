@@ -48,7 +48,7 @@
                 <Border Style="{StaticResource LsmChip}" Visibility="{x:Bind ShowE2E, Mode=OneWay}">
                     <TextBlock Text="消息已端到端加密，只有你和对方能看到" Style="{StaticResource LsmChipText}" />
                 </Border>
-                <Border HorizontalAlignment="Left" MaxWidth="480" CornerRadius="8" Padding="10,6"
+                <Border HorizontalAlignment="Left" MaxWidth="720" CornerRadius="8" Padding="10,6"
                         Background="{ThemeResource LsmBubbleInBackgroundBrush}" Visibility="{x:Bind IsText, Mode=OneWay}">
                     <StackPanel>
                         <TextBlock Text="{x:Bind SenderName, Mode=OneWay}" Visibility="{x:Bind ShowSender, Mode=OneWay}" FontWeight="SemiBold"
@@ -66,7 +66,7 @@
                         <Border Style="{StaticResource LsmImageTime}"><TextBlock Text="{x:Bind ClockText, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="White" /></Border>
                     </Grid>
                 </Border>
-                <Border HorizontalAlignment="Left" MinWidth="264" MaxWidth="360" CornerRadius="8" Padding="10,8" Background="{ThemeResource LsmBubbleInBackgroundBrush}"
+                <Border HorizontalAlignment="Left" MinWidth="264" MaxWidth="480" CornerRadius="8" Padding="10,8" Background="{ThemeResource LsmBubbleInBackgroundBrush}"
                         Visibility="{x:Bind IsFileCard, Mode=OneWay}">
                     <StackPanel Spacing="6">
                         <Grid ColumnSpacing="12">
@@ -101,7 +101,7 @@
                 <Border Style="{StaticResource LsmChip}" Visibility="{x:Bind ShowE2E, Mode=OneWay}">
                     <TextBlock Text="消息已端到端加密，只有你和对方能看到" Style="{StaticResource LsmChipText}" />
                 </Border>
-                <Border HorizontalAlignment="Right" MaxWidth="480" CornerRadius="8" Padding="10,6"
+                <Border HorizontalAlignment="Right" MaxWidth="720" CornerRadius="8" Padding="10,6"
                         Background="{ThemeResource LsmBubbleOutBackgroundBrush}" Visibility="{x:Bind IsText, Mode=OneWay}">
                     <StackPanel>
                         <Grid ColumnSpacing="12">
@@ -117,7 +117,7 @@
                         <Border Style="{StaticResource LsmImageTime}"><StackPanel Orientation="Horizontal" Spacing="4"><TextBlock Text="{x:Bind ClockText, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="White" /><TextBlock Text="{x:Bind local:B.Tick(Tick), Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="White" /></StackPanel></Border>
                     </Grid>
                 </Border>
-                <Border HorizontalAlignment="Right" MinWidth="264" MaxWidth="360" CornerRadius="8" Padding="10,8" Background="{ThemeResource LsmBubbleOutBackgroundBrush}"
+                <Border HorizontalAlignment="Right" MinWidth="264" MaxWidth="480" CornerRadius="8" Padding="10,8" Background="{ThemeResource LsmBubbleOutBackgroundBrush}"
                         Visibility="{x:Bind IsFileCard, Mode=OneWay}">
                     <StackPanel Spacing="6">
                         <Grid ColumnSpacing="12">
@@ -343,6 +343,11 @@
             <ListView x:Name="MessageList" Grid.Row="1" RightTapped="MessageList_RightTapped" Padding="16,8" SelectionMode="None" IsItemClickEnabled="False"
                       ItemsSource="{x:Bind VM.Messages}" ItemTemplateSelector="{StaticResource MessageSelector}"
                       Visibility="{x:Bind VM.HasSelection, Mode=OneWay}">
+                <ListView.ItemContainerTransitions>
+                    <TransitionCollection>
+                        <EntranceThemeTransition FromVerticalOffset="12" IsStaggeringEnabled="False" />
+                    </TransitionCollection>
+                </ListView.ItemContainerTransitions>
                 <ListView.ItemContainerStyle>
                     <Style TargetType="ListViewItem">
                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -357,20 +362,35 @@
                   Background="{ThemeResource LsmListBackgroundBrush}" BorderBrush="{ThemeResource LsmDividerBrush}" BorderThickness="0,1,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <Button Grid.Column="0" Style="{StaticResource LsmIconButton}" VerticalAlignment="Bottom" Margin="0,0,0,2" Command="{x:Bind VM.AttachCommand}" ToolTipService.ToolTip="发送文件/图片（也可以直接拖进来）">
                     <FontIcon Glyph="&#xE723;" FontSize="16" />
                 </Button>
-                <TextBox x:Name="Composer" Grid.Column="1" Background="{ThemeResource LsmInputBackgroundBrush}" AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="160" MinHeight="40" CornerRadius="20" Padding="16,9,16,6"
+                <Button Grid.Column="1" Style="{StaticResource LsmIconButton}" VerticalAlignment="Bottom" Margin="0,0,0,2" ToolTipService.ToolTip="表情" Click="Emoji_Click">
+                    <FontIcon Glyph="&#xE76E;" FontSize="16" />
+                    <Button.Flyout>
+                        <Flyout x:Name="EmojiFlyout" Placement="Top">
+                            <GridView x:Name="EmojiGrid" Width="280" MaxHeight="200" SelectionMode="None" IsItemClickEnabled="True" ItemClick="Emoji_ItemClick">
+                                <GridView.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <ItemsWrapGrid MaximumRowsOrColumns="8" Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </GridView.ItemsPanel>
+                            </GridView>
+                        </Flyout>
+                    </Button.Flyout>
+                </Button>
+                <TextBox x:Name="Composer" Grid.Column="2" Background="{ThemeResource LsmInputBackgroundBrush}" AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="160" MinHeight="40" CornerRadius="20" Padding="16,9,16,6"
                          PlaceholderText="输入消息" VerticalContentAlignment="Center"
                          Text="{x:Bind VM.ComposeText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                          PreviewKeyDown="Composer_PreviewKeyDown" />
-                <TextBlock Grid.Column="1" Text="Enter 发送 · Shift+Enter 换行" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,16,0"
+                <TextBlock Grid.Column="2" Text="Enter 发送 · Shift+Enter 换行" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,16,0"
                            FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" IsHitTestVisible="False"
                            Visibility="{x:Bind local:B.Empty(VM.ComposeText.Length), Mode=OneWay}" />
-                <Button Grid.Column="2" Width="40" Height="40" CornerRadius="20" Padding="0" VerticalAlignment="Bottom" Style="{StaticResource AccentButtonStyle}"
+                <Button Grid.Column="3" Width="40" Height="40" CornerRadius="20" Padding="0" VerticalAlignment="Bottom" Style="{StaticResource AccentButtonStyle}"
                         Command="{x:Bind VM.SendCommand}" ToolTipService.ToolTip="发送 (Enter)" AutomationProperties.Name="发送">
                     <FontIcon Glyph="&#xE724;" FontSize="16" />
                 </Button>

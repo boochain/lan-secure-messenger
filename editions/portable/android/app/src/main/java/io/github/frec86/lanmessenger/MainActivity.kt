@@ -10,6 +10,8 @@ import android.os.Bundle
 import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -59,6 +61,14 @@ class MainActivity : ComponentActivity() {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
         handleIntent(intent)
         setContent { AppTheme { App(pendingShare, openConv, pendingText) } }
+        lifecycle.addObserver(LifecycleEventObserver { _, e ->
+            when (e) {
+                Lifecycle.Event.ON_START, Lifecycle.Event.ON_RESUME -> Repo.appForeground = true
+                Lifecycle.Event.ON_STOP, Lifecycle.Event.ON_PAUSE -> Repo.appForeground = false
+                else -> {}
+            }
+        })
+
     }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); handleIntent(intent) }
     private fun handleIntent(i: Intent?) {

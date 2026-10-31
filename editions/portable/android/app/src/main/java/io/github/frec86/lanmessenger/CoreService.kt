@@ -65,7 +65,7 @@ class CoreService : Service() {
     private fun handle(e: String) {
         val f = e.split('\t')
         when (f[0]) {
-            "msg" -> if (f.size >= 7 && f[3] == "in" && f[5] != "system" && f[2] != Repo.openConv) {
+            "msg" -> if (f.size >= 7 && f[3] == "in" && f[5] != "system" && (!Repo.appForeground || f[2] != Repo.openConv)) {
                 val who = Repo.state.value.contacts.firstOrNull { "dm:" + it.fp == f[2] }?.name ?: "群消息"
                 notifyMsg(this, f[2], who, if (f[5] == "file") "[文件] " + f[6] else f[6])
             }

@@ -153,6 +153,19 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    /// <summary>Fallback when App SDK toasts are unavailable (W12).</summary>
+    internal void ShowTrayTip(string title, string body)
+    {
+        try
+        {
+            _tray?.ShowNotification(title ?? "", body ?? "", H.NotifyIcon.Core.NotificationIcon.Info);
+        }
+        catch (Exception e)
+        {
+            CrashLog.Write("tray tip", e);
+        }
+    }
+
     /// <summary>Restore a saved placement (same rule as startup: only if it is still on a display). UI smoke uses it too.</summary>
     internal bool ApplyPlacement(UiPrefs pr)
     {

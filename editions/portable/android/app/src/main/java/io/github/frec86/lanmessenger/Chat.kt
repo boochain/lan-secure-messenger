@@ -56,6 +56,7 @@ fun Chat(st: AppState, conv: String, back: () -> Unit) {
     val all = remember(rev, conv) { Repo.messages(conv) }
     val contact = st.contacts.firstOrNull { "dm:" + it.fp == conv }
     val group = st.groups.firstOrNull { "group:" + it.id == conv }
+    var emojiOpen by remember { mutableStateOf(false) }
     var input by remember { mutableStateOf("") }; var menu by remember { mutableStateOf(false) }; var dlg by remember { mutableStateOf("") }
     var searching by rememberSaveable { mutableStateOf(false) }; var q by rememberSaveable { mutableStateOf("") }
     var msgMenu by remember { mutableStateOf<Msg?>(null) }; var delMsg by remember { mutableStateOf<Msg?>(null) }
@@ -165,8 +166,8 @@ fun Chat(st: AppState, conv: String, back: () -> Unit) {
         Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(8.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.weight(1f).heightIn(min = 48.dp).ifThen(!isDark()) { shadow(1.dp, RoundedCornerShape(24.dp)) }.clip(RoundedCornerShape(24.dp)).background(p.field).padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                // no emoji button until there is a real picker (a "coming soon" control is a dead end)
-                Box(Modifier.weight(1f).padding(start = 12.dp, top = 12.dp, bottom = 12.dp)) {
+                IconButton({ emojiOpen = !emojiOpen }, Modifier.size(40.dp)) { Ic(R.drawable.ms_emoji, "表情", p.fg2) }
+                Box(Modifier.weight(1f).padding(start = 4.dp, top = 12.dp, bottom = 12.dp)) {
                     if (input.isEmpty()) Text("输入消息", style = MaterialTheme.typography.bodyLarge, color = p.fg2)
                     BasicTextField(input, { input = it }, Modifier.fillMaxWidth().semantics { contentDescription = "输入消息" }, maxLines = 5,
                         textStyle = MaterialTheme.typography.bodyLarge.copy(color = p.fg), cursorBrush = SolidColor(p.accent))
@@ -176,6 +177,16 @@ fun Chat(st: AppState, conv: String, back: () -> Unit) {
             Box(Modifier.size(48.dp).ifThen(!isDark()) { shadow(2.dp, CircleShape) }.clip(CircleShape).background(p.accent)
                 .clickable { if (input.isNotBlank()) { val e = Native.sendText(conv, input.trim()); if (e.isNotEmpty()) Repo.toast.value = e else input = ""; Repo.refresh() } },
                 contentAlignment = Alignment.Center) { Ic(R.drawable.ms_send_fill, "发送", p.onAccent) }
+        }
+        if (emojiOpen) {
+            val emojis = listOf("😀", "😃", "😄", "😁", "😆", "😅", "😂", "🙂", "😉", "😊", "😇", "🥰", "😍", "🤩", "😘", "😋", "😜", "🤗", "🤔", "😴", "🥳", "😎", "😢", "😭", "😤", "👍", "👎", "👏", "🙏", "💪", "❤️", "🔥", "⭐", "✨", "🎉", "✅", "❌", "💯")
+            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 160.dp).padding(horizontal = 8.dp)) {
+                items(emojis.chunked(8)) { row ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        row.forEach { e -> Text(e, fontSize = 26.sp, modifier = Modifier.clickable { input += e }.padding(4.dp)) }
+                    }
+                }
+            }
         }
       }
     }

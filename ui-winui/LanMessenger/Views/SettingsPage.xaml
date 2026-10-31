@@ -145,6 +145,24 @@
 
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
+                    <TextBlock Text="局域网与 VPN" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap"
+                               Text="若开启 VPN/代理后发现不到局域网好友：请在 VPN 客户端中把本机局域网网段（如 192.168.0.0/16）加入分流/排除，或对本应用关闭「全局隧道」。完整网卡绑定旁路将在后续版本提供（见 docs/architecture-v07-accounts-vpn-retain.md）。" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="通知" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock x:Name="NotifyStatusText" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap"
+                               Text="正在检测通知通道…" />
+                    <TextBlock Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap"
+                               Text="新消息在窗口未聚焦或未打开该会话时弹出系统通知；若系统通知不可用，会尝试托盘气泡提示。" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
                     <TextBlock Text="关于" Style="{StaticResource SubtitleTextBlockStyle}" />
                     <TextBlock>
                         <Run Text="版本 " /><Run Text="{x:Bind VM.Version, Mode=OneWay}" />
