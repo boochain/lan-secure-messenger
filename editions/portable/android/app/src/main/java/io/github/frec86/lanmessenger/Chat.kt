@@ -309,7 +309,7 @@ fun ImageBubble(m: Msg, path: String, first: Boolean) {
 @Composable
 fun FileBubble(m: Msg, t: Transfer?, path: String, haveFile: Boolean, maxW: androidx.compose.ui.unit.Dp, onSave: (String) -> Unit) {
     val p = LocalPalette.current
-    val state = t?.let { xferZh(it.state) + (if (it.state == "active" && it.size > 0) " ${it.done * 100 / it.size}%" else "") + (if (it.error.isNotEmpty()) " · " + errZh(it.error) else "") }
+    val state = t?.let { if (it.status.isNotEmpty() && it.state != "done") it.status else xferZh(it.state) + (if (it.state == "active" && it.size > 0) " ${it.done * 100 / it.size}%" else "") + (if (it.error.isNotEmpty()) " · " + errZh(it.error) else "") }
         ?: if (!m.out && haveFile) "已接收" else ""
     Column(Modifier.width(minOf(maxW, 280.dp)).padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {

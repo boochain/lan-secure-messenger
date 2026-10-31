@@ -1112,6 +1112,26 @@ int lsm_delete_message(lsm_core *c, const char *id){ char conv[64]; lsm_msg *m; 
 int lsm_clear_conversation(lsm_core *c, const char *conv){ int i, n=0; char id[40]; buf_t b={0}; mu_lock(&c->mu);
     for(i=c->nmsgs-1;i>=0;i--){ if(strcmp(c->msgs[i].conv,conv)) continue; scpy(id,c->msgs[i].id,40); msg_unlink(c,id); tomb_add(c,id); b.n=0; bfmt(&b,"D\t%s",id); hist_append(c,&b); emit(c,"msg_delete\t%s\t%s",id,conv); n++; }
     b_free(&b); mu_unlock(&c->mu); return n; }
+
+static void fmt_bytes(uint64_t b, char *o, size_t n){ if(b>=1073741824ull) snprintf(o,n,"%.2f GB",b/1073741824.0); else if(b>=1048576) snprintf(o,n,"%.1f MB",b/1048576.0); else if(b>=1024) snprintf(o,n,"%.0f KB",b/1024.0); else snprintf(o,n,"%u B",(unsigned)b); }
+void lsm_transfer_status(lsm_core *c, lsm_transfer *t, char *out, size_t n){
+    char a[32], b[32], r[32], eta[32]="", path[32]=""; const char *st; int i, pct=t->size?(int)(t->transferred*100/t->size):0; int64_t now=mono_ms();
+    if(!t->rate_t0 || t->transferred<t->rate_b0){ t->rate_t0=now; t->rate_b0=t->transferred; t->rate_bps=0; }
+    else if(now-t->rate_t0>=1000){ uint64_t inst=(t->transferred-t->rate_b0)*1000/(uint64_t)(now-t->rate_t0); t->rate_bps=t->rate_bps?(t->rate_bps*3+inst)/4:inst; t->rate_t0=now; t->rate_b0=t->transferred; }
+    for(i=0;i<c->ncontacts;i++) if(!strcmp(c->contacts[i].fp,t->peer_fp)){ snprintf(path,sizeof path,c->contacts[i].via_relay?"经服务器中转":(c->contacts[i].online?"局域网直连":"")); break; }
+    switch(t->state){
+    case TS_OFFERED: st=t->error[0]?"连接中断，等待重连后续传":(t->out?"等待对方接受":"等待接收"); break;
+    case TS_ACTIVE: st=t->hashing==1?"计算校验（核对续传位置）":t->hashing==2?"核对已收部分":t->resumed_from>0?"续传中":"传输中"; break;
+    case TS_VERIFYING: st="校验中"; break;
+    case TS_DONE: snprintf(out,n,"完成 · %s",(fmt_bytes(t->size,a,sizeof a),a)); return;
+    case TS_REJECTED: snprintf(out,n,"已拒收%s%s",t->error[0]?"：":"",t->error); return;
+    case TS_CANCELLED: snprintf(out,n,"已取消"); return;
+    default: snprintf(out,n,"失败：%s",t->error[0]?t->error:"未知原因"); return; }
+    fmt_bytes(t->transferred,a,sizeof a); fmt_bytes(t->size,b,sizeof b);
+    if(t->state!=TS_ACTIVE || t->hashing){ snprintf(out,n,"%s%s%s",st,path[0]?" · ":"",path); if(t->state==TS_OFFERED && t->transferred){ size_t l=strlen(out); snprintf(out+l,n-l," · 已传 %s/%s (%d%%)",a,b,pct); } return; }
+    fmt_bytes(t->rate_bps,r,sizeof r);
+    if(t->rate_bps && t->size>t->transferred){ uint64_t s=(t->size-t->transferred)/t->rate_bps; if(s>=3600) snprintf(eta,sizeof eta," · 剩余 %uh%02um",(unsigned)(s/3600),(unsigned)(s%3600/60)); else if(s>=60) snprintf(eta,sizeof eta," · 剩余 %um%02us",(unsigned)(s/60),(unsigned)(s%60)); else snprintf(eta,sizeof eta," · 剩余 %us",(unsigned)s); }
+    snprintf(out,n,"%s %d%% · %s/%s · %s/s%s%s%s",st,pct,a,b,t->rate_bps?r:"--",eta,path[0]?" · ":"",path); }
 int lsm_mark_read(lsm_core *c, const char *conv){ int i, n=0; buf_t p={0}, f={0}; uint8_t id[16];
     mu_lock(&c->mu);
     /* group the unread incoming ids by sender, one Read receipt per sender */

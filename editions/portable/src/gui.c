@@ -402,10 +402,9 @@ static void refresh_chat(void){
                 for(j2=0;j2<nt;j2++) if(!strcmp(t2[j2].msg_id,m[i].id)){ r->tstate=t2[j2].state; if(t2[j2].size) r->pct=(int)(t2[j2].transferred*100/t2[j2].size); if(t2[j2].state==3) strncpy(r->path,t2[j2].path,519); }
                 if(!r->path[0] && m[i].file_path[0] && r->tstate==3) strncpy(r->path,m[i].file_path,519);
                 if(r->path[0] && (!wcscmp(r->ext,L"PNG")||!wcscmp(r->ext,L"JPG")||!wcscmp(r->ext,L"JPEG")||!wcscmp(r->ext,L"GIF")||!wcscmp(r->ext,L"BMP"))) r->kind=R_IMAGE;
-                { int j3; for(j3=0;j3<nt;j3++) if(!strcmp(t2[j3].msg_id,m[i].id)){ lsm_transfer *tx=&t2[j3]; wchar_t rb[32];
-                    if(tx->state==0 && tx->resumable && tx->error[0]){ _snwprintf(r->meta,96,L"%s  ·  连接中断，重连后自动续传",sz); r->meta[95]=0; r->tstate=100; r->emph=1; r->prog=1; }
-                    else if(tx->state==1 && tx->resumed_from>0 && tx->size){ fmt_size(tx->resumed_from,rb,32); _snwprintf(r->meta,96,L"从 %d%%（%s）处续传  ·  %d%%",(int)(tx->resumed_from*100/tx->size),rb,r->pct); r->meta[95]=0; r->tstate=101; r->emph=1; r->prog=1; } } }
-                if(r->tstate>=100) r->tstate=r->tstate==100?0:1; else
+                { int j3; for(j3=0;j3<nt;j3++) if(!strcmp(t2[j3].msg_id,m[i].id)){ lsm_transfer *tx=&t2[j3];
+                    if(tx->state!=TS_DONE){ char st[256]; lsm_transfer_status(C,tx,st,sizeof st); _snwprintf(r->meta,96,L"%s",W(st)); r->meta[95]=0; r->tstate=100+tx->state; r->emph=(tx->state==0&&tx->error[0])||tx->resumed_from>0; r->prog=tx->state<=1; } } }
+                if(r->tstate>=100) r->tstate-=100; else
                 if(r->tstate==1){ r->prog=1; _snwprintf(r->meta,96,L"%s  ·  %s %d%%",sz,TS[1],r->pct); } else if(r->tstate==3) _snwprintf(r->meta,96,L"%s  ·  %s",sz,r->ext); else _snwprintf(r->meta,96,L"%s  ·  %s",sz,TS[r->tstate<7?r->tstate:4]); r->meta[95]=0; }
         } }
     lsm_unlock(C);

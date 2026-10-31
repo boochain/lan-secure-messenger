@@ -6,7 +6,7 @@ import org.json.JSONObject
 
 data class Contact(val fp: String, val name: String, val trust: Int, val online: Boolean, val unread: Int, val addr: String, val version: String, val via: Boolean = false)
 data class Group(val id: String, val name: String, val members: List<String>, val epoch: Long, val unread: Int)
-data class Transfer(val id: String, val msg: String, val name: String, val out: Boolean, val size: Long, val done: Long, val state: String, val path: String, val error: String, val resumed: Long = 0) {
+data class Transfer(val id: String, val msg: String, val name: String, val out: Boolean, val size: Long, val done: Long, val state: String, val path: String, val error: String, val resumed: Long = 0, val status: String = "") {
     /** link lost: the core keeps it "offered" with 连接中断，重连后自动续传 and resumes by itself */
     val paused get() = state == "offered" && error.isNotEmpty()
 }
@@ -40,7 +40,7 @@ object Repo {
             Me(me.getString("fp"), me.getString("name"), me.getInt("port"), me.getString("version"), me.getString("downloads")),
             o.getJSONArray("contacts").objs().map { Contact(it.getString("fp"), it.getString("name"), it.getInt("trust"), it.getBoolean("online"), it.getInt("unread"), it.getString("addr"), it.getString("version"), it.optBoolean("via")) },
             o.getJSONArray("groups").objs().map { g -> Group(g.getString("id"), g.getString("name"), g.getJSONArray("members").let { a -> (0 until a.length()).map { a.getString(it) } }, g.getLong("epoch"), g.getInt("unread")) },
-            o.getJSONArray("transfers").objs().map { Transfer(it.getString("id"), it.getString("msg"), it.getString("name"), it.getBoolean("out"), it.getLong("size"), it.getLong("done"), it.getString("state"), it.getString("path"), it.getString("error"), it.optLong("resumed")) },
+            o.getJSONArray("transfers").objs().map { Transfer(it.getString("id"), it.getString("msg"), it.getString("name"), it.getBoolean("out"), it.getLong("size"), it.getLong("done"), it.getString("state"), it.getString("path"), it.getString("error"), it.optLong("resumed"), it.optString("status")) },
             running = true,
             relay = o.optJSONObject("relay")?.let { r -> RelayInfo(r.optBoolean("enabled"), r.optString("host"), r.optInt("port", 9443).takeIf { it > 0 } ?: 9443, r.optBoolean("has_pass"), r.optString("state", "off"), r.optString("detail"), r.optInt("peers")) } ?: RelayInfo())
         val last = HashMap<String, Msg>()

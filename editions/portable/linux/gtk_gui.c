@@ -161,8 +161,7 @@ static void refresh_chat(void){
         { gchar *e=g_markup_escape_text(m[i].out?"我":m[i].sender_name,-1); snprintf(mt,sizeof mt,"<small>%s · %s%s%s</small>",e,ts,m[i].out?" · ":"",m[i].out?status_txt(m[i].status):""); g_free(e); }
         meta=gtk_label_new(NULL); gtk_label_set_markup(GTK_LABEL(meta),mt); gtk_style_context_add_class(gtk_widget_get_style_context(meta),"meta"); gtk_widget_set_halign(meta,m[i].out?GTK_ALIGN_END:GTK_ALIGN_START);
         if(m[i].kind==K_FILE){ lsm_transfer *tr; int nt=lsm_transfers(C,&tr),j; char fs[200]="", line[800]; const char *path=NULL; static const char *TS[]={"等待接收","传输中","校验中","完成","失败","已拒收","已取消"};
-            for(j=0;j<nt;j++) if(!strcmp(tr[j].msg_id,m[i].id)){ snprintf(fs,sizeof fs,"%s%s",TS[tr[j].state],tr[j].error[0]?" ":""); if(tr[j].error[0]) strncat(fs,err_zh(tr[j].error),sizeof fs-strlen(fs)-1);
-                if(tr[j].state==TS_ACTIVE && tr[j].size){ char p[32]; snprintf(p,sizeof p," %d%%",(int)(tr[j].transferred*100/tr[j].size)); strncat(fs,p,sizeof fs-strlen(fs)-1);} if(tr[j].state==TS_DONE||tr[j].out) path=tr[j].path; }
+            for(j=0;j<nt;j++) if(!strcmp(tr[j].msg_id,m[i].id)){ lsm_transfer_status(C,&tr[j],fs,sizeof fs); if(tr[j].state==TS_DONE||tr[j].out) path=tr[j].path; }
             if(!path && m[i].file_path[0]){ path=m[i].file_path; if(!fs[0] && !m[i].out && access(path,R_OK)==0) snprintf(fs,sizeof fs,"已保存"); }
             snprintf(line,sizeof line,"[文件] %s  (%.1f KB)  %s",m[i].file_name,m[i].file_size/1024.0,fs);
             body=gtk_label_new(line); gtk_label_set_line_wrap(GTK_LABEL(body),TRUE); gtk_label_set_xalign(GTK_LABEL(body),0);
@@ -281,7 +280,7 @@ static void show_transfers(void){
     lsm_transfer *t; int n,i; static const char *TS[]={"等待接收","传输中","校验中","完成","失败","已拒收","已取消"};
     lsm_lock(C); n=lsm_transfers(C,&t);
     for(i=0;i<n;i++){ char l[1200]; GtkWidget *v=gtk_box_new(GTK_ORIENTATION_VERTICAL,4), *a=gtk_label_new(NULL), *pb=gtk_progress_bar_new(); gchar *e=g_markup_escape_text(t[i].name,-1);
-        snprintf(l,sizeof l,"<b>%s %s</b>   <small>%s · %.1f / %.1f KB %s</small>",t[i].out?"↑":"↓",e,TS[t[i].state],t[i].transferred/1024.0,t[i].size/1024.0,err_zh(t[i].error)); g_free(e);
+        { char st[256]; gchar *se; lsm_transfer_status(C,&t[i],st,sizeof st); se=g_markup_escape_text(st,-1); snprintf(l,sizeof l,"<b>%s %s</b>   <small>%s</small>",t[i].out?"↑":"↓",e,se); g_free(se); } g_free(e);
         gtk_label_set_markup(GTK_LABEL(a),l); gtk_label_set_xalign(GTK_LABEL(a),0); gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(pb),t[i].size?(double)t[i].transferred/t[i].size:(t[i].state==TS_DONE?1:0));
         gtk_box_pack_start(GTK_BOX(v),a,FALSE,FALSE,0); gtk_box_pack_start(GTK_BOX(v),pb,FALSE,FALSE,0); gtk_widget_set_margin_start(v,10); gtk_widget_set_margin_end(v,10); gtk_widget_set_margin_top(v,8); gtk_widget_set_margin_bottom(v,8); gtk_list_box_insert(GTK_LIST_BOX(lb),v,-1); }
     lsm_unlock(C);

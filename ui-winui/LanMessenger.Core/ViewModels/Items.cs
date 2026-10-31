@@ -231,7 +231,14 @@ public partial class TransferItem : ObservableObject
         DirectionText = IsOutgoing ? $"发送给 {t.PeerName}" : $"来自 {t.PeerName}";
         Progress = t.Size == 0 ? (t.State == TransferState.Done ? 100 : 0) : Math.Min(100.0, t.Transferred * 100.0 / t.Size);
         var speed = t.State == TransferState.Active && t.BytesPerSec > 0 ? $" · {Fmt.Bytes(t.BytesPerSec)}/s" : "";
-        ProgressText = $"{Fmt.Bytes(t.Transferred)} / {Fmt.Bytes(t.Size)}{speed}";
+        var eta = "";
+        if (t.State == TransferState.Active && t.BytesPerSec > 0 && t.Size > t.Transferred)
+        {
+            var sec = (t.Size - t.Transferred) / t.BytesPerSec;
+            eta = sec >= 3600 ? $" · 剩余 {sec / 3600}h{sec % 3600 / 60:00}m" : sec >= 60 ? $" · 剩余 {sec / 60}m{sec % 60:00}s" : $" · 剩余 {sec}s";
+        }
+        var pctNow = t.Size == 0 ? 0 : (int)(t.Transferred * 100 / t.Size);
+        ProgressText = $"{pctNow}% · {Fmt.Bytes(t.Transferred)} / {Fmt.Bytes(t.Size)}{speed}{eta}";
         // link lost mid-transfer: the daemon keeps it "offered" with this reason and resumes by itself
         IsPaused = t.State == TransferState.Offered && t.Error.Length > 0;
         var pct = t.Size == 0 ? 0 : (int)(t.ResumedFrom * 100 / t.Size);
@@ -240,10 +247,10 @@ public partial class TransferItem : ObservableObject
         {
             TransferState.Offered when IsPaused => t.Error,
             TransferState.Offered => IsOutgoing ? "等待对方接收" : "等待接收",
-            TransferState.Active => "传输中",
+            TransferState.Active => t.ResumedFrom > 0 ? "续传中" : "传输中",
             TransferState.Verifying => "校验中",
             TransferState.Done => "已完成",
-            TransferState.Failed => "失败",
+            TransferState.Failed => t.Error.Length > 0 ? "失败：" + t.Error : "失败",
             TransferState.Cancelled => "已取消",
             TransferState.Rejected => "已拒收",
             _ => "",

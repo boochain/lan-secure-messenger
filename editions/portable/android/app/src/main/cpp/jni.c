@@ -51,7 +51,7 @@ JNIEXPORT jstring JNICALL FN(state)(JNIEnv *e, jclass k){
     sb_s(&b,"],\"transfers\":["); n=lsm_transfers(C,&t);
     for(i=0;i<n;i++){ char u[37]; lsm_uuid_str(t[i].tid,u); if(i) sb_s(&b,","); sb_s(&b,"{\"id\":"); sb_js(&b,u); sb_s(&b,",\"msg\":"); sb_js(&b,t[i].msg_id); sb_s(&b,",\"name\":"); sb_js(&b,t[i].name);
         sb_f(&b,",\"out\":%s,\"size\":%llu,\"done\":%llu,\"state\":\"%s\",\"path\":",t[i].out?"true":"false",(unsigned long long)t[i].size,(unsigned long long)t[i].transferred,TS[t[i].state]); sb_js(&b,t[i].path);
-        sb_s(&b,",\"error\":"); sb_js(&b,t[i].error); sb_f(&b,",\"resumed\":%llu}",(unsigned long long)t[i].resumed_from); }
+        sb_s(&b,",\"error\":"); sb_js(&b,t[i].error); { char st[256]; lsm_transfer_status(C,&t[i],st,sizeof st); sb_s(&b,",\"status\":"); sb_js(&b,st); } sb_f(&b,",\"resumed\":%llu}",(unsigned long long)t[i].resumed_from); }
     /* relay server (optional): the passphrase is write-only, only has_pass is reported */
     { int en=0, port=0, hp=0; char host[256]="", det[256]=""; const char *rs;
       lsm_unlock(C); lsm_relay_get(C,&en,host,sizeof host,&port,&hp); lsm_lock(C); rs=lsm_relay_status(C,det,sizeof det);

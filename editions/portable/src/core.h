@@ -83,6 +83,7 @@ typedef struct {
     uint64_t resumed_from;   /* offset the last (re)start continued from; 0 = from the beginning */
     int hashing;             /* internal: 1 sender prefix check, 2 receiver re-hash of a restored .part (chunked) */
     uint64_t hash_want, hash_done; void *hctx; uint8_t hpre[32]; int reoffer_pending;
+    uint64_t rate_bps, rate_b0; int64_t rate_t0; /* runtime throughput sample (lsm_transfer_status) */
 } lsm_transfer;
 
 typedef struct lsm_core lsm_core;
@@ -145,6 +146,9 @@ int lsm_clear_conversation(lsm_core *c, const char *conv); /* this device only; 
 int lsm_delete_message(lsm_core *c, const char *id);   /* this device only; tombstoned; emits "msg_delete\t<id>\t<conv>" */
 int lsm_set_name(lsm_core *c, const char *name);
 int lsm_transfer_cancel(lsm_core *c, const char *tid, char *err);
+/* One-line Chinese stage text for UIs (call with the core locked): stage · pct · speed · done/total · ETA · path.
+ * Stages: 等待对方接受 / 连接中断，等待重连 / 计算校验 / 核对已收部分 / 传输中 / 续传中 / 校验中 / 完成 / 失败：原因 / 已拒收 / 已取消. */
+void lsm_transfer_status(lsm_core *c, lsm_transfer *t, char *out, size_t n);
 int lsm_drop_links(lsm_core *c);
 /* optional relay server (off by default). Settings persist sealed in relay.dat. Events:
  *   "relay\t<off|connecting|online|auth_failed|error>\t<detail>"   relay connection state (UI indicator)

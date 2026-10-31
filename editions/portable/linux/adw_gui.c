@@ -222,9 +222,7 @@ static void refresh_chat(void){
 #ifdef LSM_HAVE_RELAY
                 { lsm_transfer *tx; int nt=lsm_transfers(C,&tx), q; for(q=0;q<nt;q++) if(!strcmp(tx[q].msg_id,m[i].id)){ size_t l=strlen(szs);
                     if(tx[q].size && (tx[q].state==1 || (tx[q].state==0 && tx[q].resumable && tx[q].error[0]))){ frac=(double)tx[q].transferred/tx[q].size; paused=tx[q].state==0; }
-                    if(tx[q].state==0 && tx[q].resumable && tx[q].error[0]) snprintf(szs+l,sizeof szs-l," · 连接中断，重连后自动续传");
-                    else if(tx[q].state==1 && tx[q].resumed_from>0 && tx[q].size) snprintf(szs+l,sizeof szs-l," · 从 %d%%（%.1f MB）处续传 · %d%%",(int)(tx[q].resumed_from*100/tx[q].size),tx[q].resumed_from/1048576.0,(int)(tx[q].transferred*100/tx[q].size));
-                    else if(tx[q].state==1 && tx[q].size) snprintf(szs+l,sizeof szs-l," · 传输中 %d%%",(int)(tx[q].transferred*100/tx[q].size)); } }
+                    if(tx[q].state!=TS_DONE){ char st[256]; lsm_transfer_status(C,&tx[q],st,sizeof st); snprintf(szs+l,sizeof szs-l," · %s",st); } } }
 #endif
                 sz=label(szs,"meta"); gtk_box_append(GTK_BOX(v),nm); gtk_box_append(GTK_BOX(v),sz);
                 if(frac>=0){ GtkWidget *pb=gtk_progress_bar_new(); gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(pb),frac); cls(pb,"xfer"); if(paused) cls(pb,"paused"); gtk_box_append(GTK_BOX(v),pb); } /* thin themed bar, like WinUI/Android/XP */ gtk_widget_set_hexpand(v,TRUE); gtk_widget_set_valign(v,GTK_ALIGN_CENTER);
