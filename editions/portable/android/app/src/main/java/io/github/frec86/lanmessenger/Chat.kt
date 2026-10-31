@@ -197,7 +197,7 @@ fun Chat(st: AppState, conv: String, back: () -> Unit) {
                                     val dir = java.io.File(ctx.cacheDir, "stickers"); dir.mkdirs()
                                     val out = java.io.File(dir, "$name.png")
                                     if (!out.exists()) ctx.assets.open("stickers/$name.png").use { inp -> out.outputStream().use { inp.copyTo(it) } }
-                                    Native.sendFile(id, out.absolutePath)
+                                    Native.sendFile(conv, out.absolutePath)
                                     emojiOpen = false
                                 } catch (_: Exception) {}
                             }.padding(6.dp))
