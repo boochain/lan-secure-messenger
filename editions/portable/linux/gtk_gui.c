@@ -81,7 +81,7 @@ static int peer_filter_match(const char *name){ const char *q; gchar *a,*b; int 
     if(!peer_search) return 1; q=gtk_entry_get_text(GTK_ENTRY(peer_search)); if(!q||!*q) return 1;
     a=g_utf8_strdown(name?name:"",-1); b=g_utf8_strdown(q,-1); ok=(strstr(a,b)!=NULL); g_free(a); g_free(b); return ok; }
 static void peer_search_changed(GtkEditable *e, gpointer p){ (void)e;(void)p; refresh_list(); }
-static void p2_decorate(const char *conv, char *t, size_t n); static void p2_mark_rows(void);
+static void p2_decorate(const char *conv, char *t, size_t n); static void p2_mark_rows(void); static char conv_filter[64];
 static void refresh_list(void){
     GList *ch=gtk_container_get_children(GTK_CONTAINER(peer_list)), *it; lsm_contact *k; lsm_group *g; int n,i; GtkListBoxRow *sel=NULL;
     for(it=ch;it;it=it->next) gtk_widget_destroy(GTK_WIDGET(it->data)); g_list_free(ch);
@@ -90,6 +90,7 @@ static void refresh_list(void){
     for(i=0;i<n;i++){ char conv[64], t[700], esc_n[700]; lsm_msg *m; int nm,j,unread=0; GtkWidget *row=gtk_list_box_row_new(), *h=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,8), *dot=gtk_label_new(k[i].online?"●":"○"), *lab=gtk_label_new(NULL);
         snprintf(conv,64,"dm:%s",k[i].fp); nm=lsm_messages(C,&m); for(j=0;j<nm;j++) if(m[j].unread&&!strcmp(m[j].conv,conv)) unread++;
         if(!peer_filter_match(lsm_display_name(&k[i])) && !peer_filter_match(k[i].name)) continue;
+        if(!lsm_conv_visible(C,conv,conv_filter) && strcmp(conv,cur_conv)) continue;
         { gchar *e=g_markup_escape_text(lsm_display_name(&k[i]),-1); snprintf(esc_n,sizeof esc_n,"%s",e); g_free(e); }
         snprintf(t,sizeof t,"<b>%s</b>%s\n<small>%s · %s</small>",esc_n,unread?"  •":"",k[i].trust==TRUST_TRUSTED?"已信任":k[i].trust==TRUST_BLOCKED?"已屏蔽":"未信任",k[i].online?"在线":"离线");
         p2_decorate(conv,t,sizeof t);
@@ -100,7 +101,7 @@ static void refresh_list(void){
         if(!strcmp(conv,cur_conv)) sel=GTK_LIST_BOX_ROW(row); }
     n=lsm_groups(C,&g);
     for(i=0;i<n;i++){ char u[37], conv[64], t[700]; GtkWidget *row=gtk_list_box_row_new(), *h=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,8), *dot=gtk_label_new("#"), *lab=gtk_label_new(NULL); gchar *e;
-        if(!peer_filter_match(g[i].name)) continue; lsm_uuid_str(g[i].id,u); snprintf(conv,64,"group:%s",u); e=g_markup_escape_text(g[i].name,-1); snprintf(t,sizeof t,"<b>%s</b>\n<small>群组 · %d 人</small>",e,g[i].nmembers); g_free(e);
+        if(!peer_filter_match(g[i].name)) continue; lsm_uuid_str(g[i].id,u); snprintf(conv,64,"group:%s",u); if(!lsm_conv_visible(C,conv,conv_filter) && strcmp(conv,cur_conv)) continue; e=g_markup_escape_text(g[i].name,-1); snprintf(t,sizeof t,"<b>%s</b>\n<small>群组 · %d 人</small>",e,g[i].nmembers); g_free(e);
         p2_decorate(conv,t,sizeof t);
         gtk_label_set_markup(GTK_LABEL(lab),t); gtk_label_set_xalign(GTK_LABEL(lab),0); gtk_label_set_ellipsize(GTK_LABEL(lab),PANGO_ELLIPSIZE_END);
         gtk_box_pack_start(GTK_BOX(h),dot,FALSE,FALSE,0); gtk_box_pack_start(GTK_BOX(h),lab,TRUE,TRUE,0); gtk_widget_set_margin_start(h,10); gtk_widget_set_margin_end(h,10); gtk_widget_set_margin_top(h,6); gtk_widget_set_margin_bottom(h,6);
@@ -142,11 +143,12 @@ static char jump_id[40]; static gboolean jump_later(gpointer p);
 /* 删除这条消息（仅本机）: runs from idle so the bubble that owns the menu is not destroyed inside its own signal */
 #include "gtk_p1.inc"
 #include "gtk_p2.inc"
+#include "gtk_v062.inc"
 static gboolean delete_msg_idle(gpointer id){
     if(confirm("删除这条消息？","只会从本机删除，对方仍保留这条消息。此操作无法撤销。","删除")){ if(lsm_delete_message(C,(const char*)id)) msgbox(GTK_MESSAGE_WARNING,"删除失败：消息不存在。"); refresh_chat(); }
     g_free(id); return G_SOURCE_REMOVE; }
 static void delete_msg_cb(GtkMenuItem *mi_, gpointer id){ (void)mi_; g_idle_add(delete_msg_idle,g_strdup((const char*)id)); }
-static void add_delete_item(GtkMenuShell *menu, const char *id){ GtkWidget *it; p1_menu_items(menu,id); p2_menu_items(menu,id); it=gtk_menu_item_new_with_mnemonic("删除这条消息（仅本机）(_D)…");
+static void add_delete_item(GtkMenuShell *menu, const char *id){ GtkWidget *it; v062_menu_items(menu,id); p1_menu_items(menu,id); p2_menu_items(menu,id); it=gtk_menu_item_new_with_mnemonic("删除这条消息（仅本机）(_D)…");
     g_signal_connect_data(it,"activate",G_CALLBACK(delete_msg_cb),g_strdup(id),(GClosureNotify)g_free,0); gtk_menu_shell_append(menu,gtk_separator_menu_item_new()); gtk_menu_shell_append(menu,it); gtk_widget_show_all(GTK_WIDGET(menu)); }
 /* selectable text labels have their own 复制/全选 menu: extend it */
 static void label_popup_cb(GtkLabel *l, GtkMenu *menu, gpointer id){ (void)l; add_delete_item(GTK_MENU_SHELL(menu),(const char*)id); }
@@ -314,7 +316,7 @@ static void show_transfers(void){
     gtk_container_add(GTK_CONTAINER(sc),lb); gtk_box_pack_start(GTK_BOX(box),sc,TRUE,TRUE,0); gtk_window_set_default_size(GTK_WINDOW(d),560,380); gtk_widget_show_all(d);
     g_signal_connect(d,"response",G_CALLBACK(gtk_widget_destroy),NULL); }
 
-enum { A_ADDIP=1, A_TRUST, A_UNTRUST, A_BLOCK, A_PINOFFER, A_PINPAIR, A_GCREATE, A_GINVITE, A_GREMOVE, A_GLEAVE, A_NAME, A_XFERS, A_DLDIR, A_FIREWALL, A_ABOUT, A_QUIT, A_MUTE, A_DIAG, A_UPDATE, A_CLEAR, A_REFRESH, A_STORAGE, A_EMOJI, A_HISTORY, A_PROFILE, A_CPROFILE, A_PINCONV, A_STARRED, A_PINNED, A_MULTI };
+enum { A_ADDIP=1, A_TRUST, A_UNTRUST, A_BLOCK, A_PINOFFER, A_PINPAIR, A_GCREATE, A_GINVITE, A_GREMOVE, A_GLEAVE, A_NAME, A_XFERS, A_DLDIR, A_FIREWALL, A_ABOUT, A_QUIT, A_MUTE, A_DIAG, A_UPDATE, A_CLEAR, A_REFRESH, A_STORAGE, A_EMOJI, A_HISTORY, A_PROFILE, A_CPROFILE, A_PINCONV, A_STARRED, A_PINNED, A_MULTI, A_POLL, A_TTL, A_ARCHIVE, A_FOLDERS, A_FILTER };
 
 static void storage_dialog(void){
     char info[2048]={0}, msg[2400]; GtkWidget *d; int n; size_t need=lsm_storage_info(C,info,sizeof info);
@@ -388,6 +390,11 @@ static void act(GtkWidget *w, gpointer p){ int id=GPOINTER_TO_INT(p); char err[2
     case A_STARRED: p2_flag_dialog(2,NULL); break;
     case A_PINNED: if(cur_conv[0]) p2_flag_dialog(1,cur_conv); break;
     case A_MULTI: p2_multi(); break;
+    case A_POLL: v062_new_poll(); break;
+    case A_TTL: v062_ttl(); break;
+    case A_ARCHIVE: v062_archive(); break;
+    case A_FOLDERS: v062_folders(); break;
+    case A_FILTER: v062_filter(); break;
     case A_PROFILE: my_profile_dialog(); break;
     case A_CPROFILE: contact_profile_dialog(); break;
     case A_DLDIR: { char d[600]; gchar *u; lsm_lock(C); snprintf(d,sizeof d,"%s",lsm_download_dir(C)); lsm_unlock(C); u=g_filename_to_uri(d,NULL,NULL); if(u){ g_app_info_launch_default_for_uri(u,NULL,NULL); g_free(u);} break; }
@@ -459,6 +466,7 @@ static void activate(GtkApplication *a, gpointer p){
     mi(menu,"生成 PIN（让对方输入）",A_PINOFFER); mi(menu,"输入 PIN 配对…",A_PINPAIR); sep(menu);
     mi(menu,"创建群组…",A_GCREATE); mi(menu,"邀请成员…",A_GINVITE); mi(menu,"移除成员…",A_GREMOVE); mi(menu,"退出群组",A_GLEAVE); sep(menu);
     mi(menu,"置顶 / 取消置顶当前会话",A_PINCONV); mi(menu,"本会话的置顶消息…",A_PINNED); mi(menu,"收藏的消息…",A_STARRED); mi(menu,"多选消息…",A_MULTI); sep(menu);
+    mi(menu,"发起投票…",A_POLL); mi(menu,"定时删除…",A_TTL); mi(menu,"归档 / 取消归档当前会话",A_ARCHIVE); mi(menu,"会话分组…",A_FOLDERS); mi(menu,"筛选会话（分组 / 已归档）…",A_FILTER); sep(menu);
     mi(menu,"清空聊天记录…",A_CLEAR); mi(menu,"文件传输",A_XFERS); mi(menu,"打开接收文件夹",A_DLDIR); mi(menu,"个人资料…",A_PROFILE); mi(menu,"设置防火墙（ufw / firewalld）…",A_FIREWALL); sep(menu); mi(menu,"关于",A_ABOUT); mi(menu,"退出",A_QUIT);
     gtk_widget_show_all(menu); gtk_widget_set_halign(menu,GTK_ALIGN_END); /* open leftwards, inside the window */ gtk_menu_button_set_popup(GTK_MENU_BUTTON(mb),menu); gtk_header_bar_pack_end(GTK_HEADER_BAR(hb),mb); menu_btn=mb;
     { GtkWidget *add=gtk_button_new_from_icon_name("list-add-symbolic",GTK_ICON_SIZE_BUTTON); gtk_widget_set_tooltip_text(add,"按 IP 添加"); g_signal_connect(add,"clicked",G_CALLBACK(act),GINT_TO_POINTER(A_ADDIP)); gtk_header_bar_pack_start(GTK_HEADER_BAR(hb),add); }

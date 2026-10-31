@@ -20,7 +20,8 @@ static int conv_muted(lsm_core *c, const char *conv){ lsm_contact *ct; if(strncm
 static void v062_on_add(lsm_core *c, lsm_msg *m){ p2conv *e; if(m->kind==K_SYSTEM) return; e=p2_get(c,m->conv,0); if(!e) return;
     if(e->ttl>0 && !m->expires_ms){ int64_t now=wall_ms(); m->expires_ms=(m->ts_ms>now?m->ts_ms:now)+(int64_t)e->ttl*1000; hist_rec_v062(c,m); }
     if(!m->out && e->archived && !conv_muted(c,m->conv)){ e->archived=0; p2_save(c); emit(c,"conv\t%s",m->conv); } }
-static void v062_sweep(lsm_core *c){ static int64_t last; int64_t now=wall_ms(); int i; if(now-last<1000) return; last=now;
+static lsm_core *g_v062_core;
+static void v062_sweep(lsm_core *c){ static int64_t last; g_v062_core=c; int64_t now=wall_ms(); int i; if(now-last<1000) return; last=now;
     for(i=c->nmsgs-1;i>=0;i--){ lsm_msg *m=&c->msgs[i]; char id[40], conv[64]; buf_t b={0}; if(!m->expires_ms || m->expires_ms>now) continue;
         scpy(id,m->id,40); scpy(conv,m->conv,64); msg_unlink(c,id); tomb_add(c,id); bfmt(&b,"D\t%s",id); hist_append(c,&b); b_free(&b); emit(c,"msg_delete\t%s\t%s",id,conv);
         if(i>c->nmsgs) i=c->nmsgs; } }
@@ -117,3 +118,39 @@ int lsm_set_disappearing(lsm_core *c, const char *conv, int secs, char *err){ p2
     uuid_new(sid); lsm_uuid_str(sid,sids); add_message(c,sids,conv,0,"",K_SYSTEM,t,wall_ms(),ST_RECEIVED);
     mu_unlock(&c->mu); emit(c,"conv\t%s",conv); return 0; }
 int lsm_conv_ttl(lsm_core *c, const char *conv){ p2conv *e=p2_get(c,conv,0); return e?e->ttl:0; }
+
+/* ---- shared UI helpers ---- */
+static lsm_core *g_v062_core; /* GUIs run one core per process: lets lsm_display_body mark my own vote */
+/* body text for polls / expiring messages: question + options with counts (√ = my vote) + timer line */
+static int v062_body(const lsm_msg *m, char *buf, size_t n){ size_t o=0; int cnt[POLL_MAX_OPTS], mine[POLL_MAX_OPTS], voters=0, k=0, i; const char *p;
+    if(!n) return 0; buf[0]=0;
+    if(m->is_poll){ lsm_core *c=g_v062_core; if(c) k=lsm_poll_counts(c,m,cnt,POLL_MAX_OPTS,mine,&voters); else { k=opts_count(m->poll_opts); for(i=0;i<k&&i<POLL_MAX_OPTS;i++){ cnt[i]=0; mine[i]=0; } }
+        o+=(size_t)snprintf(buf+o,n-o,"[%s] %s\n",m->poll_multi?"\xe5\xa4\x9a\xe9\x80\x89\xe6\x8a\x95\xe7\xa5\xa8":"\xe5\x8d\x95\xe9\x80\x89\xe6\x8a\x95\xe7\xa5\xa8",m->body?m->body:""); /* 多选投票 / 单选投票 */
+        for(i=0,p=m->poll_opts?m->poll_opts:"";*p&&i<POLL_MAX_OPTS&&o<n;i++){ const char *e=strchr(p,'\n'); int l=e?(int)(e-p):(int)strlen(p);
+            o+=(size_t)snprintf(buf+o,n-o," %d. %.*s \xe2\x80\x94 %d \xe7\xa5\xa8%s\n",i+1,l,p,i<k?cnt[i]:0,i<k&&mine[i]?" \xe2\x88\x9a":""); p=e?e+1:p+l; } /* — N 票 √ */
+        if(o<n) o+=(size_t)snprintf(buf+o,n-o,"%d \xe4\xba\xba\xe5\x8f\x82\xe4\xb8\x8e%s",voters,m->poll_closed?" \xc2\xb7 \xe5\xb7\xb2\xe7\xbb\x93\xe6\x9d\x9f":" \xc2\xb7 \xe5\x8f\xb3\xe9\x94\xae\xe6\x8a\x95\xe7\xa5\xa8"); } /* N 人参与 · 已结束 / · 右键投票 */
+    else o+=(size_t)snprintf(buf+o,n-o,"%s%s",m->body?m->body:"",m->edited?"\xef\xbc\x88\xe5\xb7\xb2\xe7\xbc\x96\xe8\xbe\x91\xef\xbc\x89":"");
+    if(m->expires_ms && o<n){ time_t t=(time_t)(m->expires_ms/1000); struct tm tmv; char ts[32];
+#ifdef _WIN32
+        tmv=*localtime(&t);
+#else
+        localtime_r(&t,&tmv);
+#endif
+        strftime(ts,sizeof ts,"%H:%M:%S",&tmv); o+=(size_t)snprintf(buf+o,n-o,"\n[\xe5\xae\x9a\xe6\x97\xb6\xe5\x88\xa0\xe9\x99\xa4 %s]",ts); } /* [定时删除 hh:mm:ss] */
+    return (int)o; }
+/* filter for chat lists: "" = main list (not archived), "\x01" = archived only, else folder name (not archived) */
+int lsm_conv_visible(lsm_core *c, const char *conv, const char *filter){ p2conv *e=p2_get(c,conv,0); int arch=e?e->archived:0;
+    if(!filter||!*filter) return !arch; if(!strcmp(filter,LSM_FILTER_ARCHIVED)) return arch;
+    if(arch||!e) return 0; { char w[404], pat[80]; snprintf(w,sizeof w,",%s,",e->folders); snprintf(pat,sizeof pat,",%s,",filter); return strstr(w,pat)!=NULL; } }
+int lsm_archived_count(lsm_core *c){ int i, k=0; if(!c->p2||!c->p2->loaded) p2_load(c); for(i=0;i<c->p2->n;i++) if(c->p2->v[i].archived) k++; return k; }
+/* the poll options of a message as separate strings (caller holds lsm_lock) */
+int lsm_poll_option(const lsm_msg *m, int idx, char *out, size_t n){ const char *p=m->poll_opts?m->poll_opts:""; int i=0; if(n) out[0]=0;
+    while(*p){ const char *e=strchr(p,'\n'); size_t l=e?(size_t)(e-p):strlen(p); if(i==idx){ if(l>=n) l=n-1; memcpy(out,p,l); out[l]=0; return 1; } i++; p=e?e+1:p+l; } return 0; }
+int lsm_my_vote(lsm_core *c, const lsm_msg *m, int idx){ int cnt[POLL_MAX_OPTS], mine[POLL_MAX_OPTS]; if(idx<0||idx>=POLL_MAX_OPTS) return 0; lsm_poll_counts(c,m,cnt,POLL_MAX_OPTS,mine,NULL); return mine[idx]; }
+/* toggle option idx in my vote (single choice: replace / clear) */
+int lsm_vote_toggle(lsm_core *c, const char *id, int idx, char *err){ lsm_msg *m; int cnt[POLL_MAX_OPTS], mine[POLL_MAX_OPTS], ch[POLL_MAX_OPTS], k=0, i, n, multi;
+    mu_lock(&c->mu); m=msg_get(c,id); if(!m||!m->is_poll){ mu_unlock(&c->mu); E("\xe8\xbf\x99\xe4\xb8\x8d\xe6\x98\xaf\xe6\x8a\x95\xe7\xa5\xa8"); return -1; }
+    n=lsm_poll_counts(c,m,cnt,POLL_MAX_OPTS,mine,NULL); multi=m->poll_multi; mu_unlock(&c->mu);
+    if(idx<0||idx>=n){ E("\xe9\x80\x89\xe9\xa1\xb9\xe4\xb8\x8d\xe5\xad\x98\xe5\x9c\xa8"); return -1; }
+    if(multi){ for(i=0;i<n;i++) if(i==idx?!mine[i]:mine[i]) ch[k++]=i; } else if(!mine[idx]) ch[k++]=idx;
+    return lsm_vote_poll(c,id,ch,k,err); }

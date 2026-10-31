@@ -134,5 +134,7 @@ void lsm_reaction_summary(const lsm_msg *m, char *out, size_t n){ char em[16][40
         p=sc?sc+1:NULL; }
     for(i=0;i<ne;i++){ size_t o=strlen(out); snprintf(out+o,n-o,"%s%s %d",i?"  ":"",em[i],cnt[i]); } }
 /* body to display: recalled / edited markers */
+static int v062_body(const lsm_msg *m, char *buf, size_t n);
 const char *lsm_display_body(const lsm_msg *m, char *buf, size_t n){ if(m->recalled){ snprintf(buf,n,"%s",m->out?"你撤回了一条消息":"对方撤回了一条消息"); return buf; }
+    if(m->is_poll || m->expires_ms){ v062_body(m,buf,n); return buf; }
     if(m->edited){ snprintf(buf,n,"%s（已编辑）",m->body?m->body:""); return buf; } return m->body?m->body:""; }

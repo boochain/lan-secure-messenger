@@ -237,6 +237,12 @@ int  lsm_folder_names(lsm_core *c, char names[][64], int max);       /* caller h
 int  lsm_set_disappearing(lsm_core *c, const char *conv, int secs, char *err); /* 0,30,300,3600,86400,604800 */
 int  lsm_conv_ttl(lsm_core *c, const char *conv);                    /* caller holds lsm_lock */
 void lsm_ttl_label(int secs, char *out, size_t n);
+#define LSM_FILTER_ARCHIVED "\x01"
+int  lsm_conv_visible(lsm_core *c, const char *conv, const char *filter); /* caller holds lsm_lock */
+int  lsm_archived_count(lsm_core *c);                                     /* caller holds lsm_lock */
+int  lsm_poll_option(const lsm_msg *m, int idx, char *out, size_t n);
+int  lsm_my_vote(lsm_core *c, const lsm_msg *m, int idx);                 /* caller holds lsm_lock */
+int  lsm_vote_toggle(lsm_core *c, const char *id, int idx, char *err);   /* single: select/clear; multi: toggle */
 /* P1 UI helpers */
 int  lsm_voice_secs(const char *name);                 /* -1 unless "lsm-voice-<N>s-…" */
 void lsm_voice_name(int secs, const char *ext, char *out, size_t n);
