@@ -51,3 +51,15 @@ int lsm_forward(lsm_core *c, const char *id, const char *conv, char *msgid_out, 
     m=add_message(c,ids,conv,1,c->fp,K_TEXT,body,wall_ms(),ST_QUEUED); m->forwarded=1; hist_rec_ext(c,m);
     online=send_ext(c,conv,&j,fb,nid,ids); if(online) set_status(c,msg_get(c,ids),ST_SENT);
     if(msgid_out) strcpy(msgid_out,ids); free(fb); free(body); b_free(&j); mu_unlock(&c->mu); return 0; }
+/* ---- shared UI helpers (caller holds lsm_lock) ---- */
+int lsm_flagged(lsm_core *c, const char *conv, int which, int *idx, int max){ int i, k=0;
+    for(i=c->nmsgs-1;i>=0&&k<max;i--){ lsm_msg *m=&c->msgs[i]; if(conv&&*conv&&strcmp(m->conv,conv)) continue; if(m->recalled) continue; if((which&1)&&m->pinned) idx[k++]=i; else if((which&2)&&m->starred) idx[k++]=i; }
+    return k; }
+int lsm_mention_candidates(lsm_core *c, const char *conv, char names[][128], char fps[][FP_LEN], int max){ int i, k=0; uint8_t gid[16]; lsm_group *g;
+    if(strncmp(conv,"group:",6)||lsm_uuid_parse(conv+6,gid)||!(g=group_get(c,gid))) return 0;
+    for(i=0;i<g->nmembers&&k<max;i++){ lsm_contact *ct; if(!strcmp(g->members[i],c->fp)) continue; ct=contact_get(c,g->members[i]);
+        scpy(names[k],ct?lsm_display_name(ct):g->members[i],128); scpy(fps[k],g->members[i],FP_LEN); k++; }
+    return k; }
+/* fingerprints of every member whose "@name" appears in text, comma separated (empty when none) */
+void lsm_mentions_in(lsm_core *c, const char *conv, const char *text, char *csv, size_t n){ char nm[64][128], fp[64][FP_LEN]; int k=lsm_mention_candidates(c,conv,nm,fp,64), i; size_t o=0; if(n) csv[0]=0;
+    for(i=0;i<k;i++){ char at[132]; snprintf(at,sizeof at,"@%s",nm[i]); if(!nm[i][0]||!strstr(text,at)) continue; if(o+strlen(fp[i])+2>=n) break; o+=snprintf(csv+o,n-o,"%s%s",o?",":"",fp[i]); } }

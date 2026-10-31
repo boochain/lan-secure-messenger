@@ -18,6 +18,7 @@ window, dialog, messagedialog, .background { font-size: 14px; }
 .sysmsg { margin: 8px; }
 /* 历史跳转：高亮目标消息 */
 .quote { border-left: 3px solid #0F6CBD; padding: 2px 6px; opacity: 0.85; }
+.bubble.mention { border-left: 3px solid #C01C28; }
 .reactions { font-size: 90%; padding: 1px 4px; border-radius: 10px; }
 .jumphl { border-radius: 8px; box-shadow: inset 0 0 0 2px #0F6CBD; }
 .drophint { border-radius: 12px; padding: 24px; font-size: 20px; font-weight: 600; }

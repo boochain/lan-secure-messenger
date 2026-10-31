@@ -214,6 +214,11 @@ int  lsm_set_msg_flags(lsm_core *c, const char *id, int pinned, int starred, cha
 int  lsm_send_typing(lsm_core *c, const char *conv);                       /* throttled 3 s; online CAP_EXT peers only */
 int  lsm_forward(lsm_core *c, const char *id, const char *conv, char *msgid_out, char *err);
 /* events: "typing\t<conv>\t<fp>\t<name>" */
+/* P2 UI helpers, caller holds lsm_lock: flagged messages newest first (which: 1 pinned, 2 starred, 3 either);
+ * @mention candidates for a group; fingerprints whose "@name" occurs in text (comma separated) */
+int  lsm_flagged(lsm_core *c, const char *conv, int which, int *idx, int max);
+int  lsm_mention_candidates(lsm_core *c, const char *conv, char names[][128], char fps[][FP_LEN], int max);
+void lsm_mentions_in(lsm_core *c, const char *conv, const char *text, char *csv, size_t n);
 /* P1 UI helpers */
 int  lsm_voice_secs(const char *name);                 /* -1 unless "lsm-voice-<N>s-…" */
 void lsm_voice_name(int secs, const char *ext, char *out, size_t n);
