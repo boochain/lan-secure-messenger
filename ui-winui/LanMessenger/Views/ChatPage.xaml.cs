@@ -328,7 +328,7 @@ public sealed partial class ChatPage : Page
             using (var src = await file.OpenStreamForReadAsync())
             using (var dst = File.Create(dest))
                 await src.CopyToAsync(dst);
-            await VM.SendFileAsync(dest);
+            await VM.SendFilesAsync(new[] { dest });
             EmojiFlyout.Hide();
         }
         catch (Exception ex)
