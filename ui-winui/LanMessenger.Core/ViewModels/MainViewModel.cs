@@ -76,6 +76,10 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _searchText = "";
     [ObservableProperty] private bool _hasTransfersActive;
     [ObservableProperty] private string _storageSummary = "";
+    [ObservableProperty] private string _bindLanIp = "";
+    [ObservableProperty] private string _transportMode = "lan";
+    [ObservableProperty] private string _accountUser = "";
+    [ObservableProperty] private bool _serverRetainDefault;
     [ObservableProperty] private string _transfersSummary = "";
     [ObservableProperty] private int _onlineCount;
     // redesign: chat header (avatar + presence + status line), E2E notice, unread total for the nav badge
@@ -287,6 +291,10 @@ public partial class MainViewModel : ObservableObject
         EditTargets = string.Join(Environment.NewLine, s.AnnounceTargets);
         EditInclude = string.Join(", ", s.IncludeInterfaces);
         EditExclude = string.Join(", ", s.ExcludeInterfaces);
+        BindLanIp = s.BindLanIp ?? "";
+        TransportMode = string.IsNullOrEmpty(s.TransportMode) ? "lan" : s.TransportMode;
+        AccountUser = s.AccountUser ?? "";
+        ServerRetainDefault = string.Equals(s.DefaultRetain, "server_retain", StringComparison.OrdinalIgnoreCase);
         EditMaxFileMb = s.MaxFileBytes / 1024.0 / 1024.0;
         EditCheckUpdates = s.CheckUpdates;
         EditRelayEnabled = s.RelayEnabled;
@@ -928,6 +936,10 @@ public partial class MainViewModel : ObservableObject
             ["announce_targets"] = SplitList(EditTargets),
             ["include_interfaces"] = SplitList(EditInclude),
             ["exclude_interfaces"] = SplitList(EditExclude),
+            ["bind_lan_ip"] = BindLanIp?.Trim() ?? "",
+            ["transport_mode"] = TransportMode ?? "lan",
+            ["account_user"] = AccountUser?.Trim() ?? "",
+            ["default_retain"] = ServerRetainDefault ? "server_retain" : "ends_only",
             ["max_file_bytes"] = (ulong)Math.Max(1, EditMaxFileMb) * 1024UL * 1024UL,
             ["check_updates"] = EditCheckUpdates,
         };
@@ -1156,4 +1168,28 @@ public partial class MainViewModel : ObservableObject
     }
 
     public Task RemoveManualPeerAsync(string addr) => SafeCall(async x => { await x.RemoveManualPeerAsync(addr); await RefreshDiagnosticsAsync(true); });
+
+    public async Task AccountRegisterAsync(string password)
+    {
+        if (string.IsNullOrWhiteSpace(AccountUser) || string.IsNullOrEmpty(password)) { ShowStatus("请填写账号用户名与密码", true); return; }
+        await SafeCall(x => x.AccountRegisterAsync(AccountUser.Trim(), password), "账号已注册");
+    }
+
+    public async Task AccountLoginAsync(string password)
+    {
+        if (string.IsNullOrWhiteSpace(AccountUser) || string.IsNullOrEmpty(password)) { ShowStatus("请填写账号用户名与密码", true); return; }
+        await SafeCall(x => x.AccountLoginAsync(AccountUser.Trim(), password), "账号已登录");
+    }
+
+    public async Task AccountBackupPutAsync(string password)
+    {
+        if (string.IsNullOrWhiteSpace(AccountUser) || string.IsNullOrEmpty(password)) { ShowStatus("请填写账号用户名与备份密码", true); return; }
+        await SafeCall(x => x.AccountBackupPutAsync(AccountUser.Trim(), password), "身份备份已上传到中转");
+    }
+
+    public async Task AccountBackupGetAsync(string password)
+    {
+        if (string.IsNullOrWhiteSpace(AccountUser) || string.IsNullOrEmpty(password)) { ShowStatus("请填写账号用户名与备份密码", true); return; }
+        await SafeCall(x => x.AccountBackupGetAsync(AccountUser.Trim(), password), "身份已恢复，请重启应用");
+    }
 }

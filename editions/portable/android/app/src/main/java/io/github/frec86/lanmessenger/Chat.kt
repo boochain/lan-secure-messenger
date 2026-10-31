@@ -74,7 +74,7 @@ fun Chat(st: AppState, conv: String, back: () -> Unit) {
         val src = saveSrc; if (uri != null && src != null) try { ctx.contentResolver.openOutputStream(uri)!!.use { o -> File(src).inputStream().use { it.copyTo(o) } }; Repo.toast.value = "已保存" } catch (e: Exception) { Repo.toast.value = "保存失败" } }
     val name = contact?.name ?: group?.name ?: ""
     val key = contact?.fp ?: group?.id ?: conv
-    val maxW = ((LocalConfiguration.current.screenWidthDp - 24) * .78f).coerceAtMost(320f).dp
+    val maxW = ((LocalConfiguration.current.screenWidthDp - 24) * .92f).coerceAtMost(720f).dp
     /* mockup: status bar + messages + composer on the window colour, the gesture strip on `chat` */
     Column(Modifier.fillMaxSize().background(p.chat)) {
       Column(Modifier.fillMaxSize().navigationBarsPadding().imePadding().background(p.window).statusBarsPadding()) {
@@ -180,10 +180,28 @@ fun Chat(st: AppState, conv: String, back: () -> Unit) {
         }
         if (emojiOpen) {
             val emojis = listOf("😀", "😃", "😄", "😁", "😆", "😅", "😂", "🙂", "😉", "😊", "😇", "🥰", "😍", "🤩", "😘", "😋", "😜", "🤗", "🤔", "😴", "🥳", "😎", "😢", "😭", "😤", "👍", "👎", "👏", "🙏", "💪", "❤️", "🔥", "⭐", "✨", "🎉", "✅", "❌", "💯")
-            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 160.dp).padding(horizontal = 8.dp)) {
+            val stickers = listOf("thumb", "heart", "fire", "star", "party", "check")
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 200.dp).padding(horizontal = 8.dp)) {
                 items(emojis.chunked(8)) { row ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                         row.forEach { e -> Text(e, fontSize = 26.sp, modifier = Modifier.clickable { input += e }.padding(4.dp)) }
+                    }
+                }
+                item {
+                    Text("本地贴纸", color = p.fg2, modifier = Modifier.padding(top = 6.dp, bottom = 4.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        stickers.forEach { name ->
+                            Text(name, fontSize = 12.sp, color = p.accent, modifier = Modifier.clickable {
+                                try {
+                                    val dir = java.io.File(ctx.cacheDir, "stickers"); dir.mkdirs()
+                                    val out = java.io.File(dir, "$name.png")
+                                    if (!out.exists()) ctx.assets.open("stickers/$name.png").use { inp -> out.outputStream().use { inp.copyTo(it) } }
+                                    Native.sendFile(id, out.absolutePath)
+                                    emojiOpen = false
+                                } catch (_: Exception) {}
+                            }.padding(6.dp))
+                        }
                     }
                 }
             }

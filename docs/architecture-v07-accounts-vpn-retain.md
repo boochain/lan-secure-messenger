@@ -1,6 +1,6 @@
 # v0.7 架构设计：VPN 旁路 · 账号/双传输 · 服务器保留
 
-状态：设计草案（v0.6.1 落地文档与小步开关；完整实现跟 v0.7）  
+状态：v0.6.1 已落地核心代码（绑网卡 / 账号+备份 / retain STORE_FOR / transport_mode）；细节与联调续进  
 仓库：lan-secure-messenger  
 原则：免费自建优先；默认可关；不破坏现有 LAN-only E2E。
 
@@ -51,8 +51,13 @@
 - 存储管理与半成品清理（本分支 #7）。
 - 心跳 4s / 死链 30s（#13）减轻后台误判离线。
 
-## 后续实现清单（v0.7）
-- [ ] `bind_ipv4` / 网卡选择贯通 discovery+dial+listen
-- [ ] relay 注册/登录/设备列表协议与威胁模型文档定稿
-- [ ] Server+LAN 并列路由与 UI 对等展示
-- [ ] server-retain 帧、TTL、配额、拉取 API
+## v0.6.1 已编码
+- [x] `bind_lan_ip`（空/`auto`/IPv4）贯通 discovery+listen+dial（Win/Linux/Android/C）
+- [x] relay ACCOUNT_* + 本地 AccountStore；客户端 IPC 注册/登录/备份上下传
+- [x] `transport_mode=server_lan` 时中转与 LAN 并行 Open；`lan` 时无候选才走中转
+- [x] STORE flags&1 按目标 peer 落盘；send_text/file `retain` + default_retain；DH seal_retain
+
+## 残留（联调/增强）
+- [ ] 设备列表吊销 UI；配额/GC 定时扫
+- [ ] 收端自动 FETCH 未读 retain 队列
+- [ ] 群消息 retain（默认仍 ends-only）

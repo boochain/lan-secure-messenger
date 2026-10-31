@@ -201,7 +201,7 @@ typedef struct { uint32_t ip; int64_t t; } reply_mark;
 
 struct lsm_core {
     mutex_t mu;
-    lsm_opts o; char data_dir[520], dl_dir[520], announce_targets[1024];
+    lsm_opts o; char data_dir[520], dl_dir[520], announce_targets[1024]; uint32_t bind4; /* htonl LAN bind or 0 */
     uint8_t x_sk[32], x_pk[32], ed_seed[32], ed_sk[64], ed_pk[32]; char fp[FP_LEN];
     char name[300];
     uint8_t store_key[32];
@@ -957,6 +957,25 @@ static DWORD WINAPI thread_main(LPVOID p){ lsm_core *c=(lsm_core*)p; while(!c->s
 static void *thread_main(void *p){ lsm_core *c=(lsm_core*)p; while(!c->stop) loop_once(c); return NULL; }
 #endif
 
+
+static uint32_t first_lan_ip(void){
+    uint32_t ips[32]; int n=0,i;
+#ifdef _WIN32
+    ULONG len=0; IP_ADAPTER_INFO *ai,*a; GetAdaptersInfo(NULL,&len); ai=(IP_ADAPTER_INFO*)malloc(len?len:sizeof(IP_ADAPTER_INFO));
+    if(ai && GetAdaptersInfo(ai,&len)==NO_ERROR){ for(a=ai;a&&n<32;a=a->Next){ IP_ADDR_STRING *s; for(s=&a->IpAddressList;s&&n<32;s=s->Next){ uint32_t ip=inet_addr(s->IpAddress.String); if(ip&&ip!=INADDR_NONE) ips[n++]=ip; } } }
+    free(ai);
+#else
+    struct ifaddrs *ia,*p; if(getifaddrs(&ia)==0){ for(p=ia;p&&n<32;p=p->ifa_next){ if(!p->ifa_addr||p->ifa_addr->sa_family!=AF_INET||(p->ifa_flags&IFF_LOOPBACK)||!(p->ifa_flags&IFF_UP)) continue; ips[n++]=((struct sockaddr_in*)p->ifa_addr)->sin_addr.s_addr; } freeifaddrs(ia); }
+#endif
+    for(i=0;i<n;i++){ uint32_t hip=ntohl(ips[i]); if((hip>>24)==127||(hip>>16)==0xA9FE) continue; return ips[i]; }
+    return 0;
+}
+static int parse_bind4(const char *s, uint32_t *out){
+    if(!s||!*s) return 0;
+    if(!strcmp(s,"auto")){ uint32_t ip=first_lan_ip(); if(!ip) return 0; *out=ip; return 1; }
+    { unsigned a,b,c,d; if(sscanf(s,"%u.%u.%u.%u",&a,&b,&c,&d)!=4||a>255||b>255||c>255||d>255) return 0;
+      *out=htonl((a<<24)|(b<<16)|(c<<8)|d); return 1; }
+}
 lsm_core *lsm_start(const lsm_opts *o, char *err, size_t errn){
     lsm_core *c=(lsm_core*)xcalloc(1,sizeof(lsm_core)); struct sockaddr_in a; int one=1; char p[600];
 #ifdef _WIN32
@@ -976,13 +995,18 @@ lsm_core *lsm_start(const lsm_opts *o, char *err, size_t errn){
     { char *t=load_sealed(c,"manual.dat"), *l, *nx; for(l=t; l && *l; l=nx){ manual_rt m; nx=strchr(l,'\n'); if(nx) *nx++=0; memset(&m,0,sizeof m); if(resolve(l,41235,&m.sa)) continue; scpy(m.addr,l,sizeof m.addr);
         c->manual=(manual_rt*)xrealloc(c->manual,sizeof(manual_rt)*(c->nmanual+1)); c->manual[c->nmanual++]=m; } free(t); }
     { int i; for(i=0;i<c->ncontacts;i++){ c->contacts[i].online=0; c->contacts[i].rtt_ms=-1; } }
-    /* TCP listener: preferred port, fallback ephemeral */
+    /* TCP listener: optional LAN bind (VPN bypass); preferred port, fallback ephemeral */
+    c->bind4=0; if(o->bind_lan_ip) parse_bind4(o->bind_lan_ip,&c->bind4);
     c->lsock=socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
-    memset(&a,0,sizeof a); a.sin_family=AF_INET; a.sin_addr.s_addr=INADDR_ANY; a.sin_port=htons((unsigned short)c->o.listen_port);
+    memset(&a,0,sizeof a); a.sin_family=AF_INET; a.sin_addr.s_addr=c->bind4?c->bind4:INADDR_ANY; a.sin_port=htons((unsigned short)c->o.listen_port);
 #ifndef _WIN32
     setsockopt(c->lsock,SOL_SOCKET,SO_REUSEADDR,(const char*)&one,sizeof one);
 #endif
-    if(bind(c->lsock,(struct sockaddr*)&a,sizeof a)){ a.sin_port=0; if(bind(c->lsock,(struct sockaddr*)&a,sizeof a)){ scpy(err,"cannot bind TCP listener",errn); return NULL; } }
+    if(bind(c->lsock,(struct sockaddr*)&a,sizeof a)){
+        if(c->bind4){ a.sin_addr.s_addr=INADDR_ANY; c->bind4=0; }
+        a.sin_port=htons((unsigned short)c->o.listen_port);
+        if(bind(c->lsock,(struct sockaddr*)&a,sizeof a)){ a.sin_port=0; if(bind(c->lsock,(struct sockaddr*)&a,sizeof a)){ scpy(err,"cannot bind TCP listener",errn); return NULL; } }
+    }
     listen(c->lsock,16); set_nonblock(c->lsock);
     { socklen_t al=sizeof a; getsockname(c->lsock,(struct sockaddr*)&a,&al); c->lport=ntohs(a.sin_port); }
     /* UDP discovery receiver */

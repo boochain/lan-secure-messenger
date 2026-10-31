@@ -39,6 +39,7 @@ pub struct Link {
     pub reader: LinkReader,
     pub writer: LinkWriter,
     pub remote_fp: Fingerprint,
+    pub remote_x25519: [u8; 32],
     pub remote_hello: Hello,
     pub remote_addr: std::net::SocketAddr,
     /// Carried by the relay server (UI badge 经服务器) instead of a direct LAN connection.
@@ -183,7 +184,7 @@ where
     if remote_hello.proto != wire::PROTO_VERSION {
         bail!("peer speaks protocol v{}, we speak v{}", remote_hello.proto, wire::PROTO_VERSION);
     }
-    Ok(Link { reader, writer, remote_fp, remote_hello: clean_hello(remote_hello), remote_addr, via_relay, remote_caps })
+    Ok(Link { reader, writer, remote_fp, remote_x25519: pk, remote_hello: clean_hello(remote_hello), remote_addr, via_relay, remote_caps })
 }
 
 /// Remote display name sanitised.

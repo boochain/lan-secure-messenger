@@ -109,4 +109,15 @@ public sealed partial class SettingsPage : Page
         if (Services.UiPrefs.Current.CloseToTray == CloseToTraySwitch.IsOn) return;
         Services.UiPrefs.Current.CloseToTray = CloseToTraySwitch.IsOn; Services.UiPrefs.Current.Save();
     }
+
+    private string _accountPass = "";
+    private void AccountPass_Changed(object sender, RoutedEventArgs e)
+    {
+        if (sender is PasswordBox pb) _accountPass = pb.Password ?? "";
+    }
+
+    private async void AccountRegister_Click(object sender, RoutedEventArgs e) => await VM.AccountRegisterAsync(_accountPass);
+    private async void AccountLogin_Click(object sender, RoutedEventArgs e) => await VM.AccountLoginAsync(_accountPass);
+    private async void AccountBackupPut_Click(object sender, RoutedEventArgs e) => await VM.AccountBackupPutAsync(_accountPass);
+    private async void AccountBackupGet_Click(object sender, RoutedEventArgs e) => await VM.AccountBackupGetAsync(_accountPass);
 }

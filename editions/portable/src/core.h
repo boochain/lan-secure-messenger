@@ -97,6 +97,7 @@ typedef struct {
     const char *name;       /* initial display name if none stored */
     int no_discovery;
     int auto_trust;
+    const char *bind_lan_ip; /* empty/NULL = any; "auto" = first non-virtual; else IPv4 */
 } lsm_opts;
 
 lsm_core *lsm_start(const lsm_opts *o, char *err, size_t errn);

@@ -27,6 +27,7 @@ use crate::APP_VERSION;
 use anyhow::Result;
 use ed25519_dalek::VerifyingKey;
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::{SocketAddr, ToSocketAddrs};
@@ -34,7 +35,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::{TcpListener, TcpSocket, TcpStream};
 use tokio::sync::{broadcast, mpsc, oneshot, Notify};
 use uuid::Uuid;
 
@@ -227,14 +228,28 @@ pub async fn start(opts: EngineOptions) -> Result<EngineHandle> {
     let shutdown = Arc::new(Notify::new());
     let me = identity.fingerprint().to_string();
 
-    // TCP listener: preferred port, else ephemeral.
+    // TCP listener: bind to LAN IP when set (VPN bypass); preferred port, else ephemeral.
     let mut tcp_error = String::new();
-    let listener = match TcpListener::bind(("0.0.0.0", settings.listen_port)).await {
-        Ok(l) => l,
+    let bind_ip = crate::netif::preferred_lan_ip(&settings.include_interfaces, &settings.exclude_interfaces, &settings.bind_lan_ip);
+    let listen_host = bind_ip.map(|ip| ip.to_string()).unwrap_or_else(|| "0.0.0.0".into());
+    let listener = match TcpListener::bind((listen_host.as_str(), settings.listen_port)).await {
+        Ok(l) => {
+            if let Some(ip) = bind_ip {
+                tracing::info!(%ip, "TCP listen bound to LAN interface (VPN bypass)");
+            }
+            l
+        }
         Err(e) => {
-            tcp_error = format!("TCP {} 被占用 ({e})，改用随机端口", settings.listen_port);
+            tcp_error = format!("TCP {}@{} 绑定失败 ({e})，改用随机端口", settings.listen_port, listen_host);
             tracing::warn!("{tcp_error}");
-            TcpListener::bind(("0.0.0.0", 0)).await?
+            let fallback = bind_ip.map(|ip| ip.to_string()).unwrap_or_else(|| "0.0.0.0".into());
+            match TcpListener::bind((fallback.as_str(), 0u16)).await {
+                Ok(l) => l,
+                Err(e2) => {
+                    tracing::warn!("bind {fallback}:0 failed ({e2}); falling back to 0.0.0.0");
+                    TcpListener::bind(("0.0.0.0", 0)).await?
+                }
+            }
         }
     };
     let port = listener.local_addr()?.port();
@@ -253,6 +268,7 @@ pub async fn start(opts: EngineOptions) -> Result<EngineHandle> {
                 targets: settings.announce_targets.clone(),
                 include: settings.include_interfaces.clone(),
                 exclude: settings.exclude_interfaces.clone(),
+                bind_ip: crate::netif::parse_bind_ip(&settings.bind_lan_ip),
             },
             AnnounceInfo { name: settings.display_name.clone(), tcp_port: port },
             seen_tx,
@@ -585,6 +601,7 @@ impl Engine {
             let c = self.contacts.entry(&fp);
             c.name = hello.name.clone();
             c.ed25519_pk = hex::encode(hello.ed25519_pk);
+            c.x25519_pk = hex::encode(link.remote_x25519);
             c.last_seen_ms = now_ms();
             if auto && c.trust == Trust::Unknown {
                 c.trust = Trust::Trusted;
@@ -655,10 +672,24 @@ impl Engine {
     fn spawn_dial(&self, key: DialKey, addrs: Vec<SocketAddr>) {
         let tx = self.tx.clone();
         let shared = self.shared.clone();
+        let local = crate::netif::preferred_lan_ip(
+            &self.settings.include_interfaces,
+            &self.settings.exclude_interfaces,
+            &self.settings.bind_lan_ip,
+        );
         tokio::spawn(async move {
             let mut last = String::from("no address");
             for a in addrs {
-                match tokio::time::timeout(Duration::from_secs(3), TcpStream::connect(a)).await {
+                let connect = async {
+                    if let Some(ip) = local {
+                        let sock = TcpSocket::new_v4().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                        sock.bind(SocketAddr::new(std::net::IpAddr::V4(ip), 0)).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                        sock.connect(a).await
+                    } else {
+                        TcpStream::connect(a).await
+                    }
+                };
+                match tokio::time::timeout(Duration::from_secs(3), connect).await {
                     Ok(Ok(s)) => match link::establish(s, &shared.identity, shared.hello(), true).await {
                         Ok(l) => {
                             let _ = tx.send(EngineMsg::LinkUp { link: Box::new(l), initiator: true, key: Some(key) });
@@ -706,12 +737,22 @@ impl Engine {
         for fp in dead {
             self.drop_conn(&fp, "心跳超时");
         }
-        // Relay fallback: ask for a session to every relay peer we have no link with.
+        // Relay sessions: server_lan = equal parallel; lan = fallback when no fresh LAN announce/candidates.
         if !self.relay_peers.is_empty() && self.relay_last_open.elapsed() >= Duration::from_secs(2) {
             self.relay_last_open = now;
-            for fp in self.relay_peers.keys() {
-                if !self.conns.contains_key(fp) && self.contacts.trust(fp) != Trust::Blocked {
-                    let _ = self.relay.send(relay::RelayCmd::Open(fp.clone()));
+            let parallel = self.settings.transport_mode == "server_lan";
+            for fp in self.relay_peers.keys().cloned().collect::<Vec<_>>() {
+                if self.conns.contains_key(&fp) || self.contacts.trust(&fp) == Trust::Blocked {
+                    continue;
+                }
+                if parallel {
+                    let _ = self.relay.send(relay::RelayCmd::Open(fp));
+                    continue;
+                }
+                let lan_fresh = self.rt.get(&fp).and_then(|r| r.last_announce).map(|t| t.elapsed() < Duration::from_secs(15)).unwrap_or(false);
+                let has_cand = !self.candidates(&fp).is_empty();
+                if !lan_fresh || !has_cand {
+                    let _ = self.relay.send(relay::RelayCmd::Open(fp));
                 }
             }
         }
@@ -792,6 +833,13 @@ impl Engine {
         let fp = s.fp.to_string();
         if fp == self.me {
             return;
+        }
+        {
+            let c = self.contacts.entry(&fp);
+            if c.name.is_empty() { c.name = s.name.clone(); }
+            c.ed25519_pk = hex::encode(s.ed25519_pk);
+            c.x25519_pk = hex::encode(s.x25519_pk);
+            let _ = self.contacts.save();
         }
         let online = self.conns.contains_key(&fp);
         let r = self.rt.entry(fp.clone()).or_default();
@@ -1330,6 +1378,44 @@ impl Engine {
     }
 
 
+
+    /// Full 32-byte relay peer id = SHA-256(x25519 public).
+    fn relay_peer_id(&self, fp: &str) -> Option<[u8; 32]> {
+        let hexpk = self.contacts.get(fp).map(|c| c.x25519_pk.as_str()).filter(|s| !s.is_empty())?;
+        let bytes = hex::decode(hexpk).ok()?;
+        if bytes.len() != 32 { return None; }
+        let mut pk = [0u8; 32];
+        pk.copy_from_slice(&bytes);
+        let dig = Sha256::digest(pk);
+        let mut out = [0u8; 32];
+        out.copy_from_slice(&dig);
+        Some(out)
+    }
+
+    fn maybe_retain_message(&self, id: &str, dest_fp: &str, body: &str) {
+        if !self.settings.relay_enabled {
+            return;
+        }
+        let Some(pk_hex) = self.contacts.get(dest_fp).map(|c| c.x25519_pk.clone()).filter(|s| !s.is_empty()) else { return };
+        let Ok(pk_bytes) = hex::decode(&pk_hex) else { return };
+        if pk_bytes.len() != 32 { return; }
+        let mut peer_pk = [0u8; 32];
+        peer_pk.copy_from_slice(&pk_bytes);
+        let my_sk = self.shared.identity.x25519_secret_bytes();
+        let payload = json!({"v":1,"kind":"text","id":id,"from":self.me,"to":dest_fp,"body":body,"ts_ms":now_ms()});
+        let Ok(plain) = serde_json::to_vec(&payload) else { return };
+        let Ok(blob) = crate::crypto::seal_retain(&my_sk, &peer_pk, &plain) else { return };
+        let Some(dest) = self.relay_peer_id(dest_fp) else { return };
+        let (tx, _rx) = oneshot::channel();
+        let _ = self.relay.send(relay::RelayCmd::Store {
+            id: id.as_bytes().to_vec(),
+            blob,
+            ttl: 7 * 24 * 3600,
+            dest: Some(dest),
+            reply: tx,
+        });
+    }
+
     fn dir_size(path: &std::path::Path) -> u64 {
         fn walk(p: &std::path::Path, acc: &mut u64) {
             let Ok(rd) = std::fs::read_dir(p) else { return };
@@ -1668,6 +1754,228 @@ impl Engine {
                 });
                 return;
             }
+            "account_register" | "account_login" => {
+                #[derive(Deserialize)]
+                struct P { user: String, password: String }
+                let a: P = match serde_json::from_value(params) {
+                    Ok(v) => v,
+                    Err(e) => { let _ = reply.send(Err(RpcError::invalid(e.to_string()))); return; }
+                };
+                if a.user.trim().is_empty() || a.password.chars().count() < 6 {
+                    let _ = reply.send(Err(RpcError::invalid("用户名与密码（至少 6 字符）必填")));
+                    return;
+                }
+                let (tx, rx) = oneshot::channel();
+                let cmd = if method == "account_register" {
+                    relay::RelayCmd::AccountRegister { user: a.user.trim().to_string(), pass: a.password, reply: tx }
+                } else {
+                    relay::RelayCmd::AccountLogin { user: a.user.trim().to_string(), pass: a.password, reply: tx }
+                };
+                if self.relay.send(cmd).is_err() {
+                    let _ = reply.send(Err(RpcError::new(-32020, "中转未启用")));
+                    return;
+                }
+                tokio::spawn(async move {
+                    let r = tokio::time::timeout(std::time::Duration::from_secs(45), rx).await;
+                    let _ = reply.send(match r {
+                        Ok(Ok(Ok(()))) => Ok(json!({"ok": true})),
+                        Ok(Ok(Err(e))) => Err(RpcError::new(-32020, e)),
+                        Ok(Err(_)) => Err(RpcError::new(-32020, "中转无响应")),
+                        Err(_) => Err(RpcError::new(-32020, "账号操作超时")),
+                    });
+                });
+                return;
+            }
+            "account_backup_put" => {
+                #[derive(Deserialize)]
+                struct P { user: String, password: String }
+                let a: P = match serde_json::from_value(params) {
+                    Ok(v) => v,
+                    Err(e) => { let _ = reply.send(Err(RpcError::invalid(e.to_string()))); return; }
+                };
+                let tmp = self.paths.root.join("account-backup.tmp");
+                if let Err(e) = crate::backup::export_backup(&self.paths, &a.password, &tmp) {
+                    let _ = reply.send(Err(RpcError::new(-32021, format!("{e:#}"))));
+                    return;
+                }
+                let blob = match std::fs::read(&tmp) {
+                    Ok(b) => b,
+                    Err(e) => { let _ = reply.send(Err(RpcError::new(-32021, e.to_string()))); return; }
+                };
+                let _ = std::fs::remove_file(&tmp);
+                let (tx, rx) = oneshot::channel();
+                if self.relay.send(relay::RelayCmd::AccountPutBackup { user: a.user.trim().to_string(), blob, reply: tx }).is_err() {
+                    let _ = reply.send(Err(RpcError::new(-32020, "中转未启用")));
+                    return;
+                }
+                tokio::spawn(async move {
+                    let r = tokio::time::timeout(std::time::Duration::from_secs(60), rx).await;
+                    let _ = reply.send(match r {
+                        Ok(Ok(Ok(()))) => Ok(json!({"ok": true})),
+                        Ok(Ok(Err(e))) => Err(RpcError::new(-32020, e)),
+                        _ => Err(RpcError::new(-32020, "上传备份失败或超时")),
+                    });
+                });
+                return;
+            }
+            "account_backup_get" => {
+                #[derive(Deserialize)]
+                struct P { user: String, password: String }
+                let a: P = match serde_json::from_value(params) {
+                    Ok(v) => v,
+                    Err(e) => { let _ = reply.send(Err(RpcError::invalid(e.to_string()))); return; }
+                };
+                let (tx, rx) = oneshot::channel();
+                if self.relay.send(relay::RelayCmd::AccountGetBackup { user: a.user.trim().to_string(), reply: tx }).is_err() {
+                    let _ = reply.send(Err(RpcError::new(-32020, "中转未启用")));
+                    return;
+                }
+                let paths = self.paths.clone();
+                let pass = a.password;
+                tokio::spawn(async move {
+                    let r = tokio::time::timeout(std::time::Duration::from_secs(60), rx).await;
+                    let res = match r {
+                        Ok(Ok(Ok(blob))) => {
+                            let tmp = paths.root.join("account-restore.tmp");
+                            if let Err(e) = std::fs::write(&tmp, &blob) {
+                                Err(RpcError::new(-32021, e.to_string()))
+                            } else {
+                                match crate::backup::import_backup(&paths, &pass, &tmp) {
+                                    Ok(()) => {
+                                        let _ = std::fs::remove_file(&tmp);
+                                        Ok(json!({"ok": true, "restart_required": true}))
+                                    }
+                                    Err(e) => {
+                                        let _ = std::fs::remove_file(&tmp);
+                                        Err(RpcError::new(-32021, format!("{e:#}")))
+                                    }
+                                }
+                            }
+                        }
+                        Ok(Ok(Err(e))) => Err(RpcError::new(-32020, e)),
+                        _ => Err(RpcError::new(-32020, "下载备份失败或超时")),
+                    };
+                    let _ = reply.send(res);
+                });
+                return;
+            }
+            "retain_store" => {
+                #[derive(Deserialize)]
+                struct P {
+                    id: String,
+                    #[serde(default)]
+                    blob_b64: String,
+                    #[serde(default)]
+                    ttl_secs: Option<u32>,
+                    #[serde(default)]
+                    dest_fingerprint: Option<String>,
+                }
+                let a: P = match serde_json::from_value(params) {
+                    Ok(v) => v,
+                    Err(e) => { let _ = reply.send(Err(RpcError::invalid(e.to_string()))); return; }
+                };
+                let raw = a.blob_b64.trim();
+                let blob = match hex::decode(raw) {
+                    Ok(b) => b,
+                    Err(_) => {
+                        // accept url-safe/std base64 without extra crate
+                        fn b64_decode(s: &str) -> Option<Vec<u8>> {
+                            let s = s.as_bytes();
+                            let mut out = Vec::with_capacity(s.len() * 3 / 4);
+                            let mut buf = 0u32;
+                            let mut n = 0;
+                            for &c in s {
+                                let v = match c {
+                                    b'A'..=b'Z' => c - b'A',
+                                    b'a'..=b'z' => c - b'a' + 26,
+                                    b'0'..=b'9' => c - b'0' + 52,
+                                    b'+' | b'-' => 62,
+                                    b'/' | b'_' => 63,
+                                    b'=' => continue,
+                                    _ if c.is_ascii_whitespace() => continue,
+                                    _ => return None,
+                                } as u32;
+                                buf = (buf << 6) | v;
+                                n += 1;
+                                if n == 4 {
+                                    out.push((buf >> 16) as u8);
+                                    out.push((buf >> 8) as u8);
+                                    out.push(buf as u8);
+                                    n = 0; buf = 0;
+                                }
+                            }
+                            if n == 2 { out.push((buf << 12 >> 16) as u8); }
+                            else if n == 3 { out.push((buf << 6 >> 16) as u8); out.push((buf << 6 >> 8) as u8); }
+                            else if n == 1 { return None; }
+                            Some(out)
+                        }
+                        match b64_decode(raw) {
+                            Some(b) => b,
+                            None => { let _ = reply.send(Err(RpcError::invalid("blob_b64/hex 无效"))); return; }
+                        }
+                    }
+                };
+                let dest = if let Some(fp) = a.dest_fingerprint.as_deref() {
+                    match self.relay_peer_id(fp) {
+                        Some(id) => Some(id),
+                        None => { let _ = reply.send(Err(RpcError::invalid("未知目标指纹或缺少公钥"))); return; }
+                    }
+                } else { None };
+                let (tx, rx) = oneshot::channel();
+                if self.relay.send(relay::RelayCmd::Store {
+                    id: a.id.into_bytes(),
+                    blob,
+                    ttl: a.ttl_secs.unwrap_or(7 * 24 * 3600),
+                    dest,
+                    reply: tx,
+                }).is_err() {
+                    let _ = reply.send(Err(RpcError::new(-32020, "中转未启用")));
+                    return;
+                }
+                tokio::spawn(async move {
+                    let r = tokio::time::timeout(std::time::Duration::from_secs(30), rx).await;
+                    let _ = reply.send(match r {
+                        Ok(Ok(Ok(()))) => Ok(json!({"ok": true})),
+                        Ok(Ok(Err(e))) => Err(RpcError::new(-32020, e)),
+                        _ => Err(RpcError::new(-32020, "retain store 失败或超时")),
+                    });
+                });
+                return;
+            }
+            "retain_fetch" => {
+                #[derive(Deserialize)]
+                struct P { id: String }
+                let a: P = match serde_json::from_value(params) {
+                    Ok(v) => v,
+                    Err(e) => { let _ = reply.send(Err(RpcError::invalid(e.to_string()))); return; }
+                };
+                let (tx, rx) = oneshot::channel();
+                if self.relay.send(relay::RelayCmd::Fetch { id: a.id.into_bytes(), reply: tx }).is_err() {
+                    let _ = reply.send(Err(RpcError::new(-32020, "中转未启用")));
+                    return;
+                }
+                tokio::spawn(async move {
+                    let r = tokio::time::timeout(std::time::Duration::from_secs(30), rx).await;
+                    let _ = reply.send(match r {
+                        Ok(Ok(Ok(Some(blob)))) => Ok(json!({"ok": true, "blob_hex": hex::encode(&blob)})),
+                        Ok(Ok(Ok(None))) => Ok(json!({"ok": true, "miss": true})),
+                        Ok(Ok(Err(e))) => Err(RpcError::new(-32020, e)),
+                        _ => Err(RpcError::new(-32020, "retain fetch 失败或超时")),
+                    });
+                });
+                return;
+            }
+            "retain_del" => {
+                #[derive(Deserialize)]
+                struct P { id: String }
+                let a: P = match serde_json::from_value(params) {
+                    Ok(v) => v,
+                    Err(e) => { let _ = reply.send(Err(RpcError::invalid(e.to_string()))); return; }
+                };
+                let _ = self.relay.send(relay::RelayCmd::StoreDel { id: a.id.into_bytes() });
+                let _ = reply.send(Ok(json!({"ok": true})));
+                return;
+            }
             "pin_pair" => {
                 #[derive(Deserialize)]
                 struct P {
@@ -1741,9 +2049,12 @@ impl Engine {
                 struct P {
                     conversation: String,
                     body: String,
+                    #[serde(default)]
+                    retain: Option<bool>,
                 }
                 let a: P = p(params)?;
                 let body = a.body.trim_end().to_string();
+                let want_retain = a.retain.unwrap_or(self.settings.default_retain == "server_retain");
                 if body.trim().is_empty() {
                     return Err(RpcError::invalid("消息不能为空"));
                 }
@@ -1775,9 +2086,12 @@ impl Engine {
                     if self.contacts.get(&fp).is_none() && !self.rt.contains_key(&fp) {
                         return Err(RpcError::invalid("未知联系人"));
                     }
-                    let online = self.send_reliable(&fp, Payload::Text { body, ts_ms: ts }, id, Some(m.id.clone()));
+                    let online = self.send_reliable(&fp, Payload::Text { body: body.clone(), ts_ms: ts }, id, Some(m.id.clone()));
                     if online {
                         m.status = MsgStatus::Sent;
+                    }
+                    if want_retain {
+                        self.maybe_retain_message(&m.id, &fp, &body);
                     }
                 } else if let Some(gid) = a.conversation.strip_prefix("group:").and_then(|g| Uuid::parse_str(g).ok()) {
                     let g = self.groups.get(&gid).cloned().ok_or_else(|| RpcError::invalid("群组不存在"))?;
@@ -1804,10 +2118,19 @@ impl Engine {
                 struct P {
                     conversation: String,
                     path: String,
+                    #[serde(default)]
+                    retain: Option<bool>,
                 }
                 let a: P = p(params)?;
-                let t = self.send_file(&a.conversation, PathBuf::from(a.path), None)?;
-                ok(t)
+                let want_retain = a.retain.unwrap_or(self.settings.default_retain == "server_retain");
+                let tr = self.send_file(&a.conversation, PathBuf::from(&a.path), None)?;
+                if want_retain {
+                    if let Some(fp) = a.conversation.strip_prefix("dm:") {
+                        let meta = json!({"v":1,"kind":"file","id":tr.id,"path":a.path}).to_string();
+                        self.maybe_retain_message(&tr.id, fp, &meta);
+                    }
+                }
+                ok(tr)
             }
             "cancel_transfer" | "retry_transfer" | "accept_transfer" | "reject_transfer" => {
                 #[derive(Deserialize)]

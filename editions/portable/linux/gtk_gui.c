@@ -328,6 +328,14 @@ static void storage_dialog(void){
 static void emoji_btn_cb(GtkButton *b, gpointer d){ const char *e=g_object_get_data(G_OBJECT(b),"e"); GtkTextBuffer *buf; GtkTextIter end;
     if(input){ buf=gtk_text_view_get_buffer(GTK_TEXT_VIEW(input)); gtk_text_buffer_get_end_iter(buf,&end); gtk_text_buffer_insert(buf,&end,e,-1); }
     gtk_widget_destroy(GTK_WIDGET(d)); }
+static int sticker_path(char *out, size_t n, const char *name){
+    const char *cands[]={ "stickers", "editions/portable/stickers", "assets/stickers", NULL}; int i;
+    for(i=0;cands[i];i++){ snprintf(out,n,"%s/%s.png",cands[i],name); if(!access(out,R_OK)) return 1; }
+    return 0;
+}
+static void sticker_btn_cb(GtkButton *b, gpointer d){ const char *name=g_object_get_data(G_OBJECT(b),"s"); char path[512]; (void)d;
+    if(name&&sticker_path(path,sizeof path,name)&&cur_conv[0]) send_path(path);
+    gtk_widget_destroy(GTK_WIDGET(gtk_widget_get_toplevel(GTK_WIDGET(b)))); }
 static void emoji_dialog(void){
     static const char *E[]={"😀","😂","🥰","😍","😎","🤔","👍","👎","👏","🙏","❤️","🔥","⭐","🎉","✅","❌",NULL};
     GtkWidget *d=gtk_dialog_new_with_buttons("插入表情",GTK_WINDOW(win),GTK_DIALOG_MODAL,"取消",GTK_RESPONSE_CANCEL,NULL);
@@ -335,6 +343,8 @@ static void emoji_dialog(void){
     gtk_grid_set_row_spacing(GTK_GRID(grid),4); gtk_grid_set_column_spacing(GTK_GRID(grid),4); gtk_container_set_border_width(GTK_CONTAINER(box),10);
     for(i=0;E[i];i++){ GtkWidget *b=gtk_button_new_with_label(E[i]); g_object_set_data(G_OBJECT(b),"e",(gpointer)E[i]);
       g_signal_connect(b,"clicked",G_CALLBACK(emoji_btn_cb),d); gtk_grid_attach(GTK_GRID(grid),b,i%8,i/8,1,1); }
+    { static const char *S[]={"thumb","heart","fire","star","party","check",NULL}; GtkWidget *lab=gtk_label_new("贴纸"); gtk_box_pack_start(GTK_BOX(box),lab,FALSE,FALSE,4);
+      for(i=0;S[i];i++){ char path[512]; if(!sticker_path(path,sizeof path,S[i])) continue; GtkWidget *b=gtk_button_new(); GtkWidget *img=gtk_image_new_from_file(path); gtk_button_set_image(GTK_BUTTON(b),img); g_object_set_data(G_OBJECT(b),"s",(gpointer)S[i]); g_signal_connect(b,"clicked",G_CALLBACK(sticker_btn_cb),d); gtk_grid_attach(GTK_GRID(grid),b,i%8,2+i/8,1,1); } }
     gtk_box_pack_start(GTK_BOX(box),grid,TRUE,TRUE,0); gtk_widget_show_all(d); gtk_dialog_run(GTK_DIALOG(d)); gtk_widget_destroy(d);
 }
 static void act(GtkWidget *w, gpointer p){ int id=GPOINTER_TO_INT(p); char err[256]=""; (void)w;

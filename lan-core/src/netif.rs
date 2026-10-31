@@ -115,6 +115,13 @@ pub fn list(include: &[String], exclude: &[String]) -> Vec<NetIf> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn preferred_lan_ip_empty_is_none() {
+        assert!(super::preferred_lan_ip(&[], &[], "").is_none());
+        assert!(super::parse_bind_ip("").is_none());
+        assert!(super::parse_bind_ip("auto").is_none() || super::parse_bind_ip("auto").is_some());
+    }
+
     use super::*;
     #[test]
     fn classify_virtual() {
@@ -131,5 +138,31 @@ mod tests {
         // Synthetic NIC inside a Hyper-V / Azure guest VM is a real LAN interface.
         assert!(classify("{GUID}", "Ethernet 3", "Microsoft Hyper-V Network Adapter #3", ip, true, &[], &[]).0);
         assert!(!classify("{GUID}", "Ethernet 5", "Hyper-V Virtual Ethernet Adapter #2", ip, true, &[], &[]).0);
+    }
+}
+
+/// Parse an optional IPv4 bind string; empty / invalid → None.
+pub fn parse_bind_ip(s: &str) -> Option<Ipv4Addr> {
+    let s = s.trim();
+    if s.is_empty() { return None; }
+    s.parse().ok().filter(|ip: &Ipv4Addr| !ip.is_unspecified() && !ip.is_loopback())
+}
+
+/// Resolve bind_lan_ip setting: empty → None (OS default); `auto` → first used physical; else that IPv4 if present.
+pub fn preferred_lan_ip(include: &[String], exclude: &[String], bind: &str) -> Option<Ipv4Addr> {
+    let bind = bind.trim();
+    let ifaces = list(include, exclude);
+    if bind.is_empty() {
+        return None;
+    }
+    if bind.eq_ignore_ascii_case("auto") {
+        return ifaces.into_iter().find(|i| i.used).map(|i| i.ip);
+    }
+    let want = parse_bind_ip(bind)?;
+    if ifaces.iter().any(|i| i.used && i.ip == want) {
+        Some(want)
+    } else {
+        // Still bind the requested IP even if classify skipped it (user override).
+        Some(want)
     }
 }

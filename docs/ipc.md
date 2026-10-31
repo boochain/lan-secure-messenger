@@ -78,6 +78,11 @@ because every event carries the full object.)
 | `leave_group` | `{group_id}` | `{ok}` |
 | `search` | `{query, limit?}` | `Message[]` |
 | `backup` / `restore` | `{path, password}` | `{ok}` / `{ok, restart_required:true}` |
+| `account_register` / `account_login` | `{user, password}` | `{ok}` — relay online required |
+| `account_backup_put` / `account_backup_get` | `{user, password}` | `{ok}` / `{ok, restart_required:true}` — identity via relay |
+| `retain_store` | `{id, blob_b64|hex, ttl_secs?, dest_fingerprint?}` | `{ok}` — opaque E2E blob on relay |
+| `retain_fetch` / `retain_del` | `{id}` | `{ok, blob_hex?}` / `{ok}` |
+| `send_text` / `send_file` | `…, retain?:bool` | per-item server-retain override (default from settings) |
 | `pin_offer` | `{}` | `{pin, expires_in_secs}` |
 | `pin_pair` | `{fingerprint, pin}` | `{ok:bool}` (both sides become trusted on success) |
 | `update_settings` | `{settings:{…partial Settings…}}` | `{ok, restart_required}` |

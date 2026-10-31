@@ -27,7 +27,7 @@ static char *U(JNIEnv *e, jstring s){ jclass sc; jmethodID gb; jbyteArray a; jsi
 
 JNIEXPORT jstring JNICALL FN(start)(JNIEnv *e, jclass k, jstring dir, jstring name, jstring targets, jint port){
     lsm_opts o; char err[256]=""; char *d=U(e,dir), *n=U(e,name), *t=U(e,targets); (void)k;
-    if(C) return J(e,""); memset(&o,0,sizeof o); o.data_dir=d; o.name=n; o.announce_targets=*t?t:NULL; o.listen_port=port;
+    if(C) return J(e,""); memset(&o,0,sizeof o); o.data_dir=d; o.name=n; o.announce_targets=*t?t:NULL; o.listen_port=port; o.bind_lan_ip="auto";
     C=lsm_start(&o,err,sizeof err); /* the core keeps the opts pointers: intentionally not freed */ if(!C){ free(d); free(n); free(t); } return J(e,C?"":(err[0]?err:"start failed")); }
 JNIEXPORT void JNICALL FN(stop)(JNIEnv *e, jclass k){ (void)e;(void)k; if(C){ lsm_stop(C); C=NULL; } }
 JNIEXPORT jboolean JNICALL FN(running)(JNIEnv *e, jclass k){ (void)e;(void)k; return C!=NULL; }

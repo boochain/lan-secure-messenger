@@ -373,13 +373,29 @@
                     <FontIcon Glyph="&#xE76E;" FontSize="16" />
                     <Button.Flyout>
                         <Flyout x:Name="EmojiFlyout" Placement="Top">
-                            <GridView x:Name="EmojiGrid" Width="280" MaxHeight="200" SelectionMode="None" IsItemClickEnabled="True" ItemClick="Emoji_ItemClick">
+                            <StackPanel Width="280" Spacing="8">
+                                <GridView x:Name="EmojiGrid" MaxHeight="160" SelectionMode="None" IsItemClickEnabled="True" ItemClick="Emoji_ItemClick">
                                 <GridView.ItemsPanel>
                                     <ItemsPanelTemplate>
                                         <ItemsWrapGrid MaximumRowsOrColumns="8" Orientation="Horizontal" />
                                     </ItemsPanelTemplate>
                                 </GridView.ItemsPanel>
-                            </GridView>
+                                <GridView.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding}" FontSize="22" Margin="4" />
+                                    </DataTemplate>
+                                </GridView.ItemTemplate>
+                                </GridView>
+                                <TextBlock Text="本地贴纸" Style="{StaticResource CaptionTextBlockStyle}" />
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <Button Tag="thumb" Click="Sticker_Click" ToolTipService.ToolTip="thumb" Padding="4"><Image Width="36" Height="36" Source="ms-appx:///Assets/stickers/thumb.png"/></Button>
+                                    <Button Tag="heart" Click="Sticker_Click" ToolTipService.ToolTip="heart" Padding="4"><Image Width="36" Height="36" Source="ms-appx:///Assets/stickers/heart.png"/></Button>
+                                    <Button Tag="fire" Click="Sticker_Click" ToolTipService.ToolTip="fire" Padding="4"><Image Width="36" Height="36" Source="ms-appx:///Assets/stickers/fire.png"/></Button>
+                                    <Button Tag="star" Click="Sticker_Click" ToolTipService.ToolTip="star" Padding="4"><Image Width="36" Height="36" Source="ms-appx:///Assets/stickers/star.png"/></Button>
+                                    <Button Tag="party" Click="Sticker_Click" ToolTipService.ToolTip="party" Padding="4"><Image Width="36" Height="36" Source="ms-appx:///Assets/stickers/party.png"/></Button>
+                                    <Button Tag="check" Click="Sticker_Click" ToolTipService.ToolTip="check" Padding="4"><Image Width="36" Height="36" Source="ms-appx:///Assets/stickers/check.png"/></Button>
+                                </StackPanel>
+                            </StackPanel>
                         </Flyout>
                     </Button.Flyout>
                 </Button>

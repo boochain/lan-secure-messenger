@@ -20,7 +20,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 type Blake2bMac256 = blake2::Blake2bMac<U32>;
 
@@ -38,6 +38,19 @@ const T_PEER_LIST: u8 = 0x40;
 const T_PEER_JOIN: u8 = 0x41;
 const T_PEER_LEAVE: u8 = 0x42;
 const T_ERROR: u8 = 0x50;
+const T_ACCOUNT_REGISTER: u8 = 0x60;
+const T_ACCOUNT_LOGIN: u8 = 0x61;
+const T_ACCOUNT_OK: u8 = 0x62;
+const T_ACCOUNT_FAIL: u8 = 0x63;
+const T_ACCOUNT_PUT_BACKUP: u8 = 0x64;
+const T_ACCOUNT_GET_BACKUP: u8 = 0x65;
+const T_ACCOUNT_BACKUP: u8 = 0x66;
+const T_STORE: u8 = 0x70;
+const T_STORE_OK: u8 = 0x71;
+const T_FETCH: u8 = 0x72;
+const T_FETCH_DATA: u8 = 0x73;
+const T_FETCH_MISS: u8 = 0x74;
+const T_STORE_DEL: u8 = 0x75;
 const T_BYE: u8 = 0x7F;
 
 const K_DATA: u8 = 0;
@@ -55,11 +68,24 @@ pub struct RelayConfig {
     pub passphrase: String,
 }
 
+pub type AccountReply = oneshot::Sender<Result<(), String>>;
+pub type BackupReply = oneshot::Sender<Result<Vec<u8>, String>>;
+pub type StoreReply = oneshot::Sender<Result<(), String>>;
+pub type FetchReply = oneshot::Sender<Result<Option<Vec<u8>>, String>>;
+
 pub enum RelayCmd {
     Configure(RelayConfig),
     /// Ask for a relay session to this fingerprint (ignored unless we are the opener).
     Open(String),
     Rename,
+    AccountRegister { user: String, pass: String, reply: AccountReply },
+    AccountLogin { user: String, pass: String, reply: AccountReply },
+    AccountPutBackup { user: String, blob: Vec<u8>, reply: AccountReply },
+    AccountGetBackup { user: String, reply: BackupReply },
+    /// Opaque retain blob. `dest` = full 32-byte relay peer id of recipient when set.
+    Store { id: Vec<u8>, blob: Vec<u8>, ttl: u32, dest: Option<[u8; 32]>, reply: StoreReply },
+    Fetch { id: Vec<u8>, reply: FetchReply },
+    StoreDel { id: Vec<u8> },
 }
 
 pub enum RelayEvt {
@@ -106,7 +132,11 @@ async fn run(shared: Arc<Shared>, mut cmd: mpsc::UnboundedReceiver<RelayCmd>, tx
                         cfg = c;
                         break;
                     }
-                    Some(_) => {}
+                    Some(RelayCmd::AccountRegister { reply, .. }) | Some(RelayCmd::AccountLogin { reply, .. }) | Some(RelayCmd::AccountPutBackup { reply, .. }) => { let _ = reply.send(Err("relay offline".into())); }
+                    Some(RelayCmd::AccountGetBackup { reply, .. }) => { let _ = reply.send(Err("relay offline".into())); }
+                    Some(RelayCmd::Store { reply, .. }) => { let _ = reply.send(Err("relay offline".into())); }
+                    Some(RelayCmd::Fetch { reply, .. }) => { let _ = reply.send(Err("relay offline".into())); }
+                    Some(RelayCmd::StoreDel { .. }) | Some(RelayCmd::Open(_)) | Some(RelayCmd::Rename) => {}
                 }
             }
             fails = 0;
@@ -145,11 +175,35 @@ async fn run(shared: Arc<Shared>, mut cmd: mpsc::UnboundedReceiver<RelayCmd>, tx
                         cfg = c;
                         break;
                     }
-                    Some(_) => {}
+                    Some(RelayCmd::AccountRegister { reply, .. }) | Some(RelayCmd::AccountLogin { reply, .. }) | Some(RelayCmd::AccountPutBackup { reply, .. }) => { let _ = reply.send(Err("relay offline".into())); }
+                    Some(RelayCmd::AccountGetBackup { reply, .. }) => { let _ = reply.send(Err("relay offline".into())); }
+                    Some(RelayCmd::Store { reply, .. }) => { let _ = reply.send(Err("relay offline".into())); }
+                    Some(RelayCmd::Fetch { reply, .. }) => { let _ = reply.send(Err("relay offline".into())); }
+                    Some(RelayCmd::StoreDel { .. }) | Some(RelayCmd::Open(_)) | Some(RelayCmd::Rename) => {}
                 }
             }
         }
     }
+}
+
+
+fn user_pass_body(user: &str, pass: &str) -> Vec<u8> {
+    let ub = user.as_bytes();
+    let pb = pass.as_bytes();
+    let mut b = Vec::with_capacity(4 + ub.len() + pb.len());
+    b.extend_from_slice(&(ub.len() as u16).to_be_bytes());
+    b.extend_from_slice(ub);
+    b.extend_from_slice(&(pb.len() as u16).to_be_bytes());
+    b.extend_from_slice(pb);
+    b
+}
+
+fn user_body(user: &str) -> Vec<u8> {
+    let ub = user.as_bytes();
+    let mut b = Vec::with_capacity(2 + ub.len());
+    b.extend_from_slice(&(ub.len() as u16).to_be_bytes());
+    b.extend_from_slice(ub);
+    b
 }
 
 fn frame(t: u8, body: &[u8]) -> Vec<u8> {
@@ -396,6 +450,10 @@ async fn session(
     let mut peers: HashMap<[u8; 32], String> = HashMap::new();
     let mut by_fp: HashMap<String, [u8; 32]> = HashMap::new();
     let mut sess: HashMap<[u8; 32], Sess> = HashMap::new();
+    let mut pend_acct: Option<AccountReply> = None;
+    let mut pend_bak: Option<BackupReply> = None;
+    let mut pend_store: Option<(Vec<u8>, StoreReply)> = None;
+    let mut pend_fetch: Option<(Vec<u8>, FetchReply)> = None;
     let mut last_rx = Instant::now();
     let mut ping = tokio::time::interval(Duration::from_secs(hb));
     ping.tick().await;
@@ -489,6 +547,35 @@ async fn session(
                         id.copy_from_slice(&b[..32]);
                         sess.remove(&id);
                     }
+                    T_ACCOUNT_OK => {
+                        if let Some(r) = pend_acct.take() { let _ = r.send(Ok(())); }
+                    }
+                    T_ACCOUNT_FAIL => {
+                        let msg = String::from_utf8_lossy(&b).to_string();
+                        let detail = if msg.is_empty() { "account failed".into() } else { msg };
+                        if let Some(r) = pend_acct.take() { let _ = r.send(Err(detail.clone())); }
+                        if let Some(r) = pend_bak.take() { let _ = r.send(Err(detail)); }
+                    }
+                    T_ACCOUNT_BACKUP => {
+                        if let Some(r) = pend_bak.take() { let _ = r.send(Ok(b)); }
+                    }
+                    T_STORE_OK => {
+                        if let Some((_id, r)) = pend_store.take() { let _ = r.send(Ok(())); }
+                    }
+                    T_FETCH_DATA => {
+                        if let Some((_want, r)) = pend_fetch.take() {
+                            let got = if b.len() >= 2 {
+                                let il = u16::from_be_bytes([b[0], b[1]]) as usize;
+                                if b.len() >= 2 + il { Some(b[2 + il..].to_vec()) } else { Some(b) }
+                            } else {
+                                Some(b)
+                            };
+                            let _ = r.send(Ok(got));
+                        }
+                    }
+                    T_FETCH_MISS => {
+                        if let Some((_id, r)) = pend_fetch.take() { let _ = r.send(Ok(None)); }
+                    }
                     T_ERROR => {
                         let code = b.first().copied().unwrap_or(0);
                         let d = match code {
@@ -497,6 +584,10 @@ async fn session(
                             14 => "服务器关闭".to_string(),
                             c => format!("服务器错误 code {c}"),
                         };
+                        if let Some(r) = pend_acct.take() { let _ = r.send(Err(d.clone())); }
+                        if let Some(r) = pend_bak.take() { let _ = r.send(Err(d.clone())); }
+                        if let Some((_, r)) = pend_store.take() { let _ = r.send(Err(d.clone())); }
+                        if let Some((_, r)) = pend_fetch.take() { let _ = r.send(Err(d.clone())); }
                         return fail("error", d);
                     }
                     T_BYE => return fail("error", "服务器关闭连接".into()),
@@ -539,6 +630,50 @@ async fn session(
                     let s = new_sess(shared, tx, &out_tx, id, sid, true);
                     sess.insert(id, s);
                     send!(blob(&id, K_OPEN, sid, &[]));
+                }
+                Some(RelayCmd::AccountRegister { user, pass, reply }) => {
+                    pend_acct = Some(reply);
+                    send!(frame(T_ACCOUNT_REGISTER, &user_pass_body(&user, &pass)));
+                }
+                Some(RelayCmd::AccountLogin { user, pass, reply }) => {
+                    pend_acct = Some(reply);
+                    send!(frame(T_ACCOUNT_LOGIN, &user_pass_body(&user, &pass)));
+                }
+                Some(RelayCmd::AccountPutBackup { user, blob, reply }) => {
+                    pend_acct = Some(reply);
+                    let mut body = user_body(&user);
+                    body.extend_from_slice(&blob);
+                    send!(frame(T_ACCOUNT_PUT_BACKUP, &body));
+                }
+                Some(RelayCmd::AccountGetBackup { user, reply }) => {
+                    pend_bak = Some(reply);
+                    send!(frame(T_ACCOUNT_GET_BACKUP, &user_body(&user)));
+                }
+                Some(RelayCmd::Store { id, blob, ttl, dest, reply }) => {
+                    pend_store = Some((id.clone(), reply));
+                    let mut body = Vec::with_capacity(2 + id.len() + 4 + 1 + 32 + blob.len());
+                    body.extend_from_slice(&(id.len() as u16).to_be_bytes());
+                    body.extend_from_slice(&id);
+                    body.extend_from_slice(&ttl.to_be_bytes());
+                    match dest {
+                        Some(d) => { body.push(1); body.extend_from_slice(&d); }
+                        None => body.push(0),
+                    }
+                    body.extend_from_slice(&blob);
+                    send!(frame(T_STORE, &body));
+                }
+                Some(RelayCmd::Fetch { id, reply }) => {
+                    pend_fetch = Some((id.clone(), reply));
+                    let mut body = Vec::with_capacity(2 + id.len());
+                    body.extend_from_slice(&(id.len() as u16).to_be_bytes());
+                    body.extend_from_slice(&id);
+                    send!(frame(T_FETCH, &body));
+                }
+                Some(RelayCmd::StoreDel { id }) => {
+                    let mut body = Vec::with_capacity(2 + id.len());
+                    body.extend_from_slice(&(id.len() as u16).to_be_bytes());
+                    body.extend_from_slice(&id);
+                    send!(frame(T_STORE_DEL, &body));
                 }
             },
             _ = ping.tick() => {

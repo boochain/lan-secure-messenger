@@ -106,3 +106,42 @@ pub fn open_at_rest(key: &[u8; 32], data: &[u8]) -> Result<Vec<u8>> {
 pub fn zeroize_key(key: &mut [u8; 32]) {
     key.zeroize();
 }
+
+/// Derive retain blob key via static X25519 DH (E2E; relay sees opaque bytes only).
+pub fn retain_shared_key(my_secret: &[u8; 32], peer_public: &[u8; 32]) -> [u8; 32] {
+    use x25519_dalek::{PublicKey, StaticSecret};
+    let sk = StaticSecret::from(*my_secret);
+    let pk = PublicKey::from(*peer_public);
+    let shared = sk.diffie_hellman(&pk);
+    let mut h = blake3::Hasher::new();
+    h.update(b"lsm-retain-v1");
+    h.update(shared.as_bytes());
+    *h.finalize().as_bytes()
+}
+
+pub fn seal_retain(my_secret: &[u8; 32], peer_public: &[u8; 32], plaintext: &[u8]) -> Result<Vec<u8>> {
+    let key = retain_shared_key(my_secret, peer_public);
+    seal_at_rest(&key, plaintext)
+}
+
+pub fn open_retain(my_secret: &[u8; 32], peer_public: &[u8; 32], data: &[u8]) -> Result<Vec<u8>> {
+    let key = retain_shared_key(my_secret, peer_public);
+    open_at_rest(&key, data)
+}
+
+#[cfg(test)]
+mod retain_tests {
+    use super::*;
+    use x25519_dalek::{PublicKey, StaticSecret};
+
+    #[test]
+    fn seal_retain_roundtrip() {
+        let a = StaticSecret::random_from_rng(rand::thread_rng());
+        let b = StaticSecret::random_from_rng(rand::thread_rng());
+        let a_pub = PublicKey::from(&a);
+        let b_pub = PublicKey::from(&b);
+        let ct = seal_retain(&a.to_bytes(), b_pub.as_bytes(), b"hello retain").unwrap();
+        let pt = open_retain(&b.to_bytes(), a_pub.as_bytes(), &ct).unwrap();
+        assert_eq!(pt, b"hello retain");
+    }
+}

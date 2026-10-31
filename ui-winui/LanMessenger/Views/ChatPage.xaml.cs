@@ -316,6 +316,27 @@ public sealed partial class ChatPage : Page
             foreach (var x in Emojis) EmojiGrid.Items.Add(x);
     }
 
+    
+    private async void Sticker_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button b || b.Tag is not string name) return;
+        try
+        {
+            var uri = new Uri($"ms-appx:///Assets/stickers/{name}.png");
+            var file = await Windows.Storage.StorageFile.GetFileFromApplicationUriAsync(uri);
+            var dest = Path.Combine(Path.GetTempPath(), $"lsm-sticker-{name}.png");
+            using (var src = await file.OpenStreamForReadAsync())
+            using (var dst = File.Create(dest))
+                await src.CopyToAsync(dst);
+            await VM.SendFileAsync(dest);
+            EmojiFlyout.Hide();
+        }
+        catch (Exception ex)
+        {
+            VM.ShowStatus($"贴纸发送失败: {ex.Message}", true);
+        }
+    }
+
     private void Emoji_ItemClick(object sender, ItemClickEventArgs e)
     {
         if (e.ClickedItem is string s)

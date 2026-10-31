@@ -25,6 +25,7 @@ pub struct Seen {
     pub fp: Fingerprint,
     pub name: String,
     pub ed25519_pk: [u8; 32],
+    pub x25519_pk: [u8; 32],
     /// Where to dial (source ip + advertised TCP port).
     pub dial: SocketAddr,
     pub src: SocketAddr,
@@ -39,6 +40,8 @@ pub struct DiscoParams {
     pub targets: Vec<String>,
     pub include: Vec<String>,
     pub exclude: Vec<String>,
+    /// When set, only announce from this LAN IPv4 (VPN bypass).
+    pub bind_ip: Option<Ipv4Addr>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, serde::Deserialize)]
@@ -235,6 +238,7 @@ async fn run(
                     fp,
                     name: crate::util::sanitize_display_name(&a.name),
                     ed25519_pk: a.ed25519_pk,
+                    x25519_pk: a.x25519_pk,
                     dial: SocketAddr::new(src.ip(), a.tcp_port),
                     src,
                 });
@@ -272,7 +276,17 @@ async fn run(
         n_tick += 1;
         if force_enum || last_enum.elapsed() > Duration::from_secs(8) {
             last_enum = Instant::now();
-            let now_ifaces = netif::list(&p.include, &p.exclude);
+            let mut now_ifaces = netif::list(&p.include, &p.exclude);
+            if let Some(want) = p.bind_ip {
+                if now_ifaces.iter().any(|i| i.used && i.ip == want) {
+                    for i in now_ifaces.iter_mut() {
+                        if i.ip != want {
+                            i.used = false;
+                            i.reason = "非选定局域网网卡".into();
+                        }
+                    }
+                }
+            }
             let used: Vec<Ipv4Addr> = now_ifaces.iter().filter(|i| i.used).map(|i| i.ip).collect();
             socks.retain(|ip, _| used.contains(ip));
             for ip in &used {

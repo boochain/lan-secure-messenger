@@ -450,6 +450,13 @@ static void storage_dialog(void){
 
 static void emoji_pick(GtkButton *b, gpointer p){ const char *e=(const char*)p; GtkTextBuffer *buf; GtkTextIter end; (void)b;
     if(!input) return; buf=gtk_text_view_get_buffer(GTK_TEXT_VIEW(input)); gtk_text_buffer_get_end_iter(buf,&end); gtk_text_buffer_insert(buf,&end,e,-1); }
+static int sticker_path(char *out, size_t n, const char *name){
+    const char *cands[]={ "stickers", "editions/portable/stickers", "assets/stickers", NULL}; int i;
+    for(i=0;cands[i];i++){ snprintf(out,n,"%s/%s.png",cands[i],name); if(!access(out,R_OK)) return 1; }
+    return 0;
+}
+static void sticker_pick(GtkButton *b, gpointer p){ const char *name=(const char*)p; char path[512]; (void)b;
+    if(name&&sticker_path(path,sizeof path,name)&&cur_conv[0]) send_path(path); }
 static void emoji_dialog(void){
     static const char *E[]={"😀","😂","🥰","😍","😎","🤔","😴","🥳","😢","😭","👍","👎","👏","🙏","❤️","🔥","⭐","🎉","✅","❌",NULL};
     GtkWidget *d=adw_window_new(), *tv=adw_toolbar_view_new(), *hb=adw_header_bar_new(), *box=gtk_flow_box_new(); int i;
@@ -457,6 +464,8 @@ static void emoji_dialog(void){
     adw_header_bar_set_title_widget(ADW_HEADER_BAR(hb),gtk_label_new("表情")); adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(tv),hb);
     gtk_flow_box_set_max_children_per_line(GTK_FLOW_BOX(box),8); gtk_flow_box_set_selection_mode(GTK_FLOW_BOX(box),GTK_SELECTION_NONE);
     for(i=0;E[i];i++){ GtkWidget *b=gtk_button_new_with_label(E[i]); g_signal_connect(b,"clicked",G_CALLBACK(emoji_pick),(gpointer)E[i]); g_signal_connect_swapped(b,"clicked",G_CALLBACK(gtk_window_destroy),d); gtk_flow_box_append(GTK_FLOW_BOX(box),b); }
+    { static const char *S[]={"thumb","heart","fire","star","party","check",NULL}; int j; for(j=0;S[j];j++){ char path[512]; if(!sticker_path(path,sizeof path,S[j])) continue; GtkWidget *b=gtk_button_new(); gtk_button_set_child(GTK_BUTTON(b),gtk_image_new_from_file(path)); g_signal_connect(b,"clicked",G_CALLBACK(sticker_pick),(gpointer)S[j]); g_signal_connect_swapped(b,"clicked",G_CALLBACK(gtk_window_destroy),d); gtk_flow_box_append(GTK_FLOW_BOX(box),b);} }
+
     adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(tv),box); adw_window_set_content(ADW_WINDOW(d),tv); gtk_window_present(GTK_WINDOW(d));
 }
 static void win_act(GSimpleAction *a, GVariant *v, gpointer p){ const char *n=g_action_get_name(G_ACTION(a)); (void)v;(void)p;
