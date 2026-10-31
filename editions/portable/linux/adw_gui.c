@@ -416,11 +416,40 @@ static gboolean ui_state_tick(gpointer p){ /* LSM_UI_TEST: open dialogs / popove
 #endif
     test_drop();
     printf("UISTATE dialogs=%d addpop=%d size=%dx%d visible=%d conv=%s\n",nd,add_popover&&gtk_widget_get_visible(add_popover),gtk_widget_get_width(win),gtk_widget_get_height(win),gtk_widget_get_visible(win),cur_conv[0]?cur_conv:"-"); fflush(stdout); return G_SOURCE_CONTINUE; }
+
+static void storage_cleanup_do(gpointer unused){
+    char msg[128]; int n;
+    (void)unused;
+    n=lsm_cleanup_storage(C,1,1);
+    snprintf(msg,sizeof msg,"已清理 %d 项。",n);
+    info("存储管理",msg);
+    toast(msg);
+}
+static void storage_dialog(void){
+    char info_buf[2048]={0}, msg[2400]; size_t need=lsm_storage_info(C,info_buf,sizeof info_buf);
+    unsigned long long hist=0,dl=0,part=0,orph=0,outg=0,tot=0; char dd[600]="",dat[600]="", *s=info_buf, *nlch, *lines[16]; int i,nl=0;
+    if(!need){ info("存储管理","无法读取存储信息。"); return; }
+    while(*s && nl<16){ lines[nl++]=s; nlch=strchr(s,'\n'); if(!nlch) break; *nlch=0; s=nlch+1; }
+    for(i=0;i<nl;i++){ char *tab=strchr(lines[i],'\t'); if(!tab) continue; *tab=0;
+      if(!strcmp(lines[i],"data_dir")) snprintf(dat,sizeof dat,"%s",tab+1);
+      else if(!strcmp(lines[i],"download_dir")) snprintf(dd,sizeof dd,"%s",tab+1);
+      else if(!strcmp(lines[i],"history_bytes")) hist=strtoull(tab+1,0,10);
+      else if(!strcmp(lines[i],"downloads_bytes")) dl=strtoull(tab+1,0,10);
+      else if(!strcmp(lines[i],"partials_bytes")) part=strtoull(tab+1,0,10);
+      else if(!strcmp(lines[i],"orphan_partials_bytes")) orph=strtoull(tab+1,0,10);
+      else if(!strcmp(lines[i],"outgoing_bytes")) outg=strtoull(tab+1,0,10);
+      else if(!strcmp(lines[i],"total_bytes")) tot=strtoull(tab+1,0,10); }
+    snprintf(msg,sizeof msg,"数据目录：%s\n下载目录：%s\n\n聊天记录：%llu 字节\n已下载：%llu 字节\n半成品：%llu 字节（孤儿 %llu）\n待发：%llu 字节\n合计：%llu 字节\n\n清理孤儿半成品并清除已完成传输列表？",
+             dat[0]?dat:"—",dd[0]?dd:"—",hist,dl,part,orph,outg,tot);
+    confirm("存储管理",msg,"清理",0,storage_cleanup_do,NULL,NULL);
+}
+
 static void win_act(GSimpleAction *a, GVariant *v, gpointer p){ const char *n=g_action_get_name(G_ACTION(a)); (void)v;(void)p;
     g_timeout_add(400,test_log_later,(gpointer)n);
     if(!strcmp(n,"search")){ adw_navigation_split_view_set_show_content(ADW_NAVIGATION_SPLIT_VIEW(split),FALSE); gtk_widget_grab_focus(search); }
     else if(!strcmp(n,"add-contact")){ adw_navigation_split_view_set_show_content(ADW_NAVIGATION_SPLIT_VIEW(split),FALSE); gtk_popover_popup(GTK_POPOVER(add_popover)); gtk_widget_grab_focus(add_entry); }
     else if(!strcmp(n,"refresh")){ lsm_refresh_peers(C); list_dirty=chat_dirty=1; toast("已刷新联系人"); }
+    else if(!strcmp(n,"storage")){ storage_dialog(); }
     else if(!strcmp(n,"relay")) relay_dialog();
     else if(!strcmp(n,"next-conv")) cycle(+1);
     else if(!strcmp(n,"prev-conv")) cycle(-1);
@@ -508,7 +537,7 @@ static void install_icons(void){
 static void activate(GtkApplication *a, gpointer p){
     GtkWidget *sidebar_tv, *sb_hdr, *sb_box, *sc, *content_tv, *ct_hdr, *tbox, *tv, *composer, *ov, *send, *attach, *chat_ov, *empty, *add_btn, *ab, *frame;
     lsm_opts o; char err[256]; GMenu *menu, *sec; (void)p;
-    static const char *acts[]={"search","add-contact","refresh","next-conv","prev-conv","send-file","paste","clear-chat","details","trust","untrust","block","mute","diagnostics","check-update","pin-offer","relay","downloads","menu","close","about","quit"};
+    static const char *acts[]={"search","add-contact","refresh","next-conv","prev-conv","send-file","paste","clear-chat","details","trust","untrust","block","mute","diagnostics","check-update","pin-offer","relay","downloads","storage","menu","close","about","quit"};
     if(win){ gtk_window_present(GTK_WINDOW(win)); return; }
     { const char *t=getenv("LSM_THEME"); AdwStyleManager *sm=adw_style_manager_get_default(); if(t&&!strcmp(t,"dark")) adw_style_manager_set_color_scheme(sm,ADW_COLOR_SCHEME_FORCE_DARK); else if(t&&!strcmp(t,"light")) adw_style_manager_set_color_scheme(sm,ADW_COLOR_SCHEME_FORCE_LIGHT);
       g_signal_connect(sm,"notify::dark",G_CALLBACK(on_dark),NULL); }
@@ -539,7 +568,7 @@ static void activate(GtkApplication *a, gpointer p){
       gtk_box_append(GTK_BOX(hb),add_entry); gtk_box_append(GTK_BOX(hb),go); gtk_box_append(GTK_BOX(ab),t); gtk_box_append(GTK_BOX(ab),d); gtk_box_append(GTK_BOX(ab),hb); }
     gtk_popover_set_child(GTK_POPOVER(add_popover),ab); gtk_menu_button_set_popover(GTK_MENU_BUTTON(add_btn),add_popover); adw_header_bar_pack_start(ADW_HEADER_BAR(sb_hdr),add_btn);
     { GtkWidget *rf=icon_btn("view-refresh-symbolic","刷新联系人","win.refresh"); adw_header_bar_pack_start(ADW_HEADER_BAR(sb_hdr),rf); }
-    menu=g_menu_new(); sec=g_menu_new(); g_menu_append(sec,"发送文件… (Ctrl+O)","win.send-file"); g_menu_append(sec,"打开接收文件夹","win.downloads"); g_menu_append_section(menu,NULL,G_MENU_MODEL(sec)); g_object_unref(sec);
+    menu=g_menu_new(); sec=g_menu_new(); g_menu_append(sec,"发送文件… (Ctrl+O)","win.send-file"); g_menu_append(sec,"打开接收文件夹","win.downloads"); g_menu_append(sec,"存储管理…","win.storage"); g_menu_append_section(menu,NULL,G_MENU_MODEL(sec)); g_object_unref(sec);
     sec=g_menu_new(); g_menu_append(sec,"生成 PIN（让对方输入）","win.pin-offer"); g_menu_append(sec,"中转服务器…","win.relay"); g_menu_append_section(menu,NULL,G_MENU_MODEL(sec)); g_object_unref(sec);
     sec=g_menu_new(); g_menu_append(sec,"诊断信息","win.diagnostics"); g_menu_append(sec,"检查更新…","win.check-update"); g_menu_append(sec,"关于","win.about"); g_menu_append(sec,"退出 (Ctrl+Q)","win.quit"); g_menu_append_section(menu,NULL,G_MENU_MODEL(sec)); g_object_unref(sec);
     menu_btn=gtk_menu_button_new(); gtk_menu_button_set_icon_name(GTK_MENU_BUTTON(menu_btn),"open-menu-symbolic"); gtk_widget_set_tooltip_text(menu_btn,"主菜单 (F10)"); gtk_menu_button_set_menu_model(GTK_MENU_BUTTON(menu_btn),G_MENU_MODEL(menu)); g_object_unref(menu);

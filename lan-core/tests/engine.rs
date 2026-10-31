@@ -326,3 +326,21 @@ async fn stress_bidirectional_messages() {
         assert_eq!(s, &format!("a->b {i}"));
     }
 }
+
+#[tokio::test]
+async fn storage_info_and_orphan_cleanup() {
+    let a = node("stor", json!({})).await;
+    let dl = a.dir.path().join("dl");
+    std::fs::create_dir_all(&dl).unwrap();
+    let orphan = dl.join(".orphan.bin.part");
+    std::fs::write(&orphan, b"x").unwrap();
+    let s = a.call("get_storage", json!({})).await;
+    assert!(s["orphan_partials_bytes"].as_u64().unwrap() >= 1, "{s}");
+    assert!(s["partials_bytes"].as_u64().unwrap() >= 1, "{s}");
+    let r = a.call("cleanup_storage", json!({"orphans": true, "failed_partials": true, "finished_transfers": true})).await;
+    assert_eq!(r["ok"], true, "{r}");
+    assert!(r["removed_files"].as_u64().unwrap() >= 1, "{r}");
+    assert!(!orphan.exists(), "orphan should be gone");
+    let s2 = a.call("get_storage", json!({})).await;
+    assert_eq!(s2["orphan_partials_bytes"].as_u64().unwrap(), 0, "{s2}");
+}

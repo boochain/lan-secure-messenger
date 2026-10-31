@@ -58,6 +58,8 @@ because every event carries the full object.)
 | `subscribe` | `{}` | `{ok}` then event stream |
 | `get_snapshot` | `{}` | `Snapshot` |
 | `refresh_peers` | `{}` | `{ok}` — force LAN announce + clear dial backoff + re-emit peer/conversation events |
+| `get_storage` | `{}` | `{data_dir,download_dir,history_bytes,downloads_bytes,partials_bytes,orphan_partials_bytes,outgoing_bytes,total_bytes}` |
+| `cleanup_storage` | `{failed_partials?,orphans?,finished_transfers?}` | `{ok,removed_bytes,removed_files,storage}` — delete orphan/failed `.part` piles and/or finished transfer rows |
 | `get_messages` | `{conversation, before_ts?, limit?=200}` | `Message[]` (oldest first) |
 | `send_text` | `{conversation, body}` | `Message` (status `queued` if peer offline — delivered automatically later) |
 | `send_file` | `{conversation, path}` | `Transfer` (first recipient; groups fan out) |

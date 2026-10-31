@@ -29,6 +29,8 @@ object Native {
     @JvmStatic external fun clearConversation(conv: String): Int
     @JvmStatic external fun setName(name: String)
     @JvmStatic external fun cancelTransfer(tid: String): String
+    @JvmStatic external fun storageInfo(): String
+    @JvmStatic external fun cleanupStorage(orphans: Boolean, finishedTransfers: Boolean): Int
     /** Relay server settings. [pass] null = keep the stored passphrase, "" = clear it. Write-only: read [RelayInfo.hasPassphrase]. */
     @JvmStatic external fun relaySet(enabled: Boolean, host: String, port: Int, pass: String?): String
 }

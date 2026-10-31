@@ -128,6 +128,21 @@
                 </StackPanel>
             </Border>
 
+
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="存储管理" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock Text="{x:Bind VM.StorageSummary, Mode=OneWay}" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="刷新用量" Command="{x:Bind VM.RefreshStorageCommand}" />
+                        <Button Content="清理半成品与已完成传输" Command="{x:Bind VM.CleanupStorageCommand}"
+                                ToolTipService.ToolTip="删除孤儿 .part、失败残留，并清除已完成的传输列表项" />
+                    </StackPanel>
+                    <TextBlock Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap"
+                               Text="传输失败或取消的未续传半成品会自动删除；可续传的中断文件会保留直到成功或手动清理。" />
+                </StackPanel>
+            </Border>
+
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
                     <TextBlock Text="关于" Style="{StaticResource SubtitleTextBlockStyle}" />
@@ -146,6 +161,7 @@
                     </StackPanel>
                 </StackPanel>
             </Border>
-        </StackPanel>
+
+            </StackPanel>
     </ScrollViewer>
 </Page>

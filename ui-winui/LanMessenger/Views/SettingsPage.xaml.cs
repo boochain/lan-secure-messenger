@@ -13,6 +13,7 @@ public sealed partial class SettingsPage : Page
     public SettingsPage()
     {
         InitializeComponent();
+        Loaded += (_, __) => { if (VM.RefreshStorageCommand.CanExecute(null)) _ = VM.RefreshStorageCommand.ExecuteAsync(null); };
         CloseToTraySwitch.IsOn = Services.UiPrefs.Current.CloseToTray;
         _loadingTheme = true;
         ThemeChoice.SelectedIndex = (int)LanMessenger.Services.ThemeService.Mode;

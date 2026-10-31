@@ -823,9 +823,15 @@ impl Engine {
         t.error = why.to_string();
         t.cancel.store(true, Ordering::Relaxed);
         t.credit = None;
+        // Dropping chunk_tx ends recv_task → RecvInterrupted deletes .part when state != Offered+resumable.
+        // Also clear any held resume_part (Offered/paused) so cancel never leaves orphans.
+        let drop_part = t.resume_part.take().map(|r| r.part);
         t.chunk_tx = None;
         let fp = t.peer_fp.clone();
         self.send_ctrl(&fp, Frame::FileCancel { tid, reason: why.to_string() });
+        if let Some(part) = drop_part {
+            remove_part_and_sidecar(&part, false);
+        }
         self.emit_transfer(tid, true);
         self.mark_file_msg_failed(tid);
         Ok(())
@@ -1107,7 +1113,11 @@ impl Engine {
                     t.error = format!("对方取消: {reason}");
                     t.cancel.store(true, Ordering::Relaxed);
                     t.credit = None;
+                    let drop_part = t.resume_part.take().map(|r| r.part);
                     t.chunk_tx = None;
+                    if let Some(part) = drop_part {
+                        remove_part_and_sidecar(&part, false);
+                    }
                     self.emit_transfer(tid, true);
                     self.mark_file_msg_failed(tid);
                 }

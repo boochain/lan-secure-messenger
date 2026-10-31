@@ -75,6 +75,7 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _addPeerAddress = "";
     [ObservableProperty] private string _searchText = "";
     [ObservableProperty] private bool _hasTransfersActive;
+    [ObservableProperty] private string _storageSummary = "";
     [ObservableProperty] private string _transfersSummary = "";
     [ObservableProperty] private int _onlineCount;
     // redesign: chat header (avatar + presence + status line), E2E notice, unread total for the nav badge
@@ -737,6 +738,36 @@ public partial class MainViewModel : ObservableObject
     private void RevealMessageFile(MessageItem? m)
     {
         if (m != null && !string.IsNullOrEmpty(m.FilePath)) _platform.RevealInFolder(m.FilePath);
+    }
+
+
+    [RelayCommand]
+    private async Task RefreshStorage()
+    {
+        await SafeCall(async c =>
+        {
+            var s = await c.GetStorageAsync();
+            string FmtB(ulong n) => Fmt.Bytes(n);
+            ulong U(string k) => s.TryGetProperty(k, out var v) && v.TryGetUInt64(out var n) ? n : 0;
+            _ui.Post(() => StorageSummary =
+                $"合计 {FmtB(U("total_bytes"))} · 下载 {FmtB(U("downloads_bytes"))} · 临时/半成品 {FmtB(U("partials_bytes"))}（孤儿 {FmtB(U("orphan_partials_bytes"))}） · 历史 {FmtB(U("history_bytes"))}");
+        });
+    }
+
+    [RelayCommand]
+    private async Task CleanupStorage()
+    {
+        await SafeCall(async c =>
+        {
+            var r = await c.CleanupStorageAsync(true, true, true);
+            ulong removed = r.TryGetProperty("removed_bytes", out var b) && b.TryGetUInt64(out var n) ? n : 0;
+            uint files = r.TryGetProperty("removed_files", out var f) && f.TryGetUInt32(out var m) ? m : 0;
+            _ui.Post(() =>
+            {
+                ShowStatus($"已清理 {files} 项，释放 {Fmt.Bytes(removed)}");
+                _ = RefreshStorageCommand.ExecuteAsync(null);
+            });
+        });
     }
 
     [RelayCommand]

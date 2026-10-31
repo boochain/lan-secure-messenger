@@ -55,7 +55,7 @@ static const char *TST[]={"offered","active","verifying","done","failed","reject
 static void help(void){ outf("commands: id | peers | add <ip[:port]> | trust/untrust/block <peer> | mute/unmute <peer> | diag | backup <password> <file> | send <peer> <text> | sendgroup <group> <text> |\n"
     " sendfile <peer|group> <path> | pin-offer | pin-pair <peer> <pin> | group-create <name> <peer,peer..> | group-invite <group> <peer,..> |\n"
     " group-remove <group> <peer> | group-leave <group> | groups | history <peer|group> [n] | read <peer|group> | transfers | name <new name> |\n"
-    " firewall-setup [--open-firewall] | drop-links | sleep <ms> | quit\n"); }
+    " firewall-setup [--open-firewall] | drop-links | storage | cleanup-storage | sleep <ms> | quit\n"); }
 
 static int run_cmd(char *line){
     char *s=line, *cmd=next_tok(&s), err[256]="", buf[64], fp[FP_LEN];

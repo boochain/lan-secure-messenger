@@ -92,3 +92,5 @@ JNIEXPORT void JNICALL FN(setName)(JNIEnv *e, jclass k, jstring n){ char *s=U(e,
 JNIEXPORT jstring JNICALL FN(relaySet)(JNIEnv *e, jclass k, jboolean on, jstring host, jint port, jstring pass){ char *h=U(e,host), *pw=pass?U(e,pass):NULL, err[256]=""; int rc=C?lsm_relay_set(C,on?1:0,h,port,pw,err):1; (void)k;
     free(h); if(pw){ memset(pw,0,strlen(pw)); free(pw); } return J(e,rc?(err[0]?err:"failed"):""); }
 JNIEXPORT jstring JNICALL FN(cancelTransfer)(JNIEnv *e, jclass k, jstring tid){ char *s=U(e,tid), err[256]=""; int rc=C?lsm_transfer_cancel(C,s,err):1; (void)k; free(s); return J(e,rc?(err[0]?err:"failed"):""); }
+JNIEXPORT jstring JNICALL FN(storageInfo)(JNIEnv *e, jclass k){ size_t n; char *b; jstring r; (void)k; if(!C) return J(e,""); n=lsm_storage_info(C,NULL,0); b=(char*)malloc(n+1); if(!b) return J(e,""); lsm_storage_info(C,b,n+1); r=J(e,b); free(b); return r; }
+JNIEXPORT jint JNICALL FN(cleanupStorage)(JNIEnv *e, jclass k, jboolean orphans, jboolean finished){ (void)e;(void)k; return C?lsm_cleanup_storage(C,orphans?1:0,finished?1:0):0; }

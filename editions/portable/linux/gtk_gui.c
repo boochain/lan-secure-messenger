@@ -292,11 +292,35 @@ static void show_transfers(void){
     gtk_container_add(GTK_CONTAINER(sc),lb); gtk_box_pack_start(GTK_BOX(box),sc,TRUE,TRUE,0); gtk_window_set_default_size(GTK_WINDOW(d),560,380); gtk_widget_show_all(d);
     g_signal_connect(d,"response",G_CALLBACK(gtk_widget_destroy),NULL); }
 
-enum { A_ADDIP=1, A_TRUST, A_UNTRUST, A_BLOCK, A_PINOFFER, A_PINPAIR, A_GCREATE, A_GINVITE, A_GREMOVE, A_GLEAVE, A_NAME, A_XFERS, A_DLDIR, A_FIREWALL, A_ABOUT, A_QUIT, A_MUTE, A_DIAG, A_UPDATE, A_CLEAR, A_REFRESH };
+enum { A_ADDIP=1, A_TRUST, A_UNTRUST, A_BLOCK, A_PINOFFER, A_PINPAIR, A_GCREATE, A_GINVITE, A_GREMOVE, A_GLEAVE, A_NAME, A_XFERS, A_DLDIR, A_FIREWALL, A_ABOUT, A_QUIT, A_MUTE, A_DIAG, A_UPDATE, A_CLEAR, A_REFRESH, A_STORAGE };
+
+static void storage_dialog(void){
+    char info[2048]={0}, msg[2400]; GtkWidget *d; int n; size_t need=lsm_storage_info(C,info,sizeof info);
+    unsigned long long hist=0,dl=0,part=0,orph=0,outg=0,tot=0; char dd[600]="",dat[600]="", *s=info, *nlch, *lines[16]; int i,nl=0;
+    if(!need){ { GtkWidget *e=gtk_message_dialog_new(GTK_WINDOW(win),GTK_DIALOG_MODAL,GTK_MESSAGE_WARNING,GTK_BUTTONS_OK,"%s","无法读取存储信息。"); gtk_dialog_run(GTK_DIALOG(e)); gtk_widget_destroy(e); return; } }
+    while(*s && nl<16){ lines[nl++]=s; nlch=strchr(s,'\n'); if(!nlch) break; *nlch=0; s=nlch+1; }
+    for(i=0;i<nl;i++){ char *tab=strchr(lines[i],'\t'); if(!tab) continue; *tab=0;
+      if(!strcmp(lines[i],"data_dir")) snprintf(dat,sizeof dat,"%s",tab+1);
+      else if(!strcmp(lines[i],"download_dir")) snprintf(dd,sizeof dd,"%s",tab+1);
+      else if(!strcmp(lines[i],"history_bytes")) hist=strtoull(tab+1,0,10);
+      else if(!strcmp(lines[i],"downloads_bytes")) dl=strtoull(tab+1,0,10);
+      else if(!strcmp(lines[i],"partials_bytes")) part=strtoull(tab+1,0,10);
+      else if(!strcmp(lines[i],"orphan_partials_bytes")) orph=strtoull(tab+1,0,10);
+      else if(!strcmp(lines[i],"outgoing_bytes")) outg=strtoull(tab+1,0,10);
+      else if(!strcmp(lines[i],"total_bytes")) tot=strtoull(tab+1,0,10); *tab='\t'; }
+    snprintf(msg,sizeof msg,"数据目录：%s\n下载目录：%s\n\n聊天记录：%llu 字节\n已下载：%llu 字节\n半成品：%llu 字节（孤儿 %llu）\n待发：%llu 字节\n合计：%llu 字节\n\n清理孤儿半成品并清除已完成传输列表？",
+             dat[0]?dat:"—",dd[0]?dd:"—",hist,dl,part,orph,outg,tot);
+    d=gtk_message_dialog_new(GTK_WINDOW(win),GTK_DIALOG_MODAL,GTK_MESSAGE_QUESTION,GTK_BUTTONS_OK_CANCEL,"%s",msg);
+    gtk_window_set_title(GTK_WINDOW(d),"存储管理");
+    if(gtk_dialog_run(GTK_DIALOG(d))==GTK_RESPONSE_OK){ n=lsm_cleanup_storage(C,1,1); snprintf(msg,sizeof msg,"已清理 %d 项。",n); { GtkWidget *e=gtk_message_dialog_new(GTK_WINDOW(win),GTK_DIALOG_MODAL,GTK_MESSAGE_INFO,GTK_BUTTONS_OK,"%s",msg); gtk_dialog_run(GTK_DIALOG(e)); gtk_widget_destroy(e); } }
+    gtk_widget_destroy(d);
+}
+
 static void act(GtkWidget *w, gpointer p){ int id=GPOINTER_TO_INT(p); char err[256]=""; (void)w;
     switch(id){
     case A_ADDIP: { char *s=ask_text("按 IP 添加","输入对方 IP 地址（可带端口，如 192.168.1.20 或 192.168.1.20:41235）：",""); if(s){ if(lsm_add_addr(C,s,err)) msgbox(GTK_MESSAGE_WARNING,"%s",err); g_free(s);} break; }
     case A_REFRESH: lsm_refresh_peers(C); list_dirty=chat_dirty=1; break;
+    case A_STORAGE: storage_dialog(); break;
     case A_MUTE: { const char *fp=sel_peer(); if(fp){ lsm_set_muted(C,fp,!peer_muted(fp),err); list_dirty=chat_dirty=1; } break; }
     case A_CLEAR: if(cur_conv[0] && confirm("清空聊天记录？","将删除本机上与此会话的全部聊天记录（对方仍保留）。此操作无法撤销。","清空")){ lsm_clear_conversation(C,cur_conv); list_dirty=chat_dirty=1; } break;
     case A_DIAG: { size_t need=lsm_diagnostics(C,NULL,0); char *d=g_malloc(need+1); lsm_diagnostics(C,d,need+1); msgbox(GTK_MESSAGE_INFO,"%s",d); g_free(d); break; }
@@ -379,7 +403,7 @@ static void activate(GtkApplication *a, gpointer p){
     mi(menu,"按 IP 添加…",A_ADDIP); mi(menu,"刷新联系人",A_REFRESH); sep(menu); mi(menu,"信任当前联系人",A_TRUST); mi(menu,"取消信任",A_UNTRUST); mi(menu,"屏蔽",A_BLOCK); sep(menu);
     mi(menu,"生成 PIN（让对方输入）",A_PINOFFER); mi(menu,"输入 PIN 配对…",A_PINPAIR); sep(menu);
     mi(menu,"创建群组…",A_GCREATE); mi(menu,"邀请成员…",A_GINVITE); mi(menu,"移除成员…",A_GREMOVE); mi(menu,"退出群组",A_GLEAVE); sep(menu);
-    mi(menu,"清空聊天记录…",A_CLEAR); mi(menu,"文件传输",A_XFERS); mi(menu,"打开接收文件夹",A_DLDIR); mi(menu,"修改昵称…",A_NAME); mi(menu,"设置防火墙（ufw / firewalld）…",A_FIREWALL); sep(menu); mi(menu,"关于",A_ABOUT); mi(menu,"退出",A_QUIT);
+    mi(menu,"清空聊天记录…",A_CLEAR); mi(menu,"文件传输",A_XFERS); mi(menu,"打开接收文件夹",A_DLDIR); mi(menu,"存储管理…",A_STORAGE); mi(menu,"修改昵称…",A_NAME); mi(menu,"设置防火墙（ufw / firewalld）…",A_FIREWALL); sep(menu); mi(menu,"关于",A_ABOUT); mi(menu,"退出",A_QUIT);
     gtk_widget_show_all(menu); gtk_widget_set_halign(menu,GTK_ALIGN_END); /* open leftwards, inside the window */ gtk_menu_button_set_popup(GTK_MENU_BUTTON(mb),menu); gtk_header_bar_pack_end(GTK_HEADER_BAR(hb),mb); menu_btn=mb;
     { GtkWidget *add=gtk_button_new_from_icon_name("list-add-symbolic",GTK_ICON_SIZE_BUTTON); gtk_widget_set_tooltip_text(add,"按 IP 添加"); g_signal_connect(add,"clicked",G_CALLBACK(act),GINT_TO_POINTER(A_ADDIP)); gtk_header_bar_pack_start(GTK_HEADER_BAR(hb),add); }
     { GtkWidget *rf=gtk_button_new_from_icon_name("view-refresh-symbolic",GTK_ICON_SIZE_BUTTON); gtk_widget_set_tooltip_text(rf,"刷新联系人"); g_signal_connect(rf,"clicked",G_CALLBACK(act),GINT_TO_POINTER(A_REFRESH)); gtk_header_bar_pack_start(GTK_HEADER_BAR(hb),rf); }

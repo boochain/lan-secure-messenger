@@ -1329,6 +1329,96 @@ impl Engine {
         }
     }
 
+
+    fn dir_size(path: &std::path::Path) -> u64 {
+        fn walk(p: &std::path::Path, acc: &mut u64) {
+            let Ok(rd) = std::fs::read_dir(p) else { return };
+            for e in rd.flatten() {
+                let path = e.path();
+                if path.is_dir() {
+                    walk(&path, acc);
+                } else if let Ok(m) = e.metadata() {
+                    *acc += m.len();
+                }
+            }
+        }
+        let mut n = 0u64;
+        walk(path, &mut n);
+        n
+    }
+
+    fn storage_view(&self) -> Value {
+        let dl = self.settings.download_dir(&self.paths);
+        let data = self.paths.data.clone();
+        let history = self.paths.history.metadata().map(|m| m.len()).unwrap_or(0);
+        let downloads = Self::dir_size(&dl);
+        let mut partials = 0u64;
+        let mut orphan_partials = 0u64;
+        if let Ok(rd) = std::fs::read_dir(&dl) {
+            for e in rd.flatten() {
+                let name = e.file_name().to_string_lossy().to_string();
+                if name.starts_with('.') && (name.ends_with(".part") || name.ends_with(".part.resume")) {
+                    if let Ok(m) = e.metadata() {
+                        partials += m.len();
+                        if name.ends_with(".part") {
+                            let side2 = std::path::PathBuf::from(format!("{}.resume", e.path().display()));
+                            if !side2.exists() {
+                                orphan_partials += m.len();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let outgoing = Self::dir_size(&data.join("outgoing"));
+        let total = Self::dir_size(&data) + if dl.starts_with(&data) { 0 } else { downloads };
+        json!({
+            "data_dir": data.display().to_string(),
+            "download_dir": dl.display().to_string(),
+            "history_bytes": history,
+            "downloads_bytes": downloads,
+            "partials_bytes": partials,
+            "orphan_partials_bytes": orphan_partials,
+            "outgoing_bytes": outgoing,
+            "total_bytes": total,
+        })
+    }
+
+    fn cleanup_storage(&mut self, failed_partials: bool, orphans: bool, finished_transfers: bool) -> Value {
+        let mut removed = 0u64;
+        let mut files = 0u32;
+        let dl = self.settings.download_dir(&self.paths);
+        if failed_partials || orphans {
+            if let Ok(rd) = std::fs::read_dir(&dl) {
+                for e in rd.flatten() {
+                    let path = e.path();
+                    let name = e.file_name().to_string_lossy().to_string();
+                    if !(name.starts_with('.') && (name.ends_with(".part") || name.ends_with(".part.resume"))) {
+                        continue;
+                    }
+                    let side2 = std::path::PathBuf::from(format!("{}.resume", path.display()));
+                    let is_orphan = name.ends_with(".part") && !side2.exists();
+                    let drop = (orphans && is_orphan) || (failed_partials && is_orphan);
+                    if drop {
+                        if let Ok(m) = e.metadata() { removed += m.len(); }
+                        let _ = std::fs::remove_file(&path);
+                        files += 1;
+                    }
+                }
+            }
+        }
+        if finished_transfers {
+            let finished: Vec<Uuid> = self.transfers.iter()
+                .filter(|(_, t)| matches!(t.state, TransferState::Done | TransferState::Failed | TransferState::Cancelled | TransferState::Rejected))
+                .map(|(id, _)| *id).collect();
+            for id in finished {
+                self.transfers.remove(&id);
+                files += 1;
+            }
+        }
+        json!({ "ok": true, "removed_bytes": removed, "removed_files": files, "storage": self.storage_view() })
+    }
+
     /// Force LAN re-announce, clear dial backoffs, and push a fresh peer/conversation snapshot to UIs.
     fn refresh_peers(&mut self) {
         self.disco.nudge();
@@ -1624,6 +1714,17 @@ impl Engine {
             "refresh_peers" => {
                 self.refresh_peers();
                 ok(json!({ "ok": true }))
+            }
+            "get_storage" => ok(self.storage_view()),
+            "cleanup_storage" => {
+                #[derive(Deserialize)]
+                struct P {
+                    #[serde(default)] failed_partials: bool,
+                    #[serde(default)] orphans: bool,
+                    #[serde(default)] finished_transfers: bool,
+                }
+                let a: P = p(params)?;
+                ok(self.cleanup_storage(a.failed_partials, a.orphans, a.finished_transfers))
             }
             "get_messages" => {
                 #[derive(Deserialize)]
