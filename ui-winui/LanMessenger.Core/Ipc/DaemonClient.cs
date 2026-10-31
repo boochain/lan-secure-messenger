@@ -27,6 +27,14 @@ public sealed class DaemonClient
     public Task ReactAsync(string id, string emoji) => Call("react", new { id, emoji });
     // v0.6.1 P2
     public Task<Message> SendTextExAsync(string conversation, string body, string? replyTo, List<string> mentions) => Call<Message>("send_text", new { conversation, body, reply_to = replyTo, mentions });
+    // v0.6.2
+    public Task<Message> SendPollAsync(string conversation, string question, IEnumerable<string> options, bool multi) => Call<Message>("send_poll", new { conversation, question, options = options.ToList(), multi });
+    public Task<Message> VotePollAsync(string id, IEnumerable<int> choices) => Call<Message>("vote_poll", new { id, choices = choices.ToList() });
+    public Task<Message> ClosePollAsync(string id) => Call<Message>("close_poll", new { id });
+    public Task SetConvArchivedAsync(string conversation, bool archived) => Call("set_conv_archived", new { conversation, archived });
+    public Task SetFolderAsync(string name, IEnumerable<string> conversations, string? rename_from = null) => Call("set_folder", new { name, conversations = conversations.ToList(), rename_from });
+    public Task<List<Folder>> ListFoldersAsync() => Call<List<Folder>>("list_folders", new { });
+    public Task SetDisappearingAsync(string conversation, uint secs) => Call("set_disappearing", new { conversation, secs });
     public Task SetConvPinnedAsync(string conversation, bool pinned) => Call("set_conv_pinned", new { conversation, pinned });
     public Task SetDraftAsync(string conversation, string text) => Call("set_draft", new { conversation, text });
     public Task<Message> SetMessageFlagsAsync(string id, bool? pinned, bool? starred) => Call<Message>("set_message_flags", new { id, pinned, starred });

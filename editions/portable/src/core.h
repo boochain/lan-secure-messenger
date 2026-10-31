@@ -53,6 +53,11 @@ typedef struct {
     int forwarded, pinned, starred, mentions_me; /* v0.6.1 P2 (pinned/starred: this device only) */
     char reactions[400];    /* "fp=emoji;fp=emoji" */
     int edited, recalled;
+    /* v0.6.2 */
+    int is_poll, poll_multi, poll_closed;
+    char *poll_opts;        /* options joined with '\n' (question = body), malloc or NULL */
+    char poll_votes[1200];  /* "fp=0,2;fp=1" */
+    int64_t expires_ms;     /* disappearing: deleted at this wall time (0 = never) */
     char file_path[520];
     int unread;
 } lsm_msg;
@@ -219,6 +224,25 @@ int  lsm_forward(lsm_core *c, const char *id, const char *conv, char *msgid_out,
 int  lsm_flagged(lsm_core *c, const char *conv, int which, int *idx, int max);
 int  lsm_mention_candidates(lsm_core *c, const char *conv, char names[][128], char fps[][FP_LEN], int max);
 void lsm_mentions_in(lsm_core *c, const char *conv, const char *text, char *csv, size_t n);
+/* v0.6.2: polls, chat folders + archive (local), disappearing messages — same Ext ops as lan-core engine/v062.rs */
+int  lsm_send_poll(lsm_core *c, const char *conv, const char *question, const char *opts_nl, int multi, char *msgid_out, char *err);
+int  lsm_vote_poll(lsm_core *c, const char *id, const int *choices, int n, char *err);
+int  lsm_close_poll(lsm_core *c, const char *id, char *err);
+int  lsm_poll_counts(lsm_core *c, const lsm_msg *m, int *counts, int max, int *mine, int *voters); /* caller holds lsm_lock; returns option count */
+int  lsm_set_conv_archived(lsm_core *c, const char *conv, int on);
+int  lsm_conv_archived(lsm_core *c, const char *conv);              /* caller holds lsm_lock */
+int  lsm_set_conv_folders(lsm_core *c, const char *conv, const char *csv); /* folder names, comma separated */
+int  lsm_conv_folders(lsm_core *c, const char *conv, char *csv, size_t n); /* caller holds lsm_lock */
+int  lsm_folder_names(lsm_core *c, char names[][64], int max);       /* caller holds lsm_lock; sorted, unique */
+int  lsm_set_disappearing(lsm_core *c, const char *conv, int secs, char *err); /* 0,30,300,3600,86400,604800 */
+int  lsm_conv_ttl(lsm_core *c, const char *conv);                    /* caller holds lsm_lock */
+void lsm_ttl_label(int secs, char *out, size_t n);
+#define LSM_FILTER_ARCHIVED "\x01"
+int  lsm_conv_visible(lsm_core *c, const char *conv, const char *filter); /* caller holds lsm_lock */
+int  lsm_archived_count(lsm_core *c);                                     /* caller holds lsm_lock */
+int  lsm_poll_option(const lsm_msg *m, int idx, char *out, size_t n);
+int  lsm_my_vote(lsm_core *c, const lsm_msg *m, int idx);                 /* caller holds lsm_lock */
+int  lsm_vote_toggle(lsm_core *c, const char *id, int idx, char *err);   /* single: select/clear; multi: toggle */
 /* P1 UI helpers */
 int  lsm_voice_secs(const char *name);                 /* -1 unless "lsm-voice-<N>s-…" */
 void lsm_voice_name(int secs, const char *ext, char *out, size_t n);

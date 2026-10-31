@@ -137,6 +137,7 @@ impl Engine {
                 let name = self.peer_name(fp);
                 self.emit(Event::Typing { conversation: conv, fingerprint: fp.to_string(), name });
             }
+            "poll" | "vote" | "poll_close" | "ttl" => self.on_ext_v062(fp, id, &conv, k, &op, ts_ms),
             _ => tracing::debug!(%fp, k, "unknown ext op ignored"),
         }
     }

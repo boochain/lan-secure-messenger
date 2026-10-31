@@ -103,6 +103,22 @@ static int run_cmd(char *line){
     if(!strcmp(cmd,"edit")){ char *id=next_tok(&s); while(s&&*s==' ') s++; if(!id||!s||!*s){ outf("ERR usage: edit <msg-id> <text>\n"); return 0; } if(lsm_edit_message(C,id,s,err)) outf("ERR %s\n",err); else outf("OK edit\n"); return 0; }
     if(!strcmp(cmd,"recall")){ char *id=next_tok(&s); if(!id){ outf("ERR usage: recall <msg-id>\n"); return 0; } if(lsm_recall_message(C,id,err)) outf("ERR %s\n",err); else outf("OK recall\n"); return 0; }
     if(!strcmp(cmd,"msginfo")){ char *id=next_tok(&s); lsm_msg *m; int n,i; if(!id){ outf("ERR usage\n"); return 0; } lsm_lock(C); n=lsm_messages(C,&m); for(i=n-1;i>=0;i--) if(!strcmp(m[i].id,id)){ outf("MSGX %s\treply_to=%s\tquote=%s\treactions=%s\tedited=%d\trecalled=%d\tforwarded=%d\tpinned=%d\tstarred=%d\tmentions_me=%d\tbody=%s\n",m[i].id,m[i].reply_to,m[i].quote,m[i].reactions,m[i].edited,m[i].recalled,m[i].forwarded,m[i].pinned,m[i].starred,m[i].mentions_me,m[i].body?m[i].body:""); break; } lsm_unlock(C); outf(i<0?"ERR not found\n":"OK msginfo\n"); return 0; }
+    /* v0.6.2 */
+    if(!strcmp(cmd,"poll")){ char *who=next_tok(&s), *mu=next_tok(&s), err[256]="", id[40]=""; const char *cv; char *q, *bar; while(s&&*s==' ') s++;
+        if(!who||!mu||!s||!*s||!(cv=conv_of(who,buf))){ outf("ERR usage: poll <peer|group> <multi 0|1> question|opt1|opt2...\n"); return 0; }
+        q=strdup(s); bar=strchr(q,'|'); if(!bar){ free(q); outf("ERR need options\n"); return 0; } *bar++=0; { char *x; for(x=bar;*x;x++) if(*x=='|') *x='\n'; }
+        if(lsm_send_poll(C,cv,q,bar,atoi(mu),id,err)) outf("ERR %s\n",err); else outf("OK poll %s\n",id); free(q); return 0; }
+    if(!strcmp(cmd,"vote")){ char *id=next_tok(&s), *cs=next_tok(&s), err[256]=""; int ch[16], n=0; char *t; if(!id){ outf("ERR usage: vote <msg-id> [i,j]\n"); return 0; }
+        for(t=cs?strtok(cs,","):NULL;t&&n<16;t=strtok(NULL,",")) ch[n++]=atoi(t); if(lsm_vote_poll(C,id,ch,n,err)) outf("ERR %s\n",err); else outf("OK vote\n"); return 0; }
+    if(!strcmp(cmd,"closepoll")){ char *id=next_tok(&s), err[256]=""; if(!id||lsm_close_poll(C,id,err)) outf("ERR %s\n",err); else outf("OK closepoll\n"); return 0; }
+    if(!strcmp(cmd,"pollinfo")){ char *id=next_tok(&s); lsm_msg *m; int n,i,k,cnt[16],mine[16],voters=0,j; if(!id){ outf("ERR usage\n"); return 0; } lsm_lock(C); n=lsm_messages(C,&m);
+        for(i=n-1;i>=0;i--) if(!strcmp(m[i].id,id)){ k=lsm_poll_counts(C,&m[i],cnt,16,mine,&voters); outf("POLL %s\tis_poll=%d\tmulti=%d\tclosed=%d\tvoters=%d\tcounts=",m[i].id,m[i].is_poll,m[i].poll_multi,m[i].poll_closed,voters); for(j=0;j<k;j++) outf("%s%d%s",j?",":"",cnt[j],mine[j]?"*":""); outf("\texpires_ms=%lld\tq=%s\n",(long long)m[i].expires_ms,m[i].body?m[i].body:""); break; }
+        lsm_unlock(C); outf(i<0?"ERR not found\n":"OK pollinfo\n"); return 0; }
+    if(!strcmp(cmd,"archive")){ char *who=next_tok(&s), *on=next_tok(&s); const char *cv; int a; if(!who||!(cv=conv_of(who,buf))){ outf("ERR usage: archive <peer|group> [0|1]\n"); return 0; } if(on) lsm_set_conv_archived(C,cv,atoi(on)); lsm_lock(C); a=lsm_conv_archived(C,cv); lsm_unlock(C); outf("OK archive archived=%d\n",a); return 0; }
+    if(!strcmp(cmd,"folders")){ char *who=next_tok(&s), f[400], names[32][64]; const char *cv; int n,i; while(s&&*s==' ') s++; if(!who||!(cv=conv_of(who,buf))){ outf("ERR usage: folders <peer|group> [a,b|-]\n"); return 0; }
+        if(s&&*s) lsm_set_conv_folders(C,cv,strcmp(s,"-")?s:""); lsm_lock(C); lsm_conv_folders(C,cv,f,sizeof f); n=lsm_folder_names(C,names,32); outf("OK folders conv=%s all=",f); for(i=0;i<n;i++) outf("%s%s",i?",":"",names[i]); outf("\n"); lsm_unlock(C); return 0; }
+    if(!strcmp(cmd,"ttl")){ char *who=next_tok(&s), *sec=next_tok(&s), err[256]=""; const char *cv; int t; if(!who||!(cv=conv_of(who,buf))){ outf("ERR usage: ttl <peer|group> [secs]\n"); return 0; }
+        if(sec && lsm_set_disappearing(C,cv,atoi(sec),err)){ outf("ERR %s\n",err); return 0; } lsm_lock(C); t=lsm_conv_ttl(C,cv); lsm_unlock(C); outf("OK ttl secs=%d\n",t); return 0; }
     if(!strcmp(cmd,"initials")){ char o[8]; lsm_initials(s?s:"",o); outf("OK initials %s\n",o); return 0; }
     if(!strcmp(cmd,"delete")){ char *id=next_tok(&s); if(!id){ outf("ERR usage: delete <msg-id>\n"); return 0; } outf(lsm_delete_message(C,id)?"ERR not found\n":"OK delete\n"); return 0; }
     if(!strcmp(cmd,"read")){ const char *cv=conv_of(s,buf); if(!cv){ outf("ERR unknown target\n"); return 0; } outf("OK read %d\n",lsm_mark_read(C,cv)); return 0; }

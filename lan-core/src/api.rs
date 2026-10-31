@@ -101,6 +101,39 @@ pub struct MsgExt {
     pub starred: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub mentions_me: bool,
+    // v0.6.2
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub poll: Option<Poll>,
+    /// disappearing messages: deleted locally at this wall-clock time (0 = never)
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub expires_ms: i64,
+}
+
+fn is_zero(v: &i64) -> bool { *v == 0 }
+
+/// v0.6.2 poll carried by a Text message (body = question)
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Poll {
+    pub question: String,
+    pub options: Vec<String>,
+    #[serde(default)]
+    pub multi: bool,
+    #[serde(default)]
+    pub votes: Vec<PollVote>,
+    #[serde(default)]
+    pub closed: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct PollVote {
+    pub fp: String,
+    pub choices: Vec<u32>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Folder {
+    pub name: String,
+    pub conversations: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -225,6 +258,15 @@ pub struct Conversation {
     /// v0.6.1 P2: unsent composer text (this device)
     #[serde(default)]
     pub draft: String,
+    /// v0.6.2: archived (hidden from the main list; this device)
+    #[serde(default)]
+    pub archived: bool,
+    /// v0.6.2: folders this chat belongs to (this device)
+    #[serde(default)]
+    pub folders: Vec<String>,
+    /// v0.6.2: disappearing-message timer in seconds (0 = off; synced with the peer / group)
+    #[serde(default)]
+    pub ttl_secs: u32,
     pub id: String,
     /// "dm" | "group"
     pub kind: String,
@@ -320,6 +362,8 @@ pub enum Event {
     PeerRemoved { fingerprint: String },
     MessageAdded { message: Message },
     MessageUpdated { message: Message },
+    /// v0.6.2: a message disappeared (timer expired)
+    MessageRemoved { id: String, conversation: String },
     /// v0.6.1 P2: peer is typing in this conversation (ephemeral, ~5 s)
     Typing { conversation: String, fingerprint: String, name: String },
     TransferUpdated { transfer: Transfer },

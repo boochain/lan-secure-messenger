@@ -237,6 +237,7 @@ public partial class MainViewModel : ObservableObject
         Sync(Groups, s.Groups, g => g.Id, g => new GroupItem(g), (i, g) => i.Update(g), i => i.Id);
         Conversations.Clear();
         foreach (var c in s.Conversations.OrderByDescending(c => c.Pinned).ThenByDescending(c => c.LastTsMs)) Conversations.Add(new ConversationItem(c));
+        RefreshFilters();
         SyncConversationTrust();
         Transfers.Clear();
         foreach (var t in s.Transfers.OrderByDescending(t => t.StartedMs)) Transfers.Add(new TransferItem(t));
@@ -411,10 +412,14 @@ public partial class MainViewModel : ObservableObject
                 var idx = Conversations.IndexOf(item);
                 var target = ConvTarget(item);
                 if (target != idx) Conversations.Move(idx, target);
-                if (SelectedConversation == item) UpdateSelectionHeader();
+                if (SelectedConversation == item) { UpdateSelectionHeader(); OnPropertyChanged(nameof(SelectedTtlText)); }
                 UpdateCounters();
+                RefreshFilters();
                 break;
             }
+            case "message_removed":
+                OnMessageRemoved(e.GetString("id"));
+                break;
             case "typing":
                 OnTyping(e.GetString("conversation"), e.GetString("name"));
                 break;
@@ -564,6 +569,7 @@ public partial class MainViewModel : ObservableObject
     // ------------------------------------------------------------ selection
     partial void OnSelectedConversationChanged(ConversationItem? value)
     {
+        OnPropertyChanged(nameof(SelectedTtlText));
         HasSelection = value != null;
         Messages.Clear();
         UpdateSelectionHeader();

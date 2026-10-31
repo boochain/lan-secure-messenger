@@ -3,8 +3,8 @@
 static void refresh_chat(void);
 static GtkWidget *pin_bar, *pin_lbl; static char typing_conv[64], typing_name[128]; static gint64 typing_until; static guint draft_src;
 /* sidebar: 📌 before pinned chats, "[草稿] …" instead of the status line when a draft is waiting (caller holds lsm_lock) */
-static void p2_decorate(const char *conv, char *t, size_t n){ char d[300], tmp[1400], *nl; int pin=lsm_conv_pinned(C,conv), dr=lsm_get_draft(C,conv,d,sizeof d);
-    if(!pin && !dr) return; snprintf(tmp,sizeof tmp,"%s%s",pin?"📌 ":"",t); nl=strchr(tmp,'\n');
+static void p2_decorate(const char *conv, char *t, size_t n){ char d[300], tmp[1400], *nl; int pin=lsm_conv_pinned(C,conv), dr=lsm_get_draft(C,conv,d,sizeof d), ttl=lsm_conv_ttl(C,conv), ar=lsm_conv_archived(C,conv);
+    if(!pin && !dr && !ttl && !ar) return; snprintf(tmp,sizeof tmp,"%s%s%s%s",pin?"📌 ":"",ttl?"⏱ ":"",ar?"🗄 ":"",t); nl=strchr(tmp,'\n');
     if(dr && nl){ gchar *e; int k; for(k=0;d[k];k++) if(d[k]=='\n') d[k]=' '; e=g_markup_escape_text(d,-1); snprintf(nl,sizeof tmp-(nl-tmp),"\n<small><span foreground=\"#c01c28\">[草稿]</span> %s</small>",e); g_free(e); }
     snprintf(t,n,"%s",tmp); }
 static gint p2_sort(GtkListBoxRow *a, GtkListBoxRow *b, gpointer p){ int pa=GPOINTER_TO_INT(g_object_get_data(G_OBJECT(a),"pin")), pb=GPOINTER_TO_INT(g_object_get_data(G_OBJECT(b),"pin")); (void)p;

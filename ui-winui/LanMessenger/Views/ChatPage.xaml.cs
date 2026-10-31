@@ -42,8 +42,8 @@ public sealed partial class ChatPage : Page
             return false;   // let dialogs/flyouts handle Esc themselves
         });
         Loaded += (_, _) => SyncSelection();
-        Unloaded += (_, _) => { VM.MessagesAppended -= ScrollToEnd; VM.PropertyChanged -= Vm_PropertyChanged; };
-        Loaded += (_, _) => { VM.MessagesAppended -= ScrollToEnd; VM.MessagesAppended += ScrollToEnd; VM.PropertyChanged -= Vm_PropertyChanged; VM.PropertyChanged += Vm_PropertyChanged; };
+        Unloaded += (_, _) => { VM.MessagesAppended -= ScrollToEnd; VM.PropertyChanged -= Vm_PropertyChanged; VM.FilterChanged -= ApplyConvFilter; };
+        Loaded += (_, _) => { VM.MessagesAppended -= ScrollToEnd; VM.MessagesAppended += ScrollToEnd; VM.PropertyChanged -= Vm_PropertyChanged; VM.PropertyChanged += Vm_PropertyChanged; VM.FilterChanged -= ApplyConvFilter; VM.FilterChanged += ApplyConvFilter; ApplyConvFilter(); };
     }
 
     private void Vm_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -217,6 +217,9 @@ public sealed partial class ChatPage : Page
             f.Items.Add(block);
         }
         else Add(VM.SelectedMuted ? "取消免打扰" : "免打扰", "\uE7ED", VM.ToggleMuteCommand);
+        f.Items.Add(new MenuFlyoutSeparator());
+        { var a = new MenuFlyoutItem { Text = c.Archived ? "取消归档" : "归档", Icon = new FontIcon { Glyph = "\uE7B8" } }; a.Click += async (_, _) => await VM.ToggleArchiveAsync(c); f.Items.Add(a); }
+        { var a = new MenuFlyoutItem { Text = "会话分组…", Icon = new FontIcon { Glyph = "\uE8B7" } }; a.Click += async (_, _) => await V062Dialogs.FoldersAsync(XamlRoot, c); f.Items.Add(a); }
         f.ShowAt((FrameworkElement)e.OriginalSource, e.GetPosition((FrameworkElement)e.OriginalSource));
         e.Handled = true;
     }
@@ -287,6 +290,26 @@ public sealed partial class ChatPage : Page
         VM.ComposeText = Composer.Text;
         if (VM.SendCommand.CanExecute(null)) VM.SendCommand.Execute(null);
     }
+
+    // ---- v0.6.2 ----
+    private void ConvList_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
+    {
+        if (args.Item is ConversationItem c) args.ItemContainer.Visibility = VM.InFilter(c) ? Visibility.Visible : Visibility.Collapsed;
+    }
+    private void ApplyConvFilter()
+    {
+        foreach (var c in VM.Conversations)
+            if (ConvList.ContainerFromItem(c) is ListViewItem li) li.Visibility = VM.InFilter(c) ? Visibility.Visible : Visibility.Collapsed;
+    }
+    private async void PollOption_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is PollOptionItem o && o.Owner != null) await VM.VoteAsync(o.Owner, o.Index);
+    }
+    private async void ClosePoll_Click(object sender, RoutedEventArgs e) { if (ItemOf(sender) is { } m) await VM.ClosePollAsync(m); }
+    private async void NewPoll_Click(object sender, RoutedEventArgs e) => await V062Dialogs.NewPollAsync(XamlRoot);
+    private async void Ttl_Click(object sender, RoutedEventArgs e) { if (VM.SelectedConversation is { } c) await V062Dialogs.TtlAsync(XamlRoot, c); }
+    private async void Archive_Click(object sender, RoutedEventArgs e) { if (VM.SelectedConversation is { } c) await VM.ToggleArchiveAsync(c); }
+    private async void Folders_Click(object sender, RoutedEventArgs e) { if (VM.SelectedConversation is { } c) await V062Dialogs.FoldersAsync(XamlRoot, c); }
 
     // ---- v0.6.1 P2 ----
     private void PinConv_Click(object sender, RoutedEventArgs e) => _ = VM.TogglePinConvAsync();

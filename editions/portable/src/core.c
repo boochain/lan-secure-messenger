@@ -323,7 +323,7 @@ static void file_sync(FILE *f){
     fsync(fileno(f));
 #endif
 }
-static void load_ext_rec(lsm_core *c, char **f, int k);
+static void load_ext_rec(lsm_core *c, char **f, int k); static void load_v062_rec(lsm_core *c, char **f, int k);
 static void hist_append(lsm_core *c, buf_t *rec){ char p[600]; size_t sn; uint8_t *s=seal_rand(c->store_key,rec->p,rec->n,&sn); FILE *f; uint8_t l[4]; int i;
     path_join(p,sizeof p,c->data_dir,"history.dat"); f=ufopen(p,"ab"); if(f){ for(i=0;i<4;i++) l[i]=(uint8_t)(sn>>(8*i)); fwrite(l,1,4,f); fwrite(s,1,sn,f); fflush(f); file_sync(f); fclose(f);} free(s); }
 static lsm_msg *msg_get(lsm_core *c, const char *id){ int i; for(i=c->nmsgs-1;i>=0;i--) if(!strcmp(c->msgs[i].id,id)) return &c->msgs[i]; return NULL; }
@@ -340,6 +340,7 @@ static void load_history(lsm_core *c){ char p[600]; size_t n,off=0; uint8_t *d; 
         if(f[0][0]=='M' && k>=14){ lsm_msg *m=msg_get(c,f[1]); /* a later M record for the same id is an update (file fields arrive after the first record) */
             if(m){ m->kind=atoi(f[6]); scpy(m->file_tid,f[10],40); scpy(m->file_name,f[11],260); m->file_size=strtoull(f[12],NULL,10); if(f[13][0]) scpy(m->file_path,f[13],520); free(pl); continue; } m=msg_push(c); scpy(m->id,f[1],40); scpy(m->conv,f[2],64); m->out=atoi(f[3]); scpy(m->sender_fp,f[4],FP_LEN); scpy(m->sender_name,f[5],200); m->kind=atoi(f[6]); m->body=xstrdup(f[7]); m->ts_ms=atoll(f[8]); m->status=atoi(f[9]); scpy(m->file_tid,f[10],40); scpy(m->file_name,f[11],260); m->file_size=strtoull(f[12],NULL,10); scpy(m->file_path,f[13],520); }
         else if(f[0][0]=='X'){ load_ext_rec(c,f,k); }
+        else if(f[0][0]=='V'){ load_v062_rec(c,f,k); }
         else if(f[0][0]=='D' && k>=2){ tomb_add(c,f[1]); msg_unlink(c,f[1]); }
         else if(f[0][0]=='S' && k>=5){ lsm_msg *m=msg_get(c,f[1]); if(m){ m->status=atoi(f[2]); m->unread=atoi(f[3]); if(f[4][0]) scpy(m->file_path,f[4],520);} }
         free(pl); }
@@ -349,7 +350,7 @@ static int tomb_has(lsm_core *c, const char *id){ int i; for(i=c->ntomb-1;i>=0;i
 static void tomb_add(lsm_core *c, const char *id){ if(tomb_has(c,id)) return;
     if(c->ntomb>=20000){ memmove(c->tomb,c->tomb+1,sizeof(c->tomb[0])*(c->ntomb-1)); c->ntomb--; }
     c->tomb=(char(*)[40])xrealloc(c->tomb,sizeof(c->tomb[0])*(c->ntomb+1)); scpy(c->tomb[c->ntomb++],id,40); }
-static int msg_unlink(lsm_core *c, const char *id){ int i; for(i=c->nmsgs-1;i>=0;i--) if(!strcmp(c->msgs[i].id,id)){ free(c->msgs[i].body);
+static int msg_unlink(lsm_core *c, const char *id){ int i; for(i=c->nmsgs-1;i>=0;i--) if(!strcmp(c->msgs[i].id,id)){ free(c->msgs[i].body); free(c->msgs[i].poll_opts);
         memmove(&c->msgs[i],&c->msgs[i+1],sizeof(lsm_msg)*(c->nmsgs-i-1)); c->nmsgs--; return 1; } return 0; }
 static int seen_has(lsm_core *c, const uint8_t id[16]){ int i; char s[37]; for(i=0;i<c->nseen;i++) if(!memcmp(c->seen[i],id,16)) return 1; lsm_uuid_str(id,s); return tomb_has(c,s) || msg_get(c,s)!=NULL; }
 static void seen_add(lsm_core *c, const uint8_t id[16]){ if(c->nseen<20000){ memcpy(c->seen[c->nseen++],id,16); } else { memcpy(c->seen[c->seen_pos],id,16); c->seen_pos=(c->seen_pos+1)%20000; } }
@@ -581,11 +582,12 @@ static void emit_msg(lsm_core *c, const char *kind, lsm_msg *m){
     static const char *st[]={"queued","sent","delivered","read","received","failed","rejected"};
     char b[600]; scpy(b,m->body?m->body:"",sizeof b); { char *q; for(q=b;*q;q++) if(*q=='\t'||*q=='\n'||*q=='\r') *q=' '; } utf8_trunc(b,400);
     emit(c,"%s\t%s\t%s\t%s\t%s\t%s\t%s",kind,m->id,m->conv,m->out?"out":"in",st[m->status],m->kind==K_FILE?"file":m->kind==K_SYSTEM?"system":"text",m->kind==K_FILE?m->file_name:b); }
+static void v062_on_add(lsm_core *c, lsm_msg *m); static void v062_sweep(lsm_core *c);
 static lsm_msg *add_message(lsm_core *c, const char *id, const char *conv, int out, const char *sfp, int kind, const char *body, int64_t ts, int status){
     lsm_msg *m=msg_push(c); scpy(m->id,id,40); scpy(m->conv,conv,64); m->out=out; scpy(m->sender_fp,sfp,FP_LEN);
     scpy(m->sender_name,out?c->name:(sfp[0]?peer_name(c,sfp):""),200); m->kind=kind; m->body=xstrdup(body?body:""); m->ts_ms=ts>0?ts:wall_ms(); m->status=status;
     m->unread=(!out && kind!=K_SYSTEM);
-    hist_rec_msg(c,m); emit_msg(c,"msg",m); return m; }
+    hist_rec_msg(c,m); v062_on_add(c,m); emit_msg(c,"msg",m); return m; }
 static void set_status(lsm_core *c, lsm_msg *m, int st){ if(!m || m->status==st) return; m->status=st; hist_rec_upd(c,m); emit_msg(c,"msg_update",m); }
 static void system_msg(lsm_core *c, const char *conv, const char *fmt, ...){ char t[1024], id[37]; uint8_t u[16]; va_list ap; va_start(ap,fmt); vsnprintf(t,sizeof t,fmt,ap); va_end(ap); uuid_new(u); lsm_uuid_str(u,id); add_message(c,id,conv,0,"",K_SYSTEM,t,0,ST_RECEIVED); }
 static void notice(lsm_core *c, const char *fmt, ...){ char t[1024]; va_list ap; va_start(ap,fmt); vsnprintf(t,sizeof t,fmt,ap); va_end(ap); emit(c,"notice\t%s",t); }
@@ -897,6 +899,7 @@ static void on_frame(lsm_core *c, conn *k, rd_t *r){
 /* ------------------------------------------------------------ timers + loop */
 static void on_tick(lsm_core *c){
     int64_t now=mono_ms(); conn *k; int i;
+    v062_sweep(c);
     for(k=c->conns;k;k=k->next){
         if(k->state==4){ if(now-k->last_rx>=DEAD_AFTER){ conn_close(c,k,"heartbeat timeout",0); continue; }
             if(now-k->last_ping>=PING_EVERY){ buf_t f={0}; k->last_ping=now; b_u32(&f,0); b_u64(&f,(uint64_t)wall_ms()); send_frame(k,&f); b_free(&f); } }
@@ -1347,6 +1350,7 @@ void lsm_initials(const char *name, char out[8]){
 #include "profile_hist.c"
 #include "ext.c"
 #include "p2.c"
+#include "v062.c"
 #include "backup.c"
 
 /* ------------------------------------------------------------ diagnostics (诊断) */
