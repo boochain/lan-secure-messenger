@@ -65,6 +65,7 @@ class CoreService : Service() {
     private fun handle(e: String) {
         val f = e.split('\t')
         when (f[0]) {
+            "typing" -> if (f.size >= 4) Repo.typing.value = Repo.typing.value + (f[1] to (f[3] to System.currentTimeMillis() + 5000))
             "msg" -> if (f.size >= 7 && f[3] == "in" && f[5] != "system" && (!Repo.appForeground || f[2] != Repo.openConv)) {
                 val who = when {
                     f[2].startsWith("dm:") -> Repo.state.value.contacts.firstOrNull { "dm:" + it.fp == f[2] }?.name ?: f[4]

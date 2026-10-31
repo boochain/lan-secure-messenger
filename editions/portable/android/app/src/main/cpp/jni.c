@@ -43,10 +43,10 @@ JNIEXPORT jstring JNICALL FN(state)(JNIEnv *e, jclass k){
     n=lsm_contacts(C,&c); nm=lsm_messages(C,&m);
     for(i=0;i<n;i++){ char conv[64]; int un=0; snprintf(conv,64,"dm:%s",c[i].fp); for(j=0;j<nm;j++) if(m[j].unread&&!strcmp(m[j].conv,conv)) un++;
         if(i) sb_s(&b,","); sb_s(&b,"{\"fp\":"); sb_js(&b,c[i].fp); sb_s(&b,",\"name\":"); sb_js(&b,lsm_display_name(&c[i])); sb_s(&b,",\"nick\":"); sb_js(&b,c[i].name); sb_s(&b,",\"remark\":"); sb_js(&b,c[i].remark); sb_s(&b,",\"sig\":"); sb_js(&b,c[i].signature); { char ap[600]; lsm_avatar_path(C,c[i].fp,ap,sizeof ap); sb_s(&b,",\"avatar\":"); sb_js(&b,ap); } sb_f(&b,",\"trust\":%d,\"online\":%s,\"rtt\":%d,\"unread\":%d,\"addr\":",c[i].trust,c[i].online?"true":"false",c[i].rtt_ms,un);
-        sb_js(&b,c[i].addr); sb_s(&b,",\"version\":"); sb_js(&b,c[i].app_version); sb_f(&b,",\"via\":%s}",c[i].via_relay?"true":"false"); }
+        sb_js(&b,c[i].addr); sb_s(&b,",\"version\":"); sb_js(&b,c[i].app_version); sb_f(&b,",\"via\":%s",c[i].via_relay?"true":"false"); { char d[600]; int has=lsm_get_draft(C,conv,d,sizeof d); sb_f(&b,",\"pinned\":%s,\"draft\":",lsm_conv_pinned(C,conv)?"true":"false"); sb_js(&b,has?d:""); } sb_s(&b,"}"); }
     sb_s(&b,"],\"groups\":["); n=lsm_groups(C,&g);
     for(i=0;i<n;i++){ char u[37], conv[64]; int un=0; lsm_uuid_str(g[i].id,u); snprintf(conv,64,"group:%s",u); for(j=0;j<nm;j++) if(m[j].unread&&!strcmp(m[j].conv,conv)) un++;
-        if(i) sb_s(&b,","); sb_s(&b,"{\"id\":"); sb_js(&b,u); sb_s(&b,",\"name\":"); sb_js(&b,g[i].name); sb_f(&b,",\"epoch\":%llu,\"unread\":%d,\"members\":[",(unsigned long long)g[i].key_epoch,un);
+        if(i) sb_s(&b,","); sb_s(&b,"{\"id\":"); sb_js(&b,u); sb_s(&b,",\"name\":"); sb_js(&b,g[i].name); sb_f(&b,",\"epoch\":%llu,\"unread\":%d,\"pinned\":%s,\"draft\":",(unsigned long long)g[i].key_epoch,un,lsm_conv_pinned(C,conv)?"true":"false"); { char d[600]; sb_js(&b,lsm_get_draft(C,conv,d,sizeof d)?d:""); } sb_s(&b,",\"members\":[");
         for(j=0;j<g[i].nmembers;j++){ if(j) sb_s(&b,","); sb_js(&b,g[i].members[j]); } sb_s(&b,"]}"); }
     sb_s(&b,"],\"transfers\":["); n=lsm_transfers(C,&t);
     for(i=0;i<n;i++){ char u[37]; lsm_uuid_str(t[i].tid,u); if(i) sb_s(&b,","); sb_s(&b,"{\"id\":"); sb_js(&b,u); sb_s(&b,",\"msg\":"); sb_js(&b,t[i].msg_id); sb_s(&b,",\"name\":"); sb_js(&b,t[i].name);
@@ -67,7 +67,8 @@ JNIEXPORT jstring JNICALL FN(messages)(JNIEnv *e, jclass k, jstring conv){
         sb_js(&b,m[i].sender_name); sb_s(&b,",\"body\":"); sb_js(&b,m[i].body); sb_s(&b,",\"file\":"); sb_js(&b,m[i].file_name); sb_f(&b,",\"size\":%llu,\"path\":",(unsigned long long)m[i].file_size); sb_js(&b,m[i].file_path);
         { char rs[300], mine[40]=""; lsm_reaction_summary(&m[i],rs,sizeof rs); lsm_my_reaction(C,&m[i],mine,sizeof mine);
           sb_s(&b,",\"reply_to\":"); sb_js(&b,m[i].reply_to); sb_s(&b,",\"quote\":"); sb_js(&b,m[i].quote); sb_s(&b,",\"reactions\":"); sb_js(&b,rs); sb_s(&b,",\"mine\":"); sb_js(&b,mine);
-          sb_f(&b,",\"edited\":%s,\"recalled\":%s,\"can_modify\":%s,\"voice\":%d",m[i].edited?"true":"false",m[i].recalled?"true":"false",lsm_can_modify(C,&m[i])?"true":"false",lsm_voice_secs(m[i].file_name)); }
+          sb_f(&b,",\"edited\":%s,\"recalled\":%s,\"can_modify\":%s,\"voice\":%d",m[i].edited?"true":"false",m[i].recalled?"true":"false",lsm_can_modify(C,&m[i])?"true":"false",lsm_voice_secs(m[i].file_name));
+          sb_f(&b,",\"forwarded\":%s,\"pinned\":%s,\"starred\":%s,\"mentions_me\":%s",m[i].forwarded?"true":"false",m[i].pinned?"true":"false",m[i].starred?"true":"false",m[i].mentions_me?"true":"false"); }
         sb_s(&b,"}"); }
     lsm_unlock(C); sb_s(&b,"]"); free(cv); r=JU(e,b.p); free(b.p); return r; }
 
@@ -116,3 +117,25 @@ JNIEXPORT jstring JNICALL FN(react)(JNIEnv *e, jclass k, jstring id, jstring emo
 JNIEXPORT jstring JNICALL FN(editMessage)(JNIEnv *e, jclass k, jstring id, jstring body){ char *i=U(e,id), *m=U(e,body), err[256]=""; int rc=C?lsm_edit_message(C,i,m,err):1; (void)k; free(i); free(m); return J(e,rc?(err[0]?err:"failed"):""); }
 JNIEXPORT jstring JNICALL FN(recallMessage)(JNIEnv *e, jclass k, jstring id){ char *i=U(e,id), err[256]=""; int rc=C?lsm_recall_message(C,i,err):1; (void)k; free(i); return J(e,rc?(err[0]?err:"failed"):""); }
 JNIEXPORT jstring JNICALL FN(voiceName)(JNIEnv *e, jclass k, jint secs, jstring ext){ char *x=U(e,ext), nm[128]; (void)k; lsm_voice_name(secs,x,nm,sizeof nm); free(x); return J(e,nm); }
+
+/* v0.6.1 P2 */
+JNIEXPORT jstring JNICALL FN(sendText2)(JNIEnv *e, jclass k, jstring conv, jstring text, jstring replyTo){ char id[40], *c=U(e,conv), *t=U(e,text), *r=U(e,replyTo), err[256]="", csv[64*(FP_LEN+1)]=""; int rc=1; (void)k;
+    if(C){ lsm_lock(C); lsm_mentions_in(C,c,t,csv,sizeof csv); lsm_unlock(C); rc=(*r||csv[0])?lsm_send_text2(C,c,t,*r?r:NULL,csv[0]?csv:NULL,id,err):lsm_send_text(C,c,t,id,err); if(!rc) lsm_set_draft(C,c,""); }
+    free(c); free(t); free(r); return J(e,rc?(err[0]?err:"failed"):""); }
+JNIEXPORT void JNICALL FN(setConvPinned)(JNIEnv *e, jclass k, jstring conv, jboolean on){ char *c=U(e,conv); (void)k; if(C) lsm_set_conv_pinned(C,c,on?1:0); free(c); }
+JNIEXPORT void JNICALL FN(setDraft)(JNIEnv *e, jclass k, jstring conv, jstring text){ char *c=U(e,conv), *t=U(e,text); (void)k; if(C) lsm_set_draft(C,c,t); free(c); free(t); }
+JNIEXPORT jstring JNICALL FN(getDraft)(JNIEnv *e, jclass k, jstring conv){ char *c=U(e,conv), *d=(char*)malloc(16384); jstring r; (void)k; d[0]=0; if(C){ lsm_lock(C); lsm_get_draft(C,c,d,16384); lsm_unlock(C); } r=JU(e,d); free(d); free(c); return r; }
+JNIEXPORT jstring JNICALL FN(setMsgFlags)(JNIEnv *e, jclass k, jstring id, jint pinned, jint starred){ char *i=U(e,id), err[256]=""; int rc=C?lsm_set_msg_flags(C,i,pinned,starred,err):1; (void)k; free(i); return J(e,rc?(err[0]?err:"failed"):""); }
+JNIEXPORT void JNICALL FN(sendTyping)(JNIEnv *e, jclass k, jstring conv){ char *c=U(e,conv); (void)k; if(C) lsm_send_typing(C,c); free(c); }
+JNIEXPORT jstring JNICALL FN(forward)(JNIEnv *e, jclass k, jstring id, jstring conv){ char *i=U(e,id), *c=U(e,conv), err[256]="", nid[40]; int rc=C?lsm_forward(C,i,c,nid,err):1; (void)k; free(i); free(c); return J(e,rc?(err[0]?err:"failed"):""); }
+/* [{"id","conv","sender","body","ts","out"}] newest first; which 1 pinned, 2 starred */
+JNIEXPORT jstring JNICALL FN(flagged)(JNIEnv *e, jclass k, jstring conv, jint which){ sb b={0}; char *c=U(e,conv); int idx[500], n, i; lsm_msg *m; jstring r; (void)k; sb_s(&b,"[");
+    if(C){ lsm_lock(C); n=lsm_flagged(C,*c?c:NULL,which,idx,500); lsm_messages(C,&m);
+        for(i=0;i<n;i++){ lsm_msg *x=&m[idx[i]]; char db[600]; if(i) sb_s(&b,","); sb_s(&b,"{\"id\":"); sb_js(&b,x->id); sb_s(&b,",\"conv\":"); sb_js(&b,x->conv); sb_s(&b,",\"sender\":"); sb_js(&b,x->out?"我":x->sender_name);
+            sb_s(&b,",\"body\":"); sb_js(&b,x->kind==K_FILE?x->file_name:lsm_display_body(x,db,sizeof db)); sb_f(&b,",\"ts\":%lld}",(long long)x->ts_ms); }
+        lsm_unlock(C); }
+    sb_s(&b,"]"); free(c); r=JU(e,b.p); free(b.p); return r; }
+/* @mention candidates of a group: [{"fp","name"}] */
+JNIEXPORT jstring JNICALL FN(mentionCandidates)(JNIEnv *e, jclass k, jstring conv){ sb b={0}; char *c=U(e,conv); static char nm[64][128], fp[64][FP_LEN]; int n=0, i; jstring r; (void)k; sb_s(&b,"[");
+    if(C){ lsm_lock(C); n=lsm_mention_candidates(C,c,nm,fp,64); for(i=0;i<n;i++){ if(i) sb_s(&b,","); sb_s(&b,"{\"fp\":"); sb_js(&b,fp[i]); sb_s(&b,",\"name\":"); sb_js(&b,nm[i]); sb_s(&b,"}"); } lsm_unlock(C); }
+    sb_s(&b,"]"); free(c); r=JU(e,b.p); free(b.p); return r; }

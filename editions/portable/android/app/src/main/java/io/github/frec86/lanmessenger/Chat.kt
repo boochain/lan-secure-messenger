@@ -57,14 +57,27 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
     val contact = st.contacts.firstOrNull { "dm:" + it.fp == conv }
     val group = st.groups.firstOrNull { "group:" + it.id == conv }
     var emojiOpen by remember { mutableStateOf(false) }
-    var input by remember { mutableStateOf("") }; var menu by remember { mutableStateOf(false) }; var dlg by remember { mutableStateOf("") }
+    var input by remember(conv) { mutableStateOf(Native.getDraft(conv)) }; var menu by remember { mutableStateOf(false) }; var dlg by remember { mutableStateOf("") }
     var searching by rememberSaveable { mutableStateOf(false) }; var q by rememberSaveable { mutableStateOf("") }
     var msgMenu by remember { mutableStateOf<Msg?>(null) }; var delMsg by remember { mutableStateOf<Msg?>(null) }
     var replyTo by remember(conv) { mutableStateOf<Msg?>(null) }; var editing by remember(conv) { mutableStateOf<Msg?>(null) }; var recallMsg by remember { mutableStateOf<Msg?>(null) }
     val recording by Voice.recording
+    // v0.6.1 P2
+    var multi by remember(conv) { mutableStateOf(false) }; var picked by remember(conv) { mutableStateOf(setOf<String>()) }
+    var fwdIds by remember { mutableStateOf<List<String>?>(null) }; var flagDlg by remember { mutableStateOf(0) }; var multiDel by remember { mutableStateOf(false) }
+    var atOpen by remember { mutableStateOf(false) }
+    val typingMap by Repo.typing.collectAsState(); var tick by remember { mutableStateOf(0) }
+    val typingWho = typingMap[conv]?.takeIf { it.second > System.currentTimeMillis() + tick * 0 }?.first
+    LaunchedEffect(typingMap[conv]) { val u = typingMap[conv]?.second ?: 0L; val d = u - System.currentTimeMillis(); if (d > 0) { kotlinx.coroutines.delay(d + 50); tick++ } }
+    LaunchedEffect(input, conv) { kotlinx.coroutines.delay(1500); if (editing == null) Native.setDraft(conv, input) }
+    DisposableEffect(conv) { onDispose { if (editing == null) Native.setDraft(conv, input); Repo.refresh() } }
+    fun onInput(v: String) {
+        if (v.length == input.length + 1 && v.endsWith("@") && group != null) atOpen = true
+        input = v; if (v.isNotEmpty() && editing == null) Native.sendTyping(conv)
+    }
     val clip = androidx.compose.ui.platform.LocalClipboardManager.current
     // system Back / predictive back: close the in-chat search first, then return to the list (menus/dialogs dismiss themselves)
-    BackHandler { if (searching) { searching = false; q = "" } else back() }
+    BackHandler { if (multi) { multi = false; picked = emptySet() } else if (searching) { searching = false; q = "" } else back() }
     var saveSrc by remember { mutableStateOf<String?>(null) }
     val msgs = if (searching && q.isNotBlank()) all.filter { it.body.contains(q, true) || it.file.contains(q, true) } else all
     val rows = remember(msgs, group != null) { buildRows(msgs, group != null) }
@@ -81,7 +94,7 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
     fun sendNow() {
         if (input.isBlank()) return
         val ed = editing; val rp = replyTo
-        val e = when { ed != null -> Native.editMessage(ed.id, input.trim()); rp != null -> Native.sendReply(conv, input.trim(), rp.id); else -> Native.sendText(conv, input.trim()) }
+        val e = when { ed != null -> Native.editMessage(ed.id, input.trim()); else -> Native.sendText2(conv, input.trim(), rp?.id ?: "") }
         if (e.isNotEmpty()) Repo.toast.value = e else { input = ""; editing = null; replyTo = null }; Repo.refresh()
     }
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> if (uris.isNotEmpty()) sendUris(ctx, conv, uris) }
@@ -94,7 +107,8 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
     Column(Modifier.fillMaxSize().background(p.chat)) {
       Column(Modifier.fillMaxSize().navigationBarsPadding().imePadding().background(p.window).statusBarsPadding()) {
         /* header: back · avatar(+dot) · name + shield · status · search · more */
-        Row(Modifier.fillMaxWidth().height(64.dp).background(p.bar).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (multi) SelectBar(picked.size, { fwdIds = picked.toList() }, { picked.forEach { Native.setMsgFlags(it, -1, 1) }; Repo.toast.value = "已收藏"; multi = false; picked = emptySet(); Repo.refresh() }, { multiDel = true }, { multi = false; picked = emptySet() })
+        else Row(Modifier.fillMaxWidth().height(64.dp).background(p.bar).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(back) { Ic(R.drawable.ms_back, "返回", p.fg) }
             if (searching) {
                 SearchField(q, { q = it }, "搜索聊天记录", Modifier.weight(1f))
@@ -108,7 +122,8 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         val s = MaterialTheme.typography.bodySmall
-                        if (contact != null) {
+                        if (typingWho != null) Text("$typingWho 正在输入…", style = s, color = p.accent, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        else if (contact != null) {
                             Text(if (contact.online) "在线" else "离线", style = s, color = if (contact.online) p.online else p.fg2)
                             // 在线 · 已验证身份 · 经服务器 / 局域网直连 (switches live when the core changes the path)
                             val via = contact.online && contact.via
@@ -123,6 +138,11 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
                 Box {
                     IconButton({ menu = true }) { Ic(R.drawable.ms_more, "菜单", p.fg) }
                     DropdownMenu(menu, { menu = false }) {
+                        val cpinned = contact?.pinned ?: group?.pinned ?: false
+                        DropdownMenuItem({ Text(if (cpinned) "取消置顶会话" else "置顶会话") }, { menu = false; Native.setConvPinned(conv, !cpinned); Repo.refresh() }, leadingIcon = { Text("📌") })
+                        DropdownMenuItem({ Text("置顶消息") }, { menu = false; flagDlg = 1 }, leadingIcon = { Text("📌") })
+                        DropdownMenuItem({ Text("收藏的消息") }, { menu = false; flagDlg = 2 }, leadingIcon = { Text("⭐") })
+                        DropdownMenuItem({ Text("多选消息") }, { menu = false; multi = true; picked = emptySet() }, leadingIcon = { Ic(R.drawable.ms_copy) })
                         if (contact != null) {
                             DropdownMenuItem({ Text("联系人资料 / 备注名") }, { menu = false; openPage("cprofile:" + contact.fp) }, leadingIcon = { Ic(R.drawable.ms_info) })
                             DropdownMenuItem({ Text("消息历史") }, { menu = false; openPage("history") }, leadingIcon = { Ic(R.drawable.ms_search) })
@@ -144,6 +164,7 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
                 }
             }
         }
+        all.lastOrNull { it.pinned && !it.recalled }?.let { pm -> PinnedBanner(pm, all.count { it.pinned && !it.recalled }) { flagDlg = 1 } }
         /* messages over the doodle wallpaper */
         val wall = WALL_ICONS.map { painterResource(it) }
         Box(Modifier.weight(1f).fillMaxWidth().drawBehind { wallpaper(wall, p.wall, p.wallAlpha) }) {
@@ -160,7 +181,7 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
                         is ChatRow.E2E -> Box(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 0.dp), contentAlignment = Alignment.Center) {
                             ServicePill(true, if (group != null) "消息已端到端加密，只有群成员能看到" else "消息已端到端加密，只有你和${name}能看到") }
                         is ChatRow.System -> Box(Modifier.fillMaxWidth().padding(vertical = 4.dp), contentAlignment = Alignment.Center) { ServicePill(false, hm(r.m.ts) + " · " + r.m.body) }
-                        is ChatRow.Bubble -> Box(Modifier.fillMaxWidth().pointerInput(r.m.id) { detectTapGestures(onLongPress = { msgMenu = r.m }) }) {
+                        is ChatRow.Bubble -> Box(Modifier.fillMaxWidth().background(if (r.m.id in picked) p.field else Color.Transparent).pointerInput(r.m.id, multi) { detectTapGestures(onTap = { if (multi) picked = if (r.m.id in picked) picked - r.m.id else picked + r.m.id }, onLongPress = { if (multi) picked = picked + r.m.id else msgMenu = r.m }) }) {
                             MessageRow(r, st.transfers.firstOrNull { it.msg == r.m.id }, maxW) { path -> saveSrc = path; save.launch(r.m.file) }
                             // long-press menu (Material: long press shows the item's actions)
                             DropdownMenu(msgMenu?.id == r.m.id, { msgMenu = null }, Modifier.align(if (r.m.out) Alignment.TopEnd else Alignment.TopStart)) {
@@ -169,6 +190,10 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
                                         Text(em, fontSize = 22.sp, modifier = Modifier.clip(CircleShape).background(if (r.m.mine == em) p.field else Color.Transparent).clickable {
                                             msgMenu = null; val e = Native.react(r.m.id, if (r.m.mine == em) "" else em); if (e.isNotEmpty()) Repo.toast.value = e; Repo.refresh() }.padding(4.dp)) } } }, {})
                                     DropdownMenuItem({ Text("回复") }, { msgMenu = null; editing = null; replyTo = r.m }, leadingIcon = { Ic(R.drawable.ms_reply) })
+                                    DropdownMenuItem({ Text("转发") }, { msgMenu = null; fwdIds = listOf(r.m.id) }, leadingIcon = { Ic(R.drawable.ms_reply) })
+                                    DropdownMenuItem({ Text(if (r.m.pinned) "取消置顶" else "置顶") }, { msgMenu = null; val e = Native.setMsgFlags(r.m.id, if (r.m.pinned) 0 else 1, -1); if (e.isNotEmpty()) Repo.toast.value = e; Repo.refresh() }, leadingIcon = { Text("📌") })
+                                    DropdownMenuItem({ Text(if (r.m.starred) "取消收藏" else "收藏") }, { msgMenu = null; val e = Native.setMsgFlags(r.m.id, -1, if (r.m.starred) 0 else 1); if (e.isNotEmpty()) Repo.toast.value = e else Repo.toast.value = if (r.m.starred) "已取消收藏" else "已收藏"; Repo.refresh() }, leadingIcon = { Text("⭐") })
+                                    DropdownMenuItem({ Text("多选") }, { msgMenu = null; multi = true; picked = setOf(r.m.id) }, leadingIcon = { Ic(R.drawable.ms_copy) })
                                     if (r.m.canModify) {
                                         DropdownMenuItem({ Text("编辑") }, { msgMenu = null; replyTo = null; editing = r.m; input = r.m.body }, leadingIcon = { Ic(R.drawable.ms_edit) })
                                         DropdownMenuItem({ Text("撤回") }, { msgMenu = null; recallMsg = r.m }, leadingIcon = { Ic(R.drawable.ms_back) })
@@ -197,8 +222,9 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
                 IconButton({ emojiOpen = !emojiOpen }, Modifier.size(40.dp)) { Ic(R.drawable.ms_emoji, "表情", p.fg2) }
                 Box(Modifier.weight(1f).padding(start = 4.dp, top = 12.dp, bottom = 12.dp)) {
                     if (input.isEmpty()) Text("输入消息", style = MaterialTheme.typography.bodyLarge, color = p.fg2)
-                    BasicTextField(input, { input = it }, Modifier.fillMaxWidth().semantics { contentDescription = "输入消息" }, maxLines = 5,
+                    BasicTextField(input, { onInput(it) }, Modifier.fillMaxWidth().semantics { contentDescription = "输入消息" }, maxLines = 5,
                         textStyle = MaterialTheme.typography.bodyLarge.copy(color = p.fg), cursorBrush = SolidColor(p.accent))
+                    DropdownMenu(atOpen, { atOpen = false }) { mentionCandidates(conv).forEach { mc -> DropdownMenuItem({ Text(mc.name) }, { atOpen = false; input = input + mc.name + " " }) } }
                 }
                 IconButton({ pick.launch(arrayOf("*/*")) }, Modifier.size(40.dp)) { Ic(R.drawable.ms_attach, "发送文件", p.fg2) }
                 IconButton({ micClick() }, Modifier.size(40.dp)) { Ic(if (recording) R.drawable.ms_stop else R.drawable.ms_mic, if (recording) "停止并发送语音" else "语音消息", if (recording) p.error else p.fg2) }
@@ -237,6 +263,11 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
         }
       }
     }
+    fwdIds?.let { ids -> ForwardDialog(st, ids) { fwdIds = null; if (multi) { multi = false; picked = emptySet() } } }
+    if (flagDlg != 0) FlagListDialog(conv, flagDlg, { id -> val i = rows.indexOfFirst { (it as? ChatRow.Bubble)?.m?.id == id }; if (i >= 0) { Repo.jumpId = id; Repo.refresh() } }) { flagDlg = 0 }
+    if (multiDel) LsmAlertDialog(onDismissRequest = { multiDel = false }, title = { Text("删除选中的 ${picked.size} 条消息？") }, text = { Text("只会从本机删除，对方仍保留。此操作无法撤销。") },
+        confirmButton = { TextButton({ multiDel = false; picked.forEach { Native.deleteMessage(it) }; multi = false; picked = emptySet(); Repo.refresh() }) { Text("删除", color = p.error) } },
+        dismissButton = { TextButton({ multiDel = false }) { Text("取消") } })
     recallMsg?.let { m ->
         LsmAlertDialog(onDismissRequest = { recallMsg = null }, title = { Text("撤回这条消息？") }, text = { Text("双方都会看到“撤回了一条消息”。24 小时内可撤回。") },
             confirmButton = { TextButton({ recallMsg = null; val e = Native.recallMessage(m.id); if (e.isNotEmpty()) Repo.toast.value = e; Repo.refresh() }) { Text("撤回", color = p.error) } },
@@ -299,6 +330,7 @@ fun ServicePill(lock: Boolean, text: String) {
 fun Meta(m: Msg, over: Boolean = false) {
     val p = LocalPalette.current; val c = if (over) Color.White else if (m.out) p.mineMeta else p.meta
     Row(Modifier.ifThen(over) { clip(CircleShape).background(p.imageScrim).padding(horizontal = 8.dp, vertical = 1.dp) }, verticalAlignment = Alignment.CenterVertically) {
+        p2Tags(m).takeIf { it.isNotEmpty() }?.let { Text(it, fontSize = 11.sp, lineHeight = 14.sp, color = c) }
         Text(hm(m.ts), fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = .3.sp, color = c)
         if (m.out) { Spacer(Modifier.width(3.dp)); Ticks(m.status, c, if (over) Color.White else p.read) }
     }

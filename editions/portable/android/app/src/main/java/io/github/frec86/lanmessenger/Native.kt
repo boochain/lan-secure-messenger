@@ -44,4 +44,14 @@ object Native {
     @JvmStatic external fun editMessage(id: String, body: String): String
     @JvmStatic external fun recallMessage(id: String): String
     @JvmStatic external fun voiceName(secs: Int, ext: String): String
+    // v0.6.1 P2
+    @JvmStatic external fun sendText2(conv: String, text: String, replyTo: String): String
+    @JvmStatic external fun setConvPinned(conv: String, on: Boolean)
+    @JvmStatic external fun setDraft(conv: String, text: String)
+    @JvmStatic external fun getDraft(conv: String): String
+    @JvmStatic external fun setMsgFlags(id: String, pinned: Int, starred: Int): String
+    @JvmStatic external fun sendTyping(conv: String)
+    @JvmStatic external fun forward(id: String, conv: String): String
+    @JvmStatic external fun flagged(conv: String, which: Int): String
+    @JvmStatic external fun mentionCandidates(conv: String): String
 }
