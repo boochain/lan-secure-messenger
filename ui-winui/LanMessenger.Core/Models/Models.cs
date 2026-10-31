@@ -55,6 +55,19 @@ public sealed class Message
     public long TsMs { get; set; }
     public MsgStatus Status { get; set; }
     public FileRef? File { get; set; }
+    // v0.6.1 P1 (flattened MsgExt)
+    public string? ReplyTo { get; set; }
+    public string Quote { get; set; } = "";
+    public List<string> Mentions { get; set; } = new();
+    public List<Reaction> Reactions { get; set; } = new();
+    public bool Edited { get; set; }
+    public bool Recalled { get; set; }
+}
+
+public sealed class Reaction
+{
+    public string Fp { get; set; } = "";
+    public string Emoji { get; set; } = "";
 }
 
 public sealed class Peer

@@ -59,6 +59,24 @@ jobs:
       - name: Build XP GUI (x86 + x64)
         working-directory: editions/portable
         run: make build/x86/LanMessenger.exe build/x64/LanMessenger.exe
+  xp-interop-p1:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain (mingw-w64, wine32)
+        run: |
+          sudo dpkg --add-architecture i386 && sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq mingw-w64 wine wine32:i386
+      - name: Build XP CLI + current lan-daemon
+        run: |
+          (cd editions/portable && make build/x86/lanmsg-cli.exe)
+          cargo build --release -p lan-daemon -p lan-cli
+      - name: C unit tests (incl. ext JSON / reactions)
+        working-directory: editions/portable
+        run: cc -std=gnu99 -Isrc -DLSM_APP_VERSION='"test"' -o /tmp/c_unit_test tests/c_unit_test.c src/xcrypto.c src/third_party/monocypher.c src/third_party/monocypher-ed25519.c -lpthread && /tmp/c_unit_test $GITHUB_WORKSPACE/lan-core/tests/data/filename_vectors.json
+      - name: Interop under wine with P1 (XP exe <-> current lan-daemon)
+        working-directory: editions/portable
+        run: sudo -E env "PATH=$PATH" python3 tests/interop.py --p1 --rust-bin $GITHUB_WORKSPACE/target/release --exe build/x86/lanmsg-cli.exe --work /tmp/lsm-interop-p1
   winui-build:
     runs-on: windows-latest
     steps:

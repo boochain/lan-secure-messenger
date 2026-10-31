@@ -22,6 +22,11 @@ public sealed class DaemonClient
     public Task<List<Message>> GetMessagesAsync(string conversation, int limit = 200, long? beforeTs = null)
         => Call<List<Message>>("get_messages", new { conversation, limit, before_ts = beforeTs });
     public Task<Message> SendTextAsync(string conversation, string body) => Call<Message>("send_text", new { conversation, body });
+    public Task<Message> SendReplyAsync(string conversation, string body, string replyTo) => Call<Message>("send_text", new { conversation, body, reply_to = replyTo });
+    /// <summary>Same emoji again removes it ("" removes mine).</summary>
+    public Task ReactAsync(string id, string emoji) => Call("react", new { id, emoji });
+    public Task EditMessageAsync(string id, string body) => Call("edit_message", new { id, body });
+    public Task RecallMessageAsync(string id) => Call("recall_message", new { id });
     public Task<Transfer> SendFileAsync(string conversation, string path) => Call<Transfer>("send_file", new { conversation, path });
     public Task CancelTransferAsync(string id) => Call("cancel_transfer", new { id });
     public Task<Transfer> RetryTransferAsync(string id) => Call<Transfer>("retry_transfer", new { id });
