@@ -11,7 +11,13 @@ pub const ANNOUNCE_MAGIC: [u8; 4] = *b"LSM5";
 pub const PROTO_VERSION: u16 = 5;
 /// Capability: byte-offset file resume (`Frame::FileResume`), automatic re-offer after reconnect.
 pub const CAP_RESUME: u32 = 1;
-pub const MY_CAPS: u32 = CAP_RESUME;
+/// Capability: profile sync (`Frame::Profile`: signature + small avatar). Older peers never receive it.
+pub const CAP_PROFILE: u32 = 2;
+pub const MY_CAPS: u32 = CAP_RESUME | CAP_PROFILE;
+/// Max avatar bytes carried in `Frame::Profile` (UIs downscale to ~96 px PNG/JPEG first).
+pub const MAX_AVATAR: usize = 48 * 1024;
+/// Max signature (个性签名) length in chars.
+pub const MAX_SIGNATURE: usize = 120;
 /// File chunk payload size (Noise messages are limited to 65535 bytes).
 pub const CHUNK: usize = 32 * 1024;
 
@@ -100,6 +106,9 @@ pub enum Frame {
     /// `offset` if its file has the same prefix, otherwise it restarts at 0 (first chunk offset 0).
     /// Only sent to peers announcing CAP_RESUME.
     FileResume { tid: Uuid, offset: u64, prefix_sha256: [u8; 32] },
+    /// Profile (个人主页) fields, only sent to peers announcing CAP_PROFILE: on connect and on change.
+    /// `avatar` empty = no avatar. Variant index 17 (C core: frame 17).
+    Profile { signature: String, avatar: Vec<u8> },
 }
 
 pub fn encode<T: Serialize>(v: &T) -> anyhow::Result<Vec<u8>> {

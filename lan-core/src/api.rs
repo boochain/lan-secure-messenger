@@ -92,6 +92,20 @@ pub struct Peer {
     /// Connected through the relay server (UI badge 经服务器 / tooltip 经服务器中转).
     #[serde(default)]
     pub via_relay: bool,
+    /// Peer's own nickname (`name` shows the local remark when one is set).
+    #[serde(default)]
+    pub nickname: String,
+    /// Local 备注名 (empty = none).
+    #[serde(default)]
+    pub remark: String,
+    #[serde(default)]
+    pub signature: String,
+    /// Local path of the peer's avatar image, if received.
+    #[serde(default)]
+    pub avatar_path: Option<String>,
+    /// Peer speaks CAP_PROFILE (older peers show no signature/avatar).
+    #[serde(default)]
+    pub profile_sync: bool,
 }
 
 /// Relay client state. state: off | connecting | online | auth_failed | error
@@ -203,6 +217,13 @@ pub struct Me {
     pub log_dir: String,
     pub download_dir: String,
     pub first_run_done: bool,
+    #[serde(default)]
+    pub signature: String,
+    #[serde(default)]
+    pub avatar_path: Option<String>,
+    /// Bound relay account (empty = none).
+    #[serde(default)]
+    pub account_user: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

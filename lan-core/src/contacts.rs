@@ -30,6 +30,12 @@ pub struct Contact {
     pub last_addrs: Vec<String>,
     pub last_seen_ms: i64,
     pub muted: bool,
+    /// Local remark name (备注名), never sent to anyone.
+    pub remark: String,
+    /// Peer's 个性签名 (from Frame::Profile).
+    pub signature: String,
+    /// Hex SHA-256 of the peer's avatar file (avatars/<fp>.img); empty = none.
+    pub avatar_sha: String,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]

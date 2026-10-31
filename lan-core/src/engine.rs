@@ -1385,6 +1385,11 @@ impl Engine {
             unread: self.unread.get(&dm_conv(fp)).map(|v| v.len() as u32).unwrap_or(0),
             rtt_ms: conn.and_then(|c| c.rtt_ms),
             app_version: conn.map(|c| c.app_version.clone()).unwrap_or_default(),
+            nickname: c.map(|c| c.name.clone()).unwrap_or_default(),
+            remark: c.map(|c| c.remark.clone()).unwrap_or_default(),
+            signature: c.map(|c| c.signature.clone()).unwrap_or_default(),
+            avatar_path: c.filter(|c| !c.avatar_sha.is_empty()).map(|_| self.paths.base.join("avatars").join(format!("{fp}.img")).display().to_string()),
+            profile_sync: conn.map(|c| c.caps & crate::wire::CAP_PROFILE != 0).unwrap_or(false),
         }
     }
 
@@ -1724,6 +1729,9 @@ impl Engine {
             log_dir: self.paths.logs.display().to_string(),
             download_dir: self.settings.download_dir(&self.paths).display().to_string(),
             first_run_done: self.settings.first_run_done,
+            signature: self.settings.signature.clone(),
+            avatar_path: Some(self.paths.base.join("avatar.img")).filter(|p| p.exists()).map(|p| p.display().to_string()),
+            account_user: self.settings.account_user.clone(),
         }
     }
 
