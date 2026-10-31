@@ -18,7 +18,8 @@ pub struct ServerCfg {
     pub bind: String,
     /// TCP port (端口).
     pub port: u16,
-    /// Network passphrase (网络口令). Never sent on the wire.
+    /// Optional shared secret for the relay transport handshake (empty = open). Never sent on the wire.
+    /// Clients default to empty as well; E2E message encryption does not use this.
     pub passphrase: String,
     /// 16-byte KDF salt as 32 hex chars. Empty = built-in default salt.
     pub salt: String,

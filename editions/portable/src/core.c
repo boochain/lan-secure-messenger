@@ -566,7 +566,7 @@ static void conv_dm(const char *fp, char *o){ snprintf(o,64,"dm:%s",fp); }
 static void conv_group(const uint8_t id[16], char *o){ char u[37]; lsm_uuid_str(id,u); snprintf(o,64,"group:%s",u); }
 static const char *peer_name(lsm_core *c, const char *fp){ lsm_contact *k=contact_get(c,fp); return k&&k->name[0]?k->name:fp; }
 static void emit_msg(lsm_core *c, const char *kind, lsm_msg *m){
-    static const char *st[]={"queued","sent","delivered","read","received","failed"};
+    static const char *st[]={"queued","sent","delivered","read","received","failed","rejected"};
     char b[600]; scpy(b,m->body?m->body:"",sizeof b); { char *q; for(q=b;*q;q++) if(*q=='\t'||*q=='\n'||*q=='\r') *q=' '; } utf8_trunc(b,400);
     emit(c,"%s\t%s\t%s\t%s\t%s\t%s\t%s",kind,m->id,m->conv,m->out?"out":"in",st[m->status],m->kind==K_FILE?"file":m->kind==K_SYSTEM?"system":"text",m->kind==K_FILE?m->file_name:b); }
 static lsm_msg *add_message(lsm_core *c, const char *id, const char *conv, int out, const char *sfp, int kind, const char *body, int64_t ts, int status){
@@ -622,7 +622,7 @@ static void emit_xfer(lsm_core *c, lsm_transfer *t){ static const char *st[]={"o
     if(t->out && t->state>=TS_DONE) rs_out_remove(c,t);
     emit(c,"transfer\t%s\t%s\t%s\t%s\t%llu\t%llu\t%s\t%s",u,t->out?"out":"in",st[t->state],t->peer_fp,(unsigned long long)t->transferred,(unsigned long long)t->size,t->name,t->error); }
 static void xfer_close_files(lsm_transfer *t){ if(t->fp_handle){ fclose((FILE*)t->fp_handle); t->fp_handle=NULL; } free(t->hash); t->hash=NULL; free(t->hctx); t->hctx=NULL; t->hashing=0; }
-static void mark_file_failed(lsm_core *c, lsm_transfer *t){ lsm_msg *m=msg_get(c,t->msg_id); if(m && m->out) set_status(c,m,ST_FAILED); }
+static void mark_file_failed(lsm_core *c, lsm_transfer *t){ lsm_msg *m=msg_get(c,t->msg_id); if(m && m->out) set_status(c,m,t->state==TS_REJECTED?ST_REJECTED:ST_FAILED); }
 static void xfer_fail(lsm_core *c, lsm_transfer *t, int state, const char *err){ if(xfer_finished(t)) return; xfer_close_files(t); if(!t->out && t->part[0]){ uremove(t->part); rs_sidecar_remove(t); } t->state=state; scpy(t->error,err,sizeof t->error); emit_xfer(c,t); mark_file_failed(c,t); }
 static void fail_transfers_for(lsm_core *c, const char *fp, const char *why){ int i; for(i=0;i<c->nxfers;i++){ lsm_transfer *t=&c->xfers[i];
     if(strcmp(t->peer_fp,fp) || !(t->state==TS_ACTIVE||t->state==TS_VERIFYING)) continue;
@@ -1045,7 +1045,12 @@ int lsm_send_file(lsm_core *c, const char *conv, const char *path, char *err){
     buf=(uint8_t*)xmalloc(65536); sha256_init(&h); while((n=fread(buf,1,65536,f))>0){ sha256_update(&h,buf,n); size+=n; } fclose(f); free(buf); sha256_final(&h,sha);
     sanitize_filename(path,nm,sizeof nm);
     mu_lock(&c->mu);
-    if(!strncmp(conv,"dm:",3)) targets[nt++]=conv+3;
+    if(!strncmp(conv,"dm:",3)){
+        int tr=trust_of(c,conv+3);
+        if(tr==TRUST_BLOCKED){ E("è¯¥èç³»äººå·²è¢«å±è½"); rc=-1; goto out; } /* 该联系人已被屏蔽 */
+        if(tr!=TRUST_TRUSTED){ E("å¯¹æ¹å°æªä¿¡ä»»ï¼æ æ³åéå¾ç/æä»¶ãè¯·åå¨èç³»äººèåä¸­ä¿¡ä»»å¯¹æ¹ï¼æå®æ PIN éå¯¹ï¼ã"); rc=-1; goto out; } /* 对方尚未信任… */
+        targets[nt++]=conv+3;
+    }
     else if(!strncmp(conv,"group:",6) && !lsm_uuid_parse(conv+6,gid) && (g=group_get(c,gid))){ for(i=0;i<g->nmembers && nt<64;i++) if(strcmp(g->members[i],c->fp)) targets[nt++]=g->members[i]; }
     else { E("bad conversation"); rc=-1; goto out; }
     uuid_new(mid); lsm_uuid_str(mid,ids);

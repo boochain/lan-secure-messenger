@@ -672,18 +672,31 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>Files/images require mutual trust on a DM; warn before the picker so we never flash a failed send.</summary>
+    private bool EnsureCanSendFile()
+    {
+        var c = SelectedConversation;
+        if (c == null) { ShowStatus("请先选择联系人或群组", true); return false; }
+        if (c.IsDm && !SelectedTrusted)
+        {
+            ShowStatus("对方尚未信任，无法发送图片/文件。请先在联系人菜单中信任对方（或完成 PIN 配对）。", true);
+            return false;
+        }
+        return true;
+    }
+
     [RelayCommand]
     private async Task AttachAsync()
     {
-        if (SelectedConversation == null) return;
+        if (!EnsureCanSendFile()) return;
         var files = await _platform.PickFilesAsync();
         await SendFilesAsync(files);
     }
 
     public async Task SendFilesAsync(IEnumerable<string> paths)
     {
-        var c = SelectedConversation;
-        if (c == null) return;
+        if (!EnsureCanSendFile()) return;
+        var c = SelectedConversation!;
         foreach (var p in paths)
             await SafeCall(x => x.SendFileAsync(c.Id, p));
     }

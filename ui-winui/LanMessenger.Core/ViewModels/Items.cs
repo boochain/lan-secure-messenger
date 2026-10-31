@@ -168,8 +168,8 @@ public partial class MessageItem : ObservableObject
         ShowSender = IsGroupConversation && m.Direction == Direction.In && m.Kind != MsgKind.System && IsFirstInGroup;
         TimeText = Fmt.Time(m.TsMs);
         ClockText = Fmt.Clock(m.TsMs);
-        Tick = !IsOutgoing ? 0 : m.Status switch { MsgStatus.Read => 3, MsgStatus.Delivered => 2, MsgStatus.Failed => 4, _ => 1 };
-        IsFailed = m.Status == MsgStatus.Failed;
+        Tick = !IsOutgoing ? 0 : m.Status switch { MsgStatus.Read => 3, MsgStatus.Delivered => 2, MsgStatus.Failed or MsgStatus.Rejected => 4, _ => 1 };
+        IsFailed = m.Status is MsgStatus.Failed or MsgStatus.Rejected;
         StatusText = !IsOutgoing ? "" : m.Status switch
         {
             MsgStatus.Queued => "等待对方上线",
@@ -177,6 +177,7 @@ public partial class MessageItem : ObservableObject
             MsgStatus.Delivered => "已送达",
             MsgStatus.Read => "已读",
             MsgStatus.Failed => "发送失败",
+            MsgStatus.Rejected => "已拒收",
             _ => "",
         };
         IsFile = m.Kind == MsgKind.File && m.File != null;
@@ -244,7 +245,7 @@ public partial class TransferItem : ObservableObject
             TransferState.Done => "已完成",
             TransferState.Failed => "失败",
             TransferState.Cancelled => "已取消",
-            TransferState.Rejected => "被拒绝",
+            TransferState.Rejected => "已拒收",
             _ => "",
         };
         if (ResumedText.Length > 0 && t.State is TransferState.Active or TransferState.Verifying or TransferState.Done) StateText += " · " + ResumedText;

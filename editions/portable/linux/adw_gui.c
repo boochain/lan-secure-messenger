@@ -39,8 +39,8 @@ static int list_dirty, chat_dirty, held, bg_notice_shown;
 
 /* ---------------------------------------------------------------- shared presentation helpers (same rules as WinUI / Android) */
 static int avatar_index(const char *id){ uint32_t h=2166136261u; const unsigned char *p=(const unsigned char*)(id?id:""); while(*p){ h^=*p++; h*=16777619u; } return (int)(h%8); }
-static const char *status_txt(int s){ switch(s){ case ST_QUEUED: return "排队中"; case ST_SENT: return "已发送"; case ST_DELIVERED: return "已送达"; case ST_READ: return "已读"; case ST_FAILED: return "发送失败"; } return ""; }
-static const char *tick_txt(int s){ switch(s){ case ST_QUEUED: case ST_SENT: return "✓"; case ST_DELIVERED: case ST_READ: return "✓✓"; case ST_FAILED: return "!"; } return ""; }
+static const char *status_txt(int s){ switch(s){ case ST_QUEUED: return "排队中"; case ST_SENT: return "已发送"; case ST_DELIVERED: return "已送达"; case ST_READ: return "已读"; case ST_FAILED: return "发送失败"; case ST_REJECTED: return "已拒收"; } return ""; }
+static const char *tick_txt(int s){ switch(s){ case ST_QUEUED: case ST_SENT: return "✓"; case ST_DELIVERED: case ST_READ: return "✓✓"; case ST_FAILED: case ST_REJECTED: return "!"; } return ""; }
 static void clock_txt(int64_t ms, char *o, size_t n){ time_t t=(time_t)(ms/1000); struct tm tm; localtime_r(&t,&tm); strftime(o,n,"%H:%M",&tm); }
 static void list_time(int64_t ms, char *o, size_t n){ /* today HH:MM, 昨天, 周X within a week, MM/DD this year, else YYYY/MM/DD */
     static const char *W[]={"周日","周一","周二","周三","周四","周五","周六"}; time_t t=(time_t)(ms/1000), now=time(NULL); struct tm a, b; long days;
@@ -161,7 +161,20 @@ static void bubble_menu(GtkWidget *bub, double x, double y){
     cls(pop,"menu"); g_signal_connect(pop,"closed",G_CALLBACK(pop_closed),NULL); gtk_popover_popup(GTK_POPOVER(pop)); if(getenv("LSM_UI_TEST")) g_timeout_add(300,test_log_later,(gpointer)"msg-menu"); }
 static void bubble_rclick(GtkGestureClick *g, int n, double x, double y, gpointer p){ (void)n; (void)p; bubble_menu(gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(g)),x,y); }
 static void bubble_lpress(GtkGestureLongPress *g, double x, double y, gpointer p){ (void)p; bubble_menu(gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(g)),x,y); }
-static void bubble_click_open(GtkGestureClick *g, int n, double x, double y, gpointer p){ (void)n;(void)x;(void)y; (void)g; gchar *u=g_filename_to_uri((const char*)p,NULL,NULL); if(u){ g_app_info_launch_default_for_uri(u,NULL,NULL); g_free(u); } }
+static gboolean imgv_key(GtkEventControllerKey *k, guint kv, guint c, GdkModifierType m, gpointer w){ (void)k;(void)c;(void)m; if(kv==GDK_KEY_Escape){ gtk_window_destroy(GTK_WINDOW(w)); return TRUE; } return FALSE; }
+static void imgv_click(GtkGestureClick *g, int n, double x, double y, gpointer w){ (void)g;(void)n;(void)x;(void)y; gtk_window_destroy(GTK_WINDOW(w)); }
+static void show_image_viewer(const char *path){ /* Esc / click closes */
+    GError *er=NULL; GdkPixbuf *pb=gdk_pixbuf_new_from_file(path,&er); GtkWidget *w,*pic; if(!pb){ if(er) g_error_free(er); gchar *u=g_filename_to_uri(path,NULL,NULL); if(u){ g_app_info_launch_default_for_uri(u,NULL,NULL); g_free(u);} return; }
+    w=gtk_window_new(); gtk_window_set_title(GTK_WINDOW(w),"图片"); gtk_window_set_transient_for(GTK_WINDOW(w),GTK_WINDOW(win)); gtk_window_set_modal(GTK_WINDOW(w),TRUE); gtk_window_set_default_size(GTK_WINDOW(w),900,700);
+    { GdkTexture *tx=gdk_texture_new_for_pixbuf(pb); pic=gtk_picture_new_for_paintable(GDK_PAINTABLE(tx)); g_object_unref(tx); g_object_unref(pb); }
+    gtk_picture_set_content_fit(GTK_PICTURE(pic),GTK_CONTENT_FIT_CONTAIN); gtk_widget_set_hexpand(pic,TRUE); gtk_widget_set_vexpand(pic,TRUE); gtk_window_set_child(GTK_WINDOW(w),pic);
+    { GtkEventController *k=gtk_event_controller_key_new(); g_signal_connect(k,"key-pressed",G_CALLBACK(imgv_key),w); gtk_widget_add_controller(w,k); }
+    { GtkGesture *cg=gtk_gesture_click_new(); g_signal_connect(cg,"released",G_CALLBACK(imgv_click),w); gtk_widget_add_controller(pic,GTK_EVENT_CONTROLLER(cg)); }
+    gtk_window_present(GTK_WINDOW(w)); }
+static int path_is_image(const char *path){ const char *e=strrchr(path?path:"",'.'); if(!e) return 0; e++; return !g_ascii_strcasecmp(e,"png")||!g_ascii_strcasecmp(e,"jpg")||!g_ascii_strcasecmp(e,"jpeg")||!g_ascii_strcasecmp(e,"gif")||!g_ascii_strcasecmp(e,"bmp")||!g_ascii_strcasecmp(e,"webp"); }
+static void bubble_click_open(GtkGestureClick *g, int n, double x, double y, gpointer p){ (void)n;(void)x;(void)y; (void)g; const char *path=(const char*)p;
+    if(path_is_image(path)) show_image_viewer(path);
+    else { gchar *u=g_filename_to_uri(path,NULL,NULL); if(u){ g_app_info_launch_default_for_uri(u,NULL,NULL); g_free(u); } } }
 static GtkWidget *chip(const char *t){ GtkWidget *l=gtk_label_new(t); cls(l,"chip"); gtk_widget_set_halign(l,GTK_ALIGN_CENTER); gtk_label_set_wrap(GTK_LABEL(l),TRUE); return l; }
 static void reveal_cb(GtkButton *b, gpointer p){ (void)b; gchar *d=g_path_get_dirname((const char*)p), *u=g_filename_to_uri(d,NULL,NULL); if(u) g_app_info_launch_default_for_uri(u,NULL,NULL); g_free(u); g_free(d); }
 static void download_cb(GtkButton *b, gpointer p){ bubble_click_open(NULL,0,0,0,p); (void)b; }
@@ -198,7 +211,7 @@ static void refresh_chat(void){
                 gtk_picture_set_content_fit(GTK_PICTURE(pic),GTK_CONTENT_FIT_COVER); cls(pic,"thumb"); gtk_overlay_set_child(GTK_OVERLAY(ov),pic);
                 cls(meta,"on-image"); gtk_widget_set_margin_end(meta,6); gtk_widget_set_margin_bottom(meta,6); gtk_overlay_add_overlay(GTK_OVERLAY(ov),meta);
                 { GtkGesture *g=gtk_gesture_click_new(); gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(g),1); g_signal_connect_data(g,"released",G_CALLBACK(bubble_click_open),g_strdup(path),(GClosureNotify)g_free,0); gtk_widget_add_controller(pic,GTK_EVENT_CONTROLLER(g)); }
-                gtk_widget_set_tooltip_text(pic,"点击用默认程序打开"); gtk_box_append(GTK_BOX(bub),ov); cls(bub,"image"); gtk_widget_set_overflow(bub,GTK_OVERFLOW_HIDDEN); gtk_widget_set_overflow(ov,GTK_OVERFLOW_HIDDEN); if(getenv("LSM_UI_DEBUG")){ g_object_set_data(G_OBJECT(win),"dbg-pic",pic); g_object_set_data(G_OBJECT(win),"dbg-ov",ov); g_object_set_data(G_OBJECT(win),"dbg-bub",bub); } }
+                gtk_widget_set_tooltip_text(pic,"点击全屏查看"); gtk_box_append(GTK_BOX(bub),ov); cls(bub,"image"); gtk_widget_set_overflow(bub,GTK_OVERFLOW_HIDDEN); gtk_widget_set_overflow(ov,GTK_OVERFLOW_HIDDEN); if(getenv("LSM_UI_DEBUG")){ g_object_set_data(G_OBJECT(win),"dbg-pic",pic); g_object_set_data(G_OBJECT(win),"dbg-ov",ov); g_object_set_data(G_OBJECT(win),"dbg-bub",bub); } }
             else { GtkWidget *top=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,12), *tile, *nm, *sz, *v=gtk_box_new(GTK_ORIENTATION_VERTICAL,2), *bottom=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,8); char ext[16]="", szs[220];
                 { const char *e=strrchr(m[i].file_name,'.'); if(e){ snprintf(ext,sizeof ext,"%s",e+1); for(char *q=ext;*q;q++) *q=g_ascii_toupper(*q); } }
                 tile=gtk_label_new(ext[0]?ext:"FILE"); cls(tile,"tile"); gtk_widget_set_size_request(tile,42,42); gtk_widget_set_valign(tile,GTK_ALIGN_CENTER);
@@ -252,6 +265,21 @@ static gboolean input_key(GtkEventControllerKey *k, guint kv, guint code, GdkMod
     if((kv==GDK_KEY_Return||kv==GDK_KEY_KP_Enter) && !(st&GDK_SHIFT_MASK)){ send_current(); return TRUE; } return FALSE; }
 static void buf_changed(GtkTextBuffer *b, gpointer p){ gboolean empty=gtk_text_buffer_get_char_count(b)==0; (void)p; gtk_widget_set_visible(placeholder,empty); gtk_widget_set_visible(hint,empty); }
 static void send_path(const char *path){ char err[256]=""; if(!cur_conv[0]){ info("未选择会话","请先在左侧选择联系人或群组。"); return; } if(lsm_send_file(C,cur_conv,path,err)) info("无法发送文件",err); chat_dirty=1; }
+
+static void on_paste_texture(GObject *src, GAsyncResult *res, gpointer data){ (void)data; GError *er=NULL; GdkTexture *tx=gdk_clipboard_read_texture_finish(GDK_CLIPBOARD(src),res,&er); char tmp[512];
+    if(!tx){ if(er) g_error_free(er); return; }
+    snprintf(tmp,sizeof tmp,"%s/lsm-paste-%ld.png",g_get_tmp_dir(),(long)time(NULL));
+    if(gdk_texture_save_to_png(tx,tmp)) send_path(tmp); g_object_unref(tx); refresh_chat(); }
+static void on_paste_files(GObject *src, GAsyncResult *res, gpointer data){ (void)data; GError *er=NULL; const GValue *v=gdk_clipboard_read_value_finish(GDK_CLIPBOARD(src),res,&er); GdkFileList *fl; GSList *l,*it;
+    if(!v){ if(er) g_error_free(er); /* try image */ gdk_clipboard_read_texture_async(gtk_widget_get_clipboard(win),NULL,on_paste_texture,NULL); return; }
+    if(!G_VALUE_HOLDS(v,GDK_TYPE_FILE_LIST)){ gdk_clipboard_read_texture_async(gtk_widget_get_clipboard(win),NULL,on_paste_texture,NULL); return; }
+    fl=g_value_get_boxed(v); l=gdk_file_list_get_files(fl);
+    for(it=l;it;it=it->next){ char *path=g_file_get_path(G_FILE(it->data)); if(path){ send_path(path); g_free(path);} }
+    refresh_chat(); }
+static void paste_clipboard(void){
+    if(!cur_conv[0]){ info("未选择会话","请先选择联系人或群组。"); return; }
+    gdk_clipboard_read_value_async(gtk_widget_get_clipboard(win),GDK_TYPE_FILE_LIST,G_PRIORITY_DEFAULT,NULL,on_paste_files,NULL); }
+
 static void files_picked(GObject *src, GAsyncResult *res, gpointer p){ GListModel *l=gtk_file_dialog_open_multiple_finish(GTK_FILE_DIALOG(src),res,NULL); guint i; (void)p; if(!l) return;
     for(i=0;i<g_list_model_get_n_items(l);i++){ GFile *f=g_list_model_get_item(l,i); char *ph=g_file_get_path(f); if(ph){ send_path(ph); g_free(ph); } g_object_unref(f); } g_object_unref(l); }
 static gboolean on_drop(GtkDropTarget *t, const GValue *v, double x, double y, gpointer p){ GSList *l, *it; (void)t;(void)x;(void)y;(void)p; gtk_widget_set_visible(drop_hint,FALSE);
@@ -375,6 +403,7 @@ static void win_act(GSimpleAction *a, GVariant *v, gpointer p){ const char *n=g_
     else if(!strcmp(n,"relay")) relay_dialog();
     else if(!strcmp(n,"next-conv")) cycle(+1);
     else if(!strcmp(n,"prev-conv")) cycle(-1);
+    else if(!strcmp(n,"paste")) paste_clipboard();
     else if(!strcmp(n,"send-file")){ if(cur_conv[0]){ GtkFileDialog *d=gtk_file_dialog_new(); gtk_file_dialog_set_title(d,"选择要发送的文件"); gtk_file_dialog_open_multiple(d,GTK_WINDOW(win),NULL,files_picked,NULL); g_object_unref(d); } }
     else if(!strcmp(n,"details")) details();
     else if(!strcmp(n,"mute")){ char err[256]=""; if(!strncmp(cur_conv,"dm:",3)){ int m=!peer_muted(cur_conv+3); lsm_set_muted(C,cur_conv+3,m,err); toast(m?"已开启免打扰":"已关闭免打扰"); list_dirty=chat_dirty=1; } }
@@ -457,7 +486,7 @@ static void install_icons(void){
 static void activate(GtkApplication *a, gpointer p){
     GtkWidget *sidebar_tv, *sb_hdr, *sb_box, *sc, *content_tv, *ct_hdr, *tbox, *tv, *composer, *ov, *send, *attach, *chat_ov, *empty, *add_btn, *ab, *frame;
     lsm_opts o; char err[256]; GMenu *menu, *sec; (void)p;
-    static const char *acts[]={"search","add-contact","next-conv","prev-conv","send-file","details","trust","untrust","block","mute","diagnostics","check-update","pin-offer","relay","downloads","menu","close","about","quit"};
+    static const char *acts[]={"search","add-contact","next-conv","prev-conv","send-file","paste","details","trust","untrust","block","mute","diagnostics","check-update","pin-offer","relay","downloads","menu","close","about","quit"};
     if(win){ gtk_window_present(GTK_WINDOW(win)); return; }
     { const char *t=getenv("LSM_THEME"); AdwStyleManager *sm=adw_style_manager_get_default(); if(t&&!strcmp(t,"dark")) adw_style_manager_set_color_scheme(sm,ADW_COLOR_SCHEME_FORCE_DARK); else if(t&&!strcmp(t,"light")) adw_style_manager_set_color_scheme(sm,ADW_COLOR_SCHEME_FORCE_LIGHT);
       g_signal_connect(sm,"notify::dark",G_CALLBACK(on_dark),NULL); }
@@ -474,7 +503,7 @@ static void activate(GtkApplication *a, gpointer p){
       add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control>f","win.search"); add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control>n","win.add-contact");
       add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control>Tab","win.next-conv"); add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control>Page_Down","win.next-conv");
       add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control><Shift>ISO_Left_Tab","win.prev-conv"); add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control><Shift>Tab","win.prev-conv"); add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control>Page_Up","win.prev-conv");
-      add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control>o","win.send-file"); add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control>i","win.details"); add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"F10","win.menu"); add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"F1","win.about");
+      add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control>o","win.send-file"); add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control>v","win.paste"); add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control>i","win.details"); add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"F10","win.menu"); add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"F1","win.about");
       add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control>q","win.quit"); add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control>w","win.close");
       gtk_widget_add_controller(win,sc2); }
 

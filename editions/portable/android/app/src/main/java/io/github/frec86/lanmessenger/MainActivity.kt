@@ -85,6 +85,12 @@ fun importUri(ctx: android.content.Context, uri: Uri): File? = try {
 } catch (e: Exception) { null }
 
 fun sendUris(ctx: android.content.Context, conv: String, uris: List<Uri>) {
+    // DM files need mutual trust — warn before importing so we never show a failed bubble
+    if (conv.startsWith("dm:")) {
+        val fp = conv.removePrefix("dm:")
+        val t = Repo.state.value.contacts.firstOrNull { it.fp == fp }?.trust ?: 0
+        if (t != 1) { Repo.toast.value = "对方尚未信任，无法发送图片/文件。请先在联系人菜单中信任对方（或完成 PIN 配对）。"; return }
+    }
     for (u in uris) { val f = importUri(ctx, u); val err = if (f == null) "无法读取文件" else Native.sendFile(conv, f.absolutePath)
         if (err.isNotEmpty()) Repo.toast.value = errZh(err) }
     Repo.refresh()
@@ -147,8 +153,8 @@ fun SharePicker(st: AppState, onPick: (String) -> Unit, onDismiss: () -> Unit) {
 }
 
 fun trustTxt(t: Int) = when (t) { 1 -> "已信任"; 2 -> "已屏蔽"; else -> "未信任" }
-fun statusZh(s: String) = when (s) { "queued" -> "排队中"; "sent" -> "已发送"; "delivered" -> "已送达"; "read" -> "已读"; "failed" -> "发送失败"; else -> "" }
-fun xferZh(s: String) = when (s) { "offered" -> "等待接收"; "active" -> "传输中"; "verifying" -> "校验中"; "done" -> "完成"; "failed" -> "失败"; "rejected" -> "被拒收"; "cancelled" -> "已取消"; else -> s }
+fun statusZh(s: String) = when (s) { "queued" -> "排队中"; "sent" -> "已发送"; "delivered" -> "已送达"; "read" -> "已读"; "failed" -> "发送失败"; "rejected" -> "已拒收"; else -> "" }
+fun xferZh(s: String) = when (s) { "offered" -> "等待接收"; "active" -> "传输中"; "verifying" -> "校验中"; "done" -> "完成"; "failed" -> "失败"; "rejected" -> "已拒收"; "cancelled" -> "已取消"; else -> s }
 fun isImage(n: String) = n.substringAfterLast('.', "").lowercase() in setOf("png", "jpg", "jpeg", "gif", "bmp", "webp")
 fun decodeSampled(path: String, max: Int): android.graphics.Bitmap? {
     val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }; BitmapFactory.decodeFile(path, o)

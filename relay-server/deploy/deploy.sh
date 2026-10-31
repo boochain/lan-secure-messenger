@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # LSM 中转服务器 部署脚本 (LAN Secure Messenger relay-server deploy script) — Linux
-# 交互菜单: ./deploy.sh        非交互: ./deploy.sh install --port 9443 --password xxx [--open-firewall]
+# 交互菜单: ./deploy.sh        非交互: ./deploy.sh install --port 9443 [--open-firewall]  (口令可选)
 # 命令 (commands): menu run start install remove-autostart stop config status uninstall version
 # 选项 (options): --port N --password P --gen-password --bind ADDR --open-firewall --yes --dry-run --no-start
 set -u
@@ -105,7 +105,7 @@ write_config() {
 [server]
 bind = $(toml_str "$BIND")
 port = $PORT
-# 网络口令：客户端设置中需填写相同口令 (clients must use the same passphrase)
+# 网络口令：可选；默认不设，客户端无需填写 (optional; empty = open, clients need none)
 passphrase = $(toml_str "$PASS")
 salt = "$SALT"
 # 本机状态接口 (local status endpoint); "" = 127.0.0.1:<port+1>, "off" 关闭
@@ -146,14 +146,18 @@ ask_port() {
   done
 }
 ask_pass() {
+  # v0.6.0+: passphrase optional (empty = open relay). Clients no longer ask for one.
   local a b
   if [ -n "$PASS" ]; then
     read -r -p "保留现有口令？(keep current passphrase) [Y/n]: " a
     case "$a" in n|N) ;; *) return ;; esac
   fi
   while true; do
-    read -r -p "口令：1) 手动输入 (type)  2) 随机生成 (generate) [2]: " a
-    if [ "${a:-2}" = 2 ]; then PASS="$(gen_pass)"; say "已生成口令 (generated): ${c_b}$PASS${c_0}"; say "请记下并填入各客户端 (write it down for the clients)"; return; fi
+    read -r -p "口令（可选）：0) 不设/开放 (none, default)  1) 手动输入  2) 随机生成 [0]: " a
+    case "${a:-0}" in
+      0|"") PASS=""; say "不设口令，中转服务器开放连接 (open relay, no passphrase)"; return ;;
+      2) PASS="$(gen_pass)"; say "已生成口令 (generated): ${c_b}$PASS${c_0}"; return ;;
+    esac
     read -r -s -p "输入口令 (passphrase, 至少 8 位): " a; echo
     [ "${#a}" -ge 8 ] || { err "口令太短 (min 8 chars)"; continue; }
     read -r -s -p "再次输入确认 (confirm): " b; echo
@@ -310,7 +314,7 @@ params_step() { # 引导或校验参数 (guided input or validation)
     valid_port "$PORT" || die "无效端口 (invalid port): $PORT"
     if port_in_use "$PORT" && ! our_port "$PORT"; then die "端口 $PORT 已被占用 (port in use)"; fi
     [ "$GEN_PASS" = 1 ] && PASS="$(gen_pass)" && say "已生成口令 (generated passphrase): $PASS"
-    [ -n "$PASS" ] || die "需要 --password 或 --gen-password (passphrase required)"
+    # passphrase optional; empty = open
   fi
 }
 start_bg() {

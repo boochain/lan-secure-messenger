@@ -83,14 +83,7 @@
                         <NumberBox x:Name="RelayPortBox" Grid.Column="1" Header="端口" Value="{x:Bind VM.EditRelayPort, Mode=TwoWay}" Minimum="1" Maximum="65535"
                                    SpinButtonPlacementMode="Hidden" MinWidth="120" KeyDown="Relay_KeyDown" ToolTipService.ToolTip="默认 9443" AutomationProperties.Name="中转服务器端口" />
                     </Grid>
-                    <PasswordBox x:Name="RelayPassBox" Header="网络口令" PlaceholderText="{x:Bind VM.RelayPassphrasePlaceholder, Mode=OneWay}"
-                                 Password="{x:Bind VM.EditRelayPassphrase, Mode=TwoWay}" KeyDown="Relay_KeyDown"
-                                 ToolTipService.ToolTip="与服务器管理员约定的口令；只用于验证，不会发送到网络，也不会再显示" AutomationProperties.Name="网络口令" />
-                    <StackPanel Orientation="Horizontal" Spacing="6" Visibility="{x:Bind VM.RelayHasPassphrase, Mode=OneWay}">
-                        <FontIcon Tag="lsm-icon" Glyph="&#xE72E;" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
-                        <TextBlock Text="口令已设置" Style="{StaticResource SecondaryCaptionStyle}" VerticalAlignment="Center" />
-                        <HyperlinkButton Content="清除口令" Padding="4,0" Command="{x:Bind VM.ClearRelayPassphraseCommand}" ToolTipService.ToolTip="删除已保存的网络口令" />
-                    </StackPanel>
+                    <!-- v0.6.0+: relay is open by default; no client passphrase -->
                     <!-- status indicator (docs/ipc.md: connecting / online / auth_failed / error) -->
                     <StackPanel Orientation="Horizontal" Spacing="8" ToolTipService.ToolTip="{x:Bind VM.RelayDetail, Mode=OneWay}">
                         <Grid Width="10" Height="10" VerticalAlignment="Center">

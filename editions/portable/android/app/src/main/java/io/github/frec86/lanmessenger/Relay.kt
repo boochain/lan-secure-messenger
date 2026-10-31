@@ -45,7 +45,7 @@ fun RelayScreen(st: AppState, back: () -> Unit) {
         val pt = port.trim().toIntOrNull()
         if (enabled && host.isBlank()) { Repo.toast.value = "请填写服务器地址"; return }
         if (pt == null || pt !in 1..65535) { Repo.toast.value = "端口无效"; return }
-        val e = Native.relaySet(enabled, host.trim(), pt, pass.ifEmpty { null })
+        val e = Native.relaySet(enabled, host.trim(), pt, "") // open relay: no passphrase
         if (e.isNotEmpty()) Repo.toast.value = e else { pass = ""; focus.clearFocus(); Repo.toast.value = if (enabled) "中转服务器设置已保存，正在连接…" else "已关闭中转服务器" }
         Repo.refresh()
     }
@@ -69,17 +69,6 @@ fun RelayScreen(st: AppState, back: () -> Unit) {
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next))
             OutlinedTextField(port, { port = it.filter(Char::isDigit).take(5) }, label = { Text("端口") }, singleLine = true, modifier = Modifier.width(104.dp),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next))
-        }
-        OutlinedTextField(pass, { pass = it }, label = { Text(if (r.hasPassphrase) "网络口令（已设置）" else "网络口令") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text(if (r.hasPassphrase) "已设置（留空则保持不变）" else "未设置") },
-            supportingText = { Text("与服务器管理员约定的口令；只用于验证，不会发送到网络，也不会再显示") },
-            visualTransformation = PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { save() }))
-        if (r.hasPassphrase) Row(verticalAlignment = Alignment.CenterVertically) {
-            Ic(R.drawable.ms_lock, null, p.fg2, 16.dp); Spacer(Modifier.width(6.dp))
-            Text("口令已设置", style = MaterialTheme.typography.bodyMedium, color = p.fg2, modifier = Modifier.weight(1f))
-            TextButton({ Native.relaySet(r.enabled, r.host, r.port, ""); Repo.toast.value = "已清除网络口令"; Repo.refresh() }) { Text("清除口令") }
         }
         // status indicator (docs/ipc.md): connecting / online / auth_failed / error
         val dot = when (r.state) { "online" -> p.online; "connecting" -> p.warning; "auth_failed", "error" -> p.error; else -> p.fg2 }

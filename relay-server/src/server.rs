@@ -200,9 +200,7 @@ impl Running {
 }
 
 pub async fn start(cfg: Config) -> Result<Running> {
-    if cfg.server.passphrase.is_empty() {
-        anyhow::bail!("未设置网络口令 (no passphrase set): 使用 --password 或配置 server.passphrase");
-    }
+    // passphrase is optional (v0.6.0+): empty = open relay; clients also use empty by default
     let salt = cfg.salt_bytes()?;
     let pass = cfg.server.passphrase.clone();
     let key = tokio::task::spawn_blocking(move || proto::derive_key(&pass, &salt)).await?;

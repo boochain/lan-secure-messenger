@@ -59,6 +59,7 @@ fun Ticks(status: String, tint: Color, readTint: Color, size: Dp = 16.dp) {
         "read" -> Ic(R.drawable.ms_tick_double, "已读", readTint, size)
         "queued" -> Ic(R.drawable.ms_tick, "排队中", tint.copy(alpha = .5f), size)
         "failed" -> Ic(R.drawable.ms_info, "发送失败", LocalPalette.current.error, size)
+        "rejected" -> Ic(R.drawable.ms_info, "已拒收", LocalPalette.current.error, size)
     }
 }
 

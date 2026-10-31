@@ -34,7 +34,7 @@ JNIEXPORT jboolean JNICALL FN(running)(JNIEnv *e, jclass k){ (void)e;(void)k; re
 JNIEXPORT jstring JNICALL FN(poll)(JNIEnv *e, jclass k){ char b[4096]; (void)k; if(!C||!lsm_poll_event(C,b,sizeof b)) return NULL; return JU(e,b); }
 
 static const char *TS[]={"offered","active","verifying","done","failed","rejected","cancelled"};
-static const char *MS[]={"queued","sent","delivered","read","received","failed"};
+static const char *MS[]={"queued","sent","delivered","read","received","failed","rejected"};
 JNIEXPORT jstring JNICALL FN(state)(JNIEnv *e, jclass k){
     sb b={0}; lsm_contact *c; lsm_group *g; lsm_transfer *t; lsm_msg *m; int n,i,j,nm; jstring r; (void)k; if(!C) return J(e,"{}");
     lsm_lock(C);

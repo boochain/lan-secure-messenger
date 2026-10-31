@@ -74,6 +74,7 @@ s = s.replace(_anchor, """      - name: Backup interop (C core <-> Rust lan-core
           (cd $GITHUB_WORKSPACE && cargo build --release -p lan-core --example backup_tool)
           cc -Wall -Wno-misleading-indentation -Isrc -o /tmp/updcheck_test tests/updcheck_test.c && /tmp/updcheck_test
           cc -O1 -std=gnu99 -Isrc -Wno-unused-function -o /tmp/firewall_test tests/firewall_test.c src/core.c src/xcrypto.c src/third_party/monocypher.c src/third_party/monocypher-ed25519.c -lpthread && /tmp/firewall_test
+          cc -O1 -std=gnu99 -Isrc -Wno-unused-function -o /tmp/trust_file_test tests/trust_file_test.c src/core.c src/xcrypto.c src/third_party/monocypher.c src/third_party/monocypher-ed25519.c -lpthread && /tmp/trust_file_test
           # live check against the real releases list with this build's version (VERSION, or the tag)
           V=$(cat ../../VERSION); [ "${{ github.ref_type }}" = tag ] && V=${GITHUB_REF_NAME#v}
           curl -fsSL -H 'User-Agent: lsm-ci' "https://api.github.com/repos/boochain/lan-secure-messenger/releases?per_page=10" -o /tmp/rel.json && /tmp/updcheck_test /tmp/rel.json "$V"

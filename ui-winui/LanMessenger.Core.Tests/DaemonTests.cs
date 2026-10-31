@@ -118,6 +118,8 @@ public class DaemonTests
         Assert.Equal(0, MainViewModel.CompareVersions("v0.6.0-beta.2", "v0.6.0-beta.2"));
         Assert.True(MainViewModel.CompareVersions("v0.6.0", "v0.6.0-beta.2") > 0);
         Assert.Equal(0, MainViewModel.CompareVersions("v0.6.0", "v0.6.0"));
+        // rejected outbound file stays visible as 已拒收 (not 发送失败)
+        Assert.Contains(MsgStatus.Rejected.ToString(), "Rejected");
         Assert.True(MainViewModel.CompareVersions("v0.6.0-beta.2", "v0.6.0-beta.1") > 0);
         Assert.Equal(0, MainViewModel.CompareVersions("v0.5.0-beta.1", "0.5.0-beta.1"));
     }

@@ -125,10 +125,7 @@ fn main() {
         }
     };
     if cli.check_config {
-        if cfg.server.passphrase.is_empty() {
-            eprintln!("错误：未设置口令 (no passphrase)");
-            std::process::exit(2);
-        }
+        // empty passphrase is allowed (open relay, v0.6.0+)
         if let Err(e) = cfg.salt_bytes() {
             eprintln!("错误 (error): {e:#}");
             std::process::exit(2);

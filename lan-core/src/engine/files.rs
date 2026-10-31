@@ -642,8 +642,10 @@ impl Engine {
         let (recipients, group_id): (Vec<String>, Option<Uuid>) = if let Some((_, only)) = &reuse_msg {
             (vec![only.clone()], conv.strip_prefix("group:").and_then(|g| Uuid::parse_str(g).ok()))
         } else if let Some(fp) = conv.strip_prefix("dm:") {
-            if self.contacts.trust(fp) == Trust::Blocked {
-                return Err(RpcError::invalid("该联系人已被屏蔽"));
+            match self.contacts.trust(fp) {
+                Trust::Blocked => return Err(RpcError::invalid("该联系人已被屏蔽")),
+                Trust::Trusted => {}
+                Trust::Unknown => return Err(RpcError::invalid("对方尚未信任，无法发送图片/文件。请先在联系人菜单中信任对方（或完成 PIN 配对）。")),
             }
             (vec![fp.to_string()], None)
         } else if let Some(gid) = conv.strip_prefix("group:").and_then(|g| Uuid::parse_str(g).ok()) {
@@ -807,7 +809,8 @@ impl Engine {
         let Some(t) = self.transfers.get(&tid) else { return };
         if t.direction == Direction::Out && t.group_id.is_none() {
             let id = t.msg_id.clone();
-            self.update_msg(&id, |m| m.status = MsgStatus::Failed);
+            let st = if t.state == TransferState::Rejected { MsgStatus::Rejected } else { MsgStatus::Failed };
+            self.update_msg(&id, |m| m.status = st);
         }
     }
 

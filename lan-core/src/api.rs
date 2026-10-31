@@ -25,6 +25,8 @@ pub enum MsgStatus {
     /// Peer has shown the message.
     Read,
     Failed,
+    /// Peer explicitly rejected this outbound message/file (sender keeps it visible as 已拒收).
+    Rejected,
     /// Incoming message.
     Received,
 }

@@ -52,7 +52,7 @@ public static class UiSmoke
             Log.Add($"connected={App.VM.IsConnected} fp={App.VM.MyFingerprint} name={App.VM.MyName}");
             if (App.VM.FirstRunNeeded) await App.VM.CompleteFirstRunAsync("CI 测试用户");
             label = string.IsNullOrWhiteSpace(label) ? ThemeService.ActualTheme.ToString().ToLowerInvariant() : label.Trim().ToLowerInvariant();
-            var relayEnv = Environment.GetEnvironmentVariable("LSM_UI_SMOKE_RELAY");   // host|port|passphrase of the CI test relay
+            var relayEnv = Environment.GetEnvironmentVariable("LSM_UI_SMOKE_RELAY");   // host|port of the CI test relay (passphrase ignored) relay
             if (!string.IsNullOrWhiteSpace(relayEnv)) await RelayOnAsync(relayEnv);
             Log.Add($"ready fp={App.VM.MyFingerprint}");
             File.WriteAllText(Path.Combine(dir, "ready.txt"), App.VM.MyFingerprint);
@@ -125,8 +125,6 @@ public static class UiSmoke
                     sp.ShowRelayCardForSmoke();
                     await Task.Delay(1500);
                     await ShotAsync(w, dir, "page-settings-relay", label, theme);
-                    Check(App.VM.RelayHasPassphrase && App.VM.RelayPassphrasePlaceholder.StartsWith("已设置") && App.VM.EditRelayPassphrase.Length == 0,
-                          $"relay passphrase is write-only: field empty, placeholder '{App.VM.RelayPassphrasePlaceholder}'");
                 }
                 if (tag == "settings")
                 {
@@ -192,7 +190,7 @@ public static class UiSmoke
         App.VM.EditRelayEnabled = true;
         App.VM.EditRelayHost = f[0];
         App.VM.EditRelayPort = double.Parse(f[1]);
-        App.VM.EditRelayPassphrase = f.Length > 2 ? f[2] : "";
+        App.VM.EditRelayPassphrase = ""; // open relay
         await App.VM.SaveRelayCommand.ExecuteAsync(null);
         for (int i = 0; i < 60 && App.VM.RelayState != "online"; i++) await Task.Delay(500);
         Check(App.VM.RelayState == "online" && App.VM.RelayStateText == "已连接中转服务器", $"relay toggled on: state={App.VM.RelayState} '{App.VM.RelayStateText}' {App.VM.RelayDetail}");

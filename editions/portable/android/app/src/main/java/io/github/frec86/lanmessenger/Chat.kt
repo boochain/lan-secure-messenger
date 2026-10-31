@@ -44,6 +44,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import java.io.File
 
 /* ---------------------------------------------------------------- chat screen (spec §5.2-5.6, Android column) */
@@ -144,6 +146,13 @@ fun Chat(st: AppState, conv: String, back: () -> Unit) {
                             // long-press menu (Material: long press shows the item's actions)
                             DropdownMenu(msgMenu?.id == r.m.id, { msgMenu = null }, Modifier.align(if (r.m.out) Alignment.TopEnd else Alignment.TopStart)) {
                                 if (r.m.kind == 0) DropdownMenuItem({ Text("复制") }, { clip.setText(androidx.compose.ui.text.AnnotatedString(r.m.body)); msgMenu = null; Repo.toast.value = "已复制" }, leadingIcon = { Ic(R.drawable.ms_copy) })
+                                if (r.m.out && r.m.status == "failed") DropdownMenuItem({ Text("重发") }, {
+                                    msgMenu = null
+                                    val e = if (r.m.kind == 0) Native.sendText(conv, r.m.body)
+                                    else if (r.m.path.isNotEmpty()) Native.sendFile(conv, r.m.path) else "无法重发"
+                                    if (e.isNotEmpty()) Repo.toast.value = errZh(e) else Repo.toast.value = "已重新发送"
+                                    Repo.refresh()
+                                }, leadingIcon = { Ic(R.drawable.ms_info) })
                                 DropdownMenuItem({ Text("删除（仅本机）") }, { delMsg = r.m; msgMenu = null }, leadingIcon = { Ic(R.drawable.ms_delete) })
                             }
                         }
@@ -275,11 +284,21 @@ fun TextBubble(m: Msg, sender: String?) {
 @Composable
 fun ImageBubble(m: Msg, path: String, first: Boolean) {
     val bmp = remember(path) { decodeSampled(path, 720) }
-    Box(Modifier.padding(4.dp)) {
+    var full by remember { mutableStateOf(false) }
+    Box(Modifier.padding(4.dp).clickable { full = true }) {
         val inner = RoundedCornerShape(topStart = if (!m.out && first) 2.dp else 13.dp, topEnd = if (m.out && first) 2.dp else 13.dp, bottomEnd = 13.dp, bottomStart = 13.dp)
         if (bmp != null) Image(bmp.asImageBitmap(), m.file, Modifier.size(240.dp, 165.dp).clip(inner), contentScale = ContentScale.Crop)
         else Box(Modifier.size(240.dp, 165.dp).clip(inner).background(LocalPalette.current.tile))
         Box(Modifier.align(Alignment.BottomEnd).padding(8.dp)) { Meta(m, over = true) }
+    }
+    if (full) {
+        val big = remember(path) { decodeSampled(path, 2048) }
+        Dialog(onDismissRequest = { full = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            Box(Modifier.fillMaxSize().background(Color.Black).clickable { full = false }, contentAlignment = Alignment.Center) {
+                if (big != null) Image(big.asImageBitmap(), m.file, Modifier.fillMaxWidth().fillMaxHeight(), contentScale = ContentScale.Fit)
+                Text("点击或返回关闭", color = Color.White.copy(alpha = .7f), modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp), fontSize = 13.sp)
+            }
+        }
     }
 }
 

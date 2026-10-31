@@ -7,7 +7,7 @@ namespace LanMessenger.Core.Models;
 public enum Trust { Unknown, Trusted, Blocked }
 public enum ConnState { Connected, Connecting, Offline }
 public enum Direction { In, Out }
-public enum MsgStatus { Queued, Sent, Delivered, Read, Failed, Received }
+public enum MsgStatus { Queued, Sent, Delivered, Read, Failed, Rejected, Received }
 public enum MsgKind { Text, File, System }
 public enum TransferState { Offered, Active, Verifying, Done, Failed, Cancelled, Rejected }
 

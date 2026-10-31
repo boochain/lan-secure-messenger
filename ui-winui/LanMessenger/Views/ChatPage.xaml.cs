@@ -1,8 +1,11 @@
+using System.IO;
 using LanMessenger.Core.Models;
 using LanMessenger.Core.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Navigation;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
@@ -218,8 +221,15 @@ public sealed partial class ChatPage : Page
         }
     }
 
-    private void Composer_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
+    private async void Composer_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
+        // Ctrl+V: paste image/files from clipboard into the open chat
+        if (e.Key == VirtualKey.V && Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down))
+        {
+            e.Handled = true;
+            await PasteClipboardAsync();
+            return;
+        }
         if (e.Key != VirtualKey.Enter) return;
         var shift = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift)
             .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
@@ -260,7 +270,25 @@ public sealed partial class ChatPage : Page
 
     private void OpenFile_Click(object sender, RoutedEventArgs e) => VM.OpenMessageFileCommand.Execute(ItemOf(sender));
     private void RevealFile_Click(object sender, RoutedEventArgs e) => VM.RevealMessageFileCommand.Execute(ItemOf(sender));
-    private void Image_Tapped(object sender, TappedRoutedEventArgs e) => VM.OpenMessageFileCommand.Execute(ItemOf(sender));
+    private async void Image_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        e.Handled = true;
+        var m = ItemOf(sender);
+        if (m == null || string.IsNullOrEmpty(m.FilePath) || !System.IO.File.Exists(m.FilePath)) return;
+        // in-app fullscreen viewer (Esc / click closes); "在文件夹中显示" remains on the file card
+        var img = new Image { Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(m.FilePath)), Stretch = Stretch.Uniform, MaxWidth = 1200, MaxHeight = 800 };
+        var box = new Border { Background = new SolidColorBrush(Microsoft.UI.Colors.Black), Child = img, Padding = new Thickness(8) };
+        var dlg = new ContentDialog
+        {
+            XamlRoot = Content.XamlRoot,
+            Title = m.FileName,
+            Content = new ScrollViewer { Content = box, ZoomMode = ZoomMode.Enabled, MinZoomFactor = 0.5f, MaxZoomFactor = 4, HorizontalScrollMode = ScrollMode.Auto, VerticalScrollMode = ScrollMode.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Auto },
+            CloseButtonText = "关闭",
+            DefaultButton = ContentDialogButton.Close,
+        };
+        box.Tapped += (_, __) => { try { dlg.Hide(); } catch { } }; // click image closes (Esc via Close button)
+        try { await Services.ThemeService.Prepare(dlg).ShowAsync(); } catch { }
+    }
 
     private void Conversation_DragOver(object sender, DragEventArgs e)
     {
@@ -276,6 +304,41 @@ public sealed partial class ChatPage : Page
     {
         if (!VM.HasSelection || !e.DataView.Contains(StandardDataFormats.StorageItems)) return;
         await SendDroppedAsync(await e.DataView.GetStorageItemsAsync());
+    }
+
+    /// <summary>Ctrl+V: send clipboard bitmap or file paths (same trust gate as drag-drop).</summary>
+    private async Task PasteClipboardAsync()
+    {
+        if (!VM.HasSelection) { VM.ShowStatus("请先选择联系人或群组", true); return; }
+        try
+        {
+            var content = Clipboard.GetContent();
+            if (content.Contains(StandardDataFormats.StorageItems))
+            {
+                var items = await content.GetStorageItemsAsync();
+                await SendDroppedAsync(items);
+                return;
+            }
+            if (content.Contains(StandardDataFormats.Bitmap))
+            {
+                var streamRef = await content.GetBitmapAsync();
+                using var stream = await streamRef.OpenReadAsync();
+                var dir = Path.Combine(Path.GetTempPath(), "lsm-paste");
+                Directory.CreateDirectory(dir);
+                var path = Path.Combine(dir, $"paste-{DateTime.Now:yyyyMMdd-HHmmss}.bmp");
+                using (var outFile = File.Create(path))
+                {
+                    var reader = new Windows.Storage.Streams.DataReader(stream);
+                    await reader.LoadAsync((uint)stream.Size);
+                    var bytes = new byte[stream.Size];
+                    reader.ReadBytes(bytes);
+                    await outFile.WriteAsync(bytes, 0, bytes.Length);
+                }
+                // Bitmap from clipboard is often BMP/DIB in a random stream; if decode fails the send still tries the bytes.
+                await VM.SendFilesAsync(new[] { path });
+            }
+        }
+        catch (Exception ex) { VM.ShowStatus("粘贴失败：" + ex.Message, true); }
     }
 
     /// <summary>Everything a drop does after the OLE transfer (also driven by the W8 smoke check).</summary>

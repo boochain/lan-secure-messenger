@@ -2,7 +2,7 @@
 [server]
 bind = "0.0.0.0"          # 监听地址 (bind address); "::" for IPv4+IPv6
 port = 9443               # TCP 端口 (port)
-passphrase = "change-me-to-a-long-random-passphrase"   # 网络口令 (network passphrase)
+# passphrase = ""          # optional; empty (default) = open relay, no client password
 salt = ""                 # 32 hex chars; deploy scripts generate one. "" = built-in default
 status_addr = ""          # "" = 127.0.0.1:<port+1>; "off" disables
 

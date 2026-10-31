@@ -103,7 +103,7 @@ function Write-Config {
 [server]
 bind = $(Toml-Str $script:Bind)
 port = $($script:Port)
-# 网络口令：客户端设置中需填写相同口令 (clients must use the same passphrase)
+# 网络口令：可选；默认不设，客户端无需填写 (optional; empty = open, clients need none)
 passphrase = $(Toml-Str $script:Password)
 salt = "$($script:Salt)"
 status_addr = ""
@@ -140,10 +140,12 @@ function Ask-Port {
   }
 }
 function Ask-Pass {
+  # v0.6.0+: passphrase optional (empty = open relay). Clients no longer ask for one.
   if ($script:Password) { $a = Read-Host '保留现有口令？(keep current passphrase) [Y/n]'; if ($a -notmatch '^[nN]') { return } }
   while ($true) {
-    $a = Read-Host '口令：1) 手动输入 (type)  2) 随机生成 (generate) [2]'
-    if (-not $a -or $a -eq '2') { $script:Password = New-Pass; Say "已生成口令 (generated): $($script:Password)"; Say '请记下并填入各客户端 (write it down for the clients)'; return }
+    $a = Read-Host '口令（可选）：0) 不设/开放 (none, default)  1) 手动输入  2) 随机生成 [0]'
+    if (-not $a -or $a -eq '0') { $script:Password = ''; Say '不设口令，中转服务器开放连接 (open relay, no passphrase)'; return }
+    if ($a -eq '2') { $script:Password = New-Pass; Say "已生成口令 (generated): $($script:Password)"; return }
     $s1 = Read-Host '输入口令 (passphrase, 至少 8 位)' -AsSecureString
     $s2 = Read-Host '再次输入确认 (confirm)' -AsSecureString
     $p1 = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($s1))
@@ -268,7 +270,7 @@ function Params-Step {
   if ($script:Port -lt 1 -or $script:Port -gt 65535) { Die "无效端口 (invalid port): $($script:Port)" }
   if ((Test-PortInUse $script:Port) -and -not (Test-OurPort $script:Port)) { Die "端口 $($script:Port) 已被占用 (port in use)" }
   if ($GenPassword) { $script:Password = New-Pass; Say "已生成口令 (generated passphrase): $($script:Password)" }
-  if (-not $script:Password) { Die '需要 -Password 或 -GenPassword (passphrase required)' }
+  # passphrase optional; empty = open
 }
 function Start-Bg {
   Require-Installed
