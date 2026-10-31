@@ -41,3 +41,12 @@ jobs:
         with:
           name: v061-android
           path: editions/portable/android/app/build/outputs/apk/release/app-release.apk
+  linux-adw-build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libadwaita-1-dev libgtk-4-dev pkg-config
+      - name: Build GTK4 edition
+        working-directory: editions/portable
+        run: sh linux/build-adw.sh
