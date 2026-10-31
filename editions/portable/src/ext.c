@@ -3,9 +3,9 @@
 #define EDIT_WINDOW_MS (24LL*3600*1000)
 
 /* ---- tiny JSON helpers (flat objects; values: strings / string arrays) ---- */
-static void js_put(buf_t *b, const char *s){ b_u8(b,'"'); for(;s&&*s;s++){ unsigned char ch=(unsigned char)*s; if(ch=='"'||ch=='\\'){ b_u8(b,'\\'); b_u8(b,ch); } else if(ch<0x20) bfmt(b,"\\u%04x",ch); else b_u8(b,ch); } b_u8(b,'"'); }
-static const char *js_skipws(const char *p){ while(*p==' '||*p=='\t'||*p=='\n'||*p=='\r') p++; return p; }
-static const char *js_str(const char *p, char *out, size_t n){ size_t o=0; if(*p!='"') return NULL; p++;
+static void xj_put(buf_t *b, const char *s){ b_u8(b,'"'); for(;s&&*s;s++){ unsigned char ch=(unsigned char)*s; if(ch=='"'||ch=='\\'){ b_u8(b,'\\'); b_u8(b,ch); } else if(ch<0x20) bfmt(b,"\\u%04x",ch); else b_u8(b,ch); } b_u8(b,'"'); }
+static const char *xj_skipws(const char *p){ while(*p==' '||*p=='\t'||*p=='\n'||*p=='\r') p++; return p; }
+static const char *xj_str(const char *p, char *out, size_t n){ size_t o=0; if(*p!='"') return NULL; p++;
     while(*p && *p!='"'){ unsigned cp=0; if(*p=='\\'){ p++; switch(*p){ case 'n': cp='\n'; break; case 't': cp='\t'; break; case 'r': cp='\r'; break; case 'b': cp=8; break; case 'f': cp=12; break;
             case 'u': { int i; for(i=1;i<=4;i++){ char h=p[i]; cp=cp*16+(unsigned)(h>='a'?h-'a'+10:h>='A'?h-'A'+10:h-'0'); } p+=4;
                 if(cp>=0xD800&&cp<0xDC00&&p[1]=='\\'&&p[2]=='u'){ unsigned lo=0; for(i=3;i<=6;i++){ char h=p[i]; lo=lo*16+(unsigned)(h>='a'?h-'a'+10:h>='A'?h-'A'+10:h-'0'); } cp=0x10000+((cp-0xD800)<<10)+(lo-0xDC00); p+=6; } break; }
@@ -15,14 +15,14 @@ static const char *js_str(const char *p, char *out, size_t n){ size_t o=0; if(*p
         if(o+1<n) out[o++]=*p; p++; }
     out[o]=0; return *p=='"'?p+1:NULL; }
 /* value of "key": string → out; array of strings → comma-joined; returns 1 if found */
-static int js_get(const char *j, const char *key, char *out, size_t n){ const char *p=j; size_t kl=strlen(key); out[0]=0;
-    while((p=strchr(p,'"'))){ char k[64]; const char *q=js_str(p,k,sizeof k); if(!q) return 0; q=js_skipws(q);
-        if(*q==':'){ q=js_skipws(q+1); if(strlen(k)==kl && !strcmp(k,key)){
-                if(*q=='"') return js_str(q,out,n)!=NULL;
-                if(*q=='['){ size_t o=0; q=js_skipws(q+1); while(*q=='"'){ char v[256]; q=js_str(q,v,sizeof v); if(!q) break; if(o && o+1<n) out[o++]=','; { size_t vl=strlen(v); if(o+vl<n){ memcpy(out+o,v,vl); o+=vl; } } q=js_skipws(q); if(*q==',') q=js_skipws(q+1); } out[o]=0; return 1; }
+static int xj_get(const char *j, const char *key, char *out, size_t n){ const char *p=j; size_t kl=strlen(key); out[0]=0;
+    while((p=strchr(p,'"'))){ char k[64]; const char *q=xj_str(p,k,sizeof k); if(!q) return 0; q=xj_skipws(q);
+        if(*q==':'){ q=xj_skipws(q+1); if(strlen(k)==kl && !strcmp(k,key)){
+                if(*q=='"') return xj_str(q,out,n)!=NULL;
+                if(*q=='['){ size_t o=0; q=xj_skipws(q+1); while(*q=='"'){ char v[256]; q=xj_str(q,v,sizeof v); if(!q) break; if(o && o+1<n) out[o++]=','; { size_t vl=strlen(v); if(o+vl<n){ memcpy(out+o,v,vl); o+=vl; } } q=xj_skipws(q); if(*q==',') q=xj_skipws(q+1); } out[o]=0; return 1; }
                 return 0; }
             /* skip the value */
-            if(*q=='"'){ char tmp[8]; char *big=(char*)xmalloc(strlen(q)+1); q=js_str(q,big,strlen(q)+1); free(big); (void)tmp; if(!q) return 0; p=q; continue; }
+            if(*q=='"'){ char tmp[8]; char *big=(char*)xmalloc(strlen(q)+1); q=xj_str(q,big,strlen(q)+1); free(big); (void)tmp; if(!q) return 0; p=q; continue; }
             p=q; continue; }
         p=q; }
     return 0; }
@@ -64,17 +64,17 @@ static void ext_recv(lsm_core *c, const char *fp, const char *ids, rd_t *r){ int
     if(hasg) r_uuid(r,gid); ep=r_u64(r); d=r_bytes(r,&dl); ts=(int64_t)r_u64(r); (void)ep; if(r->err) return;
     if(hasg){ lsm_group *g=group_get(c,gid); size_t pn; uint8_t *pl; if(!g||!group_is_member(g,fp)) return; conv_group(gid,conv); pl=open_rand(g->key,d,dl,&pn); if(!pl) return; js=(char*)xmalloc(pn+1); memcpy(js,pl,pn); js[pn]=0; free(pl); }
     else { conv_dm(fp,conv); js=(char*)xmalloc(dl+1); memcpy(js,d,dl); js[dl]=0; }
-    js_get(js,"k",k,sizeof k); js_get(js,"target",target,sizeof target);
+    xj_get(js,"k",k,sizeof k); xj_get(js,"target",target,sizeof target);
     if(!strcmp(k,"text")){ size_t bl=strlen(js)+1; char *body=(char*)xmalloc(bl), rt[64], q[400], mn[512]; lsm_msg *m;
-        js_get(js,"body",body,bl); js_get(js,"reply_to",rt,sizeof rt); js_get(js,"quote",q,sizeof q); js_get(js,"mentions",mn,sizeof mn); utf8_trunc(body,64*1024*3);
+        xj_get(js,"body",body,bl); xj_get(js,"reply_to",rt,sizeof rt); xj_get(js,"quote",q,sizeof q); xj_get(js,"mentions",mn,sizeof mn); utf8_trunc(body,64*1024*3);
         if(!msg_get(c,ids)){ m=add_message(c,ids,conv,0,fp,K_TEXT,body,ts,ST_RECEIVED); scpy(m->reply_to,rt,40); if(!q[0] && rt[0]) quote_of(c,rt,q,sizeof q); utf8_trunc_chars(q,200); scpy(m->quote,q,sizeof m->quote); scpy(m->mentions,mn,sizeof m->mentions); if(m->reply_to[0]||m->quote[0]||m->mentions[0]){ hist_rec_ext(c,m); emit_msg(c,"msg_update",m); } }
         free(body); }
-    else if(!strcmp(k,"react")){ char em[40]; lsm_msg *m=msg_get(c,target); js_get(js,"emoji",em,sizeof em); utf8_trunc_chars(em,8);
+    else if(!strcmp(k,"react")){ char em[40]; lsm_msg *m=msg_get(c,target); xj_get(js,"emoji",em,sizeof em); utf8_trunc_chars(em,8);
         if(m && !strcmp(m->conv,conv)){ react_set(m->reactions,sizeof m->reactions,fp,em); hist_rec_ext(c,m); emit_msg(c,"msg_update",m); } }
     else if(!strcmp(k,"edit")||!strcmp(k,"recall")){ lsm_msg *m=msg_get(c,target);
         if(m && !m->out && !strcmp(m->conv,conv) && !strcmp(m->sender_fp,fp)){
             if(k[0]=='r'){ m->recalled=1; free(m->body); m->body=xstrdup(""); }
-            else if(!m->recalled){ size_t bl=strlen(js)+1; char *body=(char*)xmalloc(bl); js_get(js,"body",body,bl); free(m->body); m->body=body; m->edited=1; }
+            else if(!m->recalled){ size_t bl=strlen(js)+1; char *body=(char*)xmalloc(bl); xj_get(js,"body",body,bl); free(m->body); m->body=body; m->edited=1; }
             hist_rec_ext(c,m); emit_msg(c,"msg_update",m); }
         else logf_(c,"ext %s from %s for a message it did not send: ignored",k,fp); }
     free(js); }
@@ -85,8 +85,8 @@ int lsm_send_text2(lsm_core *c, const char *conv, const char *text, const char *
     if(!text[0]){ E("empty"); return -1; }
     mu_lock(&c->mu); t=reply_to&&*reply_to?msg_get(c,reply_to):NULL; if(t && strcmp(t->conv,conv)) t=NULL; if(t) quote_of(c,t->id,q,sizeof q);
     uuid_new(id); lsm_uuid_str(id,ids);
-    bfmt(&j,"{\"k\":\"text\",\"body\":"); js_put(&j,text); bfmt(&j,",\"reply_to\":"); js_put(&j,t?t->id:""); bfmt(&j,",\"quote\":"); js_put(&j,q); bfmt(&j,",\"mentions\":[");
-    { const char *p=mentions_csv?mentions_csv:""; int first=1; while(*p){ const char *e=strchr(p,','); char one[FP_LEN]; size_t l=e?(size_t)(e-p):strlen(p); if(l && l<sizeof one){ memcpy(one,p,l); one[l]=0; if(!first) b_u8(&j,','); js_put(&j,one); first=0; } p=e?e+1:p+l; } }
+    bfmt(&j,"{\"k\":\"text\",\"body\":"); xj_put(&j,text); bfmt(&j,",\"reply_to\":"); xj_put(&j,t?t->id:""); bfmt(&j,",\"quote\":"); xj_put(&j,q); bfmt(&j,",\"mentions\":[");
+    { const char *p=mentions_csv?mentions_csv:""; int first=1; while(*p){ const char *e=strchr(p,','); char one[FP_LEN]; size_t l=e?(size_t)(e-p):strlen(p); if(l && l<sizeof one){ memcpy(one,p,l); one[l]=0; if(!first) b_u8(&j,','); xj_put(&j,one); first=0; } p=e?e+1:p+l; } }
     bfmt(&j,"]}");
     fb=(char*)xmalloc(strlen(text)+strlen(q)+32); if(q[0]) sprintf(fb,"\xe3\x80\x8c%s\xe3\x80\x8d\n\xe2\x80\x94 %s",q,text); else strcpy(fb,text);
     m=add_message(c,ids,conv,1,c->fp,K_TEXT,text,wall_ms(),ST_QUEUED); scpy(m->reply_to,t?t->id:"",40); scpy(m->quote,q,sizeof m->quote); scpy(m->mentions,mentions_csv?mentions_csv:"",sizeof m->mentions); hist_rec_ext(c,m);
@@ -97,7 +97,7 @@ int lsm_react(lsm_core *c, const char *id, const char *emoji, char *err){ lsm_ms
     mu_lock(&c->mu); m=msg_get(c,id); if(!m){ mu_unlock(&c->mu); E("\xe6\xb6\x88\xe6\x81\xaf\xe4\xb8\x8d\xe5\xad\x98\xe5\x9c\xa8"); return -1; }
     scpy(em,emoji?emoji:"",sizeof em); utf8_trunc_chars(em,8); if(react_get(m->reactions,c->fp,cur,sizeof cur) && !strcmp(cur,em)) em[0]=0; /* toggle */
     react_set(m->reactions,sizeof m->reactions,c->fp,em); hist_rec_ext(c,m); emit_msg(c,"msg_update",m);
-    bfmt(&j,"{\"k\":\"react\",\"target\":"); js_put(&j,id); bfmt(&j,",\"emoji\":"); js_put(&j,em); b_u8(&j,'}'); uuid_new(nid); send_ext(c,m->conv,&j,NULL,nid,NULL); b_free(&j); mu_unlock(&c->mu); return 0; }
+    bfmt(&j,"{\"k\":\"react\",\"target\":"); xj_put(&j,id); bfmt(&j,",\"emoji\":"); xj_put(&j,em); b_u8(&j,'}'); uuid_new(nid); send_ext(c,m->conv,&j,NULL,nid,NULL); b_free(&j); mu_unlock(&c->mu); return 0; }
 
 static int edit_or_recall(lsm_core *c, const char *id, const char *body, int recall, char *err){ lsm_msg *m; buf_t j={0}; uint8_t nid[16]; char *fb;
     mu_lock(&c->mu); m=msg_get(c,id);
@@ -106,8 +106,8 @@ static int edit_or_recall(lsm_core *c, const char *id, const char *body, int rec
     if(wall_ms()-m->ts_ms>EDIT_WINDOW_MS){ mu_unlock(&c->mu); E("\xe8\xb6\x85\xe8\xbf\x87 24 \xe5\xb0\x8f\xe6\x97\xb6\xe7\x9a\x84\xe6\xb6\x88\xe6\x81\xaf\xe4\xb8\x8d\xe8\x83\xbd\xe5\x86\x8d\xe7\xbc\x96\xe8\xbe\x91\xe6\x88\x96\xe6\x92\xa4\xe5\x9b\x9e"); return -1; }
     if(m->recalled){ mu_unlock(&c->mu); E("\xe6\xb6\x88\xe6\x81\xaf\xe5\xb7\xb2\xe6\x92\xa4\xe5\x9b\x9e"); return -1; }
     if(!recall && (!body||!*body||m->kind!=K_TEXT)){ mu_unlock(&c->mu); E("\xe5\x8f\xaa\xe8\x83\xbd\xe7\xbc\x96\xe8\xbe\x91\xe6\x96\x87\xe5\xad\x97\xe6\xb6\x88\xe6\x81\xaf"); return -1; }
-    if(recall){ bfmt(&j,"{\"k\":\"recall\",\"target\":"); js_put(&j,id); b_u8(&j,'}'); fb=xstrdup("\xef\xbc\x88\xe6\x92\xa4\xe5\x9b\x9e\xe4\xba\x86\xe4\xb8\x80\xe6\x9d\xa1\xe6\xb6\x88\xe6\x81\xaf\xef\xbc\x89"); m->recalled=1; free(m->body); m->body=xstrdup(""); }
-    else { bfmt(&j,"{\"k\":\"edit\",\"target\":"); js_put(&j,id); bfmt(&j,",\"body\":"); js_put(&j,body); b_u8(&j,'}'); fb=(char*)xmalloc(strlen(body)+32); sprintf(fb,"\xef\xbc\x88\xe5\xb7\xb2\xe7\xbc\x96\xe8\xbe\x91\xef\xbc\x89%s",body); free(m->body); m->body=xstrdup(body); m->edited=1; }
+    if(recall){ bfmt(&j,"{\"k\":\"recall\",\"target\":"); xj_put(&j,id); b_u8(&j,'}'); fb=xstrdup("\xef\xbc\x88\xe6\x92\xa4\xe5\x9b\x9e\xe4\xba\x86\xe4\xb8\x80\xe6\x9d\xa1\xe6\xb6\x88\xe6\x81\xaf\xef\xbc\x89"); m->recalled=1; free(m->body); m->body=xstrdup(""); }
+    else { bfmt(&j,"{\"k\":\"edit\",\"target\":"); xj_put(&j,id); bfmt(&j,",\"body\":"); xj_put(&j,body); b_u8(&j,'}'); fb=(char*)xmalloc(strlen(body)+32); sprintf(fb,"\xef\xbc\x88\xe5\xb7\xb2\xe7\xbc\x96\xe8\xbe\x91\xef\xbc\x89%s",body); free(m->body); m->body=xstrdup(body); m->edited=1; }
     hist_rec_ext(c,m); emit_msg(c,"msg_update",m); uuid_new(nid); send_ext(c,m->conv,&j,fb,nid,NULL); free(fb); b_free(&j); mu_unlock(&c->mu); return 0; }
 int lsm_edit_message(lsm_core *c, const char *id, const char *body, char *err){ return edit_or_recall(c,id,body,0,err); }
 int lsm_recall_message(lsm_core *c, const char *id, char *err){ return edit_or_recall(c,id,NULL,1,err); }

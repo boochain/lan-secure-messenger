@@ -14,6 +14,7 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--rust-bin", required=True)
 ap.add_argument("--exe", required=True)
 ap.add_argument("--work", default="/tmp/lsm-interop")
+ap.add_argument("--p1", action="store_true", help="Rust side is >= v0.6.1 (CAP_EXT): run reply/react/edit/recall checks")
 ap.add_argument("--native", action="store_true", help="run the Linux-native build of the XP core instead of wine")
 args = ap.parse_args()
 RB = os.path.abspath(args.rust_bin); EXE = os.path.abspath(args.exe); W = args.work
@@ -200,7 +201,7 @@ try:
     (ok if st else fail)("read receipt XP -> v0.5 (status read)")
 
     # 3b. v0.6.1 P1 (CAP_EXT): reply / react / edit / recall, both directions
-    if True:
+    if args.p1:
         out = X.cmd(f"reply {A.fp} {rid} 收到，十点见")[-1]; xr = out.split()[-1]
         got = wait(lambda: [m for m in A.j("history", X.fp) if m["id"] == xr and m.get("reply_to") == rid and "hello XP" in m.get("quote", "")], 15)
         (ok if got else fail)("P1 reply XP -> Rust (reply_to + quote)", xr)

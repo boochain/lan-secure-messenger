@@ -30,6 +30,14 @@ static int hist_tests(void){ lsm_msg m[4]; lsm_hq q; int bad=0; memset(m,0,sizeo
     bad+=!lsm_is_sticker_name("lsm-sticker-cat.gif");
     printf("history_query: %d failures\n",bad); return bad; }
 
+static int ext_tests(void){ int bad=0; char r[400]="", e[40], v[200]; buf_t b={0};
+    react_set(r,sizeof r,"AAAA","\xf0\x9f\x91\x8d"); react_set(r,sizeof r,"BBBB","x");
+    bad+=!react_get(r,"AAAA",e,sizeof e)||strcmp(e,"\xf0\x9f\x91\x8d");
+    react_set(r,sizeof r,"AAAA",""); bad+=react_get(r,"AAAA",e,sizeof e); bad+=!react_get(r,"BBBB",e,sizeof e)||strcmp(e,"x");
+    b_u8(&b,'{'); xj_put(&b,"k"); b_u8(&b,':'); xj_put(&b,"text"); b_u8(&b,','); xj_put(&b,"body"); b_u8(&b,':'); xj_put(&b,"a\"b\n\xe4\xbd\xa0"); b_u8(&b,'}'); b_u8(&b,0);
+    bad+=!xj_get((char*)b.p,"body",v,sizeof v)||strcmp(v,"a\"b\n\xe4\xbd\xa0"); bad+=!xj_get((char*)b.p,"k",v,sizeof v)||strcmp(v,"text"); bad+=xj_get((char*)b.p,"nope",v,sizeof v);
+    b_free(&b); if(bad) printf("ext_tests: %d failures\n",bad); else printf("ext_tests OK\n"); return bad; }
+
 int main(int argc, char **argv){ FILE *f; static char buf[1<<20]; size_t len; const char *p; int n=0, bad=0;
     if(argc<2){ fprintf(stderr,"usage: %s filename_vectors.json\n",argv[0]); return 2; }
     f=fopen(argv[1],"rb"); if(!f){ perror(argv[1]); return 2; } len=fread(buf,1,sizeof buf-1,f); buf[len]=0; fclose(f);
@@ -43,5 +51,5 @@ int main(int argc, char **argv){ FILE *f; static char buf[1<<20]; size_t len; co
         if(strcmp(got,want)){ bad++; printf("MISMATCH sanitize_filename(\"%s\")\n   C:    \"%s\"\n   Rust: \"%s\"\n",in,got,want); }
         p=q; }
     printf("sanitize_filename: %d vectors, %d mismatches\n",n,bad);
-    bad+=hist_tests();
+    bad+=hist_tests(); bad+=ext_tests();
     return (n<10||bad)?1:0; }
