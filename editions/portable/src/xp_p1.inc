@@ -5,19 +5,25 @@ static char reply_id[40]; static wchar_t reply_hint[200];
 static const char *P1_EMO[]={"\xf0\x9f\x91\x8d","\xe2\x9d\xa4\xef\xb8\x8f","\xf0\x9f\x98\x82","\xf0\x9f\x98\xae","\xf0\x9f\x98\xa2","\xf0\x9f\x8e\x89",NULL};
 static HWND hMic;
 static void refresh_chat(void);
+/* v0.6.1 P2 hooks (xp_p2.inc, included after xp_p0.inc) */
+static void p2_menu(HMENU pm, const char *id); static int p2_menu_cmd(int cmd, const char *id); static void p2_on_typing(char *ev);
+static char edit_id[40]; /* inline edit in the composer (no 512-character prompt limit) */
 /* bubble text: 「quote」 line, body (recalled / edited markers), reaction summary */
 static wchar_t *p1_rowtext(const lsm_msg *m){ static char b[9000]; char db[8192], rs[300]; size_t o=0; b[0]=0;
     if(m->reply_to[0] && !m->recalled) o+=snprintf(b+o,sizeof b-o,"\xe2\x86\xaa \xe3\x80\x8c%.180s\xe3\x80\x8d\n",m->quote[0]?m->quote:"原消息");
     o+=snprintf(b+o,sizeof b-o,"%s",lsm_display_body(m,db,sizeof db)); if(o>=sizeof b) o=sizeof b-1;
-    lsm_reaction_summary(m,rs,sizeof rs); if(rs[0] && !m->recalled) snprintf(b+o,sizeof b-o,"\n%s",rs);
+    lsm_reaction_summary(m,rs,sizeof rs); if(rs[0] && !m->recalled){ o+=snprintf(b+o,sizeof b-o,"\n%s",rs); if(o>=sizeof b) o=sizeof b-1; }
+    if(!m->recalled && (m->forwarded||m->pinned||m->starred||m->mentions_me)) snprintf(b+o,sizeof b-o,"\n\xe2\x80\x94%s%s%s%s",m->forwarded?" 转发":"",m->pinned?" · 置顶":"",m->starred?" · 收藏":"",m->mentions_me?" · @我":"");
     return wdup(W(b)); }
-static void p1_set_reply(const char *id){ lsm_msg *m; int n,i; snprintf(reply_id,sizeof reply_id,"%s",id?id:""); reply_hint[0]=0;
+static void p1_edit_cancel(void);
+static void p1_set_reply(const char *id){ lsm_msg *m; int n,i; if(id && edit_id[0]) p1_edit_cancel(); snprintf(reply_id,sizeof reply_id,"%s",id?id:""); reply_hint[0]=0;
     if(reply_id[0]){ lsm_lock(C); n=lsm_messages(C,&m); for(i=0;i<n;i++) if(!strcmp(m[i].id,reply_id)){ char b[200], t[300]; snprintf(t,sizeof t,"回复 %s：%.60s  (Esc 取消)",m[i].out?"我":m[i].sender_name,m[i].kind==K_FILE?m[i].file_name:lsm_display_body(&m[i],b,sizeof b)); wcsncpy(reply_hint,W(t),199); reply_hint[199]=0; break; } lsm_unlock(C); }
     if(hInput){ InvalidateRect(hInput,NULL,TRUE); SetFocus(hInput); } }
-static void p1_edit(const char *id){ prompt_t p; lsm_msg *m; int n,i; wchar_t init[512]=L""; char err[256], t[2048];
-    lsm_lock(C); n=lsm_messages(C,&m); for(i=0;i<n;i++) if(!strcmp(m[i].id,id)){ wcsncpy(init,W(m[i].body?m[i].body:""),511); init[511]=0; break; } lsm_unlock(C);
-    memset(&p,0,sizeof p); if(!prompt(L"编辑消息",L"修改后的内容（24 小时内可编辑）：",init,&p,1) || !p.text[0]) return;
-    U(p.text,t,sizeof t); if(lsm_edit_message(C,id,t,err)) msgbox(err,MB_ICONWARNING); refresh_chat(); }
+static void p1_edit(const char *id){ lsm_msg *m; int n,i,len; wchar_t *w=NULL;
+    lsm_lock(C); n=lsm_messages(C,&m); for(i=0;i<n;i++) if(!strcmp(m[i].id,id)){ const char *b=m[i].body?m[i].body:""; len=MultiByteToWideChar(CP_UTF8,0,b,-1,NULL,0); w=(wchar_t*)malloc((len+1)*sizeof(wchar_t)); if(w) MultiByteToWideChar(CP_UTF8,0,b,-1,w,len+1); break; } lsm_unlock(C);
+    if(!w) return; reply_id[0]=0; snprintf(edit_id,sizeof edit_id,"%s",id); wcsncpy(reply_hint,L"编辑消息：Enter 保存 · Esc 取消",199);
+    if(hInput){ SetWindowTextW(hInput,w); SendMessageW(hInput,EM_SETSEL,(WPARAM)-1,(LPARAM)-1); SetFocus(hInput); InvalidateRect(hInput,NULL,TRUE); } free(w); }
+static void p1_edit_cancel(void){ edit_id[0]=0; reply_hint[0]=0; if(hInput){ SetWindowTextW(hInput,L""); InvalidateRect(hInput,NULL,TRUE); } }
 static void p1_recall(const char *id){ char err[256]; if(tmsg(L"撤回消息",L"双方都会看到“撤回了一条消息”。24 小时内可撤回。确定撤回？",1)==1){ if(lsm_recall_message(C,id,err)) msgbox(err,MB_ICONWARNING); refresh_chat(); } }
 /* context-menu items: 10 回复, 11 编辑, 12 撤回, 20..25 reactions, 26 remove my reaction */
 static void p1_menu(HMENU pm, const char *id){ lsm_msg *m; int n,i,can=0,rec=1,k; char mine[40]=""; HMENU sub;
