@@ -50,7 +50,7 @@ def shot(name, theme, size="1024x694", g=None):
     path = f"{out}/{name}-{theme}.png"
     subprocess.run(["import", "-window", "root", "-crop", size + "+0+0", "+repage", path], env=env)
     r = icon_rects(g.lines) if g else []
-    if r: ignore[os.path.basename(path)] = r; ignore["_reasons"][os.path.basename(path)] = "decorative icons only: trusted-identity shield (symbolic GtkImage) online dot (empty GtkBox; status is also spelled out as text) and the empty-state AdwStatusPage illustration (title + description carry the meaning); bounds reported by the app"
+    if r: ignore[os.path.basename(path)] = r; ignore["_reasons"][os.path.basename(path)] = "decorative icons only: trusted-identity shield (symbolic GtkImage) online dot (empty GtkBox; status is also spelled out as text) the colour-emoji reaction glyphs in the message menu (bitmap pictures; each button also has a tooltip) and the empty-state AdwStatusPage illustration (title + description carry the meaning); bounds reported by the app"
     print("shot", path, "windows", wid, flush=True); return path
 img = f"{W}/设计稿-v3.png"
 subprocess.run(["convert", "-size", "960x660", "gradient:#7aa7d8-#2b4f7e", "-fill", "#ffffff", "-draw", "roundrectangle 120,120 840,540 24,24", img])

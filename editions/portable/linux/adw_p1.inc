@@ -25,7 +25,7 @@ static void p1_menu(GtkWidget *box, const char *id){ lsm_msg *m; int n,i,can=0,r
     lsm_lock(C); n=lsm_messages(C,&m); for(i=0;i<n;i++) if(!strcmp(m[i].id,id)){ can=lsm_can_modify(C,&m[i]); rec=m[i].recalled; lsm_my_reaction(C,&m[i],mine,sizeof mine); break; } lsm_unlock(C);
     if(rec) return;
     { GtkWidget *row=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,2); cls(row,"reactbar");
-      for(k=0;P1_EMO[k];k++){ GtkWidget *b=gtk_button_new_with_label(P1_EMO[k]); cls(b,"flat"); if(!strcmp(mine,P1_EMO[k])) cls(b,"accent"); g_object_set_data(G_OBJECT(b),"e",(gpointer)(strcmp(mine,P1_EMO[k])?P1_EMO[k]:""));
+      for(k=0;P1_EMO[k];k++){ GtkWidget *b=gtk_button_new_with_label(P1_EMO[k]); cls(b,"flat"); if(getenv("LSM_UI_TEST") && icon_widgets) g_ptr_array_add(icon_widgets,g_object_ref(gtk_button_get_child(GTK_BUTTON(b)))); /* colour emoji glyphs = pictures, not text (audit ignore) */ if(!strcmp(mine,P1_EMO[k])) cls(b,"accent"); g_object_set_data(G_OBJECT(b),"e",(gpointer)(strcmp(mine,P1_EMO[k])?P1_EMO[k]:""));
           gtk_widget_set_tooltip_text(b,strcmp(mine,P1_EMO[k])?"表情回应":"取消我的回应"); g_signal_connect_data(b,"clicked",G_CALLBACK(p1_react_click),g_strdup(id),(GClosureNotify)g_free,0); gtk_box_append(GTK_BOX(row),b); }
       gtk_box_append(GTK_BOX(box),row); }
     pop_btn(box,"回复(_R)","reply",id);
