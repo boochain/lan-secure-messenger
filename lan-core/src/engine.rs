@@ -19,6 +19,7 @@ use crate::identity::Identity;
 use crate::link::{self, Link, LinkWriter};
 mod ext;
 mod p2;
+mod v062;
 mod files;
 pub use files::sanitize_filename;
 mod relay;
@@ -742,6 +743,7 @@ impl Engine {
     }
 
     fn on_tick(&mut self) {
+        self.v062_sweep();
         let now = Instant::now();
         // Heartbeats / dead links.
         let mut dead = vec![];
@@ -1009,8 +1011,9 @@ impl Engine {
         }
     }
 
-    fn add_message(&mut self, m: Message, notify: bool) {
+    fn add_message(&mut self, mut m: Message, notify: bool) {
         let conv = m.conversation.clone();
+        self.v062_on_add(&mut m);
         if m.direction == Direction::In && m.kind != MsgKind::System {
             if let Ok(u) = Uuid::parse_str(&m.id) {
                 self.unread.entry(conv.clone()).or_default().push(u);
@@ -1739,6 +1742,9 @@ impl Engine {
         Conversation {
             pinned: self.conv_prefs.pinned.contains(conv),
             draft: self.conv_prefs.drafts.get(conv).cloned().unwrap_or_default(),
+            archived: self.conv_prefs.archived.contains(conv),
+            folders: self.conv_prefs.folders.iter().filter(|(_, v)| v.contains(conv)).map(|(k, _)| k.clone()).collect(),
+            ttl_secs: self.conv_prefs.ttl.get(conv).copied().unwrap_or(0),
             id: conv.to_string(),
             kind: if is_group { "group".into() } else { "dm".into() },
             title: self.conv_title(conv),
@@ -2565,6 +2571,7 @@ impl Engine {
             }
             "react" | "edit_message" | "recall_message" => self.rpc_ext(method, params).unwrap(),
             "set_conv_pinned" | "set_draft" | "set_message_flags" | "send_typing" | "list_flagged" | "forward_message" => self.rpc_p2(method, params).unwrap(),
+            "send_poll" | "vote_poll" | "close_poll" | "set_conv_archived" | "set_folder" | "list_folders" | "set_disappearing" => self.rpc_v062(method, params).unwrap(),
             "history_query" => {
                 let q: crate::history::HistoryQuery = p(params)?;
                 ok(self.history.query(&q))

@@ -18,6 +18,15 @@ pub(crate) struct ConvPrefs {
     pub pinned: BTreeSet<String>,
     #[serde(default)]
     pub drafts: BTreeMap<String, String>,
+    // v0.6.2
+    #[serde(default)]
+    pub archived: BTreeSet<String>,
+    #[serde(default)]
+    pub folders: BTreeMap<String, BTreeSet<String>>,
+    #[serde(default)]
+    pub ttl: BTreeMap<String, u32>,
+    #[serde(skip)]
+    pub last_sweep: i64,
     #[serde(skip)]
     path: PathBuf,
     #[serde(skip)]
@@ -46,7 +55,7 @@ impl ConvPrefs {
 }
 
 impl Engine {
-    fn conv_exists(&self, conv: &str) -> bool {
+    pub(crate) fn conv_exists(&self, conv: &str) -> bool {
         if let Some(fp) = conv.strip_prefix("dm:") {
             return self.contacts.get(fp).is_some() || self.rt.contains_key(fp);
         }

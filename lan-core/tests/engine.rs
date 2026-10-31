@@ -452,3 +452,45 @@ async fn p2_pins_drafts_flags_typing_forward_mentions() {
     let s = a.call("get_snapshot", json!({})).await;
     assert_eq!(s["conversations"].as_array().unwrap().iter().find(|c| c["id"] == conv_a.as_str()).unwrap()["draft"], "");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn v062_polls_folders_archive_disappearing() {
+    let a = node("Alice", json!({})).await;
+    let b = node("Bob", json!({})).await;
+    let pb = b.port().await;
+    a.call("add_peer", json!({"address": format!("127.0.0.1:{pb}")})).await;
+    both_online(&a, &b, 20).await;
+    let conv_a = format!("dm:{}", b.fp);
+    let conv_b = format!("dm:{}", a.fp);
+    // poll: create, vote both ways, close
+    let pm = a.call("send_poll", json!({"conversation": conv_a, "question": "午饭吃什么？", "options": ["面", "饭", "饺子"]})).await;
+    let pid = pm["id"].as_str().unwrap().to_string();
+    wait("poll on bob", 15, || async { b.msgs(&conv_b).await.iter().any(|m| m["id"] == pid.as_str() && m["poll"]["options"].as_array().map(|o| o.len()) == Some(3)) }).await;
+    b.call("vote_poll", json!({"id": pid, "choices": [2, 0]})).await; // single choice: keeps the first after sort (0)
+    wait("vote on alice", 15, || async { a.msgs(&conv_a).await.iter().any(|m| m["id"] == pid.as_str() && m["poll"]["votes"][0]["choices"] == json!([0])) }).await;
+    assert!(b.h.call("close_poll", json!({"id": pid})).await.is_err(), "only the creator closes");
+    a.call("close_poll", json!({"id": pid})).await;
+    wait("closed on bob", 15, || async { b.msgs(&conv_b).await.iter().any(|m| m["id"] == pid.as_str() && m["poll"]["closed"] == true) }).await;
+    assert!(b.h.call("vote_poll", json!({"id": pid, "choices": [1]})).await.is_err());
+    // folders + archive (local)
+    a.call("set_folder", json!({"name": "工作", "conversations": [conv_a]})).await;
+    a.call("set_conv_archived", json!({"conversation": conv_a, "archived": true})).await;
+    let conv = |s: Value| s["conversations"].as_array().unwrap().iter().find(|c| c["id"] == conv_a.as_str()).unwrap().clone();
+    let c = conv(a.call("get_snapshot", json!({})).await);
+    assert_eq!(c["archived"], true);
+    assert_eq!(c["folders"], json!(["工作"]));
+    assert_eq!(a.call("list_folders", json!({})).await[0]["name"], "工作");
+    // new incoming message un-archives
+    b.call("send_text", json!({"conversation": conv_b, "body": "在吗"})).await;
+    wait("unarchived", 15, || async { conv(a.call("get_snapshot", json!({})).await)["archived"] == false }).await;
+    a.call("set_folder", json!({"name": "工作", "conversations": []})).await;
+    assert_eq!(a.call("list_folders", json!({})).await.as_array().unwrap().len(), 0);
+    // disappearing: timer syncs to the peer, new messages expire on both sides
+    assert!(a.h.call("set_disappearing", json!({"conversation": conv_a, "secs": 7})).await.is_err());
+    a.call("set_disappearing", json!({"conversation": conv_a, "secs": 30})).await;
+    wait("ttl on bob", 15, || async { b.call("get_snapshot", json!({})).await["conversations"].as_array().unwrap().iter().any(|c| c["id"] == conv_b.as_str() && c["ttl_secs"] == 30) }).await;
+    let m = a.call("send_text", json!({"conversation": conv_a, "body": "阅后即焚"})).await;
+    let mid = m["id"].as_str().unwrap().to_string();
+    wait("ttl msg on bob", 15, || async { b.msgs(&conv_b).await.iter().any(|m| m["id"] == mid.as_str() && m["expires_ms"].as_i64().unwrap_or(0) > 0) }).await;
+    assert!(a.msgs(&conv_a).await.iter().any(|m| m["id"] == mid.as_str() && m["expires_ms"].as_i64().unwrap_or(0) > 0));
+}
