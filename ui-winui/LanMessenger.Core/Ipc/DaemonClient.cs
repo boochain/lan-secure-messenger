@@ -25,6 +25,14 @@ public sealed class DaemonClient
     public Task<Message> SendReplyAsync(string conversation, string body, string replyTo) => Call<Message>("send_text", new { conversation, body, reply_to = replyTo });
     /// <summary>Same emoji again removes it ("" removes mine).</summary>
     public Task ReactAsync(string id, string emoji) => Call("react", new { id, emoji });
+    // v0.6.1 P2
+    public Task<Message> SendTextExAsync(string conversation, string body, string? replyTo, List<string> mentions) => Call<Message>("send_text", new { conversation, body, reply_to = replyTo, mentions });
+    public Task SetConvPinnedAsync(string conversation, bool pinned) => Call("set_conv_pinned", new { conversation, pinned });
+    public Task SetDraftAsync(string conversation, string text) => Call("set_draft", new { conversation, text });
+    public Task<Message> SetMessageFlagsAsync(string id, bool? pinned, bool? starred) => Call<Message>("set_message_flags", new { id, pinned, starred });
+    public Task SendTypingAsync(string conversation) => Call("send_typing", new { conversation });
+    public Task<List<Message>> ListFlaggedAsync(string flag, string? conversation = null) => Call<List<Message>>("list_flagged", new { flag, conversation });
+    public Task<List<Message>> ForwardMessageAsync(string id, IEnumerable<string> conversations) => Call<List<Message>>("forward_message", new { id, conversations = conversations.ToList() });
     public Task EditMessageAsync(string id, string body) => Call("edit_message", new { id, body });
     public Task RecallMessageAsync(string id) => Call("recall_message", new { id });
     public Task<Transfer> SendFileAsync(string conversation, string path) => Call<Transfer>("send_file", new { conversation, path });

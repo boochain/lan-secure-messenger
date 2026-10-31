@@ -45,6 +45,10 @@ public static class B
     public static string Tick(int t) => t switch { 1 => "\u2713", 2 or 3 => "\u2713\u2713", 4 => "!", _ => "" };
     public static bool TickIsRead(int t) => t == 3;
     public static Visibility TickVis(int t) => t == 0 ? Visibility.Collapsed : Visibility.Visible;
+    // v0.6.1 P2
+    public static string DraftTag(bool hasDraft) => hasDraft ? "[草稿] " : "";
+    public static string Pick(bool cond, string yes, string no) => cond ? yes : no;
+    public static string Picked(int n) => $"已选 {n} 条";
 }
 
 public sealed class MessageTemplateSelector : DataTemplateSelector

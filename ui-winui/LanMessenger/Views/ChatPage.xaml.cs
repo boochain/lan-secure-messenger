@@ -48,7 +48,7 @@ public sealed partial class ChatPage : Page
 
     private void Vm_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(MainViewModel.SelectedConversation)) SyncSelection();
+        if (e.PropertyName == nameof(MainViewModel.SelectedConversation)) { SyncSelection(); if (VM.IsMultiSelect) EndMulti(); }
     }
 
     private void SyncSelection()
@@ -168,6 +168,10 @@ public sealed partial class ChatPage : Page
                     if (await d.ShowAsync() == ContentDialogResult.Primary) await VM.RecallAsync(m);
                 });
             }
+            Add("转发…", "\uE72D", async () => await P2Dialogs.ForwardAsync(XamlRoot, new[] { m.Id }));
+            Add(m.IsPinned ? "取消置顶" : "置顶", "\uE718", async () => await VM.TogglePinAsync(m));
+            Add(m.IsStarred ? "取消收藏" : "收藏", "\uE734", async () => await VM.ToggleStarAsync(m));
+            Add("多选", "\uE762", () => StartMulti(m));
             f.Items.Add(new MenuFlyoutSeparator());
         }
         if (m.IsText && !m.IsRecalled) Add("复制", "\uE8C8", () => { var dp = new DataPackage(); dp.SetText(m.RawBody); Clipboard.SetContent(dp); VM.ShowStatus("已复制"); });
@@ -273,6 +277,7 @@ public sealed partial class ChatPage : Page
         }
         if (e.Key == VirtualKey.Escape && VM.HasReplyBar) { e.Handled = true; VM.CancelReply(); return; }
         if (e.Key == VirtualKey.Up && Composer.Text.Length == 0 && VM.EditLast()) { e.Handled = true; Composer.SelectionStart = Composer.Text.Length; return; }
+        if (e.Key == VirtualKey.Escape && VM.IsMultiSelect) { EndMulti(); e.Handled = true; return; }
         if (e.Key != VirtualKey.Enter) return;
         var shift = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift)
             .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
@@ -281,6 +286,71 @@ public sealed partial class ChatPage : Page
         // Make sure the two-way binding has the latest text before sending.
         VM.ComposeText = Composer.Text;
         if (VM.SendCommand.CanExecute(null)) VM.SendCommand.Execute(null);
+    }
+
+    // ---- v0.6.1 P2 ----
+    private void PinConv_Click(object sender, RoutedEventArgs e) => _ = VM.TogglePinConvAsync();
+    private async void PinnedList_Click(object sender, RoutedEventArgs e) => await P2Dialogs.FlaggedAsync(XamlRoot, this, false, true);
+    private async void StarredList_Click(object sender, RoutedEventArgs e) => await P2Dialogs.FlaggedAsync(XamlRoot, this, true, false);
+    private void MultiSelect_Click(object sender, RoutedEventArgs e) => StartMulti(null);
+    private bool _syncPick;
+    private void StartMulti(MessageItem? first)
+    {
+        VM.StartMultiSelect(first);
+        _syncPick = true;
+        MessageList.SelectionMode = ListViewSelectionMode.Multiple;
+        if (first != null) MessageList.SelectedItems.Add(first);
+        _syncPick = false;
+    }
+    private void EndMulti()
+    {
+        _syncPick = true;
+        MessageList.SelectionMode = ListViewSelectionMode.None;
+        _syncPick = false;
+        VM.EndMultiSelect();
+    }
+    private void MessageList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_syncPick || !VM.IsMultiSelect) return;
+        foreach (var o in e.AddedItems.OfType<MessageItem>()) if (o.IsSystem) MessageList.SelectedItems.Remove(o); else o.IsPicked = true;
+        foreach (var o in e.RemovedItems.OfType<MessageItem>()) o.IsPicked = false;
+        VM.UpdatePicked();
+    }
+    private void EndMulti_Click(object sender, RoutedEventArgs e) => EndMulti();
+    private async void ForwardPicked_Click(object sender, RoutedEventArgs e)
+    {
+        var ids = VM.Picked().Where(m => !m.IsRecalled).Select(m => m.Id).ToList();
+        if (ids.Count == 0) { VM.ShowStatus("请先选择消息"); return; }
+        await P2Dialogs.ForwardAsync(XamlRoot, ids); EndMulti();
+    }
+    private async void StarPicked_Click(object sender, RoutedEventArgs e) { await VM.StarPickedAsync(); EndMulti(); }
+    private async void DeletePicked_Click(object sender, RoutedEventArgs e)
+    {
+        var n = VM.PickedCount; if (n == 0) return;
+        var d = Services.ThemeService.Prepare(new ContentDialog { XamlRoot = XamlRoot, Title = $"删除选中的 {n} 条消息？", Content = "只会从本机删除，对方仍保留。此操作无法撤销。",
+            PrimaryButtonText = "删除", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close });
+        if (await d.ShowAsync() == ContentDialogResult.Primary) { await VM.DeletePickedAsync(); EndMulti(); }
+    }
+    private void Composer_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        var t = Composer.Text; var pos = Composer.SelectionStart;
+        if (pos <= 0 || pos > t.Length || t[pos - 1] != '@') return;
+        var cands = VM.MentionCandidates();
+        if (cands.Count == 0) return;
+        var f = new MenuFlyout();
+        foreach (var c in cands)
+        {
+            var it = new MenuFlyoutItem { Text = c.Name };
+            it.Click += (_, _) =>
+            {
+                var cur = Composer.Text; var at = Math.Min(pos, cur.Length);
+                Composer.Text = cur.Insert(at, c.Name + " ");
+                Composer.SelectionStart = at + c.Name.Length + 1;
+                VM.ComposeText = Composer.Text; Composer.Focus(FocusState.Keyboard);
+            };
+            f.Items.Add(it);
+        }
+        f.ShowAt(Composer);
     }
 
     private void AddPeer_KeyDown(object sender, KeyRoutedEventArgs e)

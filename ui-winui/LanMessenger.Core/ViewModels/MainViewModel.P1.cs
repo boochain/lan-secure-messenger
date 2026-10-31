@@ -33,7 +33,7 @@ public partial class MainViewModel
         try
         {
             if (ed != null) await client.EditMessageAsync(ed.Id, text.TrimEnd());
-            else if (rp != null) await client.SendReplyAsync(conv, text.TrimEnd(), rp.Id);
+            else if (rp != null) await SendTextP2Async(client, conv, text, rp.Id);
             _ui.Post(() => { EditItem = null; ReplyItem = null; });
         }
         catch (Exception e)

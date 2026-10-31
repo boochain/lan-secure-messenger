@@ -62,6 +62,11 @@ public sealed class Message
     public List<Reaction> Reactions { get; set; } = new();
     public bool Edited { get; set; }
     public bool Recalled { get; set; }
+    // v0.6.1 P2
+    public bool Forwarded { get; set; }
+    public bool Pinned { get; set; }
+    public bool Starred { get; set; }
+    public bool MentionsMe { get; set; }
 }
 
 public sealed class Reaction
@@ -174,6 +179,9 @@ public sealed class Conversation
     public string LastSender { get; set; } = "";
     public MsgKind? LastKind { get; set; }
     public string LastFile { get; set; } = "";
+    // v0.6.1 P2 (local only)
+    public bool Pinned { get; set; }
+    public string Draft { get; set; } = "";
 }
 
 public sealed class Me
