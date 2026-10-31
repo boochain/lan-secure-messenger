@@ -217,6 +217,24 @@ try:
         X.cmd(f"recall {mid}")
         got = wait(lambda: [m for m in A.j("history", X.fp) if m["id"] == mid and m.get("recalled")], 15)
         (ok if got else fail)("P1 recall XP -> Rust")
+        # v0.6.1 P2: typing, @mention, forward (both ways), local flags / pinned chat / draft on XP
+        n0 = len(X.lines)
+        A.j("raw", "send_typing", json.dumps({"conversation": "dm:" + X.fp}))
+        got = X.ev(r"typing\tdm:" + re.escape(A.fp), 10, n0)
+        (ok if got else fail)("P2 typing Rust -> XP", got or "")
+        out = X.cmd(f"mention {A.fp} {A.fp} @RustA 请看")[-1]; xm = out.split()[-1]
+        got = wait(lambda: [m for m in A.j("history", X.fp) if m["id"] == xm and m.get("mentions_me")], 15)
+        (ok if got else fail)("P2 @mention XP -> Rust (mentions_me)")
+        out = X.cmd(f"forward {xm} {A.fp}")[-1]; xf = out.split()[-1]
+        got = wait(lambda: [m for m in A.j("history", X.fp) if m["id"] == xf and m.get("forwarded") and m["body"] == "@RustA 请看"], 15)
+        (ok if got else fail)("P2 forward XP -> Rust (forwarded flag)")
+        rf = A.j("raw", "forward_message", json.dumps({"id": rid, "conversations": ["dm:" + X.fp]}))
+        rfid = rf[0]["id"] if isinstance(rf, list) and rf else ""
+        got = wait(lambda: "forwarded=1" in "".join(X.cmd(f"msginfo {rfid}")), 15) if rfid else None
+        (ok if got else fail)("P2 forward Rust -> XP", rfid)
+        X.cmd(f"flag {xm} 1 1"); X.cmd(f"pinconv {A.fp} 1"); X.cmd(f"draft {A.fp} 草稿内容")
+        info = "".join(X.cmd(f"msginfo {xm}")); d = X.cmd(f"draft {A.fp}")[-1]
+        (ok if ("pinned=1" in info and "starred=1" in info and "pinned=1" in d and "草稿内容" in d) else fail)("P2 XP local pin/star/pinned chat/draft", d)
     # long + multiline-ish unicode text
     long = "长消息" * 3000
     out = X.cmd(f"send {A.fp} {long}")[-1]; lid = out.split()[-1]

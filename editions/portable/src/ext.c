@@ -29,8 +29,8 @@ static int xj_get(const char *j, const char *key, char *out, size_t n){ const ch
 
 static int peer_has_ext(lsm_core *c, const char *fp){ conn *k=conn_by_fp(c,fp); lsm_contact *ct; if(k) return (k->rcaps&CAP_EXT)!=0; ct=contact_get(c,fp); return ct && (ct->caps&CAP_EXT); }
 
-static void hist_rec_ext(lsm_core *c, lsm_msg *m){ buf_t b={0}; bfmt(&b,"X\t%s\t%s\t",m->id,m->reply_to); esc_put(&b,m->quote); b_u8(&b,'\t'); esc_put(&b,m->reactions); bfmt(&b,"\t%d\t%d\t",m->edited,m->recalled); esc_put(&b,m->body?m->body:""); b_u8(&b,'\t'); esc_put(&b,m->mentions); hist_append(c,&b); b_free(&b); }
-static void load_ext_rec(lsm_core *c, char **f, int k){ lsm_msg *m; if(k<8 || !(m=msg_get(c,f[1]))) return; scpy(m->reply_to,f[2],40); scpy(m->quote,f[3],sizeof m->quote); scpy(m->reactions,f[4],sizeof m->reactions); m->edited=atoi(f[5]); m->recalled=atoi(f[6]); free(m->body); m->body=xstrdup(f[7]); if(k>=9) scpy(m->mentions,f[8],sizeof m->mentions); }
+static void hist_rec_ext(lsm_core *c, lsm_msg *m){ buf_t b={0}; bfmt(&b,"X\t%s\t%s\t",m->id,m->reply_to); esc_put(&b,m->quote); b_u8(&b,'\t'); esc_put(&b,m->reactions); bfmt(&b,"\t%d\t%d\t",m->edited,m->recalled); esc_put(&b,m->body?m->body:""); b_u8(&b,'\t'); esc_put(&b,m->mentions); bfmt(&b,"\t%d\t%d\t%d\t%d",m->forwarded,m->pinned,m->starred,m->mentions_me); hist_append(c,&b); b_free(&b); }
+static void load_ext_rec(lsm_core *c, char **f, int k){ lsm_msg *m; if(k<8 || !(m=msg_get(c,f[1]))) return; scpy(m->reply_to,f[2],40); scpy(m->quote,f[3],sizeof m->quote); scpy(m->reactions,f[4],sizeof m->reactions); m->edited=atoi(f[5]); m->recalled=atoi(f[6]); free(m->body); m->body=xstrdup(f[7]); if(k>=9) scpy(m->mentions,f[8],sizeof m->mentions); if(k>=13){ m->forwarded=atoi(f[9]); m->pinned=atoi(f[10]); m->starred=atoi(f[11]); m->mentions_me=atoi(f[12]); } }
 
 static void quote_of(lsm_core *c, const char *id, char *out, size_t n){ lsm_msg *m=msg_get(c,id); char w[300]; int i; out[0]=0; if(!m) return;
     if(m->recalled) scpy(w,"\xef\xbc\x88\xe5\xb7\xb2\xe6\x92\xa4\xe5\x9b\x9e\xef\xbc\x89",sizeof w); else if(m->kind==K_FILE) snprintf(w,sizeof w,"[\xe6\x96\x87\xe4\xbb\xb6] %s",m->file_name); else scpy(w,m->body?m->body:"",sizeof w);
@@ -67,7 +67,7 @@ static void ext_recv(lsm_core *c, const char *fp, const char *ids, rd_t *r){ int
     xj_get(js,"k",k,sizeof k); xj_get(js,"target",target,sizeof target);
     if(!strcmp(k,"text")){ size_t bl=strlen(js)+1; char *body=(char*)xmalloc(bl), rt[64], q[400], mn[512]; lsm_msg *m;
         xj_get(js,"body",body,bl); xj_get(js,"reply_to",rt,sizeof rt); xj_get(js,"quote",q,sizeof q); xj_get(js,"mentions",mn,sizeof mn); utf8_trunc(body,64*1024*3);
-        if(!msg_get(c,ids)){ m=add_message(c,ids,conv,0,fp,K_TEXT,body,ts,ST_RECEIVED); scpy(m->reply_to,rt,40); if(!q[0] && rt[0]) quote_of(c,rt,q,sizeof q); utf8_trunc_chars(q,200); scpy(m->quote,q,sizeof m->quote); scpy(m->mentions,mn,sizeof m->mentions); if(m->reply_to[0]||m->quote[0]||m->mentions[0]){ hist_rec_ext(c,m); emit_msg(c,"msg_update",m); } }
+        if(!msg_get(c,ids)){ m=add_message(c,ids,conv,0,fp,K_TEXT,body,ts,ST_RECEIVED); scpy(m->reply_to,rt,40); if(!q[0] && rt[0]) quote_of(c,rt,q,sizeof q); utf8_trunc_chars(q,200); scpy(m->quote,q,sizeof m->quote); scpy(m->mentions,mn,sizeof m->mentions); { const char *mp=strstr(js,"\"mentions\""); m->mentions_me=mp && strstr(mp,c->fp)!=NULL; } m->forwarded=strstr(js,"\"fwd\":true")!=NULL; if(m->reply_to[0]||m->quote[0]||m->mentions[0]||m->forwarded){ hist_rec_ext(c,m); emit_msg(c,"msg_update",m); } }
         free(body); }
     else if(!strcmp(k,"react")){ char em[40]; lsm_msg *m=msg_get(c,target); xj_get(js,"emoji",em,sizeof em); utf8_trunc_chars(em,8);
         if(m && !strcmp(m->conv,conv)){ react_set(m->reactions,sizeof m->reactions,fp,em); hist_rec_ext(c,m); emit_msg(c,"msg_update",m); } }
@@ -77,6 +77,7 @@ static void ext_recv(lsm_core *c, const char *fp, const char *ids, rd_t *r){ int
             else if(!m->recalled){ size_t bl=strlen(js)+1; char *body=(char*)xmalloc(bl); xj_get(js,"body",body,bl); free(m->body); m->body=body; m->edited=1; }
             hist_rec_ext(c,m); emit_msg(c,"msg_update",m); }
         else logf_(c,"ext %s from %s for a message it did not send: ignored",k,fp); }
+    else if(!strcmp(k,"typing")){ lsm_contact *ct=contact_get(c,fp); emit(c,"typing\t%s\t%s\t%s",conv,fp,ct?lsm_display_name(ct):fp); }
     free(js); }
 
 int lsm_send_text2(lsm_core *c, const char *conv, const char *text, const char *reply_to, const char *mentions_csv, char *msgid_out, char *err){
