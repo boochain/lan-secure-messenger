@@ -68,7 +68,8 @@ for th in a.themes.split(","):
     if True:
         # GUI -> v0.5 file via the core (drag-drop path is the same lsm_send_file call), image preview on the sender side too
         from PIL import Image as _I; _I.new("RGB", (300, 200), (30, 160, 90)).save(f"{W}/截图.png")
-        x("mousemove", "--window", wid, "1036", "645"); x("click", "1"); time.sleep(2); shot(f"{th}-09-file-chooser")
+        # Composer buttons are stacked 发送 / 发送文件… / 表情… — hit the middle one (file chooser), not 表情.
+        x("mousemove", "--window", wid, "1036", "618"); x("click", "1"); time.sleep(2); shot(f"{th}-09-file-chooser")
         x("key", "ctrl+l"); time.sleep(0.5); x("type", "--delay", "20", f"{W}/截图.png"); time.sleep(0.5); x("key", "Return"); time.sleep(5)
     shot(f"{th}-02-chat")
     # add-by-IP dialog (header + button)
@@ -92,6 +93,35 @@ for th in a.themes.split(","):
     # drag-drop hint is only visible during a drag; tray shown top-right in stalonetray
     subprocess.run(["import", "-window", "root", "-crop", "200x40+1080+0", "-scale", "300%", f"{a.out}/{th}-08-tray-crop.png"], env=env)
     gui.terminate(); gui.wait(5); time.sleep(1)
+# Colour-emoji in chat (e.g. 📎) and modal dialogs: OCR reads emoji as low-contrast "text";
+# file-chooser is OS chrome + folder thumbnails. Record ignore rects for the colour audit.
+def emoji_boxes(png):
+    from PIL import Image; import numpy as np
+    try: import cv2
+    except ImportError: return []
+    a = np.asarray(Image.open(png).convert("RGB")).astype(int); r, g, b = a[..., 0], a[..., 1], a[..., 2]
+    # saturated yellow/cyan/magenta blobs typical of Noto Color Emoji / paperclip
+    m = (((r > 180) & (g > 100) & (b < 100)) | ((r < 180) & (g > 150) & (b > 150) & (g + b > r + 80))).astype("uint8")
+    n, _, stt, _ = cv2.connectedComponentsWithStats(m, connectivity=8)
+    return [[int(stt[i, 0]) - 4, int(stt[i, 1]) - 4, int(stt[i, 2]) + 8, int(stt[i, 3]) + 8] for i in range(1, n) if 20 <= stt[i, cv2.CC_STAT_AREA] <= 5000]
+
+ign_path = f"{a.out}/audit_ignore.json"
+ign = {"_reasons": {
+    "*-04-add-by-ip emoji": "colour emoji glyph inside a chat bubble behind the modal is a picture, not UI text",
+    "*-04-add-by-ip only": "ContentDialog-style modal: page behind the scrim is inactive (WCAG 1.4.3); audit the dialog only",
+    "*-09-file-chooser": "GTK file chooser is OS chrome (icons, emblems, folder previews), not app UI",
+}}
+for th in a.themes.split(","):
+    add = f"{a.out}/{th}-04-add-by-ip.png"
+    if os.path.exists(add):
+        # dialog roughly centered in 1100x700 window
+        ign[f"{th}-04-add-by-ip.png"] = {"only": [300, 180, 500, 280], "ignore": emoji_boxes(add)}
+    fc = f"{a.out}/{th}-09-file-chooser.png"
+    if os.path.exists(fc):
+        # ignore the whole chooser overlay region (center of window)
+        ign[f"{th}-09-file-chooser.png"] = [[250, 80, 600, 560]]
+json.dump(ign, open(ign_path, "w"), ensure_ascii=False, indent=1); print("wrote", ign_path, flush=True)
+
 # release gate: live update check (GitHub releases API) with this build's version must say "up to date"
 UPD = f"{W}/upd.txt"; want = os.environ.get("LSM_EXPECT_VERSION") or (os.environ["GITHUB_REF_NAME"][1:] if os.environ.get("GITHUB_REF_TYPE") == "tag" else open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "VERSION")).read().strip())
 gui = bg([a.gui, "--data", f"{W}/gui-upd", "--name", "更新检查", "--port", "47340", "--disco-port", "47341", "--no-discovery"], env=dict(env, LSM_THEME="light", LSM_INSTANCE="upd", LSM_TEST_UPDCHECK=UPD))

@@ -403,6 +403,9 @@ static void conn_start(lsm_core *c, sock_t s, const struct sockaddr_in *a, int i
 static void dial(lsm_core *c, const struct sockaddr_in *a, const char *key){
     sock_t s=socket(AF_INET,SOCK_STREAM,IPPROTO_TCP); int r, e; char as[64];
     if(s==BADSOCK) return; set_nonblock(s);
+    /* VPN bypass: bind the outbound socket to the preferred LAN IP when set */
+    if(c->bind4){ struct sockaddr_in b; memset(&b,0,sizeof b); b.sin_family=AF_INET; b.sin_addr.s_addr=c->bind4;
+        if(bind(s,(struct sockaddr*)&b,sizeof b)){ /* non-fatal: still try unbound */ } }
     r=connect(s,(const struct sockaddr*)a,sizeof *a); e=SOCKERR;
     addr_str(a,as,sizeof as);
     if(r!=0 && !INPROGRESS(e)){ closesock(s); logf_(c,"dial %s failed immediately (%d)",as,e); return; }
@@ -1002,17 +1005,15 @@ lsm_core *lsm_start(const lsm_opts *o, char *err, size_t errn){
     { char *t=load_sealed(c,"manual.dat"), *l, *nx; for(l=t; l && *l; l=nx){ manual_rt m; nx=strchr(l,'\n'); if(nx) *nx++=0; memset(&m,0,sizeof m); if(resolve(l,41235,&m.sa)) continue; scpy(m.addr,l,sizeof m.addr);
         c->manual=(manual_rt*)xrealloc(c->manual,sizeof(manual_rt)*(c->nmanual+1)); c->manual[c->nmanual++]=m; } free(t); }
     { int i; for(i=0;i<c->ncontacts;i++){ c->contacts[i].online=0; c->contacts[i].rtt_ms=-1; } }
-    /* TCP listener: optional LAN bind (VPN bypass); preferred port, fallback ephemeral */
+    /* TCP listen on all interfaces; bind_lan_ip only steers outbound dial (VPN bypass). */
     c->bind4=0; if(o->bind_lan_ip) parse_bind4(o->bind_lan_ip,&c->bind4);
     c->lsock=socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
-    memset(&a,0,sizeof a); a.sin_family=AF_INET; a.sin_addr.s_addr=c->bind4?c->bind4:INADDR_ANY; a.sin_port=htons((unsigned short)c->o.listen_port);
+    memset(&a,0,sizeof a); a.sin_family=AF_INET; a.sin_addr.s_addr=INADDR_ANY; a.sin_port=htons((unsigned short)c->o.listen_port);
 #ifndef _WIN32
     setsockopt(c->lsock,SOL_SOCKET,SO_REUSEADDR,(const char*)&one,sizeof one);
 #endif
     if(bind(c->lsock,(struct sockaddr*)&a,sizeof a)){
-        if(c->bind4){ a.sin_addr.s_addr=INADDR_ANY; c->bind4=0; }
-        a.sin_port=htons((unsigned short)c->o.listen_port);
-        if(bind(c->lsock,(struct sockaddr*)&a,sizeof a)){ a.sin_port=0; if(bind(c->lsock,(struct sockaddr*)&a,sizeof a)){ scpy(err,"cannot bind TCP listener",errn); return NULL; } }
+        a.sin_port=0; if(bind(c->lsock,(struct sockaddr*)&a,sizeof a)){ scpy(err,"cannot bind TCP listener",errn); return NULL; }
     }
     listen(c->lsock,16); set_nonblock(c->lsock);
     { socklen_t al=sizeof a; getsockname(c->lsock,(struct sockaddr*)&a,&al); c->lport=ntohs(a.sin_port); }

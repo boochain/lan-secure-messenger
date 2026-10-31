@@ -211,6 +211,7 @@ pub struct Engine {
     relay_peers: HashMap<String, String>,
     relay_last_open: Instant,
     retain_last_pull: Instant,
+    offer_resend_at: Instant,
 }
 
 pub async fn start(opts: EngineOptions) -> Result<EngineHandle> {
@@ -231,28 +232,18 @@ pub async fn start(opts: EngineOptions) -> Result<EngineHandle> {
     let shutdown = Arc::new(Notify::new());
     let me = identity.fingerprint().to_string();
 
-    // TCP listener: bind to LAN IP when set (VPN bypass); preferred port, else ephemeral.
+    // TCP listen on all interfaces; bind_lan_ip only steers outbound dial + discovery (VPN bypass).
     let mut tcp_error = String::new();
     let bind_ip = crate::netif::preferred_lan_ip(&settings.include_interfaces, &settings.exclude_interfaces, &settings.bind_lan_ip);
-    let listen_host = bind_ip.map(|ip| ip.to_string()).unwrap_or_else(|| "0.0.0.0".into());
-    let listener = match TcpListener::bind((listen_host.as_str(), settings.listen_port)).await {
-        Ok(l) => {
-            if let Some(ip) = bind_ip {
-                tracing::info!(%ip, "TCP listen bound to LAN interface (VPN bypass)");
-            }
-            l
-        }
+    if let Some(ip) = bind_ip {
+        tracing::info!(%ip, "preferred LAN IP for dial/discovery (VPN bypass); TCP listen stays 0.0.0.0");
+    }
+    let listener = match TcpListener::bind(("0.0.0.0", settings.listen_port)).await {
+        Ok(l) => l,
         Err(e) => {
-            tcp_error = format!("TCP {}@{} 绑定失败 ({e})，改用随机端口", settings.listen_port, listen_host);
+            tcp_error = format!("TCP {} 绑定失败 ({e})，改用随机端口", settings.listen_port);
             tracing::warn!("{tcp_error}");
-            let fallback = bind_ip.map(|ip| ip.to_string()).unwrap_or_else(|| "0.0.0.0".into());
-            match TcpListener::bind((fallback.as_str(), 0u16)).await {
-                Ok(l) => l,
-                Err(e2) => {
-                    tracing::warn!("bind {fallback}:0 failed ({e2}); falling back to 0.0.0.0");
-                    TcpListener::bind(("0.0.0.0", 0)).await?
-                }
-            }
+            TcpListener::bind(("0.0.0.0", 0)).await?
         }
     };
     let port = listener.local_addr()?.port();
@@ -363,6 +354,7 @@ pub async fn start(opts: EngineOptions) -> Result<EngineHandle> {
         relay_peers: HashMap::new(),
         relay_last_open: Instant::now(),
         retain_last_pull: Instant::now() - Duration::from_secs(60),
+        offer_resend_at: Instant::now(),
     };
     eng.rebuild_outbox();
     eng.restore_partials();
@@ -765,6 +757,11 @@ impl Engine {
         if self.relay_state.0 == "online" && self.retain_last_pull.elapsed() >= Duration::from_secs(45) {
             self.retain_last_pull = now;
             self.kick_retain_pull();
+        }
+        // Re-offer paused outbound transfers / retry deferred inbound accepts (direct↔relay mid-transfer).
+        if now >= self.offer_resend_at {
+            self.offer_resend_at = now + Duration::from_secs(3);
+            self.resend_pending_offers();
         }
         // Dial peers that should be online.
         let mut to_dial = vec![];

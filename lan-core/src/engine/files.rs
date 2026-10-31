@@ -766,6 +766,50 @@ impl Engine {
         }
     }
 
+    /// Re-offer every outbound transfer still waiting on a peer that is online.
+    /// Covers a lost FileOffer after direct↔relay switch (rust↔rust mid-transfer).
+    pub(crate) fn resend_pending_offers(&mut self) {
+        let fps: Vec<String> = self
+            .conns
+            .keys()
+            .filter(|fp| {
+                self.transfers.values().any(|t| {
+                    t.peer_fp == **fp && t.direction == Direction::Out && t.state == TransferState::Offered && t.sha256.is_some()
+                })
+            })
+            .cloned()
+            .collect();
+        for fp in fps {
+            self.resend_offers(&fp);
+        }
+        // Receiver side: deferred accept waiting on a re-offer that already arrived (reoffer_pending)
+        // or an Offered+accepted inbound with a saved partial whose accept failed earlier.
+        let retry: Vec<Uuid> = self
+            .transfers
+            .values()
+            .filter(|t| {
+                t.direction == Direction::In
+                    && t.state == TransferState::Offered
+                    && t.accepted
+                    && !t.resume_loading
+                    && t.reoffer_pending
+                    && self.conns.contains_key(&t.peer_fp)
+            })
+            .map(|t| t.id)
+            .collect();
+        for tid in retry {
+            if let Some(t) = self.transfers.get_mut(&tid) {
+                t.reoffer_pending = false;
+            }
+            if let Err(e) = self.accept_transfer(tid) {
+                if let Some(t) = self.transfers.get_mut(&tid) {
+                    t.reoffer_pending = true;
+                }
+                tracing::debug!(%tid, error = %e.message, "retry deferred resume failed");
+            }
+        }
+    }
+
     pub(crate) fn fail_transfers_for(&mut self, fp: &str, why: &str) {
         // CAP_RESUME peers: interrupted transfers wait for the next link (LAN or relay) and resume.
         let waiting: Vec<Uuid> = self
@@ -1189,7 +1233,8 @@ impl Engine {
                 }
             }
             TransferEvt::RecvInterrupted { tid, part } => {
-                let keep = self.transfers.get(&tid).map(|t| t.state == TransferState::Offered && t.resumable && t.direction == Direction::In).unwrap_or(false);
+                let snap = self.transfers.get(&tid).map(|t| (t.state, t.resumable, t.direction));
+                let keep = matches!(snap, Some((TransferState::Offered, true, Direction::In)));
                 if keep {
                     tracing::info!(%tid, written = part.written, "partial download kept for resume");
                     let mut go = false;
@@ -1201,10 +1246,18 @@ impl Engine {
                     }
                     if go && self.transfers.get(&tid).map(|t| self.conns.contains_key(&t.peer_fp)).unwrap_or(false) {
                         if let Err(e) = self.accept_transfer(tid) {
+                            // keep pending so a later re-offer / tick retry can resume
+                            if let Some(t) = self.transfers.get_mut(&tid) {
+                                t.reoffer_pending = true;
+                            }
                             tracing::debug!(%tid, error = %e.message, "deferred resume failed");
                         }
                     }
                     self.emit_transfer(tid, true);
+                } else if matches!(snap, Some((TransferState::Active, _, Direction::In))) {
+                    // Stale interrupt from a recv task superseded by a re-accept on the new link:
+                    // the active task owns the .part — do not delete it.
+                    tracing::debug!(%tid, "ignoring stale RecvInterrupted (transfer active again)");
                 } else {
                     remove_part_and_sidecar(&part.part, false);
                 }

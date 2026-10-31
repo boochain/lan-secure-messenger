@@ -135,7 +135,7 @@ jobs:
       - name: Audit (fails the job on any violation)
         run: |
           ls shots/linux/*.png shots/xp/*.png
-          python3 tools/ui_color_audit.py --content /tmp/lsm-gui/截图.png --content /tmp/lsm-gui/会议白板.png --out ui-audit/linux shots/linux/*.png
+          python3 tools/ui_color_audit.py --content /tmp/lsm-gui/截图.png --content /tmp/lsm-gui/会议白板.png --ignore-file shots/linux/audit_ignore.json --out ui-audit/linux shots/linux/*.png
           python3 tools/ui_color_audit.py --palette tools/palettes/xp.json --ignore-file shots/xp/audit_ignore.json --out ui-audit/xp shots/xp/*.png
       - uses: actions/upload-artifact@v4
         if: always()
