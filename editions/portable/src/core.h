@@ -204,6 +204,13 @@ int lsm_send_text2(lsm_core *c, const char *conv, const char *text, const char *
 int lsm_react(lsm_core *c, const char *id, const char *emoji, char *err);   /* same emoji again = remove */
 int lsm_edit_message(lsm_core *c, const char *id, const char *body, char *err);  /* own text, within 24 h */
 int lsm_recall_message(lsm_core *c, const char *id, char *err);
+/* P1 UI helpers */
+int  lsm_voice_secs(const char *name);                 /* -1 unless "lsm-voice-<N>s-…" */
+void lsm_voice_name(int secs, const char *ext, char *out, size_t n);
+int  lsm_can_modify(lsm_core *c, const lsm_msg *m);    /* own text, not recalled, < 24 h */
+int  lsm_my_reaction(lsm_core *c, const lsm_msg *m, char *emoji, size_t n);
+void lsm_reaction_summary(const lsm_msg *m, char *out, size_t n);
+const char *lsm_display_body(const lsm_msg *m, char *buf, size_t n);
 
 /* helpers */
 void lsm_uuid_str(const uint8_t u[16], char out[37]);

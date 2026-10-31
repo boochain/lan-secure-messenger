@@ -111,3 +111,25 @@ static int edit_or_recall(lsm_core *c, const char *id, const char *body, int rec
     hist_rec_ext(c,m); emit_msg(c,"msg_update",m); uuid_new(nid); send_ext(c,m->conv,&j,fb,nid,NULL); free(fb); b_free(&j); mu_unlock(&c->mu); return 0; }
 int lsm_edit_message(lsm_core *c, const char *id, const char *body, char *err){ return edit_or_recall(c,id,body,0,err); }
 int lsm_recall_message(lsm_core *c, const char *id, char *err){ return edit_or_recall(c,id,NULL,1,err); }
+
+/* ---- UI helpers shared by GTK3/GTK4/XP/Android ---- */
+int lsm_voice_secs(const char *name){ const char *b; int s; if(!name) return -1; b=strrchr(name,'/'); b=b?b+1:name; { const char *w=strrchr(b,'\\'); if(w) b=w+1; }
+    if(strncmp(b,"lsm-voice-",10)) return -1; s=atoi(b+10); return s<0?0:s; }
+void lsm_voice_name(int secs, const char *ext, char *out, size_t n){ time_t t=time(NULL); struct tm tmv; char ts[32];
+#ifdef _WIN32
+    tmv=*localtime(&t);
+#else
+    localtime_r(&t,&tmv);
+#endif
+    strftime(ts,sizeof ts,"%Y%m%d-%H%M%S",&tmv); snprintf(out,n,"lsm-voice-%ds-%s.%s",secs<0?0:secs,ts,ext&&*ext?ext:"wav"); }
+int lsm_can_modify(lsm_core *c, const lsm_msg *m){ (void)c; return m && m->out && m->kind==K_TEXT && !m->recalled && wall_ms()-m->ts_ms < 24LL*3600*1000; }
+int lsm_my_reaction(lsm_core *c, const lsm_msg *m, char *emoji, size_t n){ return react_get(m->reactions,lsm_my_fp(c),emoji,n); }
+/* "👍 2  ❤️ 1" (empty when none) */
+void lsm_reaction_summary(const lsm_msg *m, char *out, size_t n){ char em[16][40]; int cnt[16], ne=0, i; const char *p=m->reactions; out[0]=0;
+    while(p && *p){ const char *eq=strchr(p,'='), *sc; char e[40]; size_t l; if(!eq) break; sc=strchr(eq,';'); l=sc?(size_t)(sc-eq-1):strlen(eq+1); if(l>=sizeof e) l=sizeof e-1; memcpy(e,eq+1,l); e[l]=0;
+        if(e[0]){ for(i=0;i<ne;i++) if(!strcmp(em[i],e)) break; if(i==ne && ne<16){ strcpy(em[ne],e); cnt[ne++]=0; } if(i<16) cnt[i]++; }
+        p=sc?sc+1:NULL; }
+    for(i=0;i<ne;i++){ size_t o=strlen(out); snprintf(out+o,n-o,"%s%s %d",i?"  ":"",em[i],cnt[i]); } }
+/* body to display: recalled / edited markers */
+const char *lsm_display_body(const lsm_msg *m, char *buf, size_t n){ if(m->recalled){ snprintf(buf,n,"%s",m->out?"你撤回了一条消息":"对方撤回了一条消息"); return buf; }
+    if(m->edited){ snprintf(buf,n,"%s（已编辑）",m->body?m->body:""); return buf; } return m->body?m->body:""; }
