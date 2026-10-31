@@ -1,10 +1,10 @@
 /* v0.6.1 P2 (C core, same protocol as lan-core engine/p2.rs): pinned chats + drafts (sealed conv_prefs.bin),
  * local pinned/starred message flags, typing indicator (ephemeral Ext {"k":"typing"}), forward. Included by core.c after ext.c. */
-typedef struct { char conv[64]; int pinned; char *draft; int64_t last_typing; } p2conv;
+typedef struct { char conv[64]; int pinned; char *draft; int64_t last_typing; int archived, ttl; char folders[400]; } p2conv;
 struct p2st { p2conv *v; int n; int loaded; };
 static p2conv *p2_get(lsm_core *c, const char *conv, int create);
 static void p2_save(lsm_core *c){ buf_t b={0}; int i; size_t sn; uint8_t *s; char p[600]; FILE *f; if(!c->p2) return;
-    for(i=0;i<c->p2->n;i++){ p2conv *e=&c->p2->v[i]; if(!e->pinned && !(e->draft&&*e->draft)) continue; bfmt(&b,"%s\t%d\t",e->conv,e->pinned); esc_put(&b,e->draft?e->draft:""); b_u8(&b,'\n'); }
+    for(i=0;i<c->p2->n;i++){ p2conv *e=&c->p2->v[i]; if(!e->pinned && !(e->draft&&*e->draft) && !e->archived && !e->ttl && !e->folders[0]) continue; bfmt(&b,"%s\t%d\t",e->conv,e->pinned); esc_put(&b,e->draft?e->draft:""); bfmt(&b,"\t%d\t%d\t",e->archived,e->ttl); esc_put(&b,e->folders); b_u8(&b,'\n'); }
     snprintf(p,sizeof p,"%s/conv_prefs.bin",c->data_dir); s=seal_rand(c->store_key,b.p?b.p:(const uint8_t*)"",b.n,&sn);
     f=ufopen(p,"wb"); if(f){ fwrite(s,1,sn,f); fclose(f); } free(s); b_free(&b); }
 static void p2_load(lsm_core *c){ char p[600]; FILE *f; long n; uint8_t *d; size_t pn; char *t, *line, *nx;
@@ -13,8 +13,8 @@ static void p2_load(lsm_core *c){ char p[600]; FILE *f; long n; uint8_t *d; size
     if(n<=0||n>(8<<20)){ fclose(f); return; } d=(uint8_t*)xmalloc((size_t)n); if(fread(d,1,(size_t)n,f)!=(size_t)n){ fclose(f); free(d); return; } fclose(f);
     t=(char*)open_rand(c->store_key,d,(size_t)n,&pn); free(d); if(!t) return;
     { char *z=(char*)xmalloc(pn+1); memcpy(z,t,pn); z[pn]=0; free(t); t=z; }
-    for(line=t; line && *line; line=nx){ char *fl[3]; int k; p2conv *e; nx=strchr(line,'\n'); if(nx) *nx++=0; k=split_tabs(line,fl,3); if(k<3) continue;
-        e=p2_get(c,fl[0],1); if(!e) continue; e->pinned=atoi(fl[1]); free(e->draft); e->draft=xstrdup(fl[2]); }
+    for(line=t; line && *line; line=nx){ char *fl[6]; int k; p2conv *e; nx=strchr(line,'\n'); if(nx) *nx++=0; k=split_tabs(line,fl,6); if(k<3) continue;
+        e=p2_get(c,fl[0],1); if(!e) continue; e->pinned=atoi(fl[1]); free(e->draft); e->draft=xstrdup(fl[2]); if(k>=6){ e->archived=atoi(fl[3]); e->ttl=atoi(fl[4]); scpy(e->folders,fl[5],sizeof e->folders); } }
     free(t); }
 static p2conv *p2_get(lsm_core *c, const char *conv, int create){ int i; p2conv *e; if(!c->p2||!c->p2->loaded){ if(!c->p2||!c->p2->loaded) p2_load(c); }
     for(i=0;i<c->p2->n;i++) if(!strcmp(c->p2->v[i].conv,conv)) return &c->p2->v[i];

@@ -60,6 +60,7 @@ static void react_set(char *list, size_t n, const char *fp, const char *emoji){ 
 static int react_get(const char *list, const char *fp, char *emoji, size_t n){ const char *p=list; size_t fl=strlen(fp); emoji[0]=0;
     while(p && *p){ const char *e=strchr(p,';'); size_t l=e?(size_t)(e-p):strlen(p); if(l>fl && !strncmp(p,fp,fl) && p[fl]=='='){ size_t vl=l-fl-1; if(vl>=n) vl=n-1; memcpy(emoji,p+fl+1,vl); emoji[vl]=0; return 1; } p=e?e+1:NULL; } return 0; }
 
+static void v062_recv(lsm_core *c, const char *fp, const char *ids, const char *conv, const char *k, const char *target, const char *js, int64_t ts);
 static void ext_recv(lsm_core *c, const char *fp, const char *ids, rd_t *r){ int hasg=r_u8(r); uint8_t gid[16]; uint64_t ep; size_t dl; const uint8_t *d; int64_t ts; char conv[64], *js=NULL, k[16], target[64];
     if(hasg) r_uuid(r,gid); ep=r_u64(r); d=r_bytes(r,&dl); ts=(int64_t)r_u64(r); (void)ep; if(r->err) return;
     if(hasg){ lsm_group *g=group_get(c,gid); size_t pn; uint8_t *pl; if(!g||!group_is_member(g,fp)) return; conv_group(gid,conv); pl=open_rand(g->key,d,dl,&pn); if(!pl) return; js=(char*)xmalloc(pn+1); memcpy(js,pl,pn); js[pn]=0; free(pl); }
@@ -77,6 +78,7 @@ static void ext_recv(lsm_core *c, const char *fp, const char *ids, rd_t *r){ int
             else if(!m->recalled){ size_t bl=strlen(js)+1; char *body=(char*)xmalloc(bl); xj_get(js,"body",body,bl); free(m->body); m->body=body; m->edited=1; }
             hist_rec_ext(c,m); emit_msg(c,"msg_update",m); }
         else logf_(c,"ext %s from %s for a message it did not send: ignored",k,fp); }
+    else if(!strcmp(k,"poll")||!strcmp(k,"vote")||!strcmp(k,"poll_close")||!strcmp(k,"ttl")) v062_recv(c,fp,ids,conv,k,target,js,ts);
     else if(!strcmp(k,"typing")){ lsm_contact *ct=contact_get(c,fp); emit(c,"typing\t%s\t%s\t%s",conv,fp,ct?lsm_display_name(ct):fp); }
     free(js); }
 

@@ -235,6 +235,39 @@ try:
         X.cmd(f"flag {xm} 1 1"); X.cmd(f"pinconv {A.fp} 1"); X.cmd(f"draft {A.fp} 草稿内容")
         info = "".join(X.cmd(f"msginfo {xm}")); d = X.cmd(f"draft {A.fp}")[-1]
         (ok if ("pinned=1" in info and "starred=1" in info and "pinned=1" in d and "草稿内容" in d) else fail)("P2 XP local pin/star/pinned chat/draft", d)
+        # v0.6.2: polls both ways, disappearing timer sync, archive/folders (local)
+        rp = A.j("raw", "send_poll", json.dumps({"conversation": "dm:" + X.fp, "question": "午饭？", "options": ["面", "饭"], "multi": False}))
+        rpid = rp.get("id", "") if isinstance(rp, dict) else ""
+        got = wait(lambda: "is_poll=1" in "".join(X.cmd(f"pollinfo {rpid}")), 15) if rpid else None
+        (ok if got else fail)("v0.6.2 poll Rust -> XP", rpid)
+        X.cmd(f"vote {rpid} 1")
+        got = wait(lambda: [m for m in A.j("history", X.fp) if m["id"] == rpid and any(v.get("fp") == X.fp and v.get("choices") == [1] for v in (m.get("poll") or {}).get("votes", []))], 15)
+        (ok if got else fail)("v0.6.2 vote XP -> Rust")
+        out = X.cmd(f"poll {A.fp} 1 周会时间？|周一|周三|周五")[-1]; xp = out.split()[-1]
+        got = wait(lambda: [m for m in A.j("history", X.fp) if m["id"] == xp and (m.get("poll") or {}).get("multi") and len(m["poll"]["options"]) == 3], 15)
+        (ok if got else fail)("v0.6.2 poll XP -> Rust (multi)", xp)
+        A.j("raw", "vote_poll", json.dumps({"id": xp, "choices": [0, 2]}))
+        got = wait(lambda: "counts=1,0,1" in "".join(X.cmd(f"pollinfo {xp}")), 15)
+        (ok if got else fail)("v0.6.2 vote Rust -> XP (multi)")
+        X.cmd(f"closepoll {xp}")
+        got = wait(lambda: [m for m in A.j("history", X.fp) if m["id"] == xp and (m.get("poll") or {}).get("closed")], 15)
+        (ok if got else fail)("v0.6.2 close poll XP -> Rust")
+        A.j("raw", "set_disappearing", json.dumps({"conversation": "dm:" + X.fp, "secs": 300}))
+        got = wait(lambda: "secs=300" in X.cmd(f"ttl {A.fp}")[-1], 15)
+        (ok if got else fail)("v0.6.2 disappearing timer Rust -> XP")
+        X.cmd(f"ttl {A.fp} 30")
+        got = wait(lambda: [c for c in A.j("raw", "get_snapshot", "{}").get("conversations", []) if c["id"] == "dm:" + X.fp and c.get("ttl_secs") == 30], 15)
+        (ok if got else fail)("v0.6.2 disappearing timer XP -> Rust")
+        out = X.cmd(f"send {A.fp} 阅后即焚")[-1]; tid = out.split()[-1]
+        got = wait(lambda: [m for m in A.j("history", X.fp) if m["id"] == tid and m.get("expires_ms", 0) > 0], 15)
+        (ok if got and "expires_ms=0" not in "".join(X.cmd(f"pollinfo {tid}")) else fail)("v0.6.2 expiring message both sides")
+        X.cmd(f"ttl {A.fp} 0")
+        X.cmd(f"archive {A.fp} 1"); X.cmd(f"folders {A.fp} 工作,同事")
+        f = X.cmd(f"folders {A.fp}")[-1]; a = X.cmd(f"archive {A.fp}")[-1]
+        (ok if "conv=工作,同事" in f and "archived=1" in a else fail)("v0.6.2 XP archive + folders", f + " " + a)
+        A.m("send", X.fp, "唤醒归档")
+        got = wait(lambda: "archived=0" in X.cmd(f"archive {A.fp}")[-1], 15)
+        (ok if got else fail)("v0.6.2 new message un-archives on XP")
     # long + multiline-ish unicode text
     long = "长消息" * 3000
     out = X.cmd(f"send {A.fp} {long}")[-1]; lid = out.split()[-1]
