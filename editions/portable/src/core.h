@@ -27,6 +27,9 @@ typedef struct {
     int64_t last_announce;  /* runtime mono ms, 0 = never */
     int via_relay;          /* runtime: 1 = the live link goes through the relay server (UI badge 经服务器) */
     int muted;              /* 免打扰: UI shows no notification for this peer (persisted; messages still arrive) */
+    char remark[200];       /* 备注名 (local only) */
+    char signature[400];    /* 个性签名 (from the peer, CAP_PROFILE) */
+    int has_avatar;         /* avatars/<fp>.img present */
 } lsm_contact;
 
 typedef struct {
@@ -166,6 +169,28 @@ int lsm_relay_set(lsm_core *c, int enabled, const char *host, int port, const ch
 int lsm_relay_get(lsm_core *c, int *enabled, char *host, size_t hn, int *port, int *has_pass);
 const char *lsm_relay_status(lsm_core *c, char *detail, size_t dn); /* call under lsm_lock */
 int lsm_relay_peers(lsm_core *c); /* test hook: abort all TCP links without Bye */
+
+/* ---- v0.6.1 个人主页 / 消息历史 (same semantics as the Rust core) ---- */
+enum { LSM_T_TEXT=0, LSM_T_IMAGE=1, LSM_T_FILE=2, LSM_T_STICKER=3 };
+typedef struct {
+    const char *query;     /* full-text, case-insensitive (ASCII), CJK substring; NULL/"" = any */
+    const char *convs;     /* comma-separated conversation ids; NULL/"" = all */
+    int64_t from_ms, to_ms;/* [from, to); 0 = open */
+    int types;             /* bitmask 1<<LSM_T_*; 0 = all */
+    int direction;         /* 0 both, 1 received, 2 sent */
+    int statuses;          /* bitmask 1<<ST_*; 0 = all */
+    int offset, limit;     /* pagination over newest-first matches */
+} lsm_hq;
+int lsm_history_query(lsm_core *c, const lsm_hq *q, int *idx, int max, int *total); /* locked; idx into lsm_messages() */
+int lsm_history_match(const lsm_msg *m, const lsm_hq *q);
+int lsm_message_index(lsm_core *c, const char *id); /* locked */
+int lsm_msg_type(const lsm_msg *m);                 /* LSM_T_* or -1 for system rows */
+int lsm_is_sticker_name(const char *name);
+int lsm_set_profile(lsm_core *c, const char *signature, const char *avatar_path, char *err); /* NULL = keep; avatar "" = remove; <= 48 KB */
+const char *lsm_my_signature(lsm_core *c);          /* locked */
+int lsm_avatar_path(lsm_core *c, const char *fp, char *out, size_t n); /* fp NULL = me; returns 1 if the file exists */
+int lsm_set_remark(lsm_core *c, const char *fp, const char *remark);
+const char *lsm_display_name(const lsm_contact *k); /* remark or nickname */
 
 /* helpers */
 void lsm_uuid_str(const uint8_t u[16], char out[37]);
