@@ -50,3 +50,12 @@ jobs:
       - name: Build GTK4 edition
         working-directory: editions/portable
         run: sh linux/build-adw.sh
+  xp-build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq mingw-w64
+      - name: Build XP GUI (x86 + x64)
+        working-directory: editions/portable
+        run: make build/x86/LanMessenger.exe build/x64/LanMessenger.exe
