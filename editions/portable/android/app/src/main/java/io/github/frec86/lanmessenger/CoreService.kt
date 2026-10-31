@@ -66,7 +66,11 @@ class CoreService : Service() {
         val f = e.split('\t')
         when (f[0]) {
             "msg" -> if (f.size >= 7 && f[3] == "in" && f[5] != "system" && (!Repo.appForeground || f[2] != Repo.openConv)) {
-                val who = Repo.state.value.contacts.firstOrNull { "dm:" + it.fp == f[2] }?.name ?: "群消息"
+                val who = when {
+                    f[2].startsWith("dm:") -> Repo.state.value.contacts.firstOrNull { "dm:" + it.fp == f[2] }?.name ?: f[4]
+                    f[2].startsWith("group:") -> Repo.state.value.groups.firstOrNull { "group:" + it.id == f[2] }?.name ?: "群消息"
+                    else -> f.getOrElse(4) { "新消息" }
+                }
                 notifyMsg(this, f[2], who, if (f[5] == "file") "[文件] " + f[6] else f[6])
             }
             "pin_result" -> Repo.toast.value = if (e.contains("\tok")) "PIN 配对成功，已互相信任" else "PIN 配对失败（PIN 错误或已过期）"

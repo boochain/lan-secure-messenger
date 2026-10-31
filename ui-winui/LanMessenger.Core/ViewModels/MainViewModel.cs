@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Net.Http;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -708,7 +709,21 @@ public partial class MainViewModel : ObservableObject
         if (!EnsureCanSendFile()) return;
         var c = SelectedConversation!;
         foreach (var p in paths)
+        {
+            try
+            {
+                var len = new FileInfo(p).Length;
+                if (len >= 100L * 1024 * 1024)
+                {
+                    var mb = len / (1024.0 * 1024.0);
+                    var ok = await _platform.ConfirmAsync("发送大文件？",
+                        $"「{Path.GetFileName(p)}」约 {mb:0.#} MB。大文件需双方保持在线，传输时间较长。是否继续？");
+                    if (!ok) continue;
+                }
+            }
+            catch { /* size probe best-effort */ }
             await SafeCall(x => x.SendFileAsync(c.Id, p));
+        }
     }
 
     /// <summary>Clear this conversation's history on this device (caller confirms).</summary>
@@ -1191,5 +1206,13 @@ public partial class MainViewModel : ObservableObject
     {
         if (string.IsNullOrWhiteSpace(AccountUser) || string.IsNullOrEmpty(password)) { ShowStatus("请填写账号用户名与备份密码", true); return; }
         await SafeCall(x => x.AccountBackupGetAsync(AccountUser.Trim(), password), "身份已恢复，请重启应用");
+    }
+
+    public async Task AccountRevokeAsync(string password)
+    {
+        if (string.IsNullOrWhiteSpace(AccountUser) || string.IsNullOrEmpty(password)) { ShowStatus("请填写账号用户名与密码", true); return; }
+        var ok = await _platform.ConfirmAsync("吊销设备指纹？", "将清除中转上登记的设备指纹，需重新登录后才能用账号功能。");
+        if (!ok) return;
+        await SafeCall(x => x.AccountRevokeAsync(AccountUser.Trim(), password), "已吊销设备指纹");
     }
 }

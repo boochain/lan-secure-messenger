@@ -111,6 +111,8 @@ pub(crate) enum EngineMsg {
     Seen(Seen),
     Transfer(TransferEvt),
     Relay(relay::RelayEvt),
+    /// Opaque retain blob pulled from relay for this device.
+    RetainBlob { id: Vec<u8>, blob: Vec<u8> },
     Tick,
 }
 
@@ -208,6 +210,7 @@ pub struct Engine {
     /// fingerprint -> name of peers currently present on the relay server.
     relay_peers: HashMap<String, String>,
     relay_last_open: Instant,
+    retain_last_pull: Instant,
 }
 
 pub async fn start(opts: EngineOptions) -> Result<EngineHandle> {
@@ -359,6 +362,7 @@ pub async fn start(opts: EngineOptions) -> Result<EngineHandle> {
         relay_state: ("off".into(), String::new()),
         relay_peers: HashMap::new(),
         relay_last_open: Instant::now(),
+        retain_last_pull: Instant::now() - Duration::from_secs(60),
     };
     eng.rebuild_outbox();
     eng.restore_partials();
@@ -470,6 +474,7 @@ impl Engine {
             EngineMsg::Seen(s) => self.on_seen(s),
             EngineMsg::Transfer(ev) => self.on_transfer_evt(ev),
             EngineMsg::Relay(ev) => self.on_relay(ev),
+            EngineMsg::RetainBlob { id, blob } => self.on_retain_blob(id, blob),
             EngineMsg::Tick => self.on_tick(),
         }
         false
@@ -755,6 +760,11 @@ impl Engine {
                     let _ = self.relay.send(relay::RelayCmd::Open(fp));
                 }
             }
+        }
+
+        if self.relay_state.0 == "online" && self.retain_last_pull.elapsed() >= Duration::from_secs(45) {
+            self.retain_last_pull = now;
+            self.kick_retain_pull();
         }
         // Dial peers that should be online.
         let mut to_dial = vec![];
@@ -1316,8 +1326,12 @@ impl Engine {
                 if state == "auth_failed" && self.relay_state.0 != "auth_failed" {
                     self.notice("error", &format!("中转服务器认证失败: {detail}"));
                 }
+                let went_online = state == "online" && self.relay_state.0 != "online";
                 self.relay_state = (state, detail);
                 self.emit_relay();
+                if went_online {
+                    self.kick_retain_pull();
+                }
             }
             R::PeerJoin { fp, name } => {
                 if fp == self.me {
@@ -1390,6 +1404,81 @@ impl Engine {
         let mut out = [0u8; 32];
         out.copy_from_slice(&dig);
         Some(out)
+    }
+
+
+    fn kick_retain_pull(&self) {
+        if !self.settings.relay_enabled { return; }
+        let relay = self.relay.clone();
+        let tx = self.tx.clone();
+        tokio::spawn(async move {
+            let (ltx, lrx) = oneshot::channel();
+            if relay.send(relay::RelayCmd::ListRetain { reply: ltx }).is_err() { return; }
+            let ids = match tokio::time::timeout(std::time::Duration::from_secs(20), lrx).await {
+                Ok(Ok(Ok(ids))) => ids,
+                _ => return,
+            };
+            for id in ids {
+                let (ftx, frx) = oneshot::channel();
+                if relay.send(relay::RelayCmd::Fetch { id: id.clone(), reply: ftx }).is_err() { break; }
+                match tokio::time::timeout(std::time::Duration::from_secs(20), frx).await {
+                    Ok(Ok(Ok(Some(blob)))) => { let _ = tx.send(EngineMsg::RetainBlob { id, blob }); }
+                    Ok(Ok(Ok(None))) => {}
+                    _ => {}
+                }
+            }
+        });
+    }
+
+    fn on_retain_blob(&mut self, id: Vec<u8>, blob: Vec<u8>) {
+        let id_str = String::from_utf8_lossy(&id).to_string();
+        if self.history.get(&id_str).is_some() {
+            let _ = self.relay.send(relay::RelayCmd::StoreDel { id });
+            return;
+        }
+        // Try open with each known peer x25519 (sender's key).
+        let my_sk = self.shared.identity.x25519_secret_bytes();
+        let mut plain: Option<Vec<u8>> = None;
+        let mut from_fp = String::new();
+        for (fp, c) in self.contacts.contacts.iter() {
+            if c.x25519_pk.is_empty() { continue; }
+            let Ok(pk_bytes) = hex::decode(&c.x25519_pk) else { continue };
+            if pk_bytes.len() != 32 { continue; }
+            let mut peer_pk = [0u8; 32];
+            peer_pk.copy_from_slice(&pk_bytes);
+            if let Ok(p) = crate::crypto::open_retain(&my_sk, &peer_pk, &blob) {
+                plain = Some(p);
+                from_fp = fp.clone();
+                break;
+            }
+        }
+        let Some(plain) = plain else {
+            tracing::debug!(%id_str, "retain blob decrypt failed");
+            return;
+        };
+        let Ok(v) = serde_json::from_slice::<Value>(&plain) else { return };
+        let kind = v.get("kind").and_then(|x| x.as_str()).unwrap_or("text");
+        let body = v.get("body").and_then(|x| x.as_str()).unwrap_or("").to_string();
+        let from = v.get("from").and_then(|x| x.as_str()).unwrap_or(&from_fp).to_string();
+        let ts = v.get("ts_ms").and_then(|x| x.as_i64()).unwrap_or_else(now_ms);
+        let conv = format!("dm:{from}");
+        if kind == "text" || kind == "file" {
+            let m = Message {
+                id: id_str.clone(),
+                conversation: conv.clone(),
+                direction: Direction::In,
+                sender_fp: from.clone(),
+                sender_name: self.peer_name(&from),
+                kind: if kind == "file" { MsgKind::File } else { MsgKind::Text },
+                body: if kind == "file" { format!("[服务器保留文件] {body}") } else { body },
+                ts_ms: ts,
+                status: MsgStatus::Received,
+                file: None,
+            };
+            self.add_message(m, true);
+            self.notice("info", &format!("已从中转拉取保留消息（来自 {}）", self.peer_name(&from)));
+        }
+        let _ = self.relay.send(relay::RelayCmd::StoreDel { id });
     }
 
     fn maybe_retain_message(&self, id: &str, dest_fp: &str, body: &str) {
@@ -1782,6 +1871,28 @@ impl Engine {
                         Ok(Ok(Err(e))) => Err(RpcError::new(-32020, e)),
                         Ok(Err(_)) => Err(RpcError::new(-32020, "中转无响应")),
                         Err(_) => Err(RpcError::new(-32020, "账号操作超时")),
+                    });
+                });
+                return;
+            }
+            "account_revoke" => {
+                #[derive(Deserialize)]
+                struct P { user: String, password: String }
+                let a: P = match serde_json::from_value(params) {
+                    Ok(v) => v,
+                    Err(e) => { let _ = reply.send(Err(RpcError::invalid(e.to_string()))); return; }
+                };
+                let (tx, rx) = oneshot::channel();
+                if self.relay.send(relay::RelayCmd::AccountRevoke { user: a.user.trim().to_string(), pass: a.password, reply: tx }).is_err() {
+                    let _ = reply.send(Err(RpcError::new(-32020, "中转未启用")));
+                    return;
+                }
+                tokio::spawn(async move {
+                    let r = tokio::time::timeout(std::time::Duration::from_secs(45), rx).await;
+                    let _ = reply.send(match r {
+                        Ok(Ok(Ok(()))) => Ok(json!({"ok": true})),
+                        Ok(Ok(Err(e))) => Err(RpcError::new(-32020, e)),
+                        _ => Err(RpcError::new(-32020, "吊销失败或超时")),
                     });
                 });
                 return;
@@ -2282,8 +2393,16 @@ impl Engine {
                     }
                     let fp = fp.to_string();
                     self.emit_peer(&fp);
-                } else if let Some(id) = a.conversation.strip_prefix("group:").and_then(|g| Uuid::parse_str(g).ok()) {
-                    self.emit_group(&id);
+                } else if let Some(gid) = a.conversation.strip_prefix("group:").and_then(|g| Uuid::parse_str(g).ok()) {
+                    // Group read receipts: fan-out same Payload::Read to online members (protocol already supports it).
+                    if !ids.is_empty() {
+                        if let Some(g) = self.groups.get(&gid).cloned() {
+                            for mem in g.members.iter().filter(|m| **m != self.me) {
+                                let _ = self.send_ctrl(mem, Frame::Msg { id: Uuid::new_v4(), payload: Payload::Read { ids: ids.clone() } });
+                            }
+                        }
+                    }
+                    self.emit_group(&gid);
                 }
                 self.emit_conv(&a.conversation);
                 ok(json!({"ok": true}))

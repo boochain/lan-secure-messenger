@@ -553,6 +553,32 @@ async fn handle_conn(sock: TcpStream, peer: SocketAddr, hub: &Arc<Hub>, mut shut
                     if body.len() >= 2 + il { hub.accounts.del_blob(&me, &body[2..2+il]); }
                 }
             }
+            t::LIST_RETAIN => {
+                let _ = hub.accounts.gc_expired();
+                let ids = hub.accounts.list_blobs(&me);
+                let mut out = Vec::new();
+                out.extend_from_slice(&(ids.len() as u16).to_be_bytes());
+                for id in &ids {
+                    out.extend_from_slice(&(id.len() as u16).to_be_bytes());
+                    out.extend_from_slice(id);
+                }
+                let _ = ctx.try_send(Frame::new(t::LIST_RETAIN_DATA, out).encode());
+            }
+            t::ACCOUNT_REVOKE => {
+                let body = &f.body;
+                if body.len() < 4 { let _ = ctx.try_send(account::account_fail("malformed").encode()); continue; }
+                let ul = u16::from_be_bytes([body[0], body[1]]) as usize;
+                if body.len() < 2 + ul + 2 { let _ = ctx.try_send(account::account_fail("malformed").encode()); continue; }
+                let user = String::from_utf8_lossy(&body[2..2+ul]).to_string();
+                let rest = &body[2+ul..];
+                let pl = u16::from_be_bytes([rest[0], rest[1]]) as usize;
+                if rest.len() < 2 + pl { let _ = ctx.try_send(account::account_fail("malformed").encode()); continue; }
+                let pass = String::from_utf8_lossy(&rest[2..2+pl]).to_string();
+                let _ = ctx.try_send(match hub.accounts.revoke_devices(&user, &pass) {
+                    Ok(()) => account::account_ok().encode(),
+                    Err(e) => account::account_fail(e).encode(),
+                });
+            }
             t::SEND => {
                 if f.body.len() < 32 {
                     hub.stats.protocol_errors.fetch_add(1, Ordering::Relaxed);

@@ -161,6 +161,7 @@
                         <Button Content="登录账号" Click="AccountLogin_Click" />
                         <Button Content="上传身份备份" Click="AccountBackupPut_Click" />
                         <Button Content="恢复身份备份" Click="AccountBackupGet_Click" />
+                        <Button Content="吊销设备指纹" Click="AccountRevoke_Click" />
                     </StackPanel>
                     <ToggleSwitch Header="新消息默认留在服务器（需中转账号）" IsOn="{x:Bind VM.ServerRetainDefault, Mode=TwoWay}" />
                 </StackPanel>

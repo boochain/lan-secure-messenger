@@ -3,7 +3,7 @@
 name: ci
 on:
   push:
-    branches: [main, "unify/**"]
+    branches: [main, "unify/**", "work/**"]
     tags: ["v*"]
   pull_request:
   workflow_dispatch:

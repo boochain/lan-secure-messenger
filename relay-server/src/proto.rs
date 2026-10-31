@@ -54,6 +54,9 @@ pub mod t {
     pub const FETCH_DATA: u8 = 0x73;
     pub const FETCH_MISS: u8 = 0x74;
     pub const STORE_DEL: u8 = 0x75;
+    pub const LIST_RETAIN: u8 = 0x76;
+    pub const LIST_RETAIN_DATA: u8 = 0x77;
+    pub const ACCOUNT_REVOKE: u8 = 0x67;
     // both directions
     pub const PING: u8 = 0x20;
     pub const PONG: u8 = 0x21;

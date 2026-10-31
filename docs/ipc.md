@@ -80,6 +80,7 @@ because every event carries the full object.)
 | `backup` / `restore` | `{path, password}` | `{ok}` / `{ok, restart_required:true}` |
 | `account_register` / `account_login` | `{user, password}` | `{ok}` — relay online required |
 | `account_backup_put` / `account_backup_get` | `{user, password}` | `{ok}` / `{ok, restart_required:true}` — identity via relay |
+| `account_revoke` | `{user, password}` | `{ok}` — clear stored device fingerprint on relay |
 | `retain_store` | `{id, blob_b64|hex, ttl_secs?, dest_fingerprint?}` | `{ok}` — opaque E2E blob on relay |
 | `retain_fetch` / `retain_del` | `{id}` | `{ok, blob_hex?}` / `{ok}` |
 | `send_text` / `send_file` | `…, retain?:bool` | per-item server-retain override (default from settings) |

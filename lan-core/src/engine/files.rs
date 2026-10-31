@@ -637,6 +637,12 @@ impl Engine {
         if size > self.settings.max_file_bytes {
             return Err(RpcError::invalid(format!("文件过大 (上限 {} MB)", self.settings.max_file_bytes / 1024 / 1024)));
         }
+        if size >= 100 * 1024 * 1024 {
+            let mb = size as f64 / (1024.0 * 1024.0);
+            self.notice("info", &format!(
+                "正在发送大文件（{mb:.0} MB），请保持双方在线；可在设置中调整大小上限。"
+            ));
+        }
         let name = sanitize_filename(&path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default());
         let mime = mime_guess(&name);
         let (recipients, group_id): (Vec<String>, Option<Uuid>) = if let Some((_, only)) = &reuse_msg {

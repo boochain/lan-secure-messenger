@@ -48,6 +48,7 @@ public sealed class DaemonClient
     public Task AccountLoginAsync(string user, string password) => Call("account_login", new { user, password });
     public Task AccountBackupPutAsync(string user, string password) => Call("account_backup_put", new { user, password });
     public Task AccountBackupGetAsync(string user, string password) => Call("account_backup_get", new { user, password });
+    public Task AccountRevokeAsync(string user, string password) => Call("account_revoke", new { user, password });
     public Task<JsonElement> RestoreAsync(string path, string password) => Call("restore", new { path, password });
     public async Task<string> PinOfferAsync() => (await Call("pin_offer")).GetProperty("pin").GetString() ?? "";
     public async Task<bool> PinPairAsync(string fingerprint, string pin) => (await Call("pin_pair", new { fingerprint, pin })).GetProperty("ok").GetBoolean();

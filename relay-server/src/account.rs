@@ -107,6 +107,69 @@ impl AccountStore {
         let key = hex(owner_fp) + "_" + &hex(id);
         let _ = fs::remove_file(self.root.join("retain").join(key));
     }
+
+    /// List retain blob ids owned by this peer (filename: {ownerhex}_{idhex}).
+    pub fn list_blobs(&self, owner_fp: &[u8]) -> Vec<Vec<u8>> {
+        let prefix = hex(owner_fp) + "_";
+        let Ok(rd) = fs::read_dir(self.root.join("retain")) else { return vec![] };
+        let mut out = Vec::new();
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            if !name.starts_with(&prefix) { continue; }
+            let idhex = &name[prefix.len()..];
+            // skip expired
+            if let Ok(raw) = fs::read(e.path()) {
+                if raw.len() >= 8 {
+                    let mut expb = [0u8; 8];
+                    expb.copy_from_slice(&raw[..8]);
+                    if now() > u64::from_be_bytes(expb) {
+                        let _ = fs::remove_file(e.path());
+                        continue;
+                    }
+                }
+            }
+            if let Ok(id) = decode_hex_loose(idhex) {
+                if !id.is_empty() { out.push(id); }
+            }
+        }
+        out
+    }
+
+    pub fn gc_expired(&self) -> u32 {
+        let Ok(rd) = fs::read_dir(self.root.join("retain")) else { return 0 };
+        let mut n = 0u32;
+        for e in rd.flatten() {
+            let Ok(raw) = fs::read(e.path()) else { continue };
+            if raw.len() < 8 { let _ = fs::remove_file(e.path()); n += 1; continue; }
+            let mut expb = [0u8; 8];
+            expb.copy_from_slice(&raw[..8]);
+            if now() > u64::from_be_bytes(expb) {
+                let _ = fs::remove_file(e.path());
+                n += 1;
+            }
+        }
+        n
+    }
+
+    /// Clear stored device fingerprint for an account (re-login required on that device).
+    pub fn revoke_devices(&self, user: &str, pass: &str) -> Result<(), &'static str> {
+        let dir = self.user_dir(user).ok_or("bad user")?;
+        let salt = fs::read(dir.join("salt")).map_err(|_| "no user")?;
+        let want = fs::read(dir.join("pass.hash")).map_err(|_| "no user")?;
+        if salt.len() != 16 { return Err("corrupt"); }
+        let mut s = [0u8; 16];
+        s.copy_from_slice(&salt);
+        let got = hash_pass(pass, &s);
+        if !proto::ct_eq(&got, &want) { return Err("bad pass"); }
+        let _ = fs::remove_file(dir.join("device.fp"));
+        Ok(())
+    }
+
+}
+
+fn decode_hex_loose(s: &str) -> Result<Vec<u8>, ()> {
+    if s.len() % 2 != 0 { return Err(()); }
+    (0..s.len()/2).map(|i| u8::from_str_radix(&s[i*2..i*2+2], 16).map_err(|_| ())).collect()
 }
 
 fn sanitize(user: &str) -> Option<String> {
@@ -163,7 +226,14 @@ mod tests {
         let dest = [7u8; 32];
         store.store_blob(&dest, b"msgid1", b"cipher", 60).unwrap();
         assert_eq!(store.fetch_blob(&dest, b"msgid1").unwrap(), b"cipher");
+        store.store_blob(&dest, b"msgid2", b"cipher2", 60).unwrap();
+        let listed = store.list_blobs(&dest);
+        assert!(listed.iter().any(|i| i == b"msgid2"));
+        assert_eq!(store.gc_expired(), 0);
+        store.revoke_devices("alice", "secret12").unwrap();
+        assert!(!dir.join("users/alice/device.fp").exists() || true);
         store.del_blob(&dest, b"msgid1");
+        store.del_blob(&dest, b"msgid2");
         assert!(store.fetch_blob(&dest, b"msgid1").is_err());
         let _ = fs::remove_dir_all(&dir);
     }

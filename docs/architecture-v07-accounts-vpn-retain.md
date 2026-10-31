@@ -58,6 +58,6 @@
 - [x] STORE flags&1 按目标 peer 落盘；send_text/file `retain` + default_retain；DH seal_retain
 
 ## 残留（联调/增强）
-- [ ] 设备列表吊销 UI；配额/GC 定时扫
-- [ ] 收端自动 FETCH 未读 retain 队列
+- [x] 吊销设备指纹 UI + LIST 时 GC 过期 blob
+- [x] 收端自动 FETCH（relay online + 45s 轮询 LIST_RETAIN）
 - [ ] 群消息 retain（默认仍 ends-only）
