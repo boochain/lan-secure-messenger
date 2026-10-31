@@ -1,17 +1,36 @@
 @echo off
 rem 局域网安全通讯 XP 版 - 添加 Windows 防火墙例外（请以管理员身份运行）
-rem XP SP2/SP3 和 Server 2003 使用 netsh firewall；Vista 及以上使用 netsh advfirewall。
+rem 从不自动修改防火墙：未启用时只提示；已启用时显示将执行的命令并询问（默认：否）。
 cd /d "%~dp0"
+set FWON=
+for %%P in (StandardProfile DomainProfile PublicProfile) do (
+  reg query "HKLM\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\%%P" /v EnableFirewall 2>nul | find "0x1" >nul && set FWON=1
+)
+if not defined FWON (
+  echo 本机防火墙未启用，不做修改
+  goto cloud
+)
 ver | find " 5." >nul
 if not errorlevel 1 goto xp
-echo [Vista+] netsh advfirewall
-netsh advfirewall firewall add rule name="LanMessenger XP" dir=in action=allow program="%~dp0LanMessenger.exe" enable=yes profile=private,domain
-netsh advfirewall firewall add rule name="LanMessenger XP CLI" dir=in action=allow program="%~dp0lanmsg-cli.exe" enable=yes profile=private,domain
-goto done
+set C1=netsh advfirewall firewall add rule name="LanMessenger XP" dir=in action=allow program="%~dp0LanMessenger.exe" enable=yes profile=private,domain
+set C2=netsh advfirewall firewall add rule name="LanMessenger XP CLI" dir=in action=allow program="%~dp0lanmsg-cli.exe" enable=yes profile=private,domain
+goto ask
 :xp
-echo [XP/2003] netsh firewall
-netsh firewall add allowedprogram program="%~dp0LanMessenger.exe" name="LanMessenger XP" mode=ENABLE scope=SUBNET
-netsh firewall add allowedprogram program="%~dp0lanmsg-cli.exe" name="LanMessenger XP CLI" mode=ENABLE scope=SUBNET
-:done
+set C1=netsh firewall add allowedprogram program="%~dp0LanMessenger.exe" name="LanMessenger XP" mode=ENABLE scope=SUBNET
+set C2=netsh firewall add allowedprogram program="%~dp0lanmsg-cli.exe" name="LanMessenger XP CLI" mode=ENABLE scope=SUBNET
+:ask
+echo Windows 防火墙已启用。将执行：
+echo   %C1%
+echo   %C2%
+set A=
+set /p A=是否添加防火墙例外？[y/N]: 
+if /i not "%A%"=="y" if /i not "%A%"=="yes" (
+  echo 未修改防火墙。
+  goto cloud
+)
+%C1%
+%C2%
 echo 完成。如失败，请右键“以管理员身份运行”或手动放行 UDP 41234 和 TCP 41235。
+:cloud
+echo 提醒：云服务器 / 虚拟机还需在服务商控制台的安全组中放行 TCP 41235 和 UDP 41234。
 pause

@@ -131,7 +131,7 @@ fun Home(st: AppState, open: (String) -> Unit) {
         "update" -> LsmAlertDialog(onDismissRequest = { dlg = "" }, title = { Text("检查更新") }, text = { Text(upd.second) },
             confirmButton = { if (upd.first == 1 || upd.first == -1) TextButton({ dlg = ""; try { act?.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(upd.third))) } catch (_: Exception) {} }) { Text(if (upd.first == 1) "打开下载页" else "打开发布页") } else TextButton({ dlg = "" }) { Text("好") } },
             dismissButton = { if (upd.first == 1 || upd.first == -1) TextButton({ dlg = "" }) { Text("取消") } })
-        "about" -> LsmAlertDialog(onDismissRequest = { dlg = "" }, title = { Text("关于") }, text = { Text("局域网安全通讯 Android 版 ${st.me.version}\n\n与 Windows v0.5、XP 版和 Linux 版完全互通（协议 v5）：Noise_XX_25519_ChaChaPoly_BLAKE2s 加密、自动发现、按 IP 添加、PIN 配对、群组、文件传输、送达/已读回执。\n\n本机端口 TCP ${st.me.port}") }, confirmButton = { TextButton({ dlg = "" }) { Text("好") } })
+        "about" -> LsmAlertDialog(onDismissRequest = { dlg = "" }, title = { Text("关于") }, text = { Text("局域网安全通讯 Android 版 ${st.me.version}\n\n所有版本互通（协议 v5）：Noise_XX_25519_ChaChaPoly_BLAKE2s 加密、自动发现、按 IP 添加、PIN 配对、群组、文件传输、送达/已读回执。\n\n本机端口 TCP ${st.me.port}") }, confirmButton = { TextButton({ dlg = "" }) { Text("好") } })
     }
 }
 

@@ -5,7 +5,7 @@
 #include <stddef.h>
 
 #ifndef LSM_APP_VERSION
-#define LSM_APP_VERSION "0.6.0-beta.2" /* set by tools/set-version.py from VERSION */
+#define LSM_APP_VERSION "0.6.0" /* set by tools/set-version.py from VERSION */
 #endif
 #define FP_LEN 20 /* "XXXX-XXXX-XXXX-XXXX" + NUL */
 
@@ -160,5 +160,7 @@ void lsm_uuid_str(const uint8_t u[16], char out[37]);
 int lsm_uuid_parse(const char *s, uint8_t u[16]);
 const char *lsm_resolve_peer(lsm_core *c, const char *q); /* by fp prefix or name (locked inside) */
 const char *lsm_resolve_group(lsm_core *c, const char *q, char out[37]);
-int lsm_firewall_setup(const char *exe_path_utf8, char *report, size_t n);
+/* host firewall: plan only looks (0 = not enabled -> msg, nothing to do; 1 = enabled -> cmd); apply runs cmd after the user said yes */
+int lsm_firewall_plan(const char *exe_path_utf8, char *cmd, size_t cn, char *msg, size_t mn);
+int lsm_firewall_apply(const char *cmd, char *report, size_t n);
 #endif

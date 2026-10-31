@@ -5,7 +5,7 @@ BOM, because XP's cmd.exe cannot run UTF-8 batch files reliably. A UTF-8 (BOM) c
 is included for non-Chinese systems."""
 import os, shutil, sys, zipfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-VER = "v0.6.0-beta.2"
+VER = "v0.6.0"
 DIST = os.path.join(ROOT, "dist"); OUT = os.path.join(DIST, "LanMessenger-XP")
 if os.path.exists(DIST): shutil.rmtree(DIST)
 os.makedirs(os.path.join(OUT, "x64"))

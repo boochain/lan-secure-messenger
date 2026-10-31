@@ -1,7 +1,7 @@
-局域网安全通讯 XP 版 (LAN Secure Messenger, legacy edition) v0.6.0-beta.2
+局域网安全通讯 XP 版 (LAN Secure Messenger, legacy edition) v0.6.0
 ====================================================================
 
-给老机器（Windows XP SP3 32 位，及 XP x64 / Server 2003）用的版本，与 v0.5 完全互通：
+给老机器（Windows XP SP3 32 位，及 XP x64 / Server 2003）用的版本，所有版本互通（协议 v5）：
 自动发现、按 IP 添加、Noise 加密连接、消息与送达/已读回执、文件传输、群组（含移除成员换密钥）、PIN 配对。
 协议细节见源码仓库 docs/protocol.md（协议版本 5）。
 

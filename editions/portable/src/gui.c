@@ -600,8 +600,12 @@ static void do_command(int id){
         CheckMenuRadioItem(GetSubMenu(mb,3),IDM_THEME_SYS,IDM_THEME_DARK,id,MF_BYCOMMAND); menu_bg(mb); RedrawWindow(hMain,NULL,NULL,RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN|RDW_FRAME); break; }
     case IDM_SHOW: ShowWindow(hMain,SW_SHOW); ShowWindow(hMain,SW_RESTORE); SetForegroundWindow(hMain); break;
     case IDM_FIREWALL: { wchar_t exe[MAX_PATH]; char e8[1024], rep[2048]; GetModuleFileNameW(NULL,exe,MAX_PATH); U(exe,e8,sizeof e8);
-        if(tmsg(L"防火墙设置",L"将为本程序添加 Windows 防火墙例外（XP 使用 netsh firewall，Vista 及以上使用 netsh advfirewall）。需要管理员权限。继续？",1)!=1) break;
-        { int rc=lsm_firewall_setup(e8,rep,sizeof rep); char m[2300]; snprintf(m,sizeof m,"%s\r\n\r\n%s",rc==0?"已添加防火墙例外。":"添加失败（可能需要以管理员身份运行）。",rep); msgbox(m,rc==0?MB_ICONINFORMATION:MB_ICONWARNING); } break; }
+        { char fc[1400], msg[2048]; wchar_t *wm; int ask;
+          if(lsm_firewall_plan(e8,fc,sizeof fc,msg,sizeof msg)!=1){ msgbox(msg,MB_ICONINFORMATION); break; }
+          { char q[2300]; snprintf(q,sizeof q,"%s\r\n\r\n是否添加防火墙例外？（默认：否）",msg); int wn=MultiByteToWideChar(CP_UTF8,0,q,-1,NULL,0); wm=(wchar_t*)calloc(wn+1,sizeof(wchar_t)); MultiByteToWideChar(CP_UTF8,0,q,-1,wm,wn); }
+          ask=MessageBoxW(hMain,wm,L"防火墙设置",MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2); free(wm);
+          if(ask!=IDYES) break;
+          { int rc=lsm_firewall_apply(fc,rep,sizeof rep); char m[2300]; snprintf(m,sizeof m,"%s\r\n\r\n%s",rc==0?"已添加防火墙例外。":"添加失败（可能需要以管理员身份运行）。",rep); msgbox(m,rc==0?MB_ICONINFORMATION:MB_ICONWARNING); } } break; }
     case IDM_ADDIP: if(prompt(L"按 IP 添加",L"输入对方 IP 地址（可带端口，如 192.168.1.20 或 192.168.1.20:41235）：",L"",&p,1)){ if(lsm_add_addr(C,U(p.text,u8,sizeof u8),err)) msgbox(err,MB_ICONWARNING); } break;
     case IDM_TRUST: case IDM_UNTRUST: case IDM_BLOCK: { const char *fp=selected_peer(); if(fp){ lsm_set_trust(C,fp,id==IDM_TRUST?1:id==IDM_BLOCK?2:0,err); refresh_list(); } break; }
     case IDM_PINOFFER: { char pin[8], m[256]; lsm_pin_offer(C,pin); snprintf(m,sizeof m,"请把下面的 PIN 告诉对方，并让对方在“输入 PIN 配对”中输入（5 分钟内有效）：\r\n\r\n        %s",pin); msgbox(m,MB_ICONINFORMATION); break; }
@@ -616,7 +620,7 @@ static void do_command(int id){
     case IDM_MUTE: { const char *fp=selected_peer(); if(fp){ lsm_set_muted(C,fp,!peer_muted(fp),err); refresh_list(); } break; }
     case IDM_UPDATE: { HANDLE th=CreateThread(NULL,0,upd_thread,hMain,0,NULL); if(th) CloseHandle(th); else upd_done(NULL); break; }
     case IDM_DIAG: { size_t need=lsm_diagnostics(C,NULL,0); char *d=(char*)malloc(need+1); if(d){ lsm_diagnostics(C,d,need+1); msgbox(d,MB_ICONINFORMATION); free(d); } break; }
-    case IDM_ABOUT: msgbox("局域网安全通讯 XP 版 " LSM_APP_VERSION "\r\n\r\n与 v0.5 完全兼容的旧系统版本（协议 v5）：Noise_XX_25519_ChaChaPoly_BLAKE2s 加密、自动发现、按 IP 添加、PIN 配对、群组、文件传输、送达/已读回执。\r\n\r\n支持 Windows XP SP3 及以上。",MB_ICONINFORMATION); break;
+    case IDM_ABOUT: msgbox("局域网安全通讯 XP 版 " LSM_APP_VERSION "\r\n\r\n所有版本互通（协议 v5）：Noise_XX_25519_ChaChaPoly_BLAKE2s 加密、自动发现、按 IP 添加、PIN 配对、群组、文件传输、送达/已读回执。\r\n\r\n支持 Windows XP SP3 及以上。",MB_ICONINFORMATION); break;
     } }
 
 static void send_current(void){

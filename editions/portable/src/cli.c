@@ -55,7 +55,7 @@ static const char *TST[]={"offered","active","verifying","done","failed","reject
 static void help(void){ outf("commands: id | peers | add <ip[:port]> | trust/untrust/block <peer> | mute/unmute <peer> | diag | backup <password> <file> | send <peer> <text> | sendgroup <group> <text> |\n"
     " sendfile <peer|group> <path> | pin-offer | pin-pair <peer> <pin> | group-create <name> <peer,peer..> | group-invite <group> <peer,..> |\n"
     " group-remove <group> <peer> | group-leave <group> | groups | history <peer|group> [n] | read <peer|group> | transfers | name <new name> |\n"
-    " firewall-setup | drop-links | sleep <ms> | quit\n"); }
+    " firewall-setup [--open-firewall] | drop-links | sleep <ms> | quit\n"); }
 
 static int run_cmd(char *line){
     char *s=line, *cmd=next_tok(&s), err[256]="", buf[64], fp[FP_LEN];
@@ -107,7 +107,9 @@ static int run_cmd(char *line){
 #ifdef _WIN32
         wchar_t w[MAX_PATH]; GetModuleFileNameW(NULL,w,MAX_PATH); WideCharToMultiByte(CP_UTF8,0,w,-1,exe,sizeof exe,NULL,NULL);
 #endif
-        lsm_firewall_setup(exe,rep,sizeof rep); outf("OK firewall %s\n",rep); return 0; }
+        { char fc[1400], msg[2048]; int on=lsm_firewall_plan(exe,fc,sizeof fc,msg,sizeof msg);
+          if(on!=1 || strcmp(s?s:"","--open-firewall")){ outf("OK firewall %s%s\n",msg,on==1?" (未传 --open-firewall，不做修改)":""); return 0; }
+          lsm_firewall_apply(fc,rep,sizeof rep); outf("OK firewall %s\n",rep); } return 0; }
     outf("ERR unknown command '%s' (help)\n",cmd); return 0; }
 
 static int read_line(char *b, size_t n){

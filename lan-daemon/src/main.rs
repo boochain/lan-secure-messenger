@@ -119,6 +119,10 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     match &cli.cmd {
         Some(Cmd::FirewallSetup { elevated, public }) => {
+            if firewall::host_firewall_enabled() == Some(false) {
+                println!("{}", firewall::FW_DISABLED_MSG);
+                return Ok(());
+            }
             let r = if *elevated { firewall::apply_rules(&firewall::exe_path(), *public) } else { firewall::setup_elevated(*public) };
             match r {
                 Ok(()) => {

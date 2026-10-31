@@ -1,7 +1,7 @@
-局域网安全通讯 Linux 版 0.6.0-beta.2
+局域网安全通讯 Linux 版 0.6.0
 =====================================
 
-与 Windows v0.5 和 XP 版完全互通（协议 v5，Noise_XX_25519_ChaChaPoly_BLAKE2s 端到端加密）。
+所有版本互通（协议 v5，Noise_XX_25519_ChaChaPoly_BLAKE2s 端到端加密）。
 
 运行方式
   AppImage：chmod +x LanMessenger-*.AppImage && ./LanMessenger-*.AppImage

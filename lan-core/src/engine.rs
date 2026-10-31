@@ -1528,6 +1528,12 @@ impl Engine {
                 let public = params.get("include_public").and_then(|v| v.as_bool()).unwrap_or(false);
                 let events = self.events.clone();
                 tokio::spawn(async move {
+                    // never touch a disabled firewall (same rule as every deploy/setup script)
+                    if tokio::task::spawn_blocking(crate::firewall::host_firewall_enabled).await.ok().flatten() == Some(false) {
+                        let _ = events.send(Event::Notice { level: "info".into(), text: crate::firewall::FW_DISABLED_MSG.into() });
+                        let _ = reply.send(Ok(json!({"ok": true, "skipped": true, "message": crate::firewall::FW_DISABLED_MSG})));
+                        return;
+                    }
                     let r = tokio::task::spawn_blocking(move || crate::firewall::setup_elevated(public)).await;
                     let res = match r {
                         Ok(Ok(())) => {

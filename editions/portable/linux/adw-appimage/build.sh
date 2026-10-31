@@ -3,7 +3,7 @@
 # glib 2.78 + GTK 4.12 + libadwaita 1.4 are built from source into $PREFIX and bundled in usr/lib.
 # usage (as root in debian:12): sh linux/adw-appimage/build.sh   ->  dist/LanMessenger-adw-$VER-x86_64.AppImage
 set -eux
-VER=${VER:-0.6.0-beta.2}; ARCH=x86_64; PREFIX=${PREFIX:-/opt/lsm-adw}
+VER=${VER:-0.6.0}; ARCH=x86_64; PREFIX=${PREFIX:-/opt/lsm-adw}
 GLIB=2.78.6; GTK=4.12.5; ADW=1.4.7
 cd "$(dirname "$0")/../.."; ROOT=$PWD; OUT=$ROOT/build/linux-adw-appimage; DIST=$ROOT/dist; mkdir -p $OUT $DIST
 export DEBIAN_FRONTEND=noninteractive
@@ -38,7 +38,7 @@ for l in $(ldd $A/usr/bin/lan-messenger-adw | awk '{print $3}' | grep -E "libapp
 strip --strip-unneeded $A/usr/lib/*.so* || true
 cp $PREFIX/share/glib-2.0/schemas/*.xml $A/usr/share/glib-2.0/schemas/ 2>/dev/null || true
 glib-compile-schemas $A/usr/share/glib-2.0/schemas
-cp linux/data/lan-messenger.png $A/; sed 's/^Exec=.*/Exec=lan-messenger-adw/' linux/data/lan-messenger.desktop > $A/lan-messenger.desktop
+cp linux/data/lan-messenger.png $A/; sed -e 's/^Exec=.*/Exec=lan-messenger-adw/' -e 's/^StartupWMClass=.*/StartupWMClass=io.github.frec86.LanMessenger/' linux/data/lan-messenger.desktop > $A/lan-messenger.desktop
 cp linux/adw-appimage/AppRun $A/AppRun; chmod +x $A/AppRun; ls -la $A/usr/lib
 TOOL=${APPIMAGETOOL:-$OUT/appimagetool}; [ -x "$TOOL" ] || { curl -fsSL -o $TOOL https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$ARCH.AppImage; chmod +x $TOOL; }
 ARCH=$ARCH "$TOOL" --appimage-extract-and-run --no-appstream $A $DIST/LanMessenger-adw-$VER-$ARCH.AppImage

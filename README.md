@@ -2,9 +2,8 @@
 
 无服务器、无账号的局域网聊天工具：同一局域网内的电脑自动互相发现，文本、图片、文件、群聊全部端到端加密。
 
-> **v0.5 是一次完整重构**（Rust 后台服务 + WinUI 3 界面），修复了 v0.3.x 在真实 Windows 上
-> “必须关闭防火墙才能用 / 界面乱码 / 消息发不出去 / 看不到对方 / 一方能看到另一方、另一方列表为空”等问题。
-> 旧的 egui 界面已移除。v0.3.x 代码保留在 `main` 分支的历史中。
+> **v0.6**：Windows（WinUI 3）、Windows XP、Linux（GTK 4 / GTK 3）、Android 和可选的中转服务器统一在本仓库开发、
+> 在同一个 Release 发布，所有版本互通（协议 v5）。Windows 版自 v0.5 起为 Rust 后台服务 + WinUI 3 界面。
 
 ## 仓库结构（v0.6 起：所有版本在同一仓库）
 
@@ -77,7 +76,7 @@ XP、Linux、Android 三个版本共用同一份 C 核心和同一套 Makefile /
 - 本地加密聊天记录 + 搜索；密码加密的备份 / 恢复（Argon2id）
 - 更新检查（GitHub Releases，可关闭）
 
-## 架构（v0.5）
+## 架构（Windows 版）
 
 ```
 LanMessenger.exe (WinUI 3, C#)        lan-msg.exe (CLI)

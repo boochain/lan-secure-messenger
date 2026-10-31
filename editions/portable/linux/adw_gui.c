@@ -387,7 +387,7 @@ static void win_act(GSimpleAction *a, GVariant *v, gpointer p){ const char *n=g_
     else if(!strcmp(n,"downloads")){ gchar *u; lsm_lock(C); u=g_filename_to_uri(lsm_download_dir(C),NULL,NULL); lsm_unlock(C); if(u){ g_app_info_launch_default_for_uri(u,NULL,NULL); g_free(u); } }
     else if(!strcmp(n,"menu")) gtk_menu_button_popup(GTK_MENU_BUTTON(menu_btn));
     else if(!strcmp(n,"close")) gtk_window_close(GTK_WINDOW(win));
-    else if(!strcmp(n,"about")){ char b[400]; snprintf(b,sizeof b,"版本 %s（协议 v5）\n与 Windows v0.5、XP 版和 Android 版互通。\nGTK %d.%d · libadwaita %d.%d",LSM_APP_VERSION,gtk_get_major_version(),gtk_get_minor_version(),adw_get_major_version(),adw_get_minor_version()); info("局域网安全通讯",b); }
+    else if(!strcmp(n,"about")){ char b[400]; snprintf(b,sizeof b,"版本 %s\n所有版本互通（协议 v5）\nGTK %d.%d · libadwaita %d.%d",LSM_APP_VERSION,gtk_get_major_version(),gtk_get_minor_version(),adw_get_major_version(),adw_get_minor_version()); info("局域网安全通讯",b); }
     else if(!strcmp(n,"quit")){ save_window(); /* 退出 / Ctrl+Q also remembers the window */ if(held){ g_application_release(G_APPLICATION(app)); held=0; } g_application_quit(G_APPLICATION(app)); } }
 
 /* ---------------------------------------------------------------- window memory + close-to-background */

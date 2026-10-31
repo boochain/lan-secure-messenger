@@ -782,7 +782,7 @@ dependencies = [
 
 [[package]]
 name = "lan-cli"
-version = "0.6.0-beta.2"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -794,7 +794,7 @@ dependencies = [
 
 [[package]]
 name = "lan-core"
-version = "0.6.0-beta.2"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "argon2",
@@ -825,7 +825,7 @@ dependencies = [
 
 [[package]]
 name = "lan-daemon"
-version = "0.6.0-beta.2"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "clap",

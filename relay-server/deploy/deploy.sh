@@ -4,7 +4,7 @@
 # 命令 (commands): menu run start install remove-autostart stop config status uninstall version
 # 选项 (options): --port N --password P --gen-password --bind ADDR --open-firewall --yes --dry-run --no-start
 set -u
-SCRIPT_VERSION="0.1.0"
+SCRIPT_VERSION="0.6.0"
 SVC=lsm-relay
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -207,6 +207,7 @@ firewall_step() {
     if run bash -c "$cmd"; then
       [ "$DRY" = 1 ] || { mkdir -p "$STATE_DIR"; echo "$FW_KIND|$PORT" >> "$FWSTATE"; }
       ok "已添加防火墙规则 (rule added)"
+      [ "$FW_KIND" = iptables ] && warn "iptables 规则重启后会丢失；如需持久化请执行 (not persistent across reboot; to persist): iptables-save > /etc/iptables/rules.v4（Debian/Ubuntu 需安装 iptables-persistent）或 service iptables save（RHEL/CentOS）"
     else err "防火墙命令失败 (firewall command failed)"; fi
   else say "未修改防火墙 (firewall unchanged)"; fi
   cloud_note

@@ -266,8 +266,14 @@ static void act(GtkWidget *w, gpointer p){ int id=GPOINTER_TO_INT(p); char err[2
     case A_NAME: { char *s, init[300]; lsm_lock(C); snprintf(init,sizeof init,"%s",lsm_my_name(C)); lsm_unlock(C); if((s=ask_text("修改昵称","新的显示名称：",init))){ lsm_set_name(C,s); g_free(s); list_dirty=1; } break; }
     case A_XFERS: show_transfers(); break;
     case A_DLDIR: { char d[600]; gchar *u; lsm_lock(C); snprintf(d,sizeof d,"%s",lsm_download_dir(C)); lsm_unlock(C); u=g_filename_to_uri(d,NULL,NULL); if(u){ g_app_info_launch_default_for_uri(u,NULL,NULL); g_free(u);} break; }
-    case A_FIREWALL: { char rep[2048]; int rc=lsm_firewall_setup("",rep,sizeof rep); msgbox(rc==0?GTK_MESSAGE_INFO:GTK_MESSAGE_WARNING,"%s\n\n%s",rc==0?"防火墙设置完成。":"防火墙设置未完成。",rep); break; }
-    case A_ABOUT: { char ab[2048]; GtkWidget *d; int r; snprintf(ab,sizeof ab,"局域网安全通讯 Linux 版 %s\n\n与 Windows v0.5 及 XP 版完全互通（协议 v5）：Noise_XX_25519_ChaChaPoly_BLAKE2s 加密、自动发现、按 IP 添加、PIN 配对、群组、文件传输、送达/已读回执。\n\n托盘：%s",LSM_APP_VERSION,tray_kind);
+    case A_FIREWALL: { char rep[2048], fc[1400], fm[2048]; GtkWidget *d; int r;
+        /* never automatic: off -> just say so; on -> show the exact command, ask, default No */
+        if(lsm_firewall_plan("",fc,sizeof fc,fm,sizeof fm)!=1){ msgbox(GTK_MESSAGE_INFO,"%s",fm); break; }
+        d=gtk_message_dialog_new(GTK_WINDOW(win),GTK_DIALOG_MODAL|GTK_DIALOG_DESTROY_WITH_PARENT,GTK_MESSAGE_QUESTION,GTK_BUTTONS_NONE,"%s\n\n是否添加放行规则？（默认：否）",fm);
+        gtk_dialog_add_buttons(GTK_DIALOG(d),"否",GTK_RESPONSE_NO,"是，添加",GTK_RESPONSE_YES,NULL); gtk_dialog_set_default_response(GTK_DIALOG(d),GTK_RESPONSE_NO);
+        r=gtk_dialog_run(GTK_DIALOG(d)); gtk_widget_destroy(d); if(r!=GTK_RESPONSE_YES) break;
+        { int rc=lsm_firewall_apply(fc,rep,sizeof rep); msgbox(rc==0?GTK_MESSAGE_INFO:GTK_MESSAGE_WARNING,"%s\n\n%s",rc==0?"防火墙设置完成。":"防火墙设置未完成。",rep); } break; }
+    case A_ABOUT: { char ab[2048]; GtkWidget *d; int r; snprintf(ab,sizeof ab,"局域网安全通讯 Linux 版 %s\n\n所有版本互通（协议 v5）：Noise_XX_25519_ChaChaPoly_BLAKE2s 加密、自动发现、按 IP 添加、PIN 配对、群组、文件传输、送达/已读回执。\n\n托盘：%s",LSM_APP_VERSION,tray_kind);
         /* 诊断信息 / 检查更新 live here (not in the main menu, which must stay clear of the input row) */
         d=gtk_message_dialog_new(GTK_WINDOW(win),GTK_DIALOG_MODAL|GTK_DIALOG_DESTROY_WITH_PARENT,GTK_MESSAGE_INFO,GTK_BUTTONS_NONE,"%s",ab);
         gtk_dialog_add_buttons(GTK_DIALOG(d),"诊断信息",1,"检查更新…",2,"确定",GTK_RESPONSE_OK,NULL); gtk_dialog_set_default_response(GTK_DIALOG(d),GTK_RESPONSE_OK);

@@ -67,4 +67,5 @@ jobs:
           T="${GITHUB_REF_NAME}"
           N="docs/release-notes-$T.md"; [ -f "$N" ] || { echo "## $T" > /tmp/notes.md; N=/tmp/notes.md; }
           PRE=""; case "$T" in *-*) PRE="--prerelease";; esac
-          gh release create "$T" out/* $PRE --title "LAN Secure Messenger $T" --notes-file "$N" --target "$GITHUB_SHA"
+          LATEST=$([ -z "$PRE" ] && echo --latest || echo --latest=false)
+          gh release create "$T" out/* $PRE $LATEST --title "LAN Secure Messenger $T" --notes-file "$N" --target "$GITHUB_SHA"

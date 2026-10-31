@@ -1120,32 +1120,54 @@ int lsm_transfer_cancel(lsm_core *c, const char *tids, char *err){ uint8_t tid[1
 int lsm_drop_links(lsm_core *c){ conn *k; int n=0; mu_lock(&c->mu); for(k=c->conns;k;k=k->next) if(k->state==4){ conn_close(c,k,"killed (test)",0); n++; } mu_unlock(&c->mu); return n; }
 
 /* ------------------------------------------------------------ firewall */
-int lsm_firewall_setup(const char *exe, char *report, size_t n){
+/* Host firewall: never changed automatically. lsm_firewall_plan() only looks:
+ *   0 -> no enabled firewall (msg = FW_OFF_MSG: nothing to do), 1 -> enabled (cmd = the exact command that would run).
+ * The UI shows cmd and asks (default No); only then lsm_firewall_apply(cmd). LSM_FIREWALL_STATE=on|off overrides
+ * detection and LSM_FIREWALL_DRYRUN=1 makes apply only report (tests). */
+#define FW_OFF_MSG "本机防火墙未启用，不做修改"
+#define FW_CLOUD_NOTE "云服务器 / 虚拟机还需在服务商控制台的安全组中放行 TCP 41235 和 UDP 41234。"
 #ifdef _WIN32
-    OSVERSIONINFOA v; char cmd[1400]; int rc; memset(&v,0,sizeof v); v.dwOSVersionInfoSize=sizeof v; GetVersionExA(&v);
-    { char ansi[MAX_PATH*2]; wchar_t *w=widen(exe); WideCharToMultiByte(CP_ACP,0,w,-1,ansi,sizeof ansi,NULL,NULL); free(w);
-      if(v.dwMajorVersion<6) snprintf(cmd,sizeof cmd,"netsh firewall add allowedprogram program=\"%s\" name=\"LanMessenger XP\" mode=ENABLE scope=SUBNET",ansi);
-      else snprintf(cmd,sizeof cmd,"netsh advfirewall firewall add rule name=\"LanMessenger XP\" dir=in action=allow program=\"%s\" enable=yes profile=private,domain",ansi); }
-    { STARTUPINFOA si; PROCESS_INFORMATION pi; DWORD ec=1; memset(&si,0,sizeof si); si.cb=sizeof si; si.dwFlags=STARTF_USESHOWWINDOW; si.wShowWindow=SW_HIDE;
-      if(CreateProcessA(NULL,cmd,NULL,NULL,FALSE,CREATE_NO_WINDOW,NULL,NULL,&si,&pi)){ WaitForSingleObject(pi.hProcess,15000); GetExitCodeProcess(pi.hProcess,&ec); CloseHandle(pi.hProcess); CloseHandle(pi.hThread); }
-      rc=(int)ec; }
-    snprintf(report,n,"Windows %lu.%lu -> %s (exit %d)",v.dwMajorVersion,v.dwMinorVersion,cmd,rc); return rc;
-#else
-#if defined(__ANDROID__)
-    snprintf(report,n,"Android: no host firewall to configure (%s)",exe); return 0;
-#else
-    /* Linux: ufw (Debian/Ubuntu) or firewalld (Fedora/RHEL/openSUSE). Not root -> pkexec prompt.
-     * LSM_FIREWALL_DRYRUN=1 only reports the command (used by tests). */
-    { const char *tool=NULL; char cmd[600]; int rc; const char *pre=geteuid()==0?"":"pkexec ";
-      if(system("command -v ufw >/dev/null 2>&1")==0) tool="ufw"; else if(system("command -v firewall-cmd >/dev/null 2>&1")==0) tool="firewalld";
-      if(!tool){ snprintf(report,n,"no ufw or firewalld found; nothing to do (open TCP 41235 and UDP 41234 manually if you use another firewall)"); return 0; }
-      if(!strcmp(tool,"ufw")) snprintf(cmd,sizeof cmd,"%sufw allow 41235/tcp comment 'LAN Messenger' && %sufw allow 41234/udp comment 'LAN Messenger'",pre,pre);
-      else snprintf(cmd,sizeof cmd,"%sfirewall-cmd --permanent --add-port=41235/tcp --add-port=41234/udp && %sfirewall-cmd --reload",pre,pre);
-      if(getenv("LSM_FIREWALL_DRYRUN")){ snprintf(report,n,"%s -> %s (dry run)",tool,cmd); return 0; }
-      rc=system(cmd); snprintf(report,n,"%s -> %s (exit %d)",tool,cmd,rc); return rc?1:0; }
+static int fw_reg_on(const char *prof){ HKEY k; DWORD v=0, sz=sizeof v, ty; char p[200]; int on=0;
+    snprintf(p,sizeof p,"SYSTEM\\CurrentControlSet\\Services\\SharedAccess\\Parameters\\FirewallPolicy\\%s",prof);
+    if(RegOpenKeyExA(HKEY_LOCAL_MACHINE,p,0,KEY_READ,&k)==ERROR_SUCCESS){ if(RegQueryValueExA(k,"EnableFirewall",NULL,&ty,(BYTE*)&v,&sz)==ERROR_SUCCESS && ty==REG_DWORD) on=v!=0; RegCloseKey(k); }
+    return on; }
 #endif
+int lsm_firewall_plan(const char *exe, char *cmd, size_t cn, char *msg, size_t mn){
+    const char *ov=getenv("LSM_FIREWALL_STATE"); int on;
+    cmd[0]=0;
+#ifdef _WIN32
+    on=fw_reg_on("StandardProfile")||fw_reg_on("DomainProfile")||fw_reg_on("PublicProfile");
+    if(ov) on=!strcmp(ov,"on");
+    if(!on){ snprintf(msg,mn,"%s。\n%s",FW_OFF_MSG,FW_CLOUD_NOTE); return 0; }
+    { OSVERSIONINFOA v; char ansi[MAX_PATH*2]; wchar_t *w=widen(exe); memset(&v,0,sizeof v); v.dwOSVersionInfoSize=sizeof v; GetVersionExA(&v);
+      WideCharToMultiByte(CP_ACP,0,w,-1,ansi,sizeof ansi,NULL,NULL); free(w);
+      if(v.dwMajorVersion<6) snprintf(cmd,cn,"netsh firewall add allowedprogram program=\"%s\" name=\"LanMessenger XP\" mode=ENABLE scope=SUBNET",ansi);
+      else snprintf(cmd,cn,"netsh advfirewall firewall add rule name=\"LanMessenger XP\" dir=in action=allow program=\"%s\" enable=yes profile=private,domain",ansi); }
+    snprintf(msg,mn,"Windows 防火墙已启用。将执行（需要管理员权限）：\n%s\n%s",cmd,FW_CLOUD_NOTE); return 1;
+#elif defined(__ANDROID__)
+    (void)exe; (void)ov; (void)on; snprintf(msg,mn,"Android：系统没有需要配置的主机防火墙。"); return 0;
+#else
+    { const char *pre=geteuid()==0?"":"pkexec ", *tool=NULL; (void)exe;
+      if(system("command -v firewall-cmd >/dev/null 2>&1")==0 && system("firewall-cmd --state >/dev/null 2>&1")==0) tool="firewalld";
+      else if(system("command -v ufw >/dev/null 2>&1")==0 && system("grep -qs '^ENABLED=yes' /etc/ufw/ufw.conf")==0) tool="ufw";
+      on=tool!=NULL; if(ov) on=!strcmp(ov,"on"); if(on && !tool) tool="ufw";
+      if(!on){ snprintf(msg,mn,"%s（未检测到已启用的 ufw / firewalld；其他防火墙请自行放行 TCP 41235、UDP 41234）。\n%s",FW_OFF_MSG,FW_CLOUD_NOTE); return 0; }
+      if(!strcmp(tool,"ufw")) snprintf(cmd,cn,"%sufw allow 41235/tcp comment 'LAN Messenger' && %sufw allow 41234/udp comment 'LAN Messenger'",pre,pre);
+      else snprintf(cmd,cn,"%sfirewall-cmd --permanent --add-port=41235/tcp --add-port=41234/udp && %sfirewall-cmd --reload",pre,pre);
+      snprintf(msg,mn,"%s 已启用。将执行：\n%s\n%s",tool,cmd,FW_CLOUD_NOTE); return 1; }
 #endif
 }
+int lsm_firewall_apply(const char *cmd, char *report, size_t n){ int rc;
+    if(!cmd || !*cmd){ snprintf(report,n,"%s",FW_OFF_MSG); return 0; }
+    if(getenv("LSM_FIREWALL_DRYRUN")){ snprintf(report,n,"%s (dry run)",cmd); return 0; }
+#ifdef _WIN32
+    { STARTUPINFOA si; PROCESS_INFORMATION pi; DWORD ec=1; char c[1400]; snprintf(c,sizeof c,"%s",cmd); memset(&si,0,sizeof si); si.cb=sizeof si; si.dwFlags=STARTF_USESHOWWINDOW; si.wShowWindow=SW_HIDE;
+      if(CreateProcessA(NULL,c,NULL,NULL,FALSE,CREATE_NO_WINDOW,NULL,NULL,&si,&pi)){ WaitForSingleObject(pi.hProcess,15000); GetExitCodeProcess(pi.hProcess,&ec); CloseHandle(pi.hProcess); CloseHandle(pi.hThread); }
+      rc=(int)ec; }
+#else
+    rc=system(cmd);
+#endif
+    snprintf(report,n,"%s (exit %d)",cmd,rc); return rc?1:0; }
 
 static int latin_letter(unsigned char c){ return (c>='A'&&c<='Z')||(c>='a'&&c<='z'); }
 void lsm_initials(const char *name, char out[8]){

@@ -16,7 +16,7 @@ param(
 # Continue: on Windows PowerShell 5.1 native-command stderr would otherwise become a terminating error
 $ErrorActionPreference = 'Continue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
-$ScriptVersion = '0.1.0'
+$ScriptVersion = '0.6.0'
 $SvcName = 'LsmRelay'
 $TaskName = 'LsmRelay'
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path

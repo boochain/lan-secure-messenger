@@ -1062,7 +1062,7 @@ public partial class MainViewModel : ObservableObject
     private async Task FirewallSetupAsync()
     {
         ShowStatus("请在弹出的管理员确认 (UAC) 窗口中点击“是”…");
-        await SafeCall(x => x.FirewallSetupAsync(IncludePublic), "防火墙规则已添加");
+        await SafeCall(x => x.FirewallSetupAsync(IncludePublic)); // the daemon reports the outcome as a notice ("防火墙规则已添加" or "本机防火墙未启用，不做修改")
         await RefreshDiagnosticsAsync(false);
     }
 

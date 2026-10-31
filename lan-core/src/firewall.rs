@@ -7,6 +7,8 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Printed instead of changing anything when the host firewall is off.
+pub const FW_DISABLED_MSG: &str = "本机防火墙未启用，不做修改";
 pub const RULE_TCP: &str = "LAN Secure Messenger (TCP-In)";
 pub const RULE_UDP: &str = "LAN Secure Messenger (UDP-In)";
 
@@ -106,6 +108,14 @@ mod imp {
         FirewallStatus { supported: true, tcp_rule: tcp, udp_rule: udp, rule_path_mismatch: m1 || m2, rule_profiles: prof, exe, profiles, public_network, advice }
     }
 
+    /// Some(false) when every Windows Firewall profile is off (then we never touch it), None if unknown.
+    /// Uses Get-NetFirewallProfile (Enabled is a boolean, not localized like netsh output).
+    pub fn host_firewall_enabled() -> Option<bool> {
+        let (ok, out) = run("powershell", &["-NoProfile", "-NonInteractive", "-Command", "@(Get-NetFirewallProfile | Where-Object { $_.Enabled }).Count"]);
+        if !ok { return None; }
+        out.trim().parse::<u32>().ok().map(|n| n > 0)
+    }
+
     pub fn is_elevated() -> bool {
         unsafe { windows_sys::Win32::UI::Shell::IsUserAnAdmin() != 0 }
     }
@@ -176,6 +186,9 @@ mod imp {
             exe: std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_default(),
             ..Default::default()
         }
+    }
+    pub fn host_firewall_enabled() -> Option<bool> {
+        None
     }
     pub fn is_elevated() -> bool {
         false

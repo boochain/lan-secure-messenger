@@ -107,7 +107,7 @@ impl Ctx {
             })
             .collect();
         match hits.len() {
-            1 => Ok(hits[0]["fingerprint"].as_str().unwrap().to_string()),
+            1 => hits[0]["fingerprint"].as_str().map(str::to_string).ok_or_else(|| anyhow::anyhow!("peer entry without fingerprint")),
             0 => bail!("no peer matches '{q}'"),
             _ => bail!("'{q}' is ambiguous ({} matches)", hits.len()),
         }
@@ -119,7 +119,7 @@ impl Ctx {
         let gs = s["groups"].as_array().cloned().unwrap_or_default();
         let hits: Vec<&Value> = gs.iter().filter(|g| g["id"].as_str().unwrap_or("").starts_with(q) || g["name"].as_str() == Some(q)).collect();
         match hits.len() {
-            1 => Ok(hits[0]["id"].as_str().unwrap().to_string()),
+            1 => hits[0]["id"].as_str().map(str::to_string).ok_or_else(|| anyhow::anyhow!("group entry without id")),
             0 => bail!("no group matches '{q}'"),
             _ => bail!("'{q}' is ambiguous"),
         }

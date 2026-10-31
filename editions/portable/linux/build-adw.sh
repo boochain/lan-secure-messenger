@@ -1,7 +1,7 @@
 #!/bin/sh
 # Build the GTK 4 + libadwaita (>= 1.4) Linux GUI: build/linux-adw/lan-messenger-adw
 set -eu
-VER=${VER:-0.6.0-beta.2}
+VER=${VER:-0.6.0}
 cd "$(dirname "$0")/.."
 OUT=build/linux-adw; mkdir -p "$OUT"
 CORE="src/core.c src/xcrypto.c src/third_party/monocypher.c src/third_party/monocypher-ed25519.c"
