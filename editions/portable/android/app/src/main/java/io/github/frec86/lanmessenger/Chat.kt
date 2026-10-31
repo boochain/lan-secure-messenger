@@ -60,6 +60,8 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
     var input by remember { mutableStateOf("") }; var menu by remember { mutableStateOf(false) }; var dlg by remember { mutableStateOf("") }
     var searching by rememberSaveable { mutableStateOf(false) }; var q by rememberSaveable { mutableStateOf("") }
     var msgMenu by remember { mutableStateOf<Msg?>(null) }; var delMsg by remember { mutableStateOf<Msg?>(null) }
+    var replyTo by remember(conv) { mutableStateOf<Msg?>(null) }; var editing by remember(conv) { mutableStateOf<Msg?>(null) }; var recallMsg by remember { mutableStateOf<Msg?>(null) }
+    val recording by Voice.recording
     val clip = androidx.compose.ui.platform.LocalClipboardManager.current
     // system Back / predictive back: close the in-chat search first, then return to the list (menus/dialogs dismiss themselves)
     BackHandler { if (searching) { searching = false; q = "" } else back() }
@@ -70,6 +72,18 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
     DisposableEffect(conv) { Repo.openConv = conv; onDispose { Repo.openConv = null } }
     LaunchedEffect(rows.size, rev) { Native.markRead(conv); val j = Repo.jumpId; val ji = if (j != null) rows.indexOfFirst { (it as? ChatRow.Bubble)?.m?.id == j } else -1
         if (ji >= 0) { listState.scrollToItem(maxOf(0, ji - 1)); Repo.jumpId = null; Repo.toast.value = "已定位到该消息" } else if (rows.isNotEmpty()) listState.scrollToItem(rows.size - 1) }
+    fun micToggle() {
+        if (Voice.recording.value) { val f = Voice.stop(); if (f == null) Repo.toast.value = "录音太短" else { val e = Native.sendFile(conv, f.absolutePath); if (e.isNotEmpty()) Repo.toast.value = errZh(e); Repo.refresh() } }
+        else { val e = Voice.start(ctx); if (e.isNotEmpty()) Repo.toast.value = e else Repo.toast.value = "正在录音… 再点一次停止并发送" }
+    }
+    val micPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok -> if (ok) micToggle() else Repo.toast.value = "需要麦克风权限才能发送语音" }
+    fun micClick() { if (androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED) micToggle() else micPerm.launch(android.Manifest.permission.RECORD_AUDIO) }
+    fun sendNow() {
+        if (input.isBlank()) return
+        val ed = editing; val rp = replyTo
+        val e = when { ed != null -> Native.editMessage(ed.id, input.trim()); rp != null -> Native.sendReply(conv, input.trim(), rp.id); else -> Native.sendText(conv, input.trim()) }
+        if (e.isNotEmpty()) Repo.toast.value = e else { input = ""; editing = null; replyTo = null }; Repo.refresh()
+    }
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> if (uris.isNotEmpty()) sendUris(ctx, conv, uris) }
     val save = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
         val src = saveSrc; if (uri != null && src != null) try { ctx.contentResolver.openOutputStream(uri)!!.use { o -> File(src).inputStream().use { it.copyTo(o) } }; Repo.toast.value = "已保存" } catch (e: Exception) { Repo.toast.value = "保存失败" } }
@@ -150,7 +164,17 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
                             MessageRow(r, st.transfers.firstOrNull { it.msg == r.m.id }, maxW) { path -> saveSrc = path; save.launch(r.m.file) }
                             // long-press menu (Material: long press shows the item's actions)
                             DropdownMenu(msgMenu?.id == r.m.id, { msgMenu = null }, Modifier.align(if (r.m.out) Alignment.TopEnd else Alignment.TopStart)) {
-                                if (r.m.kind == 0) DropdownMenuItem({ Text("复制") }, { clip.setText(androidx.compose.ui.text.AnnotatedString(r.m.body)); msgMenu = null; Repo.toast.value = "已复制" }, leadingIcon = { Ic(R.drawable.ms_copy) })
+                                if (!r.m.recalled) {
+                                    DropdownMenuItem({ Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { REACTIONS.forEach { em ->
+                                        Text(em, fontSize = 22.sp, modifier = Modifier.clip(CircleShape).background(if (r.m.mine == em) p.field else Color.Transparent).clickable {
+                                            msgMenu = null; val e = Native.react(r.m.id, if (r.m.mine == em) "" else em); if (e.isNotEmpty()) Repo.toast.value = e; Repo.refresh() }.padding(4.dp)) } } }, {})
+                                    DropdownMenuItem({ Text("回复") }, { msgMenu = null; editing = null; replyTo = r.m }, leadingIcon = { Ic(R.drawable.ms_reply) })
+                                    if (r.m.canModify) {
+                                        DropdownMenuItem({ Text("编辑") }, { msgMenu = null; replyTo = null; editing = r.m; input = r.m.body }, leadingIcon = { Ic(R.drawable.ms_edit) })
+                                        DropdownMenuItem({ Text("撤回") }, { msgMenu = null; recallMsg = r.m }, leadingIcon = { Ic(R.drawable.ms_back) })
+                                    }
+                                }
+                                if (r.m.kind == 0 && !r.m.recalled) DropdownMenuItem({ Text("复制") }, { clip.setText(androidx.compose.ui.text.AnnotatedString(r.m.body)); msgMenu = null; Repo.toast.value = "已复制" }, leadingIcon = { Ic(R.drawable.ms_copy) })
                                 if (r.m.out && r.m.status == "failed") DropdownMenuItem({ Text("重发") }, {
                                     msgMenu = null
                                     val e = if (r.m.kind == 0) Native.sendText(conv, r.m.body)
@@ -165,7 +189,8 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
                 }
             }
         }
-        /* composer: [field · attach] (send) */
+        (editing ?: replyTo)?.let { m -> ReplyBar(m, editing != null) { if (editing != null) input = ""; editing = null; replyTo = null } }
+        /* composer: [field · attach · mic] (send) */
         Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(8.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.weight(1f).heightIn(min = 48.dp).ifThen(!isDark()) { shadow(1.dp, RoundedCornerShape(24.dp)) }.clip(RoundedCornerShape(24.dp)).background(p.field).padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically) {
@@ -176,9 +201,10 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
                         textStyle = MaterialTheme.typography.bodyLarge.copy(color = p.fg), cursorBrush = SolidColor(p.accent))
                 }
                 IconButton({ pick.launch(arrayOf("*/*")) }, Modifier.size(40.dp)) { Ic(R.drawable.ms_attach, "发送文件", p.fg2) }
+                IconButton({ micClick() }, Modifier.size(40.dp)) { Ic(if (recording) R.drawable.ms_stop else R.drawable.ms_mic, if (recording) "停止并发送语音" else "语音消息", if (recording) p.error else p.fg2) }
             }
             Box(Modifier.size(48.dp).ifThen(!isDark()) { shadow(2.dp, CircleShape) }.clip(CircleShape).background(p.accent)
-                .clickable { if (input.isNotBlank()) { val e = Native.sendText(conv, input.trim()); if (e.isNotEmpty()) Repo.toast.value = e else input = ""; Repo.refresh() } },
+                .clickable { sendNow() },
                 contentAlignment = Alignment.Center) { Ic(R.drawable.ms_send_fill, "发送", p.onAccent) }
         }
         if (emojiOpen) {
@@ -210,6 +236,11 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
             }
         }
       }
+    }
+    recallMsg?.let { m ->
+        LsmAlertDialog(onDismissRequest = { recallMsg = null }, title = { Text("撤回这条消息？") }, text = { Text("双方都会看到“撤回了一条消息”。24 小时内可撤回。") },
+            confirmButton = { TextButton({ recallMsg = null; val e = Native.recallMessage(m.id); if (e.isNotEmpty()) Repo.toast.value = e; Repo.refresh() }) { Text("撤回", color = p.error) } },
+            dismissButton = { TextButton({ recallMsg = null }) { Text("取消") } })
     }
     delMsg?.let { m ->
         LsmAlertDialog(onDismissRequest = { delMsg = null }, title = { Text("删除这条消息？") },
@@ -280,18 +311,22 @@ fun MessageRow(r: ChatRow.Bubble, t: Transfer?, maxW: androidx.compose.ui.unit.D
     val shape = BubbleShape(m.out, r.first)
     val path = if (m.kind == 1) (if (t != null && (t.state == "done" || t.out)) t.path else m.path) else ""
     val haveFile = path.isNotEmpty() && File(path).exists()
-    Row(Modifier.fillMaxWidth().padding(top = if (r.first) 12.dp else 2.dp), horizontalArrangement = if (m.out) Arrangement.End else Arrangement.Start) {
+    Column(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth().padding(top = if (r.first) 12.dp else 2.dp), horizontalArrangement = if (m.out) Arrangement.End else Arrangement.Start) {
         // the shape reserves 8 dp for the tail on the outer side, so every bubble of a run shares one edge
         Box(Modifier.widthIn(max = maxW + 8.dp).ifThen(!isDark()) { shadow(.5.dp, shape) }.clip(shape).background(bg)
             .padding(start = if (m.out) 0.dp else 8.dp, end = if (m.out) 8.dp else 0.dp)) {
             CompositionLocalProvider(LocalContentColor provides fg) {
                 when {
+                    m.kind == 1 && m.voice >= 0 -> VoiceBubble(m, path, haveFile)
                     m.kind == 1 && haveFile && isImage(m.file) -> ImageBubble(m, path, r.first)
                     m.kind == 1 -> FileBubble(m, t, path, haveFile, maxW, onSave)
                     else -> TextBubble(m, if (r.showSender) m.sender else null)
                 }
             }
         }
+    }
+    if (m.reactions.isNotEmpty() && !m.recalled) Row(Modifier.fillMaxWidth().padding(top = 2.dp), horizontalArrangement = if (m.out) Arrangement.End else Arrangement.Start) { ReactionChips(m) }
     }
 }
 
@@ -300,9 +335,10 @@ fun MessageRow(r: ChatRow.Bubble, t: Transfer?, maxW: androidx.compose.ui.unit.D
 fun TextBubble(m: Msg, sender: String?) {
     val holder = remember { arrayOfNulls<androidx.compose.ui.text.TextLayoutResult>(1) }
     Column(Modifier.padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 7.dp)) {
+        QuoteStrip(m)
         if (sender != null) Text(sender, fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium, color = avatarColorFor(sender), maxLines = 1, overflow = TextOverflow.Ellipsis)
         androidx.compose.ui.layout.Layout({
-            Text(m.body, fontSize = 16.sp, lineHeight = 22.sp, onTextLayout = { holder[0] = it })
+            Text(displayBody(m), fontSize = 16.sp, lineHeight = 22.sp, onTextLayout = { holder[0] = it }, fontStyle = if (m.recalled) androidx.compose.ui.text.font.FontStyle.Italic else null)
             Meta(m)
         }) { ms, c ->
             val text = ms[0].measure(c.copy(minWidth = 0)); val meta = ms[1].measure(c.copy(minWidth = 0))

@@ -64,7 +64,11 @@ JNIEXPORT jstring JNICALL FN(messages)(JNIEnv *e, jclass k, jstring conv){
     sb_s(&b,"["); lsm_lock(C); n=lsm_messages(C,&m);
     for(i=0;i<n;i++){ if(strcmp(m[i].conv,cv)) continue; if(!first) sb_s(&b,","); first=0;
         sb_s(&b,"{\"id\":"); sb_js(&b,m[i].id); sb_f(&b,",\"out\":%s,\"kind\":%d,\"status\":\"%s\",\"ts\":%lld,\"sender\":",m[i].out?"true":"false",m[i].kind,MS[m[i].status],(long long)m[i].ts_ms);
-        sb_js(&b,m[i].sender_name); sb_s(&b,",\"body\":"); sb_js(&b,m[i].body); sb_s(&b,",\"file\":"); sb_js(&b,m[i].file_name); sb_f(&b,",\"size\":%llu,\"path\":",(unsigned long long)m[i].file_size); sb_js(&b,m[i].file_path); sb_s(&b,"}"); }
+        sb_js(&b,m[i].sender_name); sb_s(&b,",\"body\":"); sb_js(&b,m[i].body); sb_s(&b,",\"file\":"); sb_js(&b,m[i].file_name); sb_f(&b,",\"size\":%llu,\"path\":",(unsigned long long)m[i].file_size); sb_js(&b,m[i].file_path);
+        { char rs[300], mine[40]=""; lsm_reaction_summary(&m[i],rs,sizeof rs); lsm_my_reaction(C,&m[i],mine,sizeof mine);
+          sb_s(&b,",\"reply_to\":"); sb_js(&b,m[i].reply_to); sb_s(&b,",\"quote\":"); sb_js(&b,m[i].quote); sb_s(&b,",\"reactions\":"); sb_js(&b,rs); sb_s(&b,",\"mine\":"); sb_js(&b,mine);
+          sb_f(&b,",\"edited\":%s,\"recalled\":%s,\"can_modify\":%s,\"voice\":%d",m[i].edited?"true":"false",m[i].recalled?"true":"false",lsm_can_modify(C,&m[i])?"true":"false",lsm_voice_secs(m[i].file_name)); }
+        sb_s(&b,"}"); }
     lsm_unlock(C); sb_s(&b,"]"); free(cv); r=JU(e,b.p); free(b.p); return r; }
 
 #define ERRRET(expr) { char err[256]=""; int rc=(expr); return J(e, rc?(err[0]?err:"failed"):""); }
@@ -105,3 +109,10 @@ JNIEXPORT jstring JNICALL FN(historyQuery)(JNIEnv *e, jclass k, jstring query, j
     lsm_unlock(C); sb_s(&b,"]}"); free(idx); free(qs); free(cv); r=JU(e,b.p); free(b.p); return r; }
 JNIEXPORT jstring JNICALL FN(setProfile)(JNIEnv *e, jclass k, jstring sig, jstring avatar){ char *s=sig?U(e,sig):NULL, *a=avatar?U(e,avatar):NULL, err[256]=""; int rc=C?lsm_set_profile(C,s,a,err):1; (void)k; free(s); free(a); return J(e,rc?(err[0]?err:"failed"):""); }
 JNIEXPORT void JNICALL FN(setRemark)(JNIEnv *e, jclass k, jstring fp, jstring remark){ char *f=U(e,fp), *r=U(e,remark); (void)k; if(C) lsm_set_remark(C,f,r); free(f); free(r); }
+
+/* v0.6.1 P1 */
+JNIEXPORT jstring JNICALL FN(sendReply)(JNIEnv *e, jclass k, jstring conv, jstring text, jstring replyTo){ char id[40], *c=U(e,conv), *t=U(e,text), *r=U(e,replyTo), err[256]=""; int rc=C?lsm_send_text2(C,c,t,*r?r:NULL,NULL,id,err):1; (void)k; free(c); free(t); free(r); return J(e,rc?(err[0]?err:"failed"):""); }
+JNIEXPORT jstring JNICALL FN(react)(JNIEnv *e, jclass k, jstring id, jstring emoji){ char *i=U(e,id), *m=U(e,emoji), err[256]=""; int rc=C?lsm_react(C,i,m,err):1; (void)k; free(i); free(m); return J(e,rc?(err[0]?err:"failed"):""); }
+JNIEXPORT jstring JNICALL FN(editMessage)(JNIEnv *e, jclass k, jstring id, jstring body){ char *i=U(e,id), *m=U(e,body), err[256]=""; int rc=C?lsm_edit_message(C,i,m,err):1; (void)k; free(i); free(m); return J(e,rc?(err[0]?err:"failed"):""); }
+JNIEXPORT jstring JNICALL FN(recallMessage)(JNIEnv *e, jclass k, jstring id){ char *i=U(e,id), err[256]=""; int rc=C?lsm_recall_message(C,i,err):1; (void)k; free(i); return J(e,rc?(err[0]?err:"failed"):""); }
+JNIEXPORT jstring JNICALL FN(voiceName)(JNIEnv *e, jclass k, jint secs, jstring ext){ char *x=U(e,ext), nm[128]; (void)k; lsm_voice_name(secs,x,nm,sizeof nm); free(x); return J(e,nm); }

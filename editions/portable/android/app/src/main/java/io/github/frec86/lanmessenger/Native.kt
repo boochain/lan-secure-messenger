@@ -38,4 +38,10 @@ object Native {
     /** null keeps the field; avatar "" removes it; avatar file must be <= 48 KB */
     @JvmStatic external fun setProfile(signature: String?, avatarPath: String?): String
     @JvmStatic external fun setRemark(fp: String, remark: String)
+    // v0.6.1 P1: reply/quote, reactions ("" removes mine), edit/recall (own, 24 h), voice file naming
+    @JvmStatic external fun sendReply(conv: String, text: String, replyTo: String): String
+    @JvmStatic external fun react(id: String, emoji: String): String
+    @JvmStatic external fun editMessage(id: String, body: String): String
+    @JvmStatic external fun recallMessage(id: String): String
+    @JvmStatic external fun voiceName(secs: Int, ext: String): String
 }
