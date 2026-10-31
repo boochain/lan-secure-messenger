@@ -47,7 +47,7 @@ def shot(name, icons=None):
 def click(x, y, b="1"):
     g = {k: int(v) for k, v in (l.split("=") for l in xdo("getwindowgeometry", "--shell", wid).split())}; xdo("mousemove", str(g["X"] + x), str(g["Y"] + y), "click", b)
 RPASS = "lsm-test-relay-pass"   # test-only passphrase for the throwaway local relay
-def relay_up(rport): return subprocess.Popen([rbin, "--bind", "127.0.0.1", "--port", str(rport), "--password", RPASS], stdout=open(f"{out}/relay-server.log", "a"), stderr=subprocess.STDOUT)
+def relay_up(rport): return subprocess.Popen([rbin, "--bind", "127.0.0.1", "--port", str(rport)], stdout=open(f"{out}/relay-server.log", "a"), stderr=subprocess.STDOUT)
 def wait(f, t=60, d=0.5):
     end = time.time() + t
     while time.time() < end:
@@ -62,7 +62,7 @@ for i, theme in enumerate(themes):
     relay = relay_up(rport)
     A = peer(f"a{theme}", "王工", port + 2)                    # LAN peer (direct)
     Cc = peer(f"c{theme}", "陈静（外地）", port + 4)            # relay-only peer: --no-discovery, never added by address
-    Cc.cmd(f"relay 127.0.0.1 {rport} {RPASS}")
+    Cc.cmd(f"relay 127.0.0.1 {rport}")
     icons_file = os.path.join(env["WINEPREFIX"], "drive_c", data[3:], "ui_icons.txt")
     g = Proc(["wine", exe, "--data", data, "--name", "Bill", "--port", str(port), "--disco-port", str(port + 1), "--theme", theme, "--auto-trust"], dict(env, LSM_UI_TEST="1"))
     wid = wait(lambda: (xdo("search", "--name", "局域网安全通讯").split() or [""])[0], 40)
@@ -77,7 +77,7 @@ for i, theme in enumerate(themes):
     dlg = wait(lambda: (xdo("search", "--name", "^中转服务器$").split() or [""])[0], 10)
     check(bool(dlg), f"[{theme}] relay settings dialog (captioned, modal) opens from 设置 > 中转服务器")
     shot(f"xp-{theme}-relay-settings-off")
-    xdo("key", "space"); xdo("key", "Tab"); xdo("type", "127.0.0.1"); xdo("key", "Tab"); xdo("key", "ctrl+a"); xdo("type", str(rport)); xdo("key", "Tab"); xdo("type", RPASS); time.sleep(0.5)
+    xdo("key", "space"); xdo("key", "Tab"); xdo("type", "127.0.0.1"); xdo("key", "Tab"); xdo("key", "ctrl+a"); xdo("type", str(rport)); time.sleep(0.5)
     xdo("key", "Return"); time.sleep(4)
     shot(f"xp-{theme}-relay-settings")
     cfp = wait(lambda: next((l.split()[1] for l in Cc.cmd("peers") if l.startswith("PEER") and "Bill" in l and "via=relay" in l), None), 60)

@@ -53,7 +53,7 @@ $RelayPort = 29443; $RelayPass = "ci-relay-pass"
 $relayProc = $null
 if ($Relay) {
   $Relay = (Resolve-Path $Relay).Path
-  $relayProc = Start-Process $Relay -ArgumentList "--bind 127.0.0.1 --port $RelayPort --password $RelayPass" -PassThru -NoNewWindow
+  $relayProc = Start-Process $Relay -ArgumentList "--bind 127.0.0.1 --port $RelayPort" -PassThru -NoNewWindow
   Start-Sleep -Seconds 1
   Write-Host "test relay on 127.0.0.1:$RelayPort (pid $($relayProc.Id))"
 }
@@ -110,7 +110,7 @@ foreach ($theme in "light", "dark") {
       $relayPeers += @{ who = $who; pipe = $pipe; proc = $p }
     }
     Start-Sleep -Seconds 2
-    foreach ($r in $relayPeers) { & $M --ipc $r.pipe relay on 127.0.0.1 $RelayPort $RelayPass }
+    foreach ($r in $relayPeers) { & $M --ipc $r.pipe relay on 127.0.0.1 $RelayPort }
     foreach ($r in $relayPeers) {
       & $M --ipc $r.pipe wait-peer $FA --timeout 60
       $r.fp = (& $M --ipc $r.pipe --json status | ConvertFrom-Json).me.fingerprint
@@ -162,7 +162,7 @@ foreach ($theme in "light", "dark") {
                "window memory: saved", "window memory: restored", "window memory: an off-screen",
                "Esc closes the contact-details dialog", "Shift+Enter inserts a new line", "Enter sends and clears the composer",
                "close hides to the tray, app keeps running", "tray: show restores the window")
-  if ($Relay) { $runtime += "relay toggled on", "relay peer badge", "chat header via relay", "paused transfer", "relay passphrase is write-only" }
+  if ($Relay) { $runtime += "relay toggled on", "relay peer badge", "chat header via relay", "paused transfer", "no relay passphrase field" }
   foreach ($r in $runtime) {
     if (-not (Select-String -Path "$dir\ui-smoke.txt" -Pattern ("PASS: " + [regex]::Escape($r)) -Quiet -ErrorAction SilentlyContinue)) { $problems += "[$theme] runtime check did not pass: $r" }
   }

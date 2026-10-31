@@ -64,11 +64,11 @@ def wait(f, t=60):
         time.sleep(0.5)
 for i, theme in enumerate(["light", "dark"]):
     port = base + i * 10; rport = port + 8
-    relay = subprocess.Popen([rbin, "--bind", "127.0.0.1", "--port", str(rport), "--password", RPASS], stdout=open(f"{out}/relay-server.log", "a"), stderr=subprocess.STDOUT)
+    relay = subprocess.Popen([rbin, "--bind", "127.0.0.1", "--port", str(rport)], stdout=open(f"{out}/relay-server.log", "a"), stderr=subprocess.STDOUT)
     A = peer(f"a{theme}", "王工", port + 2); Cc = peer(f"c{theme}", "陈静（外地）", port + 4)
-    Cc.cmd(f"relay 127.0.0.1 {rport} {RPASS}")
+    Cc.cmd(f"relay 127.0.0.1 {rport}")
     g = Proc([gui, "--data", f"{W}/gui-{theme}", "--name", "Bill", "--no-discovery", "--port", str(port), "--disco-port", str(port + 1), "--auto-trust"],
-             dict(env, LSM_THEME=theme, LSM_UI_TEST="1", LSM_QUIT_ON_CLOSE="1", LSM_WINDOW_SIZE="1024x694", LSM_UI_TEST_RELAY=f"127.0.0.1 {rport} {RPASS}"))
+             dict(env, LSM_THEME=theme, LSM_UI_TEST="1", LSM_QUIT_ON_CLOSE="1", LSM_WINDOW_SIZE="1024x694", LSM_UI_TEST_RELAY=f"127.0.0.1 {rport}"))
     fp = (g.wait_for("LSM_FP", 20) or " ? ").split()[1]; check(fp != "?", f"[{theme}] GUI started")
     A.cmd(f"add 127.0.0.1:{port}"); time.sleep(2); A.cmd(f"trust {fp[:12]}"); A.cmd(f"send {fp[:12]} 早上好！下午三点的评审会改到 302 会议室。")
     time.sleep(6); shot("relay-settings", theme, g=g)

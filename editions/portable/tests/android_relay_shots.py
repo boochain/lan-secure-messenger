@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Relay client UI on Android (emulator, adb): turn the relay on in 设置 › 中转服务器（可选） with the test relay,
 see a relay-only peer get the 经服务器 badge, and capture light + dark shots of the settings screen, the list with the
-经服务器 filter chip and the chat header via the server. Also checks Back navigation and that the passphrase is write-only.
+经服务器 filter chip and the chat header via the server. Also checks Back navigation and that there is no passphrase field.
 The relay runs on the host (127.0.0.1); the emulator reaches it at 10.0.2.2. There is no LAN path, so the relay is the only route.
 usage: android_relay_shots.py --relay-bin relay-server --native-cli build/linux/lanmsg-cli --out DIR"""
 import argparse, json, os, re, subprocess, sys, tempfile, time, xml.etree.ElementTree as ET
@@ -43,11 +43,11 @@ def check(cond, what):
     if not cond: FAILS.append(what)
 def shot(name): time.sleep(3); subprocess.run(f"{ADB} exec-out screencap -p > {args.out}/{name}.png", shell=True); print("shot", name, flush=True)
 
-relay = subprocess.Popen([args.relay_bin, "--bind", "127.0.0.1", "--port", str(RPORT), "--password", RPASS],
+relay = subprocess.Popen([args.relay_bin, "--bind", "127.0.0.1", "--port", str(RPORT)],
                          stdout=open(f"{args.out}/relay-server.log", "w"), stderr=subprocess.STDOUT)
 d = tempfile.mkdtemp(prefix="lsm-relay-peer-")
 P = ui_seed.Peer(PEER, [args.native_cli, "--data", d, "--name", PEER, "--no-discovery", "--port", "42400", "--disco-port", "42401"], args.out)
-P.cmd(f"relay 127.0.0.1 {RPORT} {RPASS}")
+P.cmd(f"relay 127.0.0.1 {RPORT}")
 try:
     sh("svc power stayon true; input keyevent 224; wm dismiss-keyguard; settings put system screen_off_timeout 1800000")
     sh("cmd overlay enable com.android.internal.systemui.navbar.gestural")  # gesture navigation, as in android_chat_shots.py / the mockups
@@ -61,11 +61,9 @@ try:
     check(has("局域网直连始终优先") or any("局域网直连始终优先" in (n.get("text") or "") for n in nodes()), "explains LAN direct is preferred")
     field("服务器地址"); sh("input text 10.0.2.2")
     field("端口"); sh("input keyevent 123; " + "input keyevent 67; " * 6 + f"input text {RPORT}")
-    field("网络口令"); sh(f"input text {RPASS}"); sh("input keyevent 66")   # IME Done (Enter) saves
-    time.sleep(2)
-    check(ui_seed.wait(lambda: has("口令已设置") and has("网络口令（已设置）"), 20, 2) is not None, "Enter saves; passphrase shows 已设置 (label + row)")
-    check(not any(RPASS in ((n.get("text") or "") + (n.get("content-desc") or "")) for n in nodes()), "passphrase is write-only (never shown again)")
-    tap_text("通过中转服务器连接")                                            # toggle on -> saves with the stored passphrase
+    sh("input keyevent 111"); time.sleep(1)
+    check(not has("网络口令") and not any("口令" in (n.get("text") or "") for n in nodes()), "no relay passphrase field/prompt (open relay)")
+    tap_text("通过中转服务器连接")                                            # toggle on -> saves and connects
     check(ui_seed.wait(lambda: has("已连接中转服务器"), 90, 2) is not None, "relay toggled on -> 已连接中转服务器")
     sh("input keyevent 111"); time.sleep(1)                                    # Esc: hides the keyboard / clears focus
     # relay peer comes online through the server; trust both ways

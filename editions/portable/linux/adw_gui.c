@@ -385,7 +385,7 @@ static void relay_dialog(void){ GtkWidget *tv, *hb, *pg, *grp, *grp2, *box, *btn
     adw_window_set_content(ADW_WINDOW(rl_win),tv); relay_refresh(); gtk_window_present(GTK_WINDOW(rl_win)); if(getenv("LSM_UI_TEST")) g_timeout_add(600,test_log_later,(gpointer)"relay"); }
 
 static gboolean relay_test_fill(gpointer p){ /* LSM_UI_TEST_RELAY="host port pass": open the dialog, fill it and press 保存并连接 like a user */ char h[256], ps[256]; int port;
-    if(sscanf((const char*)p,"%255s %d %255s",h,&port,ps)!=3) return G_SOURCE_REMOVE; relay_dialog(); { char b[16]; snprintf(b,sizeof b,"%d",port); gtk_switch_set_active(GTK_SWITCH(rl_sw),TRUE); gtk_editable_set_text(GTK_EDITABLE(rl_host),h); gtk_editable_set_text(GTK_EDITABLE(rl_port),b); gtk_editable_set_text(GTK_EDITABLE(rl_pass),ps); }
+    ps[0]=0; if(sscanf((const char*)p,"%255s %d %255s",h,&port,ps)<2) return G_SOURCE_REMOVE; relay_dialog(); { char b[16]; snprintf(b,sizeof b,"%d",port); gtk_switch_set_active(GTK_SWITCH(rl_sw),TRUE); gtk_editable_set_text(GTK_EDITABLE(rl_host),h); gtk_editable_set_text(GTK_EDITABLE(rl_port),b); gtk_editable_set_text(GTK_EDITABLE(rl_pass),ps); }
     relay_save_cb(NULL,NULL); return G_SOURCE_REMOVE; }
 /* LSM_UI_TEST_DROP=<path> (test only): once a chat is open, emit "drop" on the chat's real GtkDropTarget with a
    GdkFileList, the same signal + value a desktop drag & drop delivers (G8) */

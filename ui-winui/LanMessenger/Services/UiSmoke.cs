@@ -125,6 +125,7 @@ public static class UiSmoke
                     sp.ShowRelayCardForSmoke();
                     await Task.Delay(1500);
                     await ShotAsync(w, dir, "page-settings-relay", label, theme);
+                    Check(!Descendants(w.Content).OfType<PasswordBox>().Any(pb => pb.Visibility == Visibility.Visible), "no relay passphrase field on the relay settings page (open relay)");
                 }
                 if (tag == "settings")
                 {
