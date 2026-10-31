@@ -738,6 +738,7 @@ impl Engine {
                 ts_ms: ts,
                 status: MsgStatus::Queued,
                 file: Some(file),
+                ext: Default::default(),
             };
             self.add_message(m, false);
         }
@@ -1043,6 +1044,7 @@ impl Engine {
                         ts_ms: if ts_ms > 0 { ts_ms } else { now_ms() },
                         status: MsgStatus::Received,
                         file: Some(file),
+                        ext: Default::default(),
                     };
                     self.remember_id(msg_id);
                     self.add_message(m, true);

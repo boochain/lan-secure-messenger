@@ -377,3 +377,31 @@ async fn profile_sync_remark_and_history_query() {
     let cp = b.call("contact_profile", json!({"fingerprint": a.fp})).await;
     assert_eq!(cp["peer"]["signature"], "在 302 会议室");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn ext_reply_react_edit_recall() {
+    let a = node("Alice", json!({})).await;
+    let b = node("Bob", json!({})).await;
+    let pb = b.port().await;
+    a.call("add_peer", json!({"address": format!("127.0.0.1:{pb}")})).await;
+    both_online(&a, &b, 20).await;
+    let conv_b = format!("dm:{}", a.fp);
+    let conv_a = format!("dm:{}", b.fp);
+    a.send(&b, "明天几点开会？").await;
+    wait("first msg", 15, || async { b.msgs(&conv_b).await.len() >= 1 }).await;
+    let orig = b.msgs(&conv_b).await.last().unwrap()["id"].as_str().unwrap().to_string();
+    // reply with quote
+    b.call("send_text", json!({"conversation": conv_b, "body": "十点", "reply_to": orig})).await;
+    wait("reply on alice", 15, || async { a.msgs(&conv_a).await.iter().any(|m| m["body"] == "十点" && m["reply_to"] == orig.as_str() && m["quote"].as_str().unwrap_or("").contains("明天几点开会")) }).await;
+    // reaction (toggle)
+    b.call("react", json!({"id": orig, "emoji": "👍"})).await;
+    wait("reaction on alice", 15, || async { a.msgs(&conv_a).await.iter().any(|m| m["id"] == orig.as_str() && m["reactions"][0]["emoji"] == "👍") }).await;
+    // edit + recall by the sender
+    a.call("edit_message", json!({"id": orig, "body": "明天几点开评审会？"})).await;
+    wait("edit on bob", 15, || async { b.msgs(&conv_b).await.iter().any(|m| m["id"] == orig.as_str() && m["body"] == "明天几点开评审会？" && m["edited"] == true) }).await;
+    a.call("recall_message", json!({"id": orig})).await;
+    wait("recall on bob", 15, || async { b.msgs(&conv_b).await.iter().any(|m| m["id"] == orig.as_str() && m["recalled"] == true && m["body"] == "") }).await;
+    // the receiver cannot edit someone else's message
+    let r = b.h.call("edit_message", json!({"id": orig, "body": "x"})).await;
+    assert!(r.is_err());
+}

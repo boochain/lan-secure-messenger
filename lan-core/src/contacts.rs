@@ -36,6 +36,9 @@ pub struct Contact {
     pub signature: String,
     /// Hex SHA-256 of the peer's avatar file (avatars/<fp>.img); empty = none.
     pub avatar_sha: String,
+    /// last capability bits the peer announced (lets offline sends pick Ext vs. text fallback)
+    #[serde(default)]
+    pub caps: u32,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]

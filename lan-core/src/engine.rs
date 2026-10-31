@@ -17,6 +17,7 @@ use crate::group::{invite_sign_bytes, rekey_sign_bytes, GroupInfo, GroupStore};
 use crate::history::HistoryStore;
 use crate::identity::Identity;
 use crate::link::{self, Link, LinkWriter};
+mod ext;
 mod files;
 pub use files::sanitize_filename;
 mod relay;
@@ -607,6 +608,7 @@ impl Engine {
         if hello.listen_port != 0 && !via_relay {
             self.contacts.note_addr(&fp, &dial_addr.to_string());
         }
+        self.contacts.entry(&fp).caps = caps;
         let _ = self.contacts.save();
         let r = self.rt.entry(fp.clone()).or_default();
         r.dialing = false;
@@ -1039,6 +1041,7 @@ impl Engine {
             ts_ms: now_ms(),
             status: MsgStatus::Received,
             file: None,
+            ext: Default::default(),
         };
         self.add_message(m, false);
     }
@@ -1071,6 +1074,7 @@ impl Engine {
                     ts_ms: if ts_ms > 0 { ts_ms } else { now_ms() },
                     status: MsgStatus::Received,
                     file: None,
+                    ext: Default::default(),
                 };
                 self.add_message(m, true);
             }
@@ -1101,6 +1105,7 @@ impl Engine {
                     ts_ms: if ts_ms > 0 { ts_ms } else { now_ms() },
                     status: MsgStatus::Received,
                     file: None,
+                    ext: Default::default(),
                 };
                 self.add_message(m, true);
             }
@@ -1175,6 +1180,7 @@ impl Engine {
                 }
                 self.system_msg(&group_conv(&group_id), format!("{name} 退出了群组"));
             }
+            Payload::Ext { group_id, key_epoch: _, data, ts_ms } => self.on_ext(fp, id, group_id, data, ts_ms),
             Payload::Read { ids } => {
                 for i in ids {
                     let s = i.to_string();
@@ -1510,6 +1516,7 @@ impl Engine {
                 ts_ms: ts,
                 status: MsgStatus::Received,
                 file: None,
+                ext: Default::default(),
             };
             self.add_message(m, true);
             self.notice("info", &format!("已从中转拉取保留消息（来自 {}）", self.peer_name(&from)));
@@ -2201,9 +2208,14 @@ impl Engine {
                     body: String,
                     #[serde(default)]
                     retain: Option<bool>,
+                    #[serde(default)]
+                    reply_to: Option<String>,
+                    #[serde(default)]
+                    mentions: Vec<String>,
                 }
                 let a: P = p(params)?;
                 let body = a.body.trim_end().to_string();
+                let reply_to = a.reply_to.clone().filter(|r| self.history.get(r).map(|m| m.conversation == a.conversation).unwrap_or(false));
                 let want_retain = a.retain.unwrap_or(self.settings.default_retain == "server_retain");
                 if body.trim().is_empty() {
                     return Err(RpcError::invalid("消息不能为空"));
@@ -2224,7 +2236,26 @@ impl Engine {
                     ts_ms: ts,
                     status: MsgStatus::Queued,
                     file: None,
+                    ext: Default::default(),
                 };
+                if reply_to.is_some() || !a.mentions.is_empty() {
+                    // v0.6.1 P1: reply / @mention → Ext (old peers: quote line + body)
+                    if let Some(fp) = a.conversation.strip_prefix("dm:") {
+                        if self.contacts.trust(fp) == Trust::Blocked {
+                            return Err(RpcError::invalid("该联系人已被屏蔽"));
+                        }
+                    }
+                    let quote = reply_to.as_deref().map(|r| self.quote_of(r)).unwrap_or_default();
+                    m.ext = MsgExt { reply_to: reply_to.clone(), quote: quote.clone(), mentions: a.mentions.clone(), ..Default::default() };
+                    let op = json!({"k":"text","body":body,"reply_to":reply_to.clone().unwrap_or_default(),"quote":quote,"mentions":a.mentions});
+                    let fb = if quote.is_empty() { body.clone() } else { format!("「{quote}」\n— {body}") };
+                    if self.send_ext(&a.conversation, &op, Some(&fb), id, Some(m.id.clone()))? {
+                        m.status = MsgStatus::Sent;
+                    }
+                    self.remember_id(id);
+                    self.add_message(m.clone(), false);
+                    return ok(m);
+                }
                 if let Some(fp) = a.conversation.strip_prefix("dm:") {
                     let fp = fp.to_string();
                     if fp == self.me {
@@ -2526,6 +2557,7 @@ impl Engine {
                 self.emit(Event::GroupRemoved { id: a.group_id.to_string() });
                 ok(json!({"ok": true}))
             }
+            "react" | "edit_message" | "recall_message" => self.rpc_ext(method, params).unwrap(),
             "history_query" => {
                 let q: crate::history::HistoryQuery = p(params)?;
                 ok(self.history.query(&q))

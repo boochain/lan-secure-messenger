@@ -13,7 +13,9 @@ pub const PROTO_VERSION: u16 = 5;
 pub const CAP_RESUME: u32 = 1;
 /// Capability: profile sync (`Frame::Profile`: signature + small avatar). Older peers never receive it.
 pub const CAP_PROFILE: u32 = 2;
-pub const MY_CAPS: u32 = CAP_RESUME | CAP_PROFILE;
+/// v0.6.1 P1: Payload::Ext (reply / react / edit / recall); peers without it get a plain-text fallback.
+pub const CAP_EXT: u32 = 4;
+pub const MY_CAPS: u32 = CAP_RESUME | CAP_PROFILE | CAP_EXT;
 /// Max avatar bytes carried in `Frame::Profile` (UIs downscale to ~96 px PNG/JPEG first).
 pub const MAX_AVATAR: usize = 48 * 1024;
 /// Max signature (个性签名) length in chars.
@@ -80,6 +82,8 @@ pub enum Payload {
     GroupLeave { group_id: Uuid },
     /// Read receipt for a batch of message ids.
     Read { ids: Vec<Uuid> },
+    /// v0.6.1 (CAP_EXT only): JSON ops {"k":"text"|"react"|"edit"|"recall",...}; `data` is sealed with the group key for groups.
+    Ext { group_id: Option<Uuid>, key_epoch: u64, data: Vec<u8>, ts_ms: i64 },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
