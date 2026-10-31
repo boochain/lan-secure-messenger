@@ -44,7 +44,7 @@ public class RelayUiTests
         var i = new TransferItem(t);
         Assert.True(i.IsPaused); Assert.Equal("连接中断，重连后自动续传", i.StateText); Assert.False(i.IsError);
         t.State = TransferState.Active; t.Error = ""; t.ResumedFrom = 400; i.Update(t);
-        Assert.False(i.IsPaused); Assert.StartsWith("传输中 · 从 40%", i.StateText);
+        Assert.False(i.IsPaused); Assert.StartsWith("续传中 · 从 40%", i.StateText);
         t.State = TransferState.Offered; t.ResumedFrom = 0; i.Update(t);
         Assert.Equal("等待接收", i.StateText);
     }

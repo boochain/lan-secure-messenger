@@ -23,7 +23,8 @@ echo Windows 防火墙已启用。将执行：
 echo   %C1%
 echo   %C2%
 set A=
-set /p A=是否添加防火墙例外？[y/N]: 
+echo 是否添加防火墙例外？输入 y 并回车确认，直接回车跳过（默认：否）
+set /p A=[y/N]: 
 if /i not "%A%"=="y" if /i not "%A%"=="yes" (
   echo 未修改防火墙。
   goto cloud
