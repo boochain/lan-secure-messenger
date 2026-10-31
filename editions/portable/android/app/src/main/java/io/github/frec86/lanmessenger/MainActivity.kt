@@ -121,7 +121,15 @@ fun App(pendingShare: MutableState<List<Uri>>, openConvExt: MutableState<String?
         onDismiss = { pendingText.value = null }) }
     val c = conv
     // Back: chat -> list (Chat's own handler closes its search first); the list handles tabs/search and double-back-to-exit
-    if (c == null) Home(st) { conv = it } else Chat(st, c) { conv = null }
+    var page by rememberSaveable { mutableStateOf("") }   // v0.6.1: "history" | "profile" | "cprofile:<fp>"
+    val jump: (String, String) -> Unit = { cv, id -> Repo.jumpId = id; page = ""; conv = cv }
+    when {
+        page == "history" -> HistoryScreen(st, c, back = { page = "" }, jump = jump)
+        page == "profile" -> MyProfileScreen(st) { page = "" }
+        page.startsWith("cprofile:") -> page.removePrefix("cprofile:").let { fp -> ContactProfileScreen(st, fp, back = { page = "" }, openChat = { page = ""; conv = "dm:$fp" }, history = { conv = "dm:$fp"; page = "history" }, jump = jump) }
+        c == null -> Home(st, openPage = { page = it }) { conv = it }
+        else -> Chat(st, c, openPage = { page = it }) { conv = null }
+    }
 }
 
 /* ---------------------------------------------------------------- dialogs */

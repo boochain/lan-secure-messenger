@@ -31,7 +31,7 @@ import androidx.compose.ui.unit.sp
 
 /* ---------------------------------------------------------------- home: app bar · chips · connection banner · chat list · FAB · navigation bar (spec §5.1, Android) */
 @Composable
-fun Home(st: AppState, open: (String) -> Unit) {
+fun Home(st: AppState, openPage: (String) -> Unit = {}, open: (String) -> Unit) {
     val p = LocalPalette.current
     var tab by rememberSaveable { mutableIntStateOf(0) }; var filter by rememberSaveable { mutableIntStateOf(0) }
     var menu by remember { mutableStateOf(false) }; var dlg by remember { mutableStateOf("") }
@@ -71,7 +71,8 @@ fun Home(st: AppState, open: (String) -> Unit) {
                     DropdownMenuItem({ Text("刷新联系人") }, { menu = false; Native.refreshPeers(); Repo.refresh(); Repo.toast.value = "已刷新联系人" }, leadingIcon = { Ic(R.drawable.ms_network) })
                     DropdownMenuItem({ Text("生成 PIN（让对方输入）") }, { menu = false; dlg = "pin" }, leadingIcon = { Ic(R.drawable.ms_lock) })
                     DropdownMenuItem({ Text("创建群组") }, { menu = false; dlg = "group" }, leadingIcon = { Ic(R.drawable.ms_groups) })
-                    DropdownMenuItem({ Text("修改昵称") }, { menu = false; dlg = "name" }, leadingIcon = { Ic(R.drawable.ms_edit) })
+                    DropdownMenuItem({ Text("个人资料") }, { menu = false; openPage("profile") }, leadingIcon = { Ic(R.drawable.ms_edit) })
+                    DropdownMenuItem({ Text("消息历史") }, { menu = false; openPage("history") }, leadingIcon = { Ic(R.drawable.ms_search) })
                     DropdownMenuItem({ Text("诊断信息") }, { menu = false; dlg = "diag" }, leadingIcon = { Ic(R.drawable.ms_info) })
                     DropdownMenuItem({ Text("检查更新") }, { menu = false; upd = Triple(2, "正在检查…", Updates.RELEASES); dlg = "update"; Updates.check(st.me.version) { n, m, u -> upd = Triple(n, m, u) } }, leadingIcon = { Ic(R.drawable.ms_info) })
                     DropdownMenuItem({ Text("关于") }, { menu = false; dlg = "about" }, leadingIcon = { Ic(R.drawable.ms_info) })
