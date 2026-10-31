@@ -55,10 +55,10 @@ for th in a.themes.split(","):
     # select the contact (first row of the list)
     x("mousemove", "--window", wid, "150", "128"); x("click", "1"); time.sleep(1.5)
     if th == a.themes.split(",")[0]:
-        # trust from the GUI menu: open menu, pick 信任当前联系人 (3rd entry)
+        # trust from the GUI menu: 按IP / 刷新联系人 / 信任当前联系人 (3rd navigable → Down×2)
         x("key", "F10"); time.sleep(1)
         shot(f"{th}-03-menu"); x("key", "Escape"); time.sleep(0.5)
-        x("key", "F10"); time.sleep(0.8); x("key", "Down", "Return"); time.sleep(1)
+        x("key", "F10"); time.sleep(0.8); x("key", "Down"); x("key", "Down"); x("key", "Return"); time.sleep(1)
         lm("send", gfp, "李明你好，下午三点的评审会改到 302 会议室。"); time.sleep(1.5)
         x("mousemove", "--window", wid, "560", "640"); x("click", "1"); time.sleep(0.5); x("type", "--delay", "40", "OK, thanks!"); x("key", "Return"); time.sleep(1.5)
         lm("send", gfp, "顺便把白板照片和季度报告发你，请查收 📎"); lm("send-file", gfp, f"{W}/会议白板.png"); lm("send-file", gfp, f"{W}/季度报告.txt"); time.sleep(6)
@@ -82,11 +82,12 @@ for th in a.themes.split(","):
         x("key", "F10"); time.sleep(0.8)
         for _ in range(n): x("key", "Up"); time.sleep(0.05)
         x("key", "Return"); time.sleep(1.5)
-    menu_up(6); shot(f"{th}-05-transfers"); x("key", "Escape"); time.sleep(0.8)
+    menu_up(8); shot(f"{th}-05-transfers")  # Exit..About..Firewall..Name..Emoji..Storage..DLDIR..XFERS
+    x("key", "Escape"); time.sleep(0.8)
     menu_up(2); shot(f"{th}-06-about"); x("key", "Return"); time.sleep(0.8)
-    # PIN offer dialog: F10, Down x5
+    # PIN offer dialog: F10, Down×5 → 生成 PIN（菜单插入了「刷新联系人」）
     x("key", "F10"); time.sleep(0.8)
-    for _ in range(4): x("key", "Down"); time.sleep(0.05)
+    for _ in range(5): x("key", "Down"); time.sleep(0.05)
     x("key", "Return"); time.sleep(1.5); shot(f"{th}-07-pin"); x("key", "Return"); time.sleep(0.8)
     # drag-drop hint is only visible during a drag; tray shown top-right in stalonetray
     subprocess.run(["import", "-window", "root", "-crop", "200x40+1080+0", "-scale", "300%", f"{a.out}/{th}-08-tray-crop.png"], env=env)
