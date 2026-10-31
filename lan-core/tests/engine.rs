@@ -274,9 +274,10 @@ async fn pin_pairing_and_untrusted_file_rejected() {
     chat_both_ways(&a, &b).await;
     let f = a.dir.path().join("x.txt");
     std::fs::write(&f, b"hello").unwrap();
-    let t = a.call("send_file", json!({"conversation": format!("dm:{}", b.fp), "path": f.display().to_string()})).await;
-    let tid = t["id"].as_str().unwrap().to_string();
-    wait("rejected", 10, || async { a.snap().await["transfers"].as_array().unwrap().iter().any(|x| x["id"] == tid.as_str() && x["state"] == "rejected") }).await;
+    // Trust pre-check: the send is refused BEFORE anything goes on the wire (never fail-after-send).
+    let e = a.h.call("send_file", json!({"conversation": format!("dm:{}", b.fp), "path": f.display().to_string()})).await;
+    assert!(e.is_err(), "send_file to an untrusted peer must be refused up front");
+    assert!(a.snap().await["transfers"].as_array().unwrap().is_empty(), "no transfer may be created");
     let pin = b.call("pin_offer", json!({})).await["pin"].as_str().unwrap().to_string();
     let bad = a.h.call("pin_pair", json!({"fingerprint": b.fp, "pin": "000000x"})).await.unwrap();
     assert_eq!(bad["ok"], false);

@@ -276,6 +276,12 @@ static void on_paste_files(GObject *src, GAsyncResult *res, gpointer data){ (voi
     for(it=l;it;it=it->next){ char *path=g_file_get_path(G_FILE(it->data)); if(path){ send_path(path); g_free(path);} }
     refresh_chat(); }
 static void paste_clipboard(void){
+    GdkClipboard *cb=gtk_widget_get_clipboard(win); GdkContentFormats *fm=gdk_clipboard_get_formats(cb);
+    if(!gdk_content_formats_contain_gtype(fm,GDK_TYPE_FILE_LIST) && !gdk_content_formats_contain_gtype(fm,GDK_TYPE_TEXTURE)){
+        /* plain text: let the focused text widget do its normal paste */
+        GtkWidget *fw=gtk_root_get_focus(GTK_ROOT(win));
+        if(fw && (GTK_IS_TEXT_VIEW(fw)||GTK_IS_TEXT(fw))) g_signal_emit_by_name(fw,"paste-clipboard");
+        return; }
     if(!cur_conv[0]){ info("未选择会话","请先选择联系人或群组。"); return; }
     gdk_clipboard_read_value_async(gtk_widget_get_clipboard(win),GDK_TYPE_FILE_LIST,G_PRIORITY_DEFAULT,NULL,on_paste_files,NULL); }
 
