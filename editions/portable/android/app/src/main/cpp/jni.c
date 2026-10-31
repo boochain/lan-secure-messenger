@@ -43,10 +43,12 @@ JNIEXPORT jstring JNICALL FN(state)(JNIEnv *e, jclass k){
     n=lsm_contacts(C,&c); nm=lsm_messages(C,&m);
     for(i=0;i<n;i++){ char conv[64]; int un=0; snprintf(conv,64,"dm:%s",c[i].fp); for(j=0;j<nm;j++) if(m[j].unread&&!strcmp(m[j].conv,conv)) un++;
         if(i) sb_s(&b,","); sb_s(&b,"{\"fp\":"); sb_js(&b,c[i].fp); sb_s(&b,",\"name\":"); sb_js(&b,lsm_display_name(&c[i])); sb_s(&b,",\"nick\":"); sb_js(&b,c[i].name); sb_s(&b,",\"remark\":"); sb_js(&b,c[i].remark); sb_s(&b,",\"sig\":"); sb_js(&b,c[i].signature); { char ap[600]; lsm_avatar_path(C,c[i].fp,ap,sizeof ap); sb_s(&b,",\"avatar\":"); sb_js(&b,ap); } sb_f(&b,",\"trust\":%d,\"online\":%s,\"rtt\":%d,\"unread\":%d,\"addr\":",c[i].trust,c[i].online?"true":"false",c[i].rtt_ms,un);
-        sb_js(&b,c[i].addr); sb_s(&b,",\"version\":"); sb_js(&b,c[i].app_version); sb_f(&b,",\"via\":%s",c[i].via_relay?"true":"false"); { char d[600]; int has=lsm_get_draft(C,conv,d,sizeof d); sb_f(&b,",\"pinned\":%s,\"draft\":",lsm_conv_pinned(C,conv)?"true":"false"); sb_js(&b,has?d:""); } sb_s(&b,"}"); }
+        sb_js(&b,c[i].addr); sb_s(&b,",\"version\":"); sb_js(&b,c[i].app_version); sb_f(&b,",\"via\":%s",c[i].via_relay?"true":"false"); { char d[600]; int has=lsm_get_draft(C,conv,d,sizeof d); sb_f(&b,",\"pinned\":%s,\"draft\":",lsm_conv_pinned(C,conv)?"true":"false"); sb_js(&b,has?d:""); }
+        { char fo[400]; lsm_conv_folders(C,conv,fo,sizeof fo); sb_f(&b,",\"archived\":%s,\"ttl\":%d,\"folders\":",lsm_conv_archived(C,conv)?"true":"false",lsm_conv_ttl(C,conv)); sb_js(&b,fo); } sb_s(&b,"}"); }
     sb_s(&b,"],\"groups\":["); n=lsm_groups(C,&g);
     for(i=0;i<n;i++){ char u[37], conv[64]; int un=0; lsm_uuid_str(g[i].id,u); snprintf(conv,64,"group:%s",u); for(j=0;j<nm;j++) if(m[j].unread&&!strcmp(m[j].conv,conv)) un++;
-        if(i) sb_s(&b,","); sb_s(&b,"{\"id\":"); sb_js(&b,u); sb_s(&b,",\"name\":"); sb_js(&b,g[i].name); sb_f(&b,",\"epoch\":%llu,\"unread\":%d,\"pinned\":%s,\"draft\":",(unsigned long long)g[i].key_epoch,un,lsm_conv_pinned(C,conv)?"true":"false"); { char d[600]; sb_js(&b,lsm_get_draft(C,conv,d,sizeof d)?d:""); } sb_s(&b,",\"members\":[");
+        if(i) sb_s(&b,","); sb_s(&b,"{\"id\":"); sb_js(&b,u); sb_s(&b,",\"name\":"); sb_js(&b,g[i].name); { char fo[400]; lsm_conv_folders(C,conv,fo,sizeof fo); sb_f(&b,",\"archived\":%s,\"ttl\":%d,\"folders\":",lsm_conv_archived(C,conv)?"true":"false",lsm_conv_ttl(C,conv)); sb_js(&b,fo); }
+        sb_f(&b,",\"epoch\":%llu,\"unread\":%d,\"pinned\":%s,\"draft\":",(unsigned long long)g[i].key_epoch,un,lsm_conv_pinned(C,conv)?"true":"false"); { char d[600]; sb_js(&b,lsm_get_draft(C,conv,d,sizeof d)?d:""); } sb_s(&b,",\"members\":[");
         for(j=0;j<g[i].nmembers;j++){ if(j) sb_s(&b,","); sb_js(&b,g[i].members[j]); } sb_s(&b,"]}"); }
     sb_s(&b,"],\"transfers\":["); n=lsm_transfers(C,&t);
     for(i=0;i<n;i++){ char u[37]; lsm_uuid_str(t[i].tid,u); if(i) sb_s(&b,","); sb_s(&b,"{\"id\":"); sb_js(&b,u); sb_s(&b,",\"msg\":"); sb_js(&b,t[i].msg_id); sb_s(&b,",\"name\":"); sb_js(&b,t[i].name);
@@ -68,7 +70,11 @@ JNIEXPORT jstring JNICALL FN(messages)(JNIEnv *e, jclass k, jstring conv){
         { char rs[300], mine[40]=""; lsm_reaction_summary(&m[i],rs,sizeof rs); lsm_my_reaction(C,&m[i],mine,sizeof mine);
           sb_s(&b,",\"reply_to\":"); sb_js(&b,m[i].reply_to); sb_s(&b,",\"quote\":"); sb_js(&b,m[i].quote); sb_s(&b,",\"reactions\":"); sb_js(&b,rs); sb_s(&b,",\"mine\":"); sb_js(&b,mine);
           sb_f(&b,",\"edited\":%s,\"recalled\":%s,\"can_modify\":%s,\"voice\":%d",m[i].edited?"true":"false",m[i].recalled?"true":"false",lsm_can_modify(C,&m[i])?"true":"false",lsm_voice_secs(m[i].file_name));
-          sb_f(&b,",\"forwarded\":%s,\"pinned\":%s,\"starred\":%s,\"mentions_me\":%s",m[i].forwarded?"true":"false",m[i].pinned?"true":"false",m[i].starred?"true":"false",m[i].mentions_me?"true":"false"); }
+          sb_f(&b,",\"forwarded\":%s,\"pinned\":%s,\"starred\":%s,\"mentions_me\":%s",m[i].forwarded?"true":"false",m[i].pinned?"true":"false",m[i].starred?"true":"false",m[i].mentions_me?"true":"false");
+          sb_f(&b,",\"expires\":%lld",(long long)m[i].expires_ms);
+          if(m[i].is_poll){ int cnt[10], mn[10], voters=0, k=lsm_poll_counts(C,&m[i],cnt,10,mn,&voters), q; sb_f(&b,",\"poll\":{\"multi\":%s,\"closed\":%s,\"voters\":%d,\"opts\":[",m[i].poll_multi?"true":"false",m[i].poll_closed?"true":"false",voters);
+            for(q=0;q<k&&q<10;q++){ char o[400]; lsm_poll_option(&m[i],q,o,sizeof o); if(q) sb_s(&b,","); sb_s(&b,"{\"t\":"); sb_js(&b,o); sb_f(&b,",\"n\":%d,\"mine\":%s}",cnt[q],mn[q]?"true":"false"); }
+            sb_s(&b,"]}"); } }
         sb_s(&b,"}"); }
     lsm_unlock(C); sb_s(&b,"]"); free(cv); r=JU(e,b.p); free(b.p); return r; }
 
@@ -117,6 +123,14 @@ JNIEXPORT jstring JNICALL FN(react)(JNIEnv *e, jclass k, jstring id, jstring emo
 JNIEXPORT jstring JNICALL FN(editMessage)(JNIEnv *e, jclass k, jstring id, jstring body){ char *i=U(e,id), *m=U(e,body), err[256]=""; int rc=C?lsm_edit_message(C,i,m,err):1; (void)k; free(i); free(m); return J(e,rc?(err[0]?err:"failed"):""); }
 JNIEXPORT jstring JNICALL FN(recallMessage)(JNIEnv *e, jclass k, jstring id){ char *i=U(e,id), err[256]=""; int rc=C?lsm_recall_message(C,i,err):1; (void)k; free(i); return J(e,rc?(err[0]?err:"failed"):""); }
 JNIEXPORT jstring JNICALL FN(voiceName)(JNIEnv *e, jclass k, jint secs, jstring ext){ char *x=U(e,ext), nm[128]; (void)k; lsm_voice_name(secs,x,nm,sizeof nm); free(x); return J(e,nm); }
+
+/* v0.6.2 */
+JNIEXPORT jstring JNICALL FN(sendPoll)(JNIEnv *e, jclass k, jstring conv, jstring q, jstring opts, jboolean multi){ char *c=U(e,conv), *qq=U(e,q), *o=U(e,opts), err[256]="", id[40]; int rc=C?lsm_send_poll(C,c,qq,o,multi?1:0,id,err):1; (void)k; free(c); free(qq); free(o); return J(e,rc?(err[0]?err:"failed"):""); }
+JNIEXPORT jstring JNICALL FN(votePoll)(JNIEnv *e, jclass k, jstring id, jint opt){ char *i=U(e,id), err[256]=""; int rc=C?lsm_vote_toggle(C,i,opt,err):1; (void)k; free(i); return J(e,rc?(err[0]?err:"failed"):""); }
+JNIEXPORT jstring JNICALL FN(closePoll)(JNIEnv *e, jclass k, jstring id){ char *i=U(e,id), err[256]=""; int rc=C?lsm_close_poll(C,i,err):1; (void)k; free(i); return J(e,rc?(err[0]?err:"failed"):""); }
+JNIEXPORT void JNICALL FN(setArchived)(JNIEnv *e, jclass k, jstring conv, jboolean on){ char *c=U(e,conv); (void)k; if(C) lsm_set_conv_archived(C,c,on?1:0); free(c); }
+JNIEXPORT void JNICALL FN(setFolders)(JNIEnv *e, jclass k, jstring conv, jstring csv){ char *c=U(e,conv), *f=U(e,csv); (void)k; if(C) lsm_set_conv_folders(C,c,f); free(c); free(f); }
+JNIEXPORT jstring JNICALL FN(setTtl)(JNIEnv *e, jclass k, jstring conv, jint secs){ char *c=U(e,conv), err[256]=""; int rc=C?lsm_set_disappearing(C,c,secs,err):1; (void)k; free(c); return J(e,rc?(err[0]?err:"failed"):""); }
 
 /* v0.6.1 P2 */
 JNIEXPORT jstring JNICALL FN(sendText2)(JNIEnv *e, jclass k, jstring conv, jstring text, jstring replyTo){ char id[40], *c=U(e,conv), *t=U(e,text), *r=U(e,replyTo), err[256]="", csv[64*(FP_LEN+1)]=""; int rc=1; (void)k;

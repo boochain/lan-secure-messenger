@@ -33,7 +33,7 @@ import androidx.compose.ui.unit.sp
 @Composable
 fun Home(st: AppState, openPage: (String) -> Unit = {}, open: (String) -> Unit) {
     val p = LocalPalette.current
-    var tab by rememberSaveable { mutableIntStateOf(0) }; var filter by rememberSaveable { mutableIntStateOf(0) }
+    var tab by rememberSaveable { mutableIntStateOf(0) }; var filter by rememberSaveable { mutableIntStateOf(0) }; var folder by rememberSaveable { mutableStateOf("") }
     var menu by remember { mutableStateOf(false) }; var dlg by remember { mutableStateOf("") }
     var upd by remember { mutableStateOf(Triple(2, "", "")) }
     var searching by rememberSaveable { mutableStateOf(false) }; var q by rememberSaveable { mutableStateOf("") }
@@ -82,7 +82,7 @@ fun Home(st: AppState, openPage: (String) -> Unit = {}, open: (String) -> Unit) 
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when (tab) {
                 0, 1 -> {
-                    val shown = convs.filter { c -> (tab == 0 || c.group) && when (filter) { 1 -> c.unread > 0; 2 -> c.group; 3 -> c.via; else -> true } &&
+                    val shown = convs.filter { c -> (tab == 0 || c.group) && (tab != 0 || convVisible(c, folder)) && when (filter) { 1 -> c.unread > 0; 2 -> c.group; 3 -> c.via; else -> true } &&
                             (q.isBlank() || c.name.contains(q, true)) }
                     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 88.dp)) {
                         if (tab == 0) item(key = "chips") { Row(Modifier.horizontalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -90,6 +90,8 @@ fun Home(st: AppState, openPage: (String) -> Unit = {}, open: (String) -> Unit) 
                             Chip(filter == 1, if (totalUnread > 0) "未读 ${convs.count { it.unread > 0 }}" else "未读", null) { filter = 1 }
                             Chip(filter == 2, "群组", R.drawable.ms_groups) { filter = 2 }
                             Chip(filter == 3, "经服务器", R.drawable.ms_via_server) { filter = 3 }
+                            convs.flatMap { it.folders }.distinct().sorted().forEach { f -> Chip(folder == f, f, null) { folder = if (folder == f) "" else f } }
+                            convs.count { it.archived }.takeIf { it > 0 }?.let { n -> Chip(folder == FILTER_ARCHIVED, "已归档 $n", null) { folder = if (folder == FILTER_ARCHIVED) "" else FILTER_ARCHIVED } }
                         } }
                         if (tab == 0) item(key = "conn") { ConnBanner(st) }
                         items(shown, key = { it.id }) { c -> ConvRow(c) { open(c.id) } }

@@ -46,6 +46,13 @@ object Native {
     @JvmStatic external fun voiceName(secs: Int, ext: String): String
     // v0.6.1 P2
     @JvmStatic external fun sendText2(conv: String, text: String, replyTo: String): String
+    // v0.6.2
+    @JvmStatic external fun sendPoll(conv: String, question: String, optsNl: String, multi: Boolean): String
+    @JvmStatic external fun votePoll(id: String, opt: Int): String
+    @JvmStatic external fun closePoll(id: String): String
+    @JvmStatic external fun setArchived(conv: String, on: Boolean)
+    @JvmStatic external fun setFolders(conv: String, csv: String)
+    @JvmStatic external fun setTtl(conv: String, secs: Int): String
     @JvmStatic external fun setConvPinned(conv: String, on: Boolean)
     @JvmStatic external fun setDraft(conv: String, text: String)
     @JvmStatic external fun getDraft(conv: String): String

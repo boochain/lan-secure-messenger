@@ -64,7 +64,7 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
     val recording by Voice.recording
     // v0.6.1 P2
     var multi by remember(conv) { mutableStateOf(false) }; var picked by remember(conv) { mutableStateOf(setOf<String>()) }
-    var fwdIds by remember { mutableStateOf<List<String>?>(null) }; var flagDlg by remember { mutableStateOf(0) }; var multiDel by remember { mutableStateOf(false) }
+    var fwdIds by remember { mutableStateOf<List<String>?>(null) }; var flagDlg by remember { mutableStateOf(0) }; var v062Dlg by remember { mutableStateOf("") }; var multiDel by remember { mutableStateOf(false) }
     var atOpen by remember { mutableStateOf(false) }
     val typingMap by Repo.typing.collectAsState(); var tick by remember { mutableStateOf(0) }
     val typingWho = typingMap[conv]?.takeIf { it.second > System.currentTimeMillis() + tick * 0 }?.first
@@ -143,6 +143,11 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
                         DropdownMenuItem({ Text("置顶消息") }, { menu = false; flagDlg = 1 }, leadingIcon = { Text("📌") })
                         DropdownMenuItem({ Text("收藏的消息") }, { menu = false; flagDlg = 2 }, leadingIcon = { Text("⭐") })
                         DropdownMenuItem({ Text("多选消息") }, { menu = false; multi = true; picked = emptySet() }, leadingIcon = { Ic(R.drawable.ms_copy) })
+                        val carch = contact?.archived ?: group?.archived ?: false
+                        DropdownMenuItem({ Text("发起投票") }, { menu = false; v062Dlg = "poll" }, leadingIcon = { Text("📊") })
+                        DropdownMenuItem({ Text("定时删除") }, { menu = false; v062Dlg = "ttl" }, leadingIcon = { Text("⏱") })
+                        DropdownMenuItem({ Text(if (carch) "取消归档" else "归档") }, { menu = false; Native.setArchived(conv, !carch); Repo.toast.value = if (carch) "已取消归档" else "已归档（收到新消息会自动回到列表）"; Repo.refresh() }, leadingIcon = { Text("🗄") })
+                        DropdownMenuItem({ Text("会话分组") }, { menu = false; v062Dlg = "folders" }, leadingIcon = { Text("🗂") })
                         if (contact != null) {
                             DropdownMenuItem({ Text("联系人资料 / 备注名") }, { menu = false; openPage("cprofile:" + contact.fp) }, leadingIcon = { Ic(R.drawable.ms_info) })
                             DropdownMenuItem({ Text("消息历史") }, { menu = false; openPage("history") }, leadingIcon = { Ic(R.drawable.ms_search) })
@@ -264,6 +269,11 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
       }
     }
     fwdIds?.let { ids -> ForwardDialog(st, ids) { fwdIds = null; if (multi) { multi = false; picked = emptySet() } } }
+    when (v062Dlg) {
+        "poll" -> NewPollDialog(conv) { v062Dlg = "" }
+        "ttl" -> TtlDialog(conv, contact?.ttl ?: group?.ttl ?: 0) { v062Dlg = "" }
+        "folders" -> FoldersDialog(conv, contact?.folders ?: group?.folders ?: emptyList(), st.convs().flatMap { it.folders }.distinct()) { v062Dlg = "" }
+    }
     if (flagDlg != 0) FlagListDialog(conv, flagDlg, { id -> val i = rows.indexOfFirst { (it as? ChatRow.Bubble)?.m?.id == id }; if (i >= 0) { Repo.jumpId = id; Repo.refresh() } }) { flagDlg = 0 }
     if (multiDel) LsmAlertDialog(onDismissRequest = { multiDel = false }, title = { Text("删除选中的 ${picked.size} 条消息？") }, text = { Text("只会从本机删除，对方仍保留。此操作无法撤销。") },
         confirmButton = { TextButton({ multiDel = false; picked.forEach { Native.deleteMessage(it) }; multi = false; picked = emptySet(); Repo.refresh() }) { Text("删除", color = p.error) } },
@@ -381,6 +391,8 @@ fun TextBubble(m: Msg, sender: String?) {
             val my = if (inline) text.height - meta.height + 1.dp.roundToPx() else text.height
             layout(w, maxOf(text.height, my + meta.height)) { text.place(0, 0); meta.place(w - meta.width, my) }
         }
+        if (m.poll != null && !m.recalled) PollCard(m)
+        expiresText(m).takeIf { it.isNotEmpty() }?.let { Text(it, fontSize = 11.sp, color = LocalPalette.current.fg2) }
     }
 }
 @Composable fun avatarColorFor(sender: String) = if (isDark()) LocalPalette.current.accent else avatarColor(sender)
