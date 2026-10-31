@@ -405,3 +405,50 @@ async fn ext_reply_react_edit_recall() {
     let r = b.h.call("edit_message", json!({"id": orig, "body": "x"})).await;
     assert!(r.is_err());
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn p2_pins_drafts_flags_typing_forward_mentions() {
+    let a = node("Alice", json!({})).await;
+    let b = node("Bob", json!({})).await;
+    let pb = b.port().await;
+    let mut ev_b = b.h.subscribe();
+    a.call("add_peer", json!({"address": format!("127.0.0.1:{pb}")})).await;
+    both_online(&a, &b, 20).await;
+    let conv_a = format!("dm:{}", b.fp);
+    let conv_b = format!("dm:{}", a.fp);
+    // pinned chat + draft show in the snapshot (local only)
+    a.call("set_conv_pinned", json!({"conversation": conv_a, "pinned": true})).await;
+    a.call("set_draft", json!({"conversation": conv_a, "text": "草稿：别忘了带电脑"})).await;
+    let s = a.call("get_snapshot", json!({})).await;
+    let c = s["conversations"].as_array().unwrap().iter().find(|c| c["id"] == conv_a.as_str()).unwrap().clone();
+    assert_eq!(c["pinned"], true);
+    assert_eq!(c["draft"], "草稿：别忘了带电脑");
+    // typing reaches Bob as an event (never queued)
+    a.call("send_typing", json!({"conversation": conv_a})).await;
+    let got = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            if let Ok(e) = ev_b.recv().await {
+                if let lan_core::api::Event::Typing { conversation, fingerprint, .. } = e {
+                    if conversation == conv_b && fingerprint == a.fp { return true; }
+                }
+            }
+        }
+    }).await.unwrap_or(false);
+    assert!(got, "typing event");
+    // mention + forward
+    let m = a.call("send_text", json!({"conversation": conv_a, "body": "@Bob 看一下", "mentions": [b.fp]})).await;
+    let mid = m["id"].as_str().unwrap().to_string();
+    wait("mention on bob", 15, || async { b.msgs(&conv_b).await.iter().any(|m| m["id"] == mid.as_str() && m["mentions_me"] == true) }).await;
+    let f = a.call("forward_message", json!({"id": mid, "conversations": [conv_a]})).await;
+    let fid = f[0]["id"].as_str().unwrap().to_string();
+    wait("forward on bob", 15, || async { b.msgs(&conv_b).await.iter().any(|m| m["id"] == fid.as_str() && m["forwarded"] == true && m["body"] == "@Bob 看一下") }).await;
+    // local flags
+    a.call("set_message_flags", json!({"id": mid, "pinned": true, "starred": true})).await;
+    let st = a.call("list_flagged", json!({"flag": "starred"})).await;
+    assert!(st.as_array().unwrap().iter().any(|m| m["id"] == mid.as_str()));
+    let pn = a.call("list_flagged", json!({"flag": "pinned", "conversation": conv_a})).await;
+    assert_eq!(pn.as_array().unwrap().len(), 1);
+    a.call("set_draft", json!({"conversation": conv_a, "text": ""})).await;
+    let s = a.call("get_snapshot", json!({})).await;
+    assert_eq!(s["conversations"].as_array().unwrap().iter().find(|c| c["id"] == conv_a.as_str()).unwrap()["draft"], "");
+}

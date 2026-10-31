@@ -90,6 +90,17 @@ pub struct MsgExt {
     pub edited: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub recalled: bool,
+    // v0.6.1 P2
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub forwarded: bool,
+    /// local only (this device)
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pinned: bool,
+    /// local only (this device)
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub starred: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub mentions_me: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -208,6 +219,12 @@ pub struct Transfer {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Conversation {
+    /// v0.6.1 P2: pinned to the top of the chat list (this device)
+    #[serde(default)]
+    pub pinned: bool,
+    /// v0.6.1 P2: unsent composer text (this device)
+    #[serde(default)]
+    pub draft: String,
     pub id: String,
     /// "dm" | "group"
     pub kind: String,
@@ -303,6 +320,8 @@ pub enum Event {
     PeerRemoved { fingerprint: String },
     MessageAdded { message: Message },
     MessageUpdated { message: Message },
+    /// v0.6.1 P2: peer is typing in this conversation (ephemeral, ~5 s)
+    Typing { conversation: String, fingerprint: String, name: String },
     TransferUpdated { transfer: Transfer },
     GroupUpdated { group: Group },
     GroupRemoved { id: String },
