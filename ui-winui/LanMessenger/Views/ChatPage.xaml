@@ -53,6 +53,9 @@
                     <StackPanel>
                         <TextBlock Text="{x:Bind SenderName, Mode=OneWay}" Visibility="{x:Bind ShowSender, Mode=OneWay}" FontWeight="SemiBold"
                                    Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                        <Border BorderThickness="3,0,0,0" BorderBrush="{ThemeResource AccentTextFillColorPrimaryBrush}" Padding="6,0,0,0" Margin="0,0,0,4" Visibility="{x:Bind HasQuote, Mode=OneWay}">
+                            <TextBlock Text="{x:Bind QuoteText, Mode=OneWay}" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource LsmMetaBrush}" />
+                        </Border>
                         <Grid ColumnSpacing="12">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <TextBlock Text="{x:Bind Body, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" Foreground="{ThemeResource LsmBubbleInForegroundBrush}" />
@@ -90,6 +93,19 @@
                         </Grid>
                     </StackPanel>
                 </Border>
+                <Border HorizontalAlignment="Left" MinWidth="200" CornerRadius="8" Padding="10,8" Background="{ThemeResource LsmBubbleInBackgroundBrush}" Visibility="{x:Bind IsVoiceCard, Mode=OneWay}">
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <Button Width="36" Height="36" CornerRadius="18" Padding="0" Style="{StaticResource AccentButtonStyle}" Click="Voice_Click" IsEnabled="{x:Bind HasFilePath, Mode=OneWay}" ToolTipService.ToolTip="播放 / 停止" AutomationProperties.Name="播放语音">
+                            <FontIcon Glyph="&#xE768;" FontSize="14" />
+                        </Button>
+                        <TextBlock Grid.Column="1" Text="{x:Bind VoiceText, Mode=OneWay}" VerticalAlignment="Center" Foreground="{ThemeResource LsmBubbleInForegroundBrush}" />
+                        <TextBlock Grid.Column="2" Text="{x:Bind ClockText, Mode=OneWay}" VerticalAlignment="Bottom" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource LsmMetaBrush}" />
+                    </Grid>
+                </Border>
+                <Border HorizontalAlignment="Left" Margin="4,2,4,0" CornerRadius="10" Padding="8,1" Background="{ThemeResource LsmInputBackgroundBrush}" Visibility="{x:Bind HasReactions, Mode=OneWay}">
+                    <TextBlock Text="{x:Bind ReactionsText, Mode=OneWay}" FontSize="13" />
+                </Border>
             </StackPanel>
         </DataTemplate>
 
@@ -104,6 +120,9 @@
                 <Border HorizontalAlignment="Right" MaxWidth="720" CornerRadius="8" Padding="10,6"
                         Background="{ThemeResource LsmBubbleOutBackgroundBrush}" Visibility="{x:Bind IsText, Mode=OneWay}">
                     <StackPanel>
+                        <Border BorderThickness="3,0,0,0" BorderBrush="{ThemeResource AccentTextFillColorPrimaryBrush}" Padding="6,0,0,0" Margin="0,0,0,4" Visibility="{x:Bind HasQuote, Mode=OneWay}">
+                            <TextBlock Text="{x:Bind QuoteText, Mode=OneWay}" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource LsmMineMetaBrush}" />
+                        </Border>
                         <Grid ColumnSpacing="12">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <TextBlock Text="{x:Bind Body, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" Foreground="{ThemeResource LsmBubbleOutForegroundBrush}" />
@@ -138,6 +157,19 @@
                             <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Bottom" HorizontalAlignment="Right"><TextBlock Text="{x:Bind ClockText, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource LsmMineMetaBrush}" /><TextBlock Text="{x:Bind local:B.Tick(Tick), Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource LsmMineMetaBrush}" ToolTipService.ToolTip="{x:Bind StatusText, Mode=OneWay}" Visibility="{x:Bind local:B.Not(IsRead), Mode=OneWay}" /><TextBlock Text="{x:Bind local:B.Tick(Tick), Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" ToolTipService.ToolTip="{x:Bind StatusText, Mode=OneWay}" Visibility="{x:Bind IsRead, Mode=OneWay}" /><FontIcon Glyph="&#xE783;" FontSize="12" Foreground="{ThemeResource StatusErrorTextBrush}" Visibility="{x:Bind IsFailed, Mode=OneWay}" /></StackPanel>
                         </Grid>
                     </StackPanel>
+                </Border>
+                <Border HorizontalAlignment="Right" MinWidth="200" CornerRadius="8" Padding="10,8" Background="{ThemeResource LsmBubbleOutBackgroundBrush}" Visibility="{x:Bind IsVoiceCard, Mode=OneWay}">
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <Button Width="36" Height="36" CornerRadius="18" Padding="0" Style="{StaticResource AccentButtonStyle}" Click="Voice_Click" IsEnabled="{x:Bind HasFilePath, Mode=OneWay}" ToolTipService.ToolTip="播放 / 停止" AutomationProperties.Name="播放语音">
+                            <FontIcon Glyph="&#xE768;" FontSize="14" />
+                        </Button>
+                        <TextBlock Grid.Column="1" Text="{x:Bind VoiceText, Mode=OneWay}" VerticalAlignment="Center" Foreground="{ThemeResource LsmBubbleOutForegroundBrush}" />
+                        <TextBlock Grid.Column="2" Text="{x:Bind ClockText, Mode=OneWay}" VerticalAlignment="Bottom" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource LsmMineMetaBrush}" />
+                    </Grid>
+                </Border>
+                <Border HorizontalAlignment="Right" Margin="4,2,4,0" CornerRadius="10" Padding="8,1" Background="{ThemeResource LsmInputBackgroundBrush}" Visibility="{x:Bind HasReactions, Mode=OneWay}">
+                    <TextBlock Text="{x:Bind ReactionsText, Mode=OneWay}" FontSize="13" />
                 </Border>
             </StackPanel>
         </DataTemplate>
@@ -364,6 +396,20 @@
                 </ListView.ItemContainerStyle>
             </ListView>
 
+            <!-- v0.6.1 P1: reply / edit bar above the composer -->
+            <Grid Grid.Row="1" VerticalAlignment="Bottom" Padding="12,6" ColumnSpacing="8" Background="{ThemeResource LsmListBackgroundBrush}" BorderBrush="{ThemeResource LsmDividerBrush}" BorderThickness="0,1,0,0"
+                  Visibility="{x:Bind VM.HasReplyBar, Mode=OneWay}">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <Border Width="3" CornerRadius="1" Background="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                <StackPanel Grid.Column="1">
+                    <TextBlock Text="{x:Bind VM.ReplyBarTitle, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                    <TextBlock Text="{x:Bind VM.ReplyBarText, Mode=OneWay}" TextTrimming="CharacterEllipsis" MaxLines="1" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+                <Button Grid.Column="2" Style="{StaticResource LsmIconButton}" Click="CancelReply_Click" ToolTipService.ToolTip="取消 (Esc)" AutomationProperties.Name="取消回复">
+                    <FontIcon Glyph="&#xE711;" FontSize="14" />
+                </Button>
+            </Grid>
+
             <!-- composer 64 -->
             <Grid Grid.Row="2" MinHeight="64" Padding="12,12" ColumnSpacing="8" Visibility="{x:Bind VM.HasSelection, Mode=OneWay}"
                   Background="{ThemeResource LsmListBackgroundBrush}" BorderBrush="{ThemeResource LsmDividerBrush}" BorderThickness="0,1,0,0">
@@ -413,10 +459,15 @@
                 <TextBlock Grid.Column="2" Text="Enter 发送 · Shift+Enter 换行" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,16,0"
                            FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" IsHitTestVisible="False"
                            Visibility="{x:Bind local:B.Empty(VM.ComposeText.Length), Mode=OneWay}" />
-                <Button Grid.Column="3" Width="40" Height="40" CornerRadius="20" Padding="0" VerticalAlignment="Bottom" Style="{StaticResource AccentButtonStyle}"
+                <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8" VerticalAlignment="Bottom">
+                <Button x:Name="MicButton" Style="{StaticResource LsmIconButton}" Margin="0,0,0,2" Click="Mic_Click" ToolTipService.ToolTip="语音消息：点击开始录音，再点一次停止并发送" AutomationProperties.Name="语音消息">
+                    <FontIcon x:Name="MicGlyph" Glyph="&#xE720;" FontSize="16" />
+                </Button>
+                <Button Width="40" Height="40" CornerRadius="20" Padding="0" VerticalAlignment="Bottom" Style="{StaticResource AccentButtonStyle}"
                         Command="{x:Bind VM.SendCommand}" ToolTipService.ToolTip="发送 (Enter)" AutomationProperties.Name="发送">
                     <FontIcon Glyph="&#xE724;" FontSize="16" />
                 </Button>
+                </StackPanel>
             </Grid>
         </Grid>
 

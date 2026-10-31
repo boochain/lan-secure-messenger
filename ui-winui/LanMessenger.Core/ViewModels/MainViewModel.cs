@@ -272,7 +272,7 @@ public partial class MainViewModel : ObservableObject
         // Keep the settings name box in sync unless the user is editing it (e.g. after first-run rename).
         if (string.IsNullOrEmpty(EditDisplayName) || EditDisplayName == MyName) EditDisplayName = me.Name;
         MyName = me.Name;
-        MyFingerprint = me.Fingerprint;
+        MyFingerprint = me.Fingerprint; MessageItem.MyFp = me.Fingerprint;
         Version = me.Version;
         LogDir = me.LogDir;
         DataDir = me.DataDir;
@@ -669,6 +669,7 @@ public partial class MainViewModel : ObservableObject
             ShowStatus("后台服务未连接", true);
             return;
         }
+        if (EditItem != null || ReplyItem != null) { await SendP1Async(client, c.Id, text); return; }
         try
         {
             await client.SendTextAsync(c.Id, text.TrimEnd());

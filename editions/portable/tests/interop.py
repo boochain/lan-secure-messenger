@@ -14,6 +14,7 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--rust-bin", required=True)
 ap.add_argument("--exe", required=True)
 ap.add_argument("--work", default="/tmp/lsm-interop")
+ap.add_argument("--p1", action="store_true", help="Rust side is >= v0.6.1 (CAP_EXT): run reply/react/edit/recall checks")
 ap.add_argument("--native", action="store_true", help="run the Linux-native build of the XP core instead of wine")
 args = ap.parse_args()
 RB = os.path.abspath(args.rust_bin); EXE = os.path.abspath(args.exe); W = args.work
@@ -198,6 +199,24 @@ try:
     X.cmd(f"read {A.fp}")
     st = wait(lambda: [m for m in A.j("history", X.fp) if m["id"] == rid and m["status"] == "read"], 10)
     (ok if st else fail)("read receipt XP -> v0.5 (status read)")
+
+    # 3b. v0.6.1 P1 (CAP_EXT): reply / react / edit / recall, both directions
+    if args.p1:
+        out = X.cmd(f"reply {A.fp} {rid} 收到，十点见")[-1]; xr = out.split()[-1]
+        got = wait(lambda: [m for m in A.j("history", X.fp) if m["id"] == xr and m.get("reply_to") == rid and "hello XP" in m.get("quote", "")], 15)
+        (ok if got else fail)("P1 reply XP -> Rust (reply_to + quote)", xr)
+        X.cmd(f"react {rid} 👍")
+        got = wait(lambda: [m for m in A.j("history", X.fp) if m["id"] == rid and any(r.get("emoji") == "👍" for r in m.get("reactions", []))], 15)
+        (ok if got else fail)("P1 reaction XP -> Rust")
+        A.j("raw", "react", json.dumps({"id": mid, "emoji": "❤️"}))
+        got = wait(lambda: "reactions=%s=❤️" % A.fp in "".join(X.cmd(f"msginfo {mid}")), 15)
+        (ok if got else fail)("P1 reaction Rust -> XP")
+        A.j("raw", "edit_message", json.dumps({"id": rid, "body": "hello XP（已改）"}))
+        got = wait(lambda: "edited=1" in "".join(X.cmd(f"msginfo {rid}")) and "hello XP（已改）" in "".join(X.cmd(f"msginfo {rid}")), 15)
+        (ok if got else fail)("P1 edit Rust -> XP")
+        X.cmd(f"recall {mid}")
+        got = wait(lambda: [m for m in A.j("history", X.fp) if m["id"] == mid and m.get("recalled")], 15)
+        (ok if got else fail)("P1 recall XP -> Rust")
     # long + multiline-ish unicode text
     long = "长消息" * 3000
     out = X.cmd(f"send {A.fp} {long}")[-1]; lid = out.split()[-1]

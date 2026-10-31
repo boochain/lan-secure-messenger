@@ -301,12 +301,12 @@ mod tests {
 
     fn msg(id: &str) -> Message {
         Message { id: id.into(), conversation: "dm:X".into(), direction: Direction::In, sender_fp: "X".into(), sender_name: "x".into(),
-            kind: MsgKind::Text, body: "hi".into(), ts_ms: 1, status: MsgStatus::Received, file: None }
+            kind: MsgKind::Text, body: "hi".into(), ts_ms: 1, status: MsgStatus::Received, file: None, ext: Default::default() }
     }
 
     fn mk(id: &str, conv: &str, dir: Direction, kind: MsgKind, body: &str, ts: i64, st: MsgStatus, file: Option<(&str, bool)>) -> Message {
         Message { id: id.into(), conversation: conv.into(), direction: dir, sender_fp: "X".into(), sender_name: "王工".into(), kind, body: body.into(), ts_ms: ts, status: st,
-            file: file.map(|(n, img)| crate::api::FileRef { transfer_id: "t".into(), name: n.into(), size: 1, mime: "".into(), path: None, is_image: img }) }
+            file: file.map(|(n, img)| crate::api::FileRef { transfer_id: "t".into(), name: n.into(), size: 1, mime: "".into(), path: None, is_image: img }), ext: Default::default() }
     }
 
     fn store() -> (tempfile::TempDir, HistoryStore) {

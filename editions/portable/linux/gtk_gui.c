@@ -136,11 +136,12 @@ static int confirm(const char *title, const char *body, const char *ok){
 static void refresh_chat(void);
 static char jump_id[40]; static gboolean jump_later(gpointer p);
 /* 删除这条消息（仅本机）: runs from idle so the bubble that owns the menu is not destroyed inside its own signal */
+#include "gtk_p1.inc"
 static gboolean delete_msg_idle(gpointer id){
     if(confirm("删除这条消息？","只会从本机删除，对方仍保留这条消息。此操作无法撤销。","删除")){ if(lsm_delete_message(C,(const char*)id)) msgbox(GTK_MESSAGE_WARNING,"删除失败：消息不存在。"); refresh_chat(); }
     g_free(id); return G_SOURCE_REMOVE; }
 static void delete_msg_cb(GtkMenuItem *mi_, gpointer id){ (void)mi_; g_idle_add(delete_msg_idle,g_strdup((const char*)id)); }
-static void add_delete_item(GtkMenuShell *menu, const char *id){ GtkWidget *it=gtk_menu_item_new_with_mnemonic("删除这条消息（仅本机）(_D)…");
+static void add_delete_item(GtkMenuShell *menu, const char *id){ GtkWidget *it; p1_menu_items(menu,id); it=gtk_menu_item_new_with_mnemonic("删除这条消息（仅本机）(_D)…");
     g_signal_connect_data(it,"activate",G_CALLBACK(delete_msg_cb),g_strdup(id),(GClosureNotify)g_free,0); gtk_menu_shell_append(menu,gtk_separator_menu_item_new()); gtk_menu_shell_append(menu,it); gtk_widget_show_all(GTK_WIDGET(menu)); }
 /* selectable text labels have their own 复制/全选 menu: extend it */
 static void label_popup_cb(GtkLabel *l, GtkMenu *menu, gpointer id){ (void)l; add_delete_item(GTK_MENU_SHELL(menu),(const char*)id); }
@@ -175,17 +176,20 @@ static void refresh_chat(void){
         if(m[i].kind==K_FILE){ lsm_transfer *tr; int nt=lsm_transfers(C,&tr),j; char fs[200]="", line[800]; const char *path=NULL; static const char *TS[]={"等待接收","传输中","校验中","完成","失败","已拒收","已取消"};
             for(j=0;j<nt;j++) if(!strcmp(tr[j].msg_id,m[i].id)){ lsm_transfer_status(C,&tr[j],fs,sizeof fs); if(tr[j].state==TS_DONE||tr[j].out) path=tr[j].path; }
             if(!path && m[i].file_path[0]){ path=m[i].file_path; if(!fs[0] && !m[i].out && access(path,R_OK)==0) snprintf(fs,sizeof fs,"已保存"); }
-            snprintf(line,sizeof line,"[文件] %s  (%.1f KB)  %s",m[i].file_name,m[i].file_size/1024.0,fs);
+            p1_quote(bub,&m[i]);
+            if(lsm_voice_secs(m[i].file_name)>=0) snprintf(line,sizeof line,"🎤 语音 %d″  %s%s",lsm_voice_secs(m[i].file_name),path?"▶ 点击播放  ":"",fs);
+            else snprintf(line,sizeof line,"[文件] %s  (%.1f KB)  %s",m[i].file_name,m[i].file_size/1024.0,fs);
             body=gtk_label_new(line); gtk_label_set_line_wrap(GTK_LABEL(body),TRUE); gtk_label_set_xalign(GTK_LABEL(body),0);
-            if(path && !is_image(m[i].file_name)){ GtkWidget *evf=gtk_event_box_new(); gtk_container_add(GTK_CONTAINER(evf),body); gtk_widget_set_tooltip_text(evf,"点击打开");
-                g_signal_connect_data(evf,"button-press-event",G_CALLBACK(file_click_cb),g_strdup(path),(GClosureNotify)g_free,0); gtk_box_pack_start(GTK_BOX(bub),evf,FALSE,FALSE,0); }
+            if(path && !is_image(m[i].file_name)){ GtkWidget *evf=gtk_event_box_new(); int vo=lsm_voice_secs(m[i].file_name)>=0; gtk_container_add(GTK_CONTAINER(evf),body); gtk_widget_set_tooltip_text(evf,vo?"点击播放":"点击打开");
+                g_signal_connect_data(evf,"button-press-event",vo?G_CALLBACK(p1_play_cb):G_CALLBACK(file_click_cb),g_strdup(path),(GClosureNotify)g_free,0); gtk_box_pack_start(GTK_BOX(bub),evf,FALSE,FALSE,0); }
             else gtk_box_pack_start(GTK_BOX(bub),body,FALSE,FALSE,0);
             if(path && is_image(m[i].file_name) && access(path,R_OK)==0){ GError *er=NULL; GdkPixbuf *pb=gdk_pixbuf_new_from_file_at_scale(path,260,200,TRUE,&er);
                 if(pb){ GtkWidget *img=gtk_image_new_from_pixbuf(pb), *ev=gtk_event_box_new(); g_object_unref(pb); gtk_container_add(GTK_CONTAINER(ev),img); gtk_widget_set_halign(ev,GTK_ALIGN_START);
                     gtk_widget_set_tooltip_text(ev,"点击全屏查看"); g_signal_connect_data(ev,"button-press-event",G_CALLBACK(open_file_cb),g_strdup(path),(GClosureNotify)g_free,0); gtk_box_pack_start(GTK_BOX(bub),ev,FALSE,FALSE,0); }
                 else if(er) g_error_free(er); } }
-        else { body=gtk_label_new(m[i].body?m[i].body:""); gtk_label_set_line_wrap(GTK_LABEL(body),TRUE); gtk_label_set_line_wrap_mode(GTK_LABEL(body),PANGO_WRAP_WORD_CHAR); gtk_label_set_selectable(GTK_LABEL(body),TRUE); gtk_label_set_xalign(GTK_LABEL(body),0); gtk_label_set_max_width_chars(GTK_LABEL(body),48); gtk_box_pack_start(GTK_BOX(bub),body,FALSE,FALSE,0);
+        else { char db[8192]; p1_quote(bub,&m[i]); body=gtk_label_new(lsm_display_body(&m[i],db,sizeof db)); if(m[i].recalled) gtk_style_context_add_class(gtk_widget_get_style_context(body),"meta"); gtk_label_set_line_wrap(GTK_LABEL(body),TRUE); gtk_label_set_line_wrap_mode(GTK_LABEL(body),PANGO_WRAP_WORD_CHAR); gtk_label_set_selectable(GTK_LABEL(body),TRUE); gtk_label_set_xalign(GTK_LABEL(body),0); gtk_label_set_max_width_chars(GTK_LABEL(body),48); gtk_box_pack_start(GTK_BOX(bub),body,FALSE,FALSE,0);
             g_signal_connect_data(body,"populate-popup",G_CALLBACK(label_popup_cb),g_strdup(m[i].id),(GClosureNotify)g_free,0); }
+        p1_reacts(bub,&m[i]);
         gtk_widget_set_halign(bub,m[i].out?GTK_ALIGN_END:GTK_ALIGN_START);
         gtk_box_pack_start(GTK_BOX(row),meta,FALSE,FALSE,0); gtk_box_pack_start(GTK_BOX(row),bub,FALSE,FALSE,0);
         { GtkWidget *eb=gtk_event_box_new(); gtk_event_box_set_visible_window(GTK_EVENT_BOX(eb),FALSE); gtk_container_add(GTK_CONTAINER(eb),row); g_object_set_data_full(G_OBJECT(eb),"mid",g_strdup(m[i].id),g_free);
@@ -244,9 +248,12 @@ static void apply_theme(void){
 static void send_current(void){
     GtkTextBuffer *b=gtk_text_view_get_buffer(GTK_TEXT_VIEW(input)); GtkTextIter s,e; char *t, err[256], id[40];
     if(!cur_conv[0]) return; gtk_text_buffer_get_bounds(b,&s,&e); t=gtk_text_buffer_get_text(b,&s,&e,FALSE);
-    if(t && *g_strstrip(t)){ if(lsm_send_text(C,cur_conv,t,id,err)) msgbox(GTK_MESSAGE_WARNING,"%s",err); else gtk_text_buffer_set_text(b,"",-1); }
+    if(t && *g_strstrip(t)){ if(reply_id[0]?lsm_send_text2(C,cur_conv,t,reply_id,NULL,id,err):lsm_send_text(C,cur_conv,t,id,err)) msgbox(GTK_MESSAGE_WARNING,"%s",err); else { gtk_text_buffer_set_text(b,"",-1); p1_set_reply(NULL); } }
     g_free(t); refresh_chat(); }
-static gboolean input_key(GtkWidget *w, GdkEventKey *ev, gpointer p){ (void)w; (void)p; if((ev->state&GDK_CONTROL_MASK)&&(ev->keyval==GDK_KEY_v||ev->keyval==GDK_KEY_V)){ paste_clipboard(); return TRUE; } if((ev->keyval==GDK_KEY_Return||ev->keyval==GDK_KEY_KP_Enter) && !(ev->state&GDK_SHIFT_MASK)){ send_current(); return TRUE; } return FALSE; }
+static gboolean input_key(GtkWidget *w, GdkEventKey *ev, gpointer p){ (void)w; (void)p; if((ev->state&GDK_CONTROL_MASK)&&(ev->keyval==GDK_KEY_v||ev->keyval==GDK_KEY_V)){ paste_clipboard(); return TRUE; } if((ev->keyval==GDK_KEY_Return||ev->keyval==GDK_KEY_KP_Enter) && !(ev->state&GDK_SHIFT_MASK)){ send_current(); return TRUE; }
+    if(ev->keyval==GDK_KEY_Escape && reply_id[0]){ p1_set_reply(NULL); return TRUE; }
+    if(ev->keyval==GDK_KEY_Up && gtk_text_buffer_get_char_count(gtk_text_view_get_buffer(GTK_TEXT_VIEW(input)))==0) return p1_edit_last();
+    return FALSE; }
 static int trust_ok_for_file(void){ /* DM files need mutual trust; warn before sending so we never flash a failed bubble */
     if(strncmp(cur_conv,"dm:",3)) return 1;
     { lsm_contact *cs; int i,n,t=0; lsm_lock(C); n=lsm_contacts(C,&cs); for(i=0;i<n;i++) if(!strcmp(cs[i].fp,cur_conv+3)){ t=cs[i].trust; break; } lsm_unlock(C);
@@ -468,7 +475,10 @@ static void activate(GtkApplication *a, gpointer p){
         eb=gtk_button_new_with_label("表情…"); gtk_widget_set_tooltip_text(eb,"插入表情或本地贴纸"); g_signal_connect(eb,"clicked",G_CALLBACK(act),GINT_TO_POINTER(A_EMOJI));
         g_signal_connect_swapped(btn,"clicked",G_CALLBACK(send_current),NULL); g_signal_connect_swapped(fbtn,"clicked",G_CALLBACK(send_file_dlg),NULL); gtk_box_pack_start(GTK_BOX(bb),btn,FALSE,FALSE,0); gtk_box_pack_start(GTK_BOX(bb),fbtn,FALSE,FALSE,0); gtk_box_pack_start(GTK_BOX(bb),eb,FALSE,FALSE,0);
         gtk_box_pack_start(GTK_BOX(ib),tv,TRUE,TRUE,0); gtk_box_pack_start(GTK_BOX(ib),bb,FALSE,FALSE,0); }
-      gtk_box_pack_start(GTK_BOX(chat),overlay,TRUE,TRUE,0); gtk_box_pack_start(GTK_BOX(chat),gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE,FALSE,0); gtk_box_pack_start(GTK_BOX(chat),ib,FALSE,FALSE,0);
+      gtk_box_pack_start(GTK_BOX(chat),overlay,TRUE,TRUE,0); gtk_box_pack_start(GTK_BOX(chat),gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE,FALSE,0); { GtkWidget *x=gtk_button_new_with_label("✕"); reply_bar=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,6); gtk_container_set_border_width(GTK_CONTAINER(reply_bar),4); reply_lbl=gtk_label_new(""); gtk_label_set_ellipsize(GTK_LABEL(reply_lbl),PANGO_ELLIPSIZE_END); gtk_label_set_xalign(GTK_LABEL(reply_lbl),0);
+        gtk_style_context_add_class(gtk_widget_get_style_context(reply_bar),"quote"); gtk_button_set_relief(GTK_BUTTON(x),GTK_RELIEF_NONE); gtk_widget_set_tooltip_text(x,"取消回复 (Esc)"); g_signal_connect_swapped(x,"clicked",G_CALLBACK(p1_set_reply),NULL);
+        gtk_box_pack_start(GTK_BOX(reply_bar),reply_lbl,TRUE,TRUE,0); gtk_box_pack_start(GTK_BOX(reply_bar),x,FALSE,FALSE,0); gtk_box_pack_start(GTK_BOX(chat),reply_bar,FALSE,FALSE,0); gtk_widget_show(reply_lbl); gtk_widget_show(x); gtk_widget_set_no_show_all(reply_bar,TRUE); }
+      gtk_box_pack_start(GTK_BOX(chat),ib,FALSE,FALSE,0);
       gtk_stack_add_named(GTK_STACK(stack),empty,"empty"); gtk_stack_add_named(GTK_STACK(stack),chat,"chat"); }
     gtk_box_pack_start(GTK_BOX(right),stack,TRUE,TRUE,0);
     gtk_paned_pack1(GTK_PANED(paned),left,FALSE,FALSE); gtk_paned_pack2(GTK_PANED(paned),right,TRUE,FALSE);

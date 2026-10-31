@@ -30,6 +30,7 @@ typedef struct {
     char remark[200];       /* 备注名 (local only) */
     char signature[400];    /* 个性签名 (from the peer, CAP_PROFILE) */
     int has_avatar;         /* avatars/<fp>.img present */
+    uint32_t caps;          /* last announced capability bits (persisted; picks Ext vs. text fallback offline) */
 } lsm_contact;
 
 typedef struct {
@@ -45,6 +46,12 @@ typedef struct {
     char file_tid[40];
     char file_name[260];
     uint64_t file_size;
+    /* v0.6.1 P1 */
+    char reply_to[40];      /* replied-to message id */
+    char quote[400];        /* "name：preview" */
+    char mentions[512];     /* comma-separated fingerprints */
+    char reactions[400];    /* "fp=emoji;fp=emoji" */
+    int edited, recalled;
     char file_path[520];
     int unread;
 } lsm_msg;
@@ -191,6 +198,19 @@ const char *lsm_my_signature(lsm_core *c);          /* locked */
 int lsm_avatar_path(lsm_core *c, const char *fp, char *out, size_t n); /* fp NULL = me; returns 1 if the file exists */
 int lsm_set_remark(lsm_core *c, const char *fp, const char *remark);
 const char *lsm_display_name(const lsm_contact *k); /* remark or nickname */
+
+/* ---- v0.6.1 P1: reply / mention / react / edit / recall (CAP_EXT) ---- */
+int lsm_send_text2(lsm_core *c, const char *conv, const char *text, const char *reply_to, const char *mentions_csv, char *msgid_out, char *err);
+int lsm_react(lsm_core *c, const char *id, const char *emoji, char *err);   /* same emoji again = remove */
+int lsm_edit_message(lsm_core *c, const char *id, const char *body, char *err);  /* own text, within 24 h */
+int lsm_recall_message(lsm_core *c, const char *id, char *err);
+/* P1 UI helpers */
+int  lsm_voice_secs(const char *name);                 /* -1 unless "lsm-voice-<N>s-…" */
+void lsm_voice_name(int secs, const char *ext, char *out, size_t n);
+int  lsm_can_modify(lsm_core *c, const lsm_msg *m);    /* own text, not recalled, < 24 h */
+int  lsm_my_reaction(lsm_core *c, const lsm_msg *m, char *emoji, size_t n);
+void lsm_reaction_summary(const lsm_msg *m, char *out, size_t n);
+const char *lsm_display_body(const lsm_msg *m, char *buf, size_t n);
 
 /* helpers */
 void lsm_uuid_str(const uint8_t u[16], char out[37]);

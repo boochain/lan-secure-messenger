@@ -162,6 +162,28 @@ public partial class MessageItem : ObservableObject
     [ObservableProperty] private bool _isFileCard;
     [ObservableProperty] private string _fileExt = "";
     [ObservableProperty] private bool _isPdf;
+    // v0.6.1 P1
+    public static string MyFp = "";
+    [ObservableProperty] private string _rawBody = "";
+    [ObservableProperty] private bool _isRecalled;
+    [ObservableProperty] private bool _isEdited;
+    [ObservableProperty] private bool _hasQuote;
+    [ObservableProperty] private string _quoteText = "";
+    [ObservableProperty] private bool _hasReactions;
+    [ObservableProperty] private string _reactionsText = "";
+    [ObservableProperty] private string _myReaction = "";
+    [ObservableProperty] private bool _isVoice;
+    [ObservableProperty] private bool _isVoiceCard;
+    [ObservableProperty] private string _voiceText = "";
+    public bool CanModify => IsOutgoing && IsText && !IsRecalled && DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - TsMs < 24L * 3600 * 1000;
+    /// <summary>-1 unless the file is named lsm-voice-&lt;N&gt;s-….</summary>
+    public static int VoiceSecs(string name)
+    {
+        var b = Path.GetFileName(name ?? "");
+        if (!b.StartsWith("lsm-voice-")) return -1;
+        int i = 10, v = 0; while (i < b.Length && char.IsDigit(b[i])) { v = v * 10 + (b[i] - '0'); i++; }
+        return v;
+    }
     public bool HasDate => DateLabel.Length > 0;
     partial void OnDateLabelChanged(string value) => OnPropertyChanged(nameof(HasDate));
     public long TsMs { get; private set; }
@@ -169,7 +191,13 @@ public partial class MessageItem : ObservableObject
     public void Update(Message m)
     {
         TsMs = m.TsMs;
-        Body = m.Body;
+        RawBody = m.Body;
+        IsRecalled = m.Recalled; IsEdited = m.Edited && !m.Recalled;
+        Body = m.Recalled ? (m.Direction == Direction.Out ? "你撤回了一条消息" : "对方撤回了一条消息") : m.Edited ? m.Body + "（已编辑）" : m.Body;
+        HasQuote = !string.IsNullOrEmpty(m.ReplyTo) && !m.Recalled; QuoteText = m.Quote.Length > 0 ? m.Quote : "原消息";
+        var groups = m.Recalled ? new List<string>() : m.Reactions.Where(r => r.Emoji.Length > 0).GroupBy(r => r.Emoji).Select(g => $"{g.Key} {g.Count()}").ToList();
+        ReactionsText = string.Join("  ", groups); HasReactions = groups.Count > 0;
+        MyReaction = m.Reactions.FirstOrDefault(r => r.Fp == MyFp)?.Emoji ?? "";
         SenderName = m.SenderName;
         ShowSender = IsGroupConversation && m.Direction == Direction.In && m.Kind != MsgKind.System && IsFirstInGroup;
         TimeText = Fmt.Time(m.TsMs);
@@ -200,7 +228,11 @@ public partial class MessageItem : ObservableObject
             FileExt = Path.GetExtension(m.File.Name).TrimStart('.').ToUpperInvariant();
             IsPdf = FileExt == "PDF";
         }
-        IsFileCard = IsFile && !IsImage;
+        var vs = m.File != null ? VoiceSecs(m.File.Name) : -1;
+        IsVoice = vs >= 0; VoiceText = IsVoice ? $"语音 {vs}″" + (HasFilePath ? "" : " · 接收中…") : "";
+        IsVoiceCard = IsFile && IsVoice;
+        IsFileCard = IsFile && !IsImage && !IsVoice;
+        OnPropertyChanged(nameof(CanModify));
     }
 }
 

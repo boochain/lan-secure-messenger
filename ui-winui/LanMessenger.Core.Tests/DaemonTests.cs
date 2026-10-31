@@ -107,6 +107,15 @@ public class DaemonTests
             await Task.Delay(100);
         }
     }
+    static async Task Until(string what, Func<Task<bool>> cond, int secs = 15)
+    {
+        var end = DateTime.UtcNow.AddSeconds(secs);
+        while (!await cond())
+        {
+            if (DateTime.UtcNow > end) throw new TimeoutException("timeout: " + what);
+            await Task.Delay(150);
+        }
+    }
 
     [Fact]
     public void VersionCompare()
@@ -177,6 +186,18 @@ public class DaemonTests
         Assert.DoesNotContain(await A.GetMessagesAsync("dm:" + sb.Me.Fingerprint), m => m.Id == msg.Id);
         Assert.Contains(await B.GetMessagesAsync("dm:" + sa.Me.Fingerprint), m => m.Body == "来自 C# 的消息");
         await Assert.ThrowsAsync<DaemonException>(() => A.DeleteMessageAsync(msg.Id));
+        // v0.6.1 P1 over CAP_EXT: B replies to A's message, A reacts, B edits then recalls the reply
+        var orig = await A.SendTextAsync("dm:" + sb.Me.Fingerprint, "十点开会");
+        await Until("B has original", async () => (await B.GetMessagesAsync("dm:" + sa.Me.Fingerprint)).Any(m => m.Id == orig.Id));
+        var rep = await B.SendReplyAsync("dm:" + sa.Me.Fingerprint, "好的", orig.Id);
+        await Until("A sees reply with quote", async () => (await A.GetMessagesAsync("dm:" + sb.Me.Fingerprint)).Any(m => m.Id == rep.Id && m.ReplyTo == orig.Id && m.Quote.Contains("十点开会")));
+        await A.ReactAsync(rep.Id, "👍");
+        await Until("B sees reaction", async () => (await B.GetMessagesAsync("dm:" + sa.Me.Fingerprint)).Any(m => m.Id == rep.Id && m.Reactions.Any(r => r.Emoji == "👍" && r.Fp == sa.Me.Fingerprint)));
+        await B.EditMessageAsync(rep.Id, "好的，十点半");
+        await Until("A sees edit", async () => (await A.GetMessagesAsync("dm:" + sb.Me.Fingerprint)).Any(m => m.Id == rep.Id && m.Edited && m.Body == "好的，十点半"));
+        await Assert.ThrowsAsync<DaemonException>(() => A.EditMessageAsync(rep.Id, "not mine"));
+        await B.RecallMessageAsync(rep.Id);
+        await Until("A sees recall", async () => (await A.GetMessagesAsync("dm:" + sb.Me.Fingerprint)).Any(m => m.Id == rep.Id && m.Recalled && m.Body == ""));
         var ex = await Assert.ThrowsAsync<DaemonException>(() => A.SendTextAsync("dm:" + sb.Me.Fingerprint, "   "));
         Assert.Equal(-32602, ex.Code);
         var diag = await A.GetDiagnosticsAsync();

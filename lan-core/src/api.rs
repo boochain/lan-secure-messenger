@@ -64,6 +64,32 @@ pub struct Message {
     pub status: MsgStatus,
     #[serde(default)]
     pub file: Option<FileRef>,
+    /// v0.6.1 P1: reply / reactions / edit / recall (flattened; absent on old records)
+    #[serde(flatten, default)]
+    pub ext: MsgExt,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Reaction {
+    pub fp: String,
+    pub emoji: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MsgExt {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reply_to: Option<String>,
+    /// short preview of the replied-to message ("name: text")
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub quote: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mentions: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reactions: Vec<Reaction>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub edited: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub recalled: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

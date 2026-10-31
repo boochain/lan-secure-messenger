@@ -148,7 +148,29 @@ public sealed partial class ChatPage : Page
         if ((e.OriginalSource as FrameworkElement)?.DataContext is not MessageItem m || m.IsSystem) return;
         var f = new MenuFlyout();
         void Add(string text, string glyph, Action a) { var it = new MenuFlyoutItem { Text = text, Icon = new FontIcon { Glyph = glyph } }; it.Click += (_, _) => a(); f.Items.Add(it); }
-        if (m.IsText) Add("复制", "\uE8C8", () => { var dp = new DataPackage(); dp.SetText(m.Body); Clipboard.SetContent(dp); VM.ShowStatus("已复制"); });
+        if (!m.IsRecalled)
+        {
+            var sub = new MenuFlyoutSubItem { Text = "表情回应", Icon = new FontIcon { Glyph = "\uE76E" } };
+            foreach (var em in MainViewModel.QuickReactions)
+            {
+                var it = new MenuFlyoutItem { Text = em + (m.MyReaction == em ? "  ✓" : "") }; it.Click += async (_, _) => await VM.ReactAsync(m, em); sub.Items.Add(it);
+            }
+            if (m.MyReaction.Length > 0) { var rm = new MenuFlyoutItem { Text = "取消我的回应" }; rm.Click += async (_, _) => await VM.ReactAsync(m, m.MyReaction); sub.Items.Add(rm); }
+            f.Items.Add(sub);
+            Add("回复", "\uE97A", () => { VM.StartReply(m); Composer.Focus(FocusState.Keyboard); });
+            if (m.CanModify)
+            {
+                Add("编辑", "\uE70F", () => { VM.StartEdit(m); Composer.Focus(FocusState.Keyboard); Composer.SelectionStart = Composer.Text.Length; });
+                Add("撤回", "\uE7A7", async () =>
+                {
+                    var d = Services.ThemeService.Prepare(new ContentDialog { XamlRoot = XamlRoot, Title = "撤回这条消息？", Content = "双方都会看到“撤回了一条消息”。24 小时内可撤回。",
+                        PrimaryButtonText = "撤回", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close });
+                    if (await d.ShowAsync() == ContentDialogResult.Primary) await VM.RecallAsync(m);
+                });
+            }
+            f.Items.Add(new MenuFlyoutSeparator());
+        }
+        if (m.IsText && !m.IsRecalled) Add("复制", "\uE8C8", () => { var dp = new DataPackage(); dp.SetText(m.RawBody); Clipboard.SetContent(dp); VM.ShowStatus("已复制"); });
         if (m.IsFile && m.HasFilePath)
         {
             Add("打开", "\uE8E5", () => VM.OpenMessageFileCommand.Execute(m));
@@ -249,6 +271,8 @@ public sealed partial class ChatPage : Page
             await PasteClipboardAsync();
             return;
         }
+        if (e.Key == VirtualKey.Escape && VM.HasReplyBar) { e.Handled = true; VM.CancelReply(); return; }
+        if (e.Key == VirtualKey.Up && Composer.Text.Length == 0 && VM.EditLast()) { e.Handled = true; Composer.SelectionStart = Composer.Text.Length; return; }
         if (e.Key != VirtualKey.Enter) return;
         var shift = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift)
             .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
@@ -470,5 +494,47 @@ public sealed partial class ChatPage : Page
         };
         if (await LanMessenger.Services.ThemeService.Prepare(dlg).ShowAsync() == ContentDialogResult.Primary && !string.IsNullOrWhiteSpace(pinBox.Text))
             await VM.PinPairAsync(c.PeerFingerprint, pinBox.Text);
+    }
+
+    // ------------------------------------------------------------ v0.6.1 P1: reply bar, voice messages
+    private void CancelReply_Click(object sender, RoutedEventArgs e) { VM.CancelReply(); Composer.Focus(FocusState.Keyboard); }
+
+    private Windows.Media.Capture.MediaCapture? _rec; private Windows.Storage.StorageFile? _recFile; private DateTime _recT0;
+    private async void Mic_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (_rec != null)
+            {
+                var cap = _rec; _rec = null; MicGlyph.Glyph = "\uE720";
+                await cap.StopRecordAsync(); cap.Dispose();
+                var secs = (int)Math.Round((DateTime.UtcNow - _recT0).TotalSeconds);
+                var f = _recFile; _recFile = null; if (f == null) return;
+                if (secs < 1) { await f.DeleteAsync(); VM.ShowStatus("录音太短", true); return; }
+                await f.RenameAsync($"lsm-voice-{secs}s-{DateTime.Now:yyyyMMdd-HHmmss}.m4a", Windows.Storage.NameCollisionOption.GenerateUniqueName);
+                await VM.SendFileAsync(f.Path);
+                return;
+            }
+            if (VM.SelectedConversation == null) { VM.ShowStatus("请先选择联系人或群组", true); return; }
+            var c = new Windows.Media.Capture.MediaCapture();
+            await c.InitializeAsync(new Windows.Media.Capture.MediaCaptureInitializationSettings { StreamingCaptureMode = Windows.Media.Capture.StreamingCaptureMode.Audio });
+            var dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "LanMessenger"); System.IO.Directory.CreateDirectory(dir);
+            var folder = await Windows.Storage.StorageFolder.GetFolderFromPathAsync(dir);
+            _recFile = await folder.CreateFileAsync("rec.m4a", Windows.Storage.CreationCollisionOption.GenerateUniqueName);
+            await c.StartRecordToStorageFileAsync(Windows.Media.MediaProperties.MediaEncodingProfile.CreateM4a(Windows.Media.MediaProperties.AudioEncodingQuality.Low), _recFile);
+            _rec = c; _recT0 = DateTime.UtcNow; MicGlyph.Glyph = "\uE71A"; VM.ShowStatus("正在录音… 再点一次停止并发送");
+        }
+        catch (Exception ex) { _rec?.Dispose(); _rec = null; MicGlyph.Glyph = "\uE720"; VM.ShowStatus("无法录音：" + ex.Message + "（请在 Windows 设置 › 隐私 › 麦克风 中允许桌面应用访问）", true); }
+    }
+
+    private Windows.Media.Playback.MediaPlayer? _player; private string _playing = "";
+    private void Voice_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not MessageItem m || !m.HasFilePath) return;
+        if (_player != null) { _player.Pause(); _player.Dispose(); _player = null; if (_playing == m.FilePath) { _playing = ""; return; } }
+        _playing = m.FilePath;
+        _player = new Windows.Media.Playback.MediaPlayer { Source = Windows.Media.Core.MediaSource.CreateFromUri(new Uri(m.FilePath)) };
+        _player.MediaEnded += (_, _) => DispatcherQueue.TryEnqueue(() => { _player?.Dispose(); _player = null; _playing = ""; });
+        _player.Play();
     }
 }
