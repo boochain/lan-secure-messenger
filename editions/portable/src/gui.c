@@ -254,6 +254,7 @@ static int tmsg(const wchar_t *title, const wchar_t *text, int cancel){ prompt_t
 typedef struct { char id[64]; wchar_t name[160], preview[200], time[16]; wchar_t ini[8]; int online, unread, group, trusted, av, via, draft; } conv_t;
 static void p2_list_sort(int *sel, const char *keep); /* xp_p2.inc */
 static void v062_list_filter(int *sel, const char *keep); static void v062_menu(HMENU pm, const char *id); static int v062_menu_cmd(int cmd, const char *id); /* xp_v062.inc */
+static void ux_menu(HMENU pm, const char *id); static int ux_menu_cmd(int cmd, const char *id); static wchar_t *ux_fail_text(wchar_t *t, const lsm_msg *m); static int ux_up_edit(void); static void ux_add_uri_text(const char *u); /* xp_ux.inc */
 static conv_t convs[512];
 static int line_h(HDC dc, HFONT f);
 static HWND hSearch;
@@ -412,7 +413,7 @@ static void refresh_chat(void){
                 if(nrows==1 && peer[0]){ wchar_t nt[400]; _snwprintf(nt,400,L"消息已端到端加密，只有你和%s能看到",peer); nt[399]=0; row_add(R_NOTICE)->text=wdup(nt); } }
             if(m[i].kind==K_SYSTEM){ row_add(R_NOTICE)->text=wdup(W(m[i].body)); continue; }
             r=row_add(m[i].kind==K_FILE?R_FILE:R_TEXT); r->out=m[i].out; r->status=m[i].status; memcpy(r->id,m[i].id,40); if(tm) wcsftime(r->time,8,L"%H:%M",tm);
-            if(r->kind==R_TEXT) r->text=p1_rowtext(&m[i]);
+            if(r->kind==R_TEXT) r->text=ux_fail_text(p1_rowtext(&m[i]),&m[i]);
             else { lsm_transfer *t2; int nt=lsm_transfers(C,&t2), j2; const wchar_t *dot; wchar_t sz[32]; static const wchar_t *TS[]={L"等待接收",L"传输中",L"校验中",L"",L"失败",L"被拒收",L"已取消"};
                 wcsncpy(r->name,W(m[i].file_name),259); dot=wcsrchr(r->name,L'.'); if(dot && wcslen(dot+1)<=4){ int q; for(q=0;dot[1+q];q++) r->ext[q]=(wchar_t)towupper(dot[1+q]); } else wcscpy(r->ext,L"FILE");
                 if(lsm_voice_secs(m[i].file_name)>=0){ _snwprintf(r->name,259,L"语音消息 %d″  （点击 ▶ 播放）",lsm_voice_secs(m[i].file_name)); wcscpy(r->ext,L"语音"); }
@@ -522,10 +523,10 @@ static LRESULT CALLBACK ChatProc(HWND h, UINT m, WPARAM w, LPARAM l){
         pm=CreatePopupMenu();
         AM(pm,MF_STRING|(r?0:MF_GRAYED),1,L"复制(&C)\tCtrl+C");
         if(r && r->kind>=R_FILE){ AM(pm,MF_STRING|(r->path[0]?0:MF_GRAYED),4,L"打开(&O)"); AM(pm,MF_STRING|(r->path[0]?0:MF_GRAYED),5,L"在文件夹中显示(&S)"); AM(pm,MF_STRING|(r->path[0]?0:MF_GRAYED),6,L"另存为(&A)…"); }
-        if(r){ v062_menu(pm,r->id); p1_menu(pm,r->id); p2_menu(pm,r->id); }
+        if(r){ ux_menu(pm,r->id); v062_menu(pm,r->id); p1_menu(pm,r->id); p2_menu(pm,r->id); }
         AM(pm,MF_SEPARATOR,0,NULL); AM(pm,MF_STRING|(r?0:MF_GRAYED),3,L"删除这条消息（仅本机）(&D)…"); menu_bg(pm);
         cmd=TrackPopupMenu(pm,TPM_RIGHTBUTTON|TPM_RETURNCMD|TPM_NONOTIFY,pt.x,pt.y,0,hMain,NULL); /* owner = main window: with the owner-drawn LISTBOX as owner wine measured every item 0 px wide (blank menu) */ DestroyMenu(pm);
-        if(r && cmd>=10){ char id[40]; memcpy(id,r->id,40); if(!v062_menu_cmd(cmd,id) && !p1_menu_cmd(cmd,id)) p2_menu_cmd(cmd,id); }
+        if(r && cmd>=10){ char id[40]; memcpy(id,r->id,40); if(!ux_menu_cmd(cmd,id) && !v062_menu_cmd(cmd,id) && !p1_menu_cmd(cmd,id)) p2_menu_cmd(cmd,id); }
         else if(cmd==1 && r) copy_text(r->kind==R_TEXT?r->text:r->name);
         else if(cmd==4 && r){ if(r->kind==R_IMAGE) show_image_viewer(r->path); else open_path_safe(r->path); }
         else if(cmd==5 && r) show_in_folder(r->path);
@@ -728,6 +729,8 @@ static void relay_dialog_refresh(void){ wchar_t st[300]; if(!hRelayStatus) retur
 #include "xp_p0.inc"
 #include "xp_p2.inc"
 #include "xp_v062.inc"
+static void select_conv(int s);
+#include "xp_ux.inc"
 static void do_command(int id){
     char err[256]="", u8[2048]; prompt_t p; memset(&p,0,sizeof p);
     switch(id){
@@ -746,6 +749,9 @@ static void do_command(int id){
     case IDM_REFRESH: lsm_refresh_peers(C); refresh_list(); refresh_chat(); tray_balloon("局域网安全通讯","已刷新联系人列表"); break;
     case IDM_STORAGE: storage_dialog(); break;
     case IDM_HISTORY: history_dialog(); break;
+    case IDM_MYQR: ux_my_qr(); break;
+    case IDM_ADDURI: ux_add_uri(); break;
+    case IDM_QUICK: ux_quick_switch(); break;
     case IDM_PINCONV: p2_toggle_conv_pin(); break;
     case IDM_STARRED: p2_flag_list(2,NULL); break;
     case IDM_PINNED: if(cur_conv[0]) p2_flag_list(1,cur_conv); break;
@@ -760,7 +766,7 @@ static void do_command(int id){
     case IDM_EMOJI: emoji_insert(); break;
     case IDM_STICKER: sticker_insert(); break;
     case IDM_XFERS: transfers_dialog(); break;
-    case IDM_ADDIP: if(prompt(L"按 IP 添加",L"输入对方 IP 地址（可带端口，如 192.168.1.20 或 192.168.1.20:41235）：",L"",&p,1)){ if(lsm_add_addr(C,U(p.text,u8,sizeof u8),err)) msgbox(err,MB_ICONWARNING); } break;
+    case IDM_ADDIP: if(prompt(L"按 IP 添加",L"输入对方 IP 地址（可带端口，如 192.168.1.20 或 192.168.1.20:41235），或粘贴添加链接 lsm://…：",L"",&p,1)){ U(p.text,u8,sizeof u8); if(!strncmp(u8,"lsm://",6)) ux_add_uri_text(u8); else if(lsm_add_addr(C,u8,err)) msgbox(err,MB_ICONWARNING); } break;
     case IDM_TRUST: case IDM_UNTRUST: case IDM_BLOCK: { const char *fp=selected_peer(); if(fp){ lsm_set_trust(C,fp,id==IDM_TRUST?1:id==IDM_BLOCK?2:0,err); refresh_list(); } break; }
     case IDM_PINOFFER: { char pin[8], m[256]; lsm_pin_offer(C,pin); snprintf(m,sizeof m,"请把下面的 PIN 告诉对方，并让对方在“输入 PIN 配对”中输入（5 分钟内有效）：\r\n\r\n        %s",pin); msgbox(m,MB_ICONINFORMATION); break; }
     case IDM_PINPAIR: { const char *fp=selected_peer(); if(fp && prompt(L"输入 PIN 配对",L"输入对方显示的 6 位 PIN：",L"",&p,1)){ if(lsm_pin_pair(C,fp,U(p.text,u8,sizeof u8),err)) msgbox(err,MB_ICONWARNING); } break; }
@@ -794,7 +800,7 @@ static void send_file_dlg(void){ if(!trust_ok_for_file()) return;
     if(!cur_conv[0]){ msgbox("请先在左侧选择联系人或群组。",MB_ICONINFORMATION); return; }
     memset(&of,0,sizeof of); of.lStructSize=sizeof of; of.hwndOwner=hMain; of.lpstrFile=path; of.nMaxFile=MAX_PATH; of.lpstrFilter=L"所有文件 (*.*)\0*.*\0"; of.Flags=OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST|OFN_EXPLORER;
     if(!GetOpenFileNameW(&of)) return;
-    if(lsm_send_file(C,cur_conv,U(path,u8,sizeof u8),err)) msgbox(err,MB_ICONWARNING); refresh_chat(); }
+    if(ux_send_file(U(path,u8,sizeof u8),err)<0) msgbox(err,MB_ICONWARNING); refresh_chat(); }
 
 /* ---------------------------------------------------------------- header, status-bar panes, icon buttons (xp-*-chat mockups) */
 #define SHIELD_FILL RGB(0xE8,0xB3,0x0E)
@@ -871,7 +877,7 @@ static int paste_clipboard_files(void){ /* Ctrl+V: HDROP files or CF_BITMAP imag
         if(hd){ if(!trust_ok_for_file()){ CloseClipboard(); return 1; }
             c=DragQueryFileW(hd,0xFFFFFFFF,NULL,0);
             for(i=0;i<c;i++) if(DragQueryFileW(hd,i,path,MAX_PATH) && !(GetFileAttributesW(path)&FILE_ATTRIBUTE_DIRECTORY)){
-                if(lsm_send_file(C,cur_conv,U(path,u8,sizeof u8),err)) msgbox(err,MB_ICONWARNING); else n++; }
+                { int sr=ux_send_file(U(path,u8,sizeof u8),err); if(sr<0) msgbox(err,MB_ICONWARNING); else if(!sr) n++; } }
             CloseClipboard(); refresh_chat(); return 1; } }
     if(IsClipboardFormatAvailable(CF_BITMAP)){
         HBITMAP bm=(HBITMAP)GetClipboardData(CF_BITMAP); BITMAP bi; char dir[520], outp[560]; wchar_t wpath[MAX_PATH];
@@ -895,6 +901,7 @@ static LRESULT CALLBACK InputProc(HWND h, UINT m, WPARAM w, LPARAM l){
     if(m==WM_PASTE || (m==WM_KEYDOWN && w=='V' && (GetKeyState(VK_CONTROL)&0x8000))){ if(paste_clipboard_files()) return 0; } if(m==WM_PAINT && GetWindowTextLengthW(h)==0){ LRESULT r=CallWindowProcW(oldInputProc,h,m,w,l); HDC dc=GetDC(h); RECT cr; GetClientRect(h,&cr); InflateRect(&cr,-scale_px(4),-scale_px(2)); SetBkMode(dc,TRANSPARENT); SetTextColor(dc,T.text_secondary);
         SelectObject(dc,fBody); DrawTextW(dc,reply_hint[0]?reply_hint:L"输入消息",-1,&cr,DT_LEFT|DT_TOP|DT_SINGLELINE|DT_NOPREFIX); SelectObject(dc,fCaption); DrawTextW(dc,L"Enter 发送 · Shift+Enter 换行",-1,&cr,DT_RIGHT|DT_TOP|DT_SINGLELINE|DT_NOPREFIX); ReleaseDC(h,dc); return r; }
     if(m==WM_SETFOCUS||m==WM_KILLFOCUS){ RECT r; InvalidateRect(h,NULL,TRUE); GetWindowRect(h,&r); MapWindowPoints(NULL,hMain,(POINT*)&r,2); InflateRect(&r,2,2); InvalidateRect(hMain,&r,FALSE); }
+    if(m==WM_KEYDOWN && w==VK_UP && GetWindowTextLengthW(h)==0 && ux_up_edit()) return 0; /* ↑ edits the last own message */
     if(m==WM_KEYDOWN && w==VK_TAB){ SetFocus(GetNextDlgTabItem(hMain,h,(GetKeyState(VK_SHIFT)&0x8000)?TRUE:FALSE)); return 0; } if(m==WM_CHAR && w=='\t') return 0; if(m==WM_KEYDOWN && w==VK_RETURN && !(GetKeyState(VK_SHIFT)&0x8000)){ send_current(); return 0; } if(m==WM_KEYDOWN && w==VK_ESCAPE && edit_id[0]){ p1_edit_cancel(); return 0; } if(m==WM_KEYDOWN && w==VK_ESCAPE && reply_id[0]){ p1_set_reply(NULL); return 0; } if(m==WM_CHAR && w=='@' && !strncmp(cur_conv,"group:",6)){ LRESULT rr=CallWindowProcW(oldInputProc,h,m,w,l); p2_at_popup(); return rr; } if(m==WM_KEYDOWN && w==VK_UP && GetWindowTextLengthW(h)==0 && p1_edit_last()) return 0; if(m==WM_CHAR && w=='\r' && !(GetKeyState(VK_SHIFT)&0x8000)) return 0; return CallWindowProcW(oldInputProc,h,m,w,l); }
 
 static void layout(int W_, int H_0){   /* every length scales with the DPI (S = scale_px): 96 DPI unchanged, 144 DPI = 150 % (X7) */
@@ -921,7 +928,7 @@ static void open_menu(int i){ RECT r; GetWindowRect(hMenuBtn[i],&r); SendMessage
 static HMENU build_menu(void){
     HMENU m=CreateMenu(), f=CreatePopupMenu(), c=CreatePopupMenu(), g=CreatePopupMenu(), s=CreatePopupMenu(), h=CreatePopupMenu();
     AM(f,MF_STRING,IDM_HISTORY,L"消息历史(&H)…\tCtrl+Shift+F"); AM(f,MF_STRING,IDM_STARRED,L"收藏的消息(&V)…"); AM(f,MF_STRING,IDM_FILTER,L"筛选会话（分组 / 已归档）(&L)…"); AM(f,MF_STRING,IDM_DLDIR,L"打开接收文件夹(&D)"); AM(f,MF_STRING,IDM_STORAGE,L"存储管理(&S)…"); AM(f,MF_STRING,IDM_XFERS,L"文件传输(&T)…"); AM(f,MF_STRING,IDM_EMOJI,L"插入表情(&E)…"); AM(f,MF_STRING,IDM_STICKER,L"发送贴纸(&K)…"); AM(f,MF_STRING,IDM_FIREWALL,L"设置防火墙例外(&F)..."); AM(f,MF_SEPARATOR,0,NULL); AM(f,MF_STRING,IDM_EXIT,L"退出(&X)");
-    AM(c,MF_STRING,IDM_ADDIP,L"按 IP 添加(&A)..."); AM(c,MF_STRING,IDM_REFRESH,L"刷新联系人(&R)"); AM(c,MF_STRING,IDM_CPROFILE,L"联系人资料 / 备注名(&N)…"); AM(c,MF_SEPARATOR,0,NULL); AM(c,MF_STRING,IDM_TRUST,L"信任(&T)"); AM(c,MF_STRING,IDM_UNTRUST,L"取消信任(&U)"); AM(c,MF_STRING,IDM_BLOCK,L"屏蔽(&B)"); AM(c,MF_STRING,IDM_MUTE,L"免打扰 开/关(&M)");
+    AM(c,MF_STRING,IDM_ADDIP,L"按 IP 添加(&A)..."); AM(c,MF_STRING,IDM_ADDURI,L"通过链接添加(&L)..."); AM(c,MF_STRING,IDM_MYQR,L"我的二维码(&Q)..."); AM(c,MF_STRING,IDM_QUICK,L"切换会话(&K)...\tCtrl+K"); AM(c,MF_STRING,IDM_REFRESH,L"刷新联系人(&R)"); AM(c,MF_STRING,IDM_CPROFILE,L"联系人资料 / 备注名(&N)…"); AM(c,MF_SEPARATOR,0,NULL); AM(c,MF_STRING,IDM_TRUST,L"信任(&T)"); AM(c,MF_STRING,IDM_UNTRUST,L"取消信任(&U)"); AM(c,MF_STRING,IDM_BLOCK,L"屏蔽(&B)"); AM(c,MF_STRING,IDM_MUTE,L"免打扰 开/关(&M)");
     AM(c,MF_SEPARATOR,0,NULL); AM(c,MF_STRING,IDM_PINOFFER,L"生成 PIN（让对方输入）(&P)"); AM(c,MF_STRING,IDM_PINPAIR,L"输入 PIN 配对(&I)...");
     AM(g,MF_STRING,IDM_GCREATE,L"创建群组(&C)..."); AM(g,MF_STRING,IDM_GINVITE,L"邀请成员(&I)..."); AM(g,MF_STRING,IDM_GREMOVE,L"移除成员(&R)..."); AM(g,MF_STRING,IDM_GLEAVE,L"退出群组(&L)");
     AM(s,MF_STRING,IDM_PROFILE,L"个人资料(&P)…"); AM(s,MF_STRING,IDM_NAME,L"修改昵称(&N)..."); AM(s,MF_STRING,IDM_RELAY,L"中转服务器(&R)..."); AM(s,MF_SEPARATOR,0,NULL); AM(s,MF_STRING|(theme_mode==0?MF_CHECKED:0),IDM_THEME_SYS,L"外观：跟随系统(&Y)"); AM(s,MF_STRING|(theme_mode==1?MF_CHECKED:0),IDM_THEME_LIGHT,L"外观：浅色(&L)"); AM(s,MF_STRING|(theme_mode==2?MF_CHECKED:0),IDM_THEME_DARK,L"外观：深色(&K)");
@@ -939,6 +946,7 @@ static int app_key(MSG *msg){ int ctrl=(GetKeyState(VK_CONTROL)&0x8000)!=0, shif
     if(ctrl && shift && msg->wParam=='F'){ do_command(IDM_HISTORY); return 1; }
     if(ctrl && msg->wParam=='F'){ SetFocus(hSearch); SendMessageW(hSearch,EM_SETSEL,0,-1); return 1; }
     if(ctrl && msg->wParam=='N'){ do_command(IDM_ADDIP); return 1; }
+    if(ctrl && !shift && msg->wParam=='K'){ do_command(IDM_QUICK); return 1; }
     if(ctrl && msg->wParam=='R'){ do_command(IDM_REFRESH); return 1; }
     if(ctrl && msg->wParam==VK_TAB){ int s=(int)SendMessageW(hList,LB_GETCURSEL,0,0); if(nlist){ s=shift?(s<=0?nlist-1:s-1):(s+1)%nlist; select_conv(s); } return 1; }
     if(msg->wParam==VK_ESCAPE && msg->hwnd==hSearch){ if(GetWindowTextLengthW(hSearch)) SetWindowTextW(hSearch,L""); else SetFocus(hList); return 1; }
@@ -952,7 +960,7 @@ static int win_load(RECT *r, int *maxed){ wchar_t p[MAX_PATH]; FILE *f; long a,b
     fclose(f); return ok; }
 static void drop_files(HDROP hd){ wchar_t path[MAX_PATH]; char u8[MAX_PATH*4], err[256]; UINT i, n=DragQueryFileW(hd,0xFFFFFFFF,NULL,0);
     if(!cur_conv[0]) msgbox("请先在左侧选择联系人或群组，再把文件拖进来。",MB_ICONINFORMATION);
-   else if(!trust_ok_for_file()) ; else for(i=0;i<n;i++){ if(DragQueryFileW(hd,i,path,MAX_PATH) && !(GetFileAttributesW(path)&FILE_ATTRIBUTE_DIRECTORY)){ if(lsm_send_file(C,cur_conv,U(path,u8,sizeof u8),err)){ msgbox(err,MB_ICONWARNING); break; } } }
+   else if(!trust_ok_for_file()) ; else for(i=0;i<n;i++){ if(DragQueryFileW(hd,i,path,MAX_PATH) && !(GetFileAttributesW(path)&FILE_ATTRIBUTE_DIRECTORY)){ if(ux_send_file(U(path,u8,sizeof u8),err)<0){ msgbox(err,MB_ICONWARNING); break; } } }
     DragFinish(hd); refresh_chat(); }
 static void add_tip(HWND tt, HWND ctl, const wchar_t *text){ TOOLINFOW ti; memset(&ti,0,sizeof ti); ti.cbSize=sizeof ti; ti.uFlags=TTF_IDISHWND|TTF_SUBCLASS; ti.hwnd=hMain; ti.uId=(UINT_PTR)ctl; ti.lpszText=(LPWSTR)text; SendMessageW(tt,TTM_ADDTOOLW,0,(LPARAM)&ti); }
 #define IDM_OPENCHAT 240
