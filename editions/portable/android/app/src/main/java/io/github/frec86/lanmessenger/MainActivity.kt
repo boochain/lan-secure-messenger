@@ -70,6 +70,14 @@ class MainActivity : ComponentActivity() {
         })
 
     }
+    /** hardware keyboard: Ctrl+K quick switcher, Ctrl+Shift+F message history */
+    override fun dispatchKeyEvent(ev: android.view.KeyEvent): Boolean {
+        if (ev.action == android.view.KeyEvent.ACTION_DOWN && ev.isCtrlPressed) {
+            if (ev.keyCode == android.view.KeyEvent.KEYCODE_K && !ev.isShiftPressed) { Ux.quickSwitch.value = true; return true }
+            if (ev.keyCode == android.view.KeyEvent.KEYCODE_F && ev.isShiftPressed) { Ux.openHistory.value = true; return true }
+        }
+        return super.dispatchKeyEvent(ev)
+    }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); handleIntent(intent) }
     private fun handleIntent(i: Intent?) {
         i ?: return
@@ -79,6 +87,7 @@ class MainActivity : ComponentActivity() {
             Intent.ACTION_SEND -> { val u = i.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
                 if (u != null) pendingShare.value = listOf(u) else i.getStringExtra(Intent.EXTRA_TEXT)?.takeIf { it.isNotBlank() }?.let { pendingText.value = it } }
             Intent.ACTION_SEND_MULTIPLE -> i.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)?.let { pendingShare.value = it }
+            Intent.ACTION_VIEW -> i.dataString?.takeIf { it.startsWith("lsm://add") }?.let { Ux.pendingUri.value = it }
         }
     }
 }
@@ -101,9 +110,9 @@ fun sendUris(ctx: android.content.Context, conv: String, uris: List<Uri>) {
         val t = Repo.state.value.contacts.firstOrNull { it.fp == fp }?.trust ?: 0
         if (t != 1) { Repo.toast.value = "对方尚未信任，无法发送图片/文件。请先在联系人菜单中信任对方（或完成 PIN 配对）。"; return }
     }
-    for (u in uris) { val f = importUri(ctx, u); val err = if (f == null) "无法读取文件" else Native.sendFile(conv, f.absolutePath)
-        if (err.isNotEmpty()) Repo.toast.value = errZh(err) }
-    Repo.refresh()
+    // v0.6.1: import, then show name · size · ETA before anything is sent (UxHost)
+    val files = uris.mapNotNull { u -> importUri(ctx, u)?.absolutePath.also { if (it == null) Repo.toast.value = "无法读取文件" } }
+    if (files.isNotEmpty()) Ux.pendingFiles.value = conv to files
 }
 
 /* ---------------------------------------------------------------- app shell */
@@ -119,10 +128,12 @@ fun App(pendingShare: MutableState<List<Uri>>, openConvExt: MutableState<String?
     if (pendingShare.value.isNotEmpty()) SharePicker(st, onPick = { c -> sendUris(ctx, c, pendingShare.value); pendingShare.value = emptyList(); conv = c }, onDismiss = { pendingShare.value = emptyList() })
     pendingText.value?.let { txt -> SharePicker(st, onPick = { c -> val e = Native.sendText(c, txt.trim()); if (e.isNotEmpty()) Repo.toast.value = e; Repo.refresh(); pendingText.value = null; conv = c },
         onDismiss = { pendingText.value = null }) }
+    UxHost(st) { conv = it }
     val c = conv
     // Back: chat -> list (Chat's own handler closes its search first); the list handles tabs/search and double-back-to-exit
     var page by rememberSaveable { mutableStateOf("") }   // v0.6.1: "history" | "profile" | "cprofile:<fp>"
     val jump: (String, String) -> Unit = { cv, id -> Repo.jumpId = id; page = ""; conv = cv }
+    LaunchedEffect(Ux.openHistory.value) { if (Ux.openHistory.value) { page = "history"; Ux.openHistory.value = false } }
     when {
         page == "history" -> HistoryScreen(st, c, back = { page = "" }, jump = jump)
         page == "profile" -> MyProfileScreen(st) { page = "" }
