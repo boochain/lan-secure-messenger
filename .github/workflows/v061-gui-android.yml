@@ -59,3 +59,13 @@ jobs:
       - name: Build XP GUI (x86 + x64)
         working-directory: editions/portable
         run: make build/x86/LanMessenger.exe build/x64/LanMessenger.exe
+  winui-build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: "8.0.x" }
+      - name: Build WinUI app + core tests (compile only)
+        run: |
+          dotnet build ui-winui/LanMessenger.Core.Tests/LanMessenger.Core.Tests.csproj -c Release
+          dotnet publish ui-winui/LanMessenger/LanMessenger.csproj -c Release -r win-x64 -p:Platform=x64 -o publish

@@ -121,4 +121,5 @@ public sealed partial class SettingsPage : Page
     private async void AccountBackupPut_Click(object sender, RoutedEventArgs e) => await VM.AccountBackupPutAsync(_accountPass);
     private async void AccountBackupGet_Click(object sender, RoutedEventArgs e) => await VM.AccountBackupGetAsync(_accountPass);
     private async void AccountRevoke_Click(object sender, RoutedEventArgs e) => await VM.AccountRevokeAsync(_accountPass);
+    private void Profile_Click(object sender, RoutedEventArgs e) => _ = P0Dialogs.ShowMyProfileAsync(XamlRoot);
 }

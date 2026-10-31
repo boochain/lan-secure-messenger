@@ -313,6 +313,13 @@
                         <FontIcon Glyph="&#xE712;" FontSize="16" />
                         <Button.Flyout>
                             <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                <MenuFlyoutItem Text="联系人资料 / 备注名…" Click="ContactProfile_Click" Visibility="{x:Bind VM.SelectedIsDm, Mode=OneWay}">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE77B;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem Text="消息历史…" Click="History_Click">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE81C;" /></MenuFlyoutItem.Icon>
+                                    <MenuFlyoutItem.KeyboardAccelerators><KeyboardAccelerator Modifiers="Control,Shift" Key="F" /></MenuFlyoutItem.KeyboardAccelerators>
+                                </MenuFlyoutItem>
                                 <MenuFlyoutItem Text="联系人详情" Click="Details_Click">
                                     <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE946;" /></MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
