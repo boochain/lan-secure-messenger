@@ -377,10 +377,10 @@ static void act(GtkWidget *w, gpointer p){ int id=GPOINTER_TO_INT(p); char err[2
         r=gtk_dialog_run(GTK_DIALOG(d)); gtk_widget_destroy(d); if(r!=GTK_RESPONSE_YES) break;
         { int rc=lsm_firewall_apply(fc,rep,sizeof rep); msgbox(rc==0?GTK_MESSAGE_INFO:GTK_MESSAGE_WARNING,"%s\n\n%s",rc==0?"防火墙设置完成。":"防火墙设置未完成。",rep); } break; }
     case A_ABOUT: { char ab[2048]; GtkWidget *d; int r; snprintf(ab,sizeof ab,"局域网安全通讯 Linux 版 %s\n\n所有版本互通（协议 v5）：Noise_XX_25519_ChaChaPoly_BLAKE2s 加密、自动发现、按 IP 添加、PIN 配对、群组、文件传输、送达/已读回执。\n\n托盘：%s",LSM_APP_VERSION,tray_kind);
-        /* 诊断信息 / 检查更新 live here (not in the main menu, which must stay clear of the input row) */
+        /* 诊断/更新/存储 live here (not in the main menu, which must stay clear of the input row) */
         d=gtk_message_dialog_new(GTK_WINDOW(win),GTK_DIALOG_MODAL|GTK_DIALOG_DESTROY_WITH_PARENT,GTK_MESSAGE_INFO,GTK_BUTTONS_NONE,"%s",ab);
-        gtk_dialog_add_buttons(GTK_DIALOG(d),"诊断信息",1,"检查更新…",2,"确定",GTK_RESPONSE_OK,NULL); gtk_dialog_set_default_response(GTK_DIALOG(d),GTK_RESPONSE_OK);
-        r=gtk_dialog_run(GTK_DIALOG(d)); gtk_widget_destroy(d); if(r==1) act(NULL,GINT_TO_POINTER(A_DIAG)); else if(r==2) act(NULL,GINT_TO_POINTER(A_UPDATE)); break; }
+        gtk_dialog_add_buttons(GTK_DIALOG(d),"诊断信息",1,"检查更新…",2,"存储管理…",3,"确定",GTK_RESPONSE_OK,NULL); gtk_dialog_set_default_response(GTK_DIALOG(d),GTK_RESPONSE_OK);
+        r=gtk_dialog_run(GTK_DIALOG(d)); gtk_widget_destroy(d); if(r==1) act(NULL,GINT_TO_POINTER(A_DIAG)); else if(r==2) act(NULL,GINT_TO_POINTER(A_UPDATE)); else if(r==3) act(NULL,GINT_TO_POINTER(A_STORAGE)); break; }
     case A_QUIT: quit_app(); break; } }
 
 static GtkWidget *mi(GtkWidget *menu, const char *label, int id){ GtkWidget *i=gtk_menu_item_new_with_label(label); g_signal_connect(i,"activate",G_CALLBACK(act),GINT_TO_POINTER(id)); gtk_menu_shell_append(GTK_MENU_SHELL(menu),i); return i; }
@@ -432,10 +432,10 @@ static void activate(GtkApplication *a, gpointer p){
     gtk_box_pack_start(GTK_BOX(vb),title_lbl,FALSE,FALSE,0); gtk_box_pack_start(GTK_BOX(vb),sub_lbl,FALSE,FALSE,0); gtk_header_bar_set_custom_title(GTK_HEADER_BAR(hb),vb);
     mb=gtk_menu_button_new(); gtk_button_set_image(GTK_BUTTON(mb),gtk_image_new_from_icon_name("open-menu-symbolic",GTK_ICON_SIZE_BUTTON)); gtk_widget_set_tooltip_text(mb,"菜单");
     menu=gtk_menu_new();
-    mi(menu,"按 IP 添加…",A_ADDIP); mi(menu,"刷新联系人",A_REFRESH); sep(menu); mi(menu,"信任当前联系人",A_TRUST); mi(menu,"取消信任",A_UNTRUST); mi(menu,"屏蔽",A_BLOCK); sep(menu);
+    mi(menu,"按 IP 添加…",A_ADDIP); sep(menu); mi(menu,"信任当前联系人",A_TRUST); mi(menu,"取消信任",A_UNTRUST); mi(menu,"屏蔽",A_BLOCK); sep(menu);
     mi(menu,"生成 PIN（让对方输入）",A_PINOFFER); mi(menu,"输入 PIN 配对…",A_PINPAIR); sep(menu);
     mi(menu,"创建群组…",A_GCREATE); mi(menu,"邀请成员…",A_GINVITE); mi(menu,"移除成员…",A_GREMOVE); mi(menu,"退出群组",A_GLEAVE); sep(menu);
-    mi(menu,"清空聊天记录…",A_CLEAR); mi(menu,"文件传输",A_XFERS); mi(menu,"打开接收文件夹",A_DLDIR); mi(menu,"存储管理…",A_STORAGE); mi(menu,"插入表情…",A_EMOJI); mi(menu,"修改昵称…",A_NAME); mi(menu,"设置防火墙（ufw / firewalld）…",A_FIREWALL); sep(menu); mi(menu,"关于",A_ABOUT); mi(menu,"退出",A_QUIT);
+    mi(menu,"清空聊天记录…",A_CLEAR); mi(menu,"文件传输",A_XFERS); mi(menu,"打开接收文件夹",A_DLDIR); mi(menu,"修改昵称…",A_NAME); mi(menu,"设置防火墙（ufw / firewalld）…",A_FIREWALL); sep(menu); mi(menu,"关于",A_ABOUT); mi(menu,"退出",A_QUIT);
     gtk_widget_show_all(menu); gtk_widget_set_halign(menu,GTK_ALIGN_END); /* open leftwards, inside the window */ gtk_menu_button_set_popup(GTK_MENU_BUTTON(mb),menu); gtk_header_bar_pack_end(GTK_HEADER_BAR(hb),mb); menu_btn=mb;
     { GtkWidget *add=gtk_button_new_from_icon_name("list-add-symbolic",GTK_ICON_SIZE_BUTTON); gtk_widget_set_tooltip_text(add,"按 IP 添加"); g_signal_connect(add,"clicked",G_CALLBACK(act),GINT_TO_POINTER(A_ADDIP)); gtk_header_bar_pack_start(GTK_HEADER_BAR(hb),add); }
     { GtkWidget *rf=gtk_button_new_from_icon_name("view-refresh-symbolic",GTK_ICON_SIZE_BUTTON); gtk_widget_set_tooltip_text(rf,"刷新联系人"); g_signal_connect(rf,"clicked",G_CALLBACK(act),GINT_TO_POINTER(A_REFRESH)); gtk_header_bar_pack_start(GTK_HEADER_BAR(hb),rf); }
@@ -457,8 +457,9 @@ static void activate(GtkApplication *a, gpointer p){
     { GtkWidget *chat=gtk_box_new(GTK_ORIENTATION_VERTICAL,0); ib=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,6); gtk_container_set_border_width(GTK_CONTAINER(ib),8);
       tv=gtk_scrolled_window_new(NULL,NULL); input=gtk_text_view_new(); gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(input),GTK_WRAP_WORD_CHAR); gtk_container_add(GTK_CONTAINER(tv),input); gtk_widget_set_size_request(tv,-1,64);
       gtk_scrolled_window_set_shadow_type(GTK_SCROLLED_WINDOW(tv),GTK_SHADOW_IN); g_signal_connect(input,"key-press-event",G_CALLBACK(input_key),NULL);
-      { GtkWidget *bb=gtk_box_new(GTK_ORIENTATION_VERTICAL,6); btn=gtk_button_new_with_label("发送"); gtk_style_context_add_class(gtk_widget_get_style_context(btn),"suggested-action"); fbtn=gtk_button_new_with_label("发送文件…");
-        g_signal_connect_swapped(btn,"clicked",G_CALLBACK(send_current),NULL); g_signal_connect_swapped(fbtn,"clicked",G_CALLBACK(send_file_dlg),NULL); gtk_box_pack_start(GTK_BOX(bb),btn,FALSE,FALSE,0); gtk_box_pack_start(GTK_BOX(bb),fbtn,FALSE,FALSE,0);
+      { GtkWidget *bb=gtk_box_new(GTK_ORIENTATION_VERTICAL,6), *eb; btn=gtk_button_new_with_label("发送"); gtk_style_context_add_class(gtk_widget_get_style_context(btn),"suggested-action"); fbtn=gtk_button_new_with_label("发送文件…");
+        eb=gtk_button_new_with_label("表情…"); gtk_widget_set_tooltip_text(eb,"插入表情或本地贴纸"); g_signal_connect(eb,"clicked",G_CALLBACK(act),GINT_TO_POINTER(A_EMOJI));
+        g_signal_connect_swapped(btn,"clicked",G_CALLBACK(send_current),NULL); g_signal_connect_swapped(fbtn,"clicked",G_CALLBACK(send_file_dlg),NULL); gtk_box_pack_start(GTK_BOX(bb),btn,FALSE,FALSE,0); gtk_box_pack_start(GTK_BOX(bb),fbtn,FALSE,FALSE,0); gtk_box_pack_start(GTK_BOX(bb),eb,FALSE,FALSE,0);
         gtk_box_pack_start(GTK_BOX(ib),tv,TRUE,TRUE,0); gtk_box_pack_start(GTK_BOX(ib),bb,FALSE,FALSE,0); }
       gtk_box_pack_start(GTK_BOX(chat),overlay,TRUE,TRUE,0); gtk_box_pack_start(GTK_BOX(chat),gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE,FALSE,0); gtk_box_pack_start(GTK_BOX(chat),ib,FALSE,FALSE,0);
       gtk_stack_add_named(GTK_STACK(stack),empty,"empty"); gtk_stack_add_named(GTK_STACK(stack),chat,"chat"); }
