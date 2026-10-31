@@ -230,7 +230,7 @@ pub async fn start(opts: EngineOptions) -> Result<EngineHandle> {
     let contacts = ContactStore::load(&paths)?;
     let history = HistoryStore::load(&paths, settings.history_enabled)?;
     let groups = GroupStore::load(&paths)?;
-    let conv_prefs = p2::ConvPrefs::load(&paths.base);
+    let conv_prefs = p2::ConvPrefs::load(&paths.base, crate::history::load_or_create_key(&paths.history_key)?);
     let (tx, mut rx) = mpsc::unbounded_channel();
     let (events, _) = broadcast::channel(4096);
     let shutdown = Arc::new(Notify::new());

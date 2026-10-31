@@ -21,18 +21,22 @@ pub(crate) struct ConvPrefs {
     #[serde(skip)]
     path: PathBuf,
     #[serde(skip)]
+    key: [u8; 32],
+    #[serde(skip)]
     last_typing: BTreeMap<String, i64>,
 }
 
 impl ConvPrefs {
-    pub fn load(base: &Path) -> Self {
-        let path = base.join("conv_prefs.json");
-        let mut c: ConvPrefs = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+    /// Sealed at rest with the history key (drafts are private text).
+    pub fn load(base: &Path, key: [u8; 32]) -> Self {
+        let path = base.join("conv_prefs.bin");
+        let mut c: ConvPrefs = std::fs::read(&path).ok().and_then(|b| open_at_rest(&key, &b).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
         c.path = path;
+        c.key = key;
         c
     }
     pub fn save(&self) {
-        if let Ok(b) = serde_json::to_vec_pretty(self) {
+        if let Some(b) = serde_json::to_vec(self).ok().and_then(|b| seal_at_rest(&self.key, &b).ok()) {
             let tmp = self.path.with_extension("tmp");
             if std::fs::write(&tmp, b).is_ok() {
                 let _ = std::fs::rename(&tmp, &self.path);
