@@ -119,7 +119,8 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     match &cli.cmd {
         Some(Cmd::FirewallSetup { elevated, public }) => {
-            if firewall::host_firewall_enabled() == Some(false) {
+            // the user-facing entry checks first; --elevated is the internal re-run after the UAC prompt
+            if !*elevated && firewall::host_firewall_enabled() == Some(false) {
                 println!("{}", firewall::FW_DISABLED_MSG);
                 return Ok(());
             }

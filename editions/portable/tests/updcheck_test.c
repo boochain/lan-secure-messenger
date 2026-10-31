@@ -9,6 +9,9 @@ T(upd_cmp("v0.6.0-beta.10","v0.6.0-beta.9")>0) T(upd_cmp("v0.6.0","0.6.0-beta.1"
 T(upd_cmp("v0.4.9","v0.5.0-beta.1")<0) T(upd_cmp("v1.0","0.9.9")>0) T(upd_cmp("v0.6.0-beta","v0.6.0-beta.1")<0)
 T(upd_result("[{\"tag_name\":\"v0.5.0\"},{\"author\":{\"x\":1},\"tag_name\":\"v0.6.0-beta.1\"},{\"tag_name\":\"xp-1\"}]","0.5.0",m,200,u,200)==1 && strstr(u,"/tag/v0.6.0-beta.1"))
 T(upd_result("[]","0.5.0",m,200,u,200)==0)
+/* release v0.6.0: final > every beta, equal = up to date */
+T(upd_cmp("v0.6.0","0.6.0-beta.2")>0) T(upd_cmp("v0.6.0","0.6.0")==0)
+T(upd_result("[{\"tag_name\":\"v0.6.0\"},{\"tag_name\":\"v0.6.0-beta.2\"}]","0.6.0",m,200,u,200)==0)
 /* release v0.6.0-beta.2: the same version is up to date, beta.2 > beta.1 */
 T(upd_cmp("v0.6.0-beta.2","0.6.0-beta.2")==0) T(upd_cmp("v0.6.0-beta.2","0.6.0-beta.1")>0) T(upd_cmp("v0.6.0-beta.1","0.6.0-beta.2")<0)
 T(upd_result("[{\"tag_name\":\"v0.6.0-beta.2\"},{\"tag_name\":\"v0.6.0-beta.1\"}]","0.6.0-beta.2",m,200,u,200)==0 && strstr(m,"已是最新版本"))
