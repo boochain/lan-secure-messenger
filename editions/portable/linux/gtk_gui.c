@@ -464,10 +464,13 @@ static void activate(GtkApplication *a, gpointer p){
     menu=gtk_menu_new();
     mi(menu,"按 IP 添加…",A_ADDIP); sep(menu); mi(menu,"信任当前联系人",A_TRUST); mi(menu,"取消信任",A_UNTRUST); mi(menu,"屏蔽",A_BLOCK); sep(menu);
     mi(menu,"生成 PIN（让对方输入）",A_PINOFFER); mi(menu,"输入 PIN 配对…",A_PINPAIR); sep(menu);
-    mi(menu,"创建群组…",A_GCREATE); mi(menu,"邀请成员…",A_GINVITE); mi(menu,"移除成员…",A_GREMOVE); mi(menu,"退出群组",A_GLEAVE); sep(menu);
-    mi(menu,"置顶 / 取消置顶当前会话",A_PINCONV); mi(menu,"本会话的置顶消息…",A_PINNED); mi(menu,"收藏的消息…",A_STARRED); mi(menu,"多选消息…",A_MULTI); sep(menu);
-    mi(menu,"发起投票…",A_POLL); mi(menu,"定时删除…",A_TTL); mi(menu,"归档 / 取消归档当前会话",A_ARCHIVE); mi(menu,"会话分组…",A_FOLDERS); mi(menu,"筛选会话（分组 / 已归档）…",A_FILTER); sep(menu);
-    mi(menu,"清空聊天记录…",A_CLEAR); mi(menu,"文件传输",A_XFERS); mi(menu,"打开接收文件夹",A_DLDIR); mi(menu,"个人资料…",A_PROFILE); mi(menu,"设置防火墙（ufw / firewalld）…",A_FIREWALL); sep(menu); mi(menu,"关于",A_ABOUT); mi(menu,"退出",A_QUIT);
+    { GtkWidget *gm=gtk_menu_new(),*gi=gtk_menu_item_new_with_label("群组"); mi(gm,"创建群组…",A_GCREATE); mi(gm,"邀请成员…",A_GINVITE); mi(gm,"移除成员…",A_GREMOVE); mi(gm,"退出群组",A_GLEAVE); gtk_menu_item_set_submenu(GTK_MENU_ITEM(gi),gm); gtk_menu_shell_append(GTK_MENU_SHELL(menu),gi); } /* submenus keep the main menu shorter than the window */
+    
+    { GtkWidget *cm=gtk_menu_new(),*ci=gtk_menu_item_new_with_label("当前会话");
+      mi(cm,"置顶 / 取消置顶当前会话",A_PINCONV); mi(cm,"本会话的置顶消息…",A_PINNED); mi(cm,"多选消息…",A_MULTI); sep(cm);
+      mi(cm,"发起投票…",A_POLL); mi(cm,"定时删除…",A_TTL); mi(cm,"归档 / 取消归档当前会话",A_ARCHIVE); mi(cm,"会话分组…",A_FOLDERS); sep(cm); mi(cm,"清空聊天记录…",A_CLEAR);
+      gtk_menu_item_set_submenu(GTK_MENU_ITEM(ci),cm); gtk_menu_shell_append(GTK_MENU_SHELL(menu),ci); }
+    mi(menu,"收藏的消息…",A_STARRED); mi(menu,"筛选会话（分组 / 已归档）…",A_FILTER); sep(menu); mi(menu,"文件传输",A_XFERS); mi(menu,"打开接收文件夹",A_DLDIR); mi(menu,"个人资料…",A_PROFILE); mi(menu,"设置防火墙（ufw / firewalld）…",A_FIREWALL); sep(menu); mi(menu,"关于",A_ABOUT); mi(menu,"退出",A_QUIT);
     gtk_widget_show_all(menu); gtk_widget_set_halign(menu,GTK_ALIGN_END); /* open leftwards, inside the window */ gtk_menu_button_set_popup(GTK_MENU_BUTTON(mb),menu); gtk_header_bar_pack_end(GTK_HEADER_BAR(hb),mb); menu_btn=mb;
     { GtkWidget *add=gtk_button_new_from_icon_name("list-add-symbolic",GTK_ICON_SIZE_BUTTON); gtk_widget_set_tooltip_text(add,"按 IP 添加"); g_signal_connect(add,"clicked",G_CALLBACK(act),GINT_TO_POINTER(A_ADDIP)); gtk_header_bar_pack_start(GTK_HEADER_BAR(hb),add); }
     { GtkWidget *rf=gtk_button_new_from_icon_name("view-refresh-symbolic",GTK_ICON_SIZE_BUTTON); gtk_widget_set_tooltip_text(rf,"刷新联系人"); g_signal_connect(rf,"clicked",G_CALLBACK(act),GINT_TO_POINTER(A_REFRESH)); gtk_header_bar_pack_start(GTK_HEADER_BAR(hb),rf); }
