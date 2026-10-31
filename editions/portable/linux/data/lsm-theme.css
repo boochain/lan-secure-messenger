@@ -59,6 +59,7 @@ button.suggested-action, button.default { background-color: #005FB8; color: #FFF
 button.suggested-action label, button.default label { color: #FFFFFF; }
 menu, .menu, menuitem, .context-menu { background-color: #FBFBFB; color: #1A1A1A; }
 menuitem label { color: #1A1A1A; }
+entry image { color: #1A1A1A; -gtk-icon-style: symbolic; }
 menuitem:hover { background-color: #005FB8; color: #FFFFFF; }
 menuitem:hover label { color: #FFFFFF; }
 separator, paned > separator { background-color: #E5E5E5; color: #E5E5E5; background-image: none; }
@@ -88,7 +89,8 @@ list row label.offline, row label.offline, label.offline { color: #5C5C5C; }
 popover, popover.menu, popover.background { border: 1px solid #E5E5E5; box-shadow: none; }
 popover separator, popover.menu separator { background-color: #E5E5E5; min-height: 1px; margin: 4px 0; }
 window.popup menu, .csd menu, menu { box-shadow: inset 0 0 0 1px #E5E5E5; border-radius: 0; }
-menu, .csd menu, window.popup menu { padding: 4px; margin: 0; }  /* GTK 3.24 skips the menu node border; the popup window's 1px border is only visible when items do not cover the edge */
+menu, .csd menu, window.popup menu { padding: 4px; margin: 0; }
+menu menuitem, .csd menu menuitem { min-height: 22px; padding-top: 2px; padding-bottom: 2px; }  /* GTK 3.24 skips the menu node border; the popup window's 1px border is only visible when items do not cover the edge */
 /*@dark*/
 window, dialog, messagedialog, .background, popover { background-color: #202020; color: #FFFFFF; }
 headerbar, headerbar:backdrop { background-color: #202020; color: #FFFFFF; border-color: #323232; }
@@ -116,6 +118,7 @@ button.suggested-action, button.default { background-color: #60CDFF; color: #000
 button.suggested-action label, button.default label { color: #000000; }
 menu, .menu, menuitem, .context-menu { background-color: #2B2B2B; color: #FFFFFF; }
 menuitem label { color: #FFFFFF; }
+entry image { color: #FFFFFF; -gtk-icon-style: symbolic; }
 menuitem:hover { background-color: #60CDFF; color: #000000; }
 menuitem:hover label { color: #000000; }
 separator, paned > separator { background-color: #323232; color: #323232; background-image: none; }
@@ -145,4 +148,5 @@ list row label.offline, row label.offline, label.offline { color: #CCCCCC; }
 popover, popover.menu, popover.background { border: 1px solid #323232; box-shadow: none; }
 popover separator, popover.menu separator { background-color: #323232; min-height: 1px; margin: 4px 0; }
 window.popup menu, .csd menu, menu { box-shadow: inset 0 0 0 1px #323232; border-radius: 0; }
-menu, .csd menu, window.popup menu { padding: 4px; margin: 0; }  /* GTK 3.24 skips the menu node border; the popup window's 1px border is only visible when items do not cover the edge */
+menu, .csd menu, window.popup menu { padding: 4px; margin: 0; }
+menu menuitem, .csd menu menuitem { min-height: 22px; padding-top: 2px; padding-bottom: 2px; }  /* GTK 3.24 skips the menu node border; the popup window's 1px border is only visible when items do not cover the edge */
