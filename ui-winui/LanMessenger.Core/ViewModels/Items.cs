@@ -107,6 +107,7 @@ public partial class ConversationItem : ObservableObject
         Muted = c.Muted;
         Initial = Fmt.Initials(c.Title);
         Pinned = c.Pinned; Draft = c.Draft.Replace('\n', ' '); HasDraft = c.Draft.Trim().Length > 0;
+        Archived = c.Archived; Folders = c.Folders ?? new(); TtlSecs = c.TtlSecs; HasTtl = c.TtlSecs > 0;
         OnPropertyChanged(nameof(ShowOfflineDot));
         OnPropertyChanged(nameof(ShowOnlineDot));
     }
@@ -198,6 +199,7 @@ public partial class MessageItem : ObservableObject
         RawBody = m.Body;
         IsRecalled = m.Recalled; IsEdited = m.Edited && !m.Recalled;
         IsPinned = m.Pinned; IsStarred = m.Starred; MentionsMe = m.MentionsMe;
+        UpdatePoll(m);
         TagsText = m.Recalled ? "" : string.Concat(m.Forwarded ? "↪ 转发  " : "", m.Pinned ? "📌  " : "", m.Starred ? "⭐  " : "", m.MentionsMe ? "@我" : "").Trim(); HasTags = TagsText.Length > 0;
         Body = m.Recalled ? (m.Direction == Direction.Out ? "你撤回了一条消息" : "对方撤回了一条消息") : m.Edited ? m.Body + "（已编辑）" : m.Body;
         HasQuote = !string.IsNullOrEmpty(m.ReplyTo) && !m.Recalled; QuoteText = m.Quote.Length > 0 ? m.Quote : "原消息";
@@ -384,4 +386,57 @@ public partial class MessageItem
     [ObservableProperty] private string _tagsText = "";
     [ObservableProperty] private bool _hasTags;
     [ObservableProperty] private bool _isPicked;   // multi-select
+}
+
+// v0.6.2
+public partial class ConversationItem
+{
+    [ObservableProperty] private bool _archived;
+    [ObservableProperty] private uint _ttlSecs;
+    [ObservableProperty] private bool _hasTtl;
+    public List<string> Folders { get; set; } = new();
+}
+
+public partial class PollOptionItem : ObservableObject
+{
+    public int Index { get; init; }
+    public string Text { get; init; } = "";
+    [ObservableProperty] private int _count;
+    [ObservableProperty] private bool _mine;
+    [ObservableProperty] private double _percent;
+    [ObservableProperty] private string _label = "";
+    public MessageItem? Owner { get; init; }
+}
+
+public partial class MessageItem
+{
+    [ObservableProperty] private bool _isPoll;
+    [ObservableProperty] private bool _pollClosed;
+    [ObservableProperty] private bool _pollMulti;
+    [ObservableProperty] private string _pollSummary = "";
+    [ObservableProperty] private bool _canClosePoll;
+    [ObservableProperty] private bool _isExpiring;
+    [ObservableProperty] private string _expiresText = "";
+    public long ExpiresMs { get; private set; }
+    public System.Collections.ObjectModel.ObservableCollection<PollOptionItem> PollOptions { get; } = new();
+    public HashSet<int> MyChoices { get; } = new();
+
+    private void UpdatePoll(Message m)
+    {
+        ExpiresMs = m.ExpiresMs; IsExpiring = m.ExpiresMs > 0;
+        ExpiresText = IsExpiring ? "⏱ " + DateTimeOffset.FromUnixTimeMilliseconds(m.ExpiresMs).ToLocalTime().ToString("MM-dd HH:mm:ss") + " 删除" : "";
+        var p = m.Poll; IsPoll = p != null && !m.Recalled;
+        if (p == null) { PollOptions.Clear(); return; }
+        PollClosed = p.Closed; PollMulti = p.Multi; CanClosePoll = IsOutgoing && !p.Closed;
+        var voters = p.Votes.Count(v => v.Choices.Count > 0);
+        MyChoices.Clear(); foreach (var c in p.Votes.FirstOrDefault(v => v.Fp == MyFp)?.Choices ?? new()) MyChoices.Add(c);
+        if (PollOptions.Count != p.Options.Count) { PollOptions.Clear(); for (int i = 0; i < p.Options.Count; i++) PollOptions.Add(new PollOptionItem { Index = i, Text = p.Options[i], Owner = this }); }
+        for (int i = 0; i < p.Options.Count; i++)
+        {
+            var o = PollOptions[i]; var n = p.Votes.Count(v => v.Choices.Contains(i));
+            o.Count = n; o.Mine = MyChoices.Contains(i); o.Percent = voters == 0 ? 0 : 100.0 * n / voters;
+            o.Label = (o.Mine ? "✓ " : "") + o.Text + $"  ·  {n} 票";
+        }
+        PollSummary = (p.Multi ? "多选投票" : "单选投票") + $" · {voters} 人参与" + (p.Closed ? " · 已结束" : "");
+    }
 }

@@ -106,6 +106,27 @@
                 <Border HorizontalAlignment="Left" Margin="4,2,4,0" CornerRadius="10" Padding="8,1" Background="{ThemeResource LsmInputBackgroundBrush}" Visibility="{x:Bind HasReactions, Mode=OneWay}">
                     <TextBlock Text="{x:Bind ReactionsText, Mode=OneWay}" FontSize="13" />
                 </Border>
+                <!-- v0.6.2 poll card -->
+                <Border HorizontalAlignment="Left" Margin="4,4,4,0" Padding="10,8" CornerRadius="12" MinWidth="240" MaxWidth="420" BorderThickness="1"
+                        BorderBrush="{ThemeResource LsmDividerBrush}" Background="{ThemeResource LsmInputBackgroundBrush}" Visibility="{x:Bind IsPoll, Mode=OneWay}">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="{x:Bind PollSummary, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <ItemsControl ItemsSource="{x:Bind PollOptions}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:PollOptionItem">
+                                    <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Margin="0,2" Padding="8,6" Click="PollOption_Click" AutomationProperties.Name="{x:Bind Label, Mode=OneWay}">
+                                        <StackPanel Spacing="4">
+                                            <TextBlock Text="{x:Bind Label, Mode=OneWay}" TextWrapping="Wrap" />
+                                            <ProgressBar Value="{x:Bind Percent, Mode=OneWay}" Maximum="100" />
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <Button Content="结束投票" Click="ClosePoll_Click" Visibility="{x:Bind CanClosePoll, Mode=OneWay}" />
+                    </StackPanel>
+                </Border>
+                <TextBlock HorizontalAlignment="Left" Margin="6,1,6,0" Text="{x:Bind ExpiresText, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{x:Bind IsExpiring, Mode=OneWay}" />
                 <TextBlock HorizontalAlignment="Left" Margin="6,1,6,0" Text="{x:Bind TagsText, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{x:Bind HasTags, Mode=OneWay}" />
             </StackPanel>
         </DataTemplate>
@@ -172,6 +193,27 @@
                 <Border HorizontalAlignment="Right" Margin="4,2,4,0" CornerRadius="10" Padding="8,1" Background="{ThemeResource LsmInputBackgroundBrush}" Visibility="{x:Bind HasReactions, Mode=OneWay}">
                     <TextBlock Text="{x:Bind ReactionsText, Mode=OneWay}" FontSize="13" />
                 </Border>
+                <!-- v0.6.2 poll card -->
+                <Border HorizontalAlignment="Right" Margin="4,4,4,0" Padding="10,8" CornerRadius="12" MinWidth="240" MaxWidth="420" BorderThickness="1"
+                        BorderBrush="{ThemeResource LsmDividerBrush}" Background="{ThemeResource LsmInputBackgroundBrush}" Visibility="{x:Bind IsPoll, Mode=OneWay}">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="{x:Bind PollSummary, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <ItemsControl ItemsSource="{x:Bind PollOptions}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:PollOptionItem">
+                                    <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Margin="0,2" Padding="8,6" Click="PollOption_Click" AutomationProperties.Name="{x:Bind Label, Mode=OneWay}">
+                                        <StackPanel Spacing="4">
+                                            <TextBlock Text="{x:Bind Label, Mode=OneWay}" TextWrapping="Wrap" />
+                                            <ProgressBar Value="{x:Bind Percent, Mode=OneWay}" Maximum="100" />
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <Button Content="结束投票" Click="ClosePoll_Click" Visibility="{x:Bind CanClosePoll, Mode=OneWay}" />
+                    </StackPanel>
+                </Border>
+                <TextBlock HorizontalAlignment="Right" Margin="6,1,6,0" Text="{x:Bind ExpiresText, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{x:Bind IsExpiring, Mode=OneWay}" />
                 <TextBlock HorizontalAlignment="Right" Margin="6,1,6,0" Text="{x:Bind TagsText, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{x:Bind HasTags, Mode=OneWay}" />
             </StackPanel>
         </DataTemplate>
@@ -233,9 +275,14 @@
                     </Button>
                 </StackPanel>
             </Grid>
-            <AutoSuggestBox x:Name="SearchBox" Grid.Row="1" Margin="16,0,16,8" PlaceholderText="搜索聊天记录 (Ctrl+F)" QueryIcon="Find"
-                            Text="{x:Bind VM.SearchText, Mode=TwoWay}" QuerySubmitted="Search_QuerySubmitted" />
-            <ListView x:Name="ConvList" Grid.Row="2" Padding="4,0" RightTapped="ConvList_RightTapped" ItemsSource="{x:Bind VM.Conversations}" SelectionMode="Single"
+            <StackPanel Grid.Row="1" Margin="16,0,16,8" Spacing="6">
+                <AutoSuggestBox x:Name="SearchBox" PlaceholderText="搜索聊天记录 (Ctrl+F)" QueryIcon="Find"
+                                Text="{x:Bind VM.SearchText, Mode=TwoWay}" QuerySubmitted="Search_QuerySubmitted" />
+                <!-- v0.6.2: chat folders / archive filter -->
+                <ComboBox x:Name="FilterBox" HorizontalAlignment="Stretch" ItemsSource="{x:Bind VM.FilterOptions}" SelectedItem="{x:Bind VM.ConvFilter, Mode=TwoWay}"
+                          Visibility="{x:Bind VM.HasFilters, Mode=OneWay}" AutomationProperties.Name="会话分组" ToolTipService.ToolTip="按分组筛选会话；已归档的会话在“已归档”里" />
+            </StackPanel>
+            <ListView x:Name="ConvList" Grid.Row="2" Padding="4,0" RightTapped="ConvList_RightTapped" ContainerContentChanging="ConvList_ContainerContentChanging" ItemsSource="{x:Bind VM.Conversations}" SelectionMode="Single"
                       SelectionChanged="ConvList_SelectionChanged">
                 <ListView.ItemContainerStyle>
                     <Style TargetType="ListViewItem">
@@ -267,6 +314,7 @@
                                     <FontIcon Tag="lsm-icon" Foreground="{ThemeResource SystemFillColorSuccessBrush}" Glyph="&#xEA18;" FontSize="12" Visibility="{x:Bind IsTrusted, Mode=OneWay}" ToolTipService.ToolTip="已验证身份" AutomationProperties.Name="已验证身份" />
                                     <FontIcon Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE74F;" FontSize="12" Visibility="{x:Bind Muted, Mode=OneWay}" ToolTipService.ToolTip="免打扰" />
                                     <FontIcon Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE718;" FontSize="12" Visibility="{x:Bind Pinned, Mode=OneWay}" ToolTipService.ToolTip="已置顶" AutomationProperties.Name="已置顶" />
+                                    <FontIcon Foreground="{ThemeResource TextFillColorSecondaryBrush}" Glyph="&#xE916;" FontSize="12" Visibility="{x:Bind HasTtl, Mode=OneWay}" ToolTipService.ToolTip="定时删除已开启" AutomationProperties.Name="定时删除已开启" />
                                     <!-- relay peer: same list, same row; small 经服务器 chip (icon + text) -->
                                     <Border Background="{ThemeResource LsmChipBackgroundBrush}" CornerRadius="8" Padding="6,1,6,1" VerticalAlignment="Center"
                                             Visibility="{x:Bind ViaServer, Mode=OneWay}" ToolTipService.ToolTip="经服务器中转（端到端加密，局域网直连恢复后自动切换）" AutomationProperties.Name="经服务器">
@@ -339,6 +387,7 @@
                                   ToolTipService.ToolTip="经服务器中转（端到端加密）" AutomationProperties.Name="经服务器" />
                         <TextBlock Text="{x:Bind VM.SelectedSubtitle, Mode=OneWay}" Style="{StaticResource SecondaryCaptionStyle}" TextTrimming="CharacterEllipsis" Visibility="{x:Bind local:B.Not(VM.HasTyping), Mode=OneWay}" />
                         <TextBlock Text="{x:Bind VM.TypingText, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" TextTrimming="CharacterEllipsis" Visibility="{x:Bind VM.HasTyping, Mode=OneWay}" />
+                        <TextBlock Text="{x:Bind VM.SelectedTtlText, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{x:Bind local:B.NotEmpty(VM.SelectedTtlText), Mode=OneWay}" />
                     </StackPanel>
                 </StackPanel>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
@@ -355,6 +404,18 @@
                                 <MenuFlyoutItem Text="消息历史…" Click="History_Click">
                                     <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE81C;" /></MenuFlyoutItem.Icon>
                                     <MenuFlyoutItem.KeyboardAccelerators><KeyboardAccelerator Modifiers="Control,Shift" Key="F" /></MenuFlyoutItem.KeyboardAccelerators>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem Text="发起投票…" Click="NewPoll_Click">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE9D2;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem Text="定时删除…" Click="Ttl_Click">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE916;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem Text="归档 / 取消归档" Click="Archive_Click">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE7B8;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem Text="会话分组…" Click="Folders_Click">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8B7;" /></MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
                                 <MenuFlyoutItem Text="置顶 / 取消置顶会话" Click="PinConv_Click">
                                     <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE718;" /></MenuFlyoutItem.Icon>

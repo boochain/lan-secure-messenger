@@ -493,4 +493,9 @@ async fn v062_polls_folders_archive_disappearing() {
     let mid = m["id"].as_str().unwrap().to_string();
     wait("ttl msg on bob", 15, || async { b.msgs(&conv_b).await.iter().any(|m| m["id"] == mid.as_str() && m["expires_ms"].as_i64().unwrap_or(0) > 0) }).await;
     assert!(a.msgs(&conv_a).await.iter().any(|m| m["id"] == mid.as_str() && m["expires_ms"].as_i64().unwrap_or(0) > 0));
+    // real expiry: gone on both sides after ~30 s
+    wait("expired on alice", 45, || async { !a.msgs(&conv_a).await.iter().any(|m| m["id"] == mid.as_str()) }).await;
+    wait("expired on bob", 15, || async { !b.msgs(&conv_b).await.iter().any(|m| m["id"] == mid.as_str()) }).await;
+    // the timer-change notices are system messages and never expire
+    assert!(a.msgs(&conv_a).await.iter().any(|m| m["kind"] == "system"));
 }

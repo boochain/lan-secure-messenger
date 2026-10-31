@@ -261,6 +261,8 @@ try:
         out = X.cmd(f"send {A.fp} 阅后即焚")[-1]; tid = out.split()[-1]
         got = wait(lambda: [m for m in A.j("history", X.fp) if m["id"] == tid and m.get("expires_ms", 0) > 0], 15)
         (ok if got and "expires_ms=0" not in "".join(X.cmd(f"pollinfo {tid}")) else fail)("v0.6.2 expiring message both sides")
+        got = wait(lambda: not [m for m in A.j("history", X.fp) if m["id"] == tid] and "ERR not found" in "".join(X.cmd(f"pollinfo {tid}")), 50)
+        (ok if got else fail)("v0.6.2 message really deleted after 30 s on both sides")
         X.cmd(f"ttl {A.fp} 0")
         X.cmd(f"archive {A.fp} 1"); X.cmd(f"folders {A.fp} 工作,同事")
         f = X.cmd(f"folders {A.fp}")[-1]; a = X.cmd(f"archive {A.fp}")[-1]

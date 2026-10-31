@@ -67,6 +67,30 @@ public sealed class Message
     public bool Pinned { get; set; }
     public bool Starred { get; set; }
     public bool MentionsMe { get; set; }
+    // v0.6.2
+    public Poll? Poll { get; set; }
+    public long ExpiresMs { get; set; }
+}
+
+public sealed class Poll
+{
+    public string Question { get; set; } = "";
+    public List<string> Options { get; set; } = new();
+    public bool Multi { get; set; }
+    public List<PollVote> Votes { get; set; } = new();
+    public bool Closed { get; set; }
+}
+
+public sealed class PollVote
+{
+    public string Fp { get; set; } = "";
+    public List<int> Choices { get; set; } = new();
+}
+
+public sealed class Folder
+{
+    public string Name { get; set; } = "";
+    public List<string> Conversations { get; set; } = new();
 }
 
 public sealed class Reaction
@@ -182,6 +206,10 @@ public sealed class Conversation
     // v0.6.1 P2 (local only)
     public bool Pinned { get; set; }
     public string Draft { get; set; } = "";
+    // v0.6.2
+    public bool Archived { get; set; }
+    public List<string> Folders { get; set; } = new();
+    public uint TtlSecs { get; set; }
 }
 
 public sealed class Me
