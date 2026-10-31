@@ -183,7 +183,7 @@ static void bubble_lpress(GtkGestureLongPress *g, double x, double y, gpointer p
 static gboolean imgv_key(GtkEventControllerKey *k, guint kv, guint c, GdkModifierType m, gpointer w){ (void)k;(void)c;(void)m; if(kv==GDK_KEY_Escape){ gtk_window_destroy(GTK_WINDOW(w)); return TRUE; } return FALSE; }
 static void imgv_click(GtkGestureClick *g, int n, double x, double y, gpointer w){ (void)g;(void)n;(void)x;(void)y; gtk_window_destroy(GTK_WINDOW(w)); }
 static void show_image_viewer(const char *path){ /* Esc / click closes */
-    GError *er=NULL; GdkPixbuf *pb=gdk_pixbuf_new_from_file(path,&er); GtkWidget *w,*pic; if(!pb){ if(er) g_error_free(er); gchar *u=g_filename_to_uri(path,NULL,NULL); if(u){ g_app_info_launch_default_for_uri(u,NULL,NULL); g_free(u);} return; }
+    GError *er=NULL; GdkPixbuf *pb=gdk_pixbuf_new_from_file(path,&er); GtkWidget *w,*pic; if(!pb){ if(er) g_error_free(er); open_path_safe(path); return; }
     w=gtk_window_new(); gtk_window_set_title(GTK_WINDOW(w),"图片"); gtk_window_set_transient_for(GTK_WINDOW(w),GTK_WINDOW(win)); gtk_window_set_modal(GTK_WINDOW(w),TRUE); gtk_window_set_default_size(GTK_WINDOW(w),900,700);
     { GdkTexture *tx=gdk_texture_new_for_pixbuf(pb); pic=gtk_picture_new_for_paintable(GDK_PAINTABLE(tx)); g_object_unref(tx); g_object_unref(pb); }
     gtk_picture_set_content_fit(GTK_PICTURE(pic),GTK_CONTENT_FIT_CONTAIN); gtk_widget_set_hexpand(pic,TRUE); gtk_widget_set_vexpand(pic,TRUE); gtk_window_set_child(GTK_WINDOW(w),pic);

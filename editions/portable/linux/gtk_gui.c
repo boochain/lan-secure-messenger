@@ -29,6 +29,7 @@ static void msgbox(GtkMessageType t, const char *fmt, ...){ va_list ap; char b[2
     GtkWidget *d=gtk_message_dialog_new(GTK_WINDOW(win),GTK_DIALOG_MODAL|GTK_DIALOG_DESTROY_WITH_PARENT,t,GTK_BUTTONS_OK,"%s",b);
     gtk_window_set_title(GTK_WINDOW(d),"局域网安全通讯"); gtk_dialog_run(GTK_DIALOG(d)); gtk_widget_destroy(d); }
 static gboolean clear_urgency(GtkWidget *w, GdkEventFocus *e, gpointer p){ (void)e;(void)p; gtk_window_set_urgency_hint(GTK_WINDOW(w),FALSE); return FALSE; }
+static void open_path_default(const char *path);
 static void notify(const char *title, const char *body){
     GNotification *n=g_notification_new(title); g_notification_set_body(n,body);
     g_notification_set_icon(n,G_ICON(g_themed_icon_new("mail-message-new")));
@@ -110,7 +111,7 @@ static void refresh_list(void){
 static gboolean img_view_key(GtkWidget *w, GdkEventKey *ev, gpointer p){ (void)w;(void)p; if(ev->keyval==GDK_KEY_Escape){ gtk_widget_destroy(GTK_WIDGET(p)); return TRUE; } return FALSE; }
 static gboolean img_view_click(GtkWidget *w, GdkEventButton *ev, gpointer p){ (void)w;(void)ev; gtk_widget_destroy(GTK_WIDGET(p)); return TRUE; }
 static void show_image_viewer(const char *path){ /* fullscreen-ish zoom: Esc or click closes */
-    GError *er=NULL; GdkPixbuf *pb=gdk_pixbuf_new_from_file(path,&er); GtkWidget *w,*img,*evb; if(!pb){ if(er) g_error_free(er); gchar *uri=g_filename_to_uri(path,NULL,NULL); if(uri){ g_app_info_launch_default_for_uri(uri,NULL,NULL); g_free(uri);} return; }
+    GError *er=NULL; GdkPixbuf *pb=gdk_pixbuf_new_from_file(path,&er); GtkWidget *w,*img,*evb; if(!pb){ if(er) g_error_free(er); open_path_default(path); return; }
     w=gtk_window_new(GTK_WINDOW_TOPLEVEL); gtk_window_set_title(GTK_WINDOW(w),"图片"); gtk_window_set_transient_for(GTK_WINDOW(w),GTK_WINDOW(win)); gtk_window_set_modal(GTK_WINDOW(w),TRUE);
     gtk_window_set_default_size(GTK_WINDOW(w),800,600); img=gtk_image_new_from_pixbuf(pb); g_object_unref(pb);
     evb=gtk_event_box_new(); gtk_container_add(GTK_CONTAINER(evb),img); gtk_container_add(GTK_CONTAINER(w),evb);

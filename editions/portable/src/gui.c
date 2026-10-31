@@ -482,13 +482,13 @@ static LRESULT CALLBACK ImgViewProc(HWND h, UINT m, WPARAM w, LPARAM l){
 static void show_image_viewer(const char *path){
     HBITMAP bm; int w,h; WNDCLASSW wc; HWND hv; RECT r; int WW,HH;
     if(!path||!path[0]) return;
-    if(!thumb_get(path,&bm,&w,&h) || !bm){ ShellExecuteW(hMain,L"open",W(path),NULL,NULL,SW_SHOWNORMAL); return; }
+    if(!thumb_get(path,&bm,&w,&h) || !bm){ open_path_safe(path); return; }
     strncpy(imgv_path,path,519); imgv_path[519]=0; imgv_bm=bm; imgv_w=w; imgv_h=h;
     memset(&wc,0,sizeof wc); wc.lpfnWndProc=ImgViewProc; wc.hInstance=hInst; wc.hCursor=LoadCursor(NULL,IDC_ARROW); wc.hbrBackground=(HBRUSH)GetStockObject(BLACK_BRUSH); wc.lpszClassName=L"LsmImgView";
     RegisterClassW(&wc); /* ignore already-registered */
     GetWindowRect(hMain,&r); WW=r.right-r.left; if(WW<scale_px(480)) WW=scale_px(640); HH=r.bottom-r.top; if(HH<scale_px(360)) HH=scale_px(480);
     hv=CreateWindowExW(WS_EX_TOOLWINDOW,L"LsmImgView",L"图片",WS_POPUP|WS_CAPTION|WS_SYSMENU|WS_VISIBLE,r.left,r.top,WW,HH,hMain,NULL,hInst,NULL);
-    if(!hv){ ShellExecuteW(hMain,L"open",W(path),NULL,NULL,SW_SHOWNORMAL); return; }
+    if(!hv){ open_path_safe(path); return; }
     EnableWindow(hMain,FALSE); SetForegroundWindow(hv); SetFocus(hv); }
 static WNDPROC oldChatProc;
 static int chat_hit(LPARAM l, RECT *ir){ DWORD r=(DWORD)SendMessageW(hChat,LB_ITEMFROMPOINT,0,l); int i=(int)LOWORD(r); if(HIWORD(r) || i<0 || i>=nrows) return -1; SendMessageW(hChat,LB_GETITEMRECT,i,(LPARAM)ir); return i; }
