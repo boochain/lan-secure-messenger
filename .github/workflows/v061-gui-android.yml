@@ -41,3 +41,31 @@ jobs:
         with:
           name: v061-android
           path: editions/portable/android/app/build/outputs/apk/release/app-release.apk
+  linux-adw-build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libadwaita-1-dev libgtk-4-dev pkg-config
+      - name: Build GTK4 edition
+        working-directory: editions/portable
+        run: sh linux/build-adw.sh
+  xp-build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq mingw-w64
+      - name: Build XP GUI (x86 + x64)
+        working-directory: editions/portable
+        run: make build/x86/LanMessenger.exe build/x64/LanMessenger.exe
+  winui-build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: "8.0.x" }
+      - name: Build WinUI app + core tests (compile only)
+        run: |
+          dotnet build ui-winui/LanMessenger.Core.Tests/LanMessenger.Core.Tests.csproj -c Release
+          dotnet publish ui-winui/LanMessenger/LanMessenger.csproj -c Release -r win-x64 -p:Platform=x64 -o publish

@@ -33,4 +33,9 @@ object Native {
     @JvmStatic external fun cleanupStorage(orphans: Boolean, finishedTransfers: Boolean): Int
     /** Relay server settings. [pass] null = keep the stored passphrase, "" = clear it. Write-only: read [RelayInfo.hasPassphrase]. */
     @JvmStatic external fun relaySet(enabled: Boolean, host: String, port: Int, pass: String?): String
+    /** 消息历史: newest first; types/statuses are bitmasks (0 = all), dir 0 both / 1 received / 2 sent; returns {"total":N,"items":[…]} */
+    @JvmStatic external fun historyQuery(query: String, convs: String, fromMs: Long, toMs: Long, types: Int, dir: Int, statuses: Int, offset: Int, limit: Int): String
+    /** null keeps the field; avatar "" removes it; avatar file must be <= 48 KB */
+    @JvmStatic external fun setProfile(signature: String?, avatarPath: String?): String
+    @JvmStatic external fun setRemark(fp: String, remark: String)
 }

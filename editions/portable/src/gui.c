@@ -49,6 +49,9 @@
 #define IDM_UPDATE 244
 #define WM_UPDRES (WM_APP+7)
 #define IDM_SHOW 216
+#define IDM_HISTORY 251
+#define IDM_PROFILE 252
+#define IDM_CPROFILE 253
 #define WM_TRAY (WM_APP+1)
 #define TIMER_POLL 1
 
@@ -264,7 +267,7 @@ static void refresh_list(void){
     SendMessageW(hList,WM_SETREDRAW,FALSE,0); SendMessageW(hList,LB_RESETCONTENT,0,0); nlist=0;
     lsm_lock(C); nm=lsm_messages(C,&m);
     n=lsm_contacts(C,&k);
-    for(i=0;i<n && nlist<512;i++){ conv_t *c=&convs[nlist]; int64_t ts; char ini[8]; memset(c,0,sizeof *c); snprintf(c->id,64,"dm:%s",k[i].fp); wcsncpy(c->name,W(k[i].name),159);
+    for(i=0;i<n && nlist<512;i++){ conv_t *c=&convs[nlist]; int64_t ts; char ini[8]; memset(c,0,sizeof *c); snprintf(c->id,64,"dm:%s",k[i].fp); wcsncpy(c->name,W(lsm_display_name(&k[i])),159);
         if(!conv_match(c->name,q)) continue; c->online=k[i].online; c->via=k[i].online && k[i].via_relay; c->trusted=k[i].trust==1; lsm_initials(k[i].name,ini); wcsncpy(c->ini,W(ini),7); c->av=avatar_index(k[i].fp); conv_last(m,nm,c->id,c,&ts);
         SendMessageW(hList,LB_ADDSTRING,0,(LPARAM)c->name); strcpy(list_ids[nlist],c->id); if(!strcmp(c->id,keep)) sel=nlist; nlist++; }
     n=lsm_groups(C,&g);
@@ -386,7 +389,7 @@ static void refresh_chat(void){
     lsm_lock(C);
     if(cur_conv[0]){ lsm_contact *k; lsm_group *g; int nk, j;
         hdr_on=0;
-        if(!strncmp(cur_conv,"dm:",3)){ nk=lsm_contacts(C,&k); for(j=0;j<nk;j++) if(!strcmp(k[j].fp,cur_conv+3)){ char ini[8]; wcsncpy(peer,W(k[j].name),299); hdr_on=1; hdr_group=0; wcsncpy(hdr_name,W(k[j].name),159); lsm_initials(k[j].name,ini); wcsncpy(hdr_ini,W(ini),7); hdr_av=avatar_index(k[j].fp); hdr_online=k[j].online; hdr_trust=k[j].trust;
+        if(!strncmp(cur_conv,"dm:",3)){ nk=lsm_contacts(C,&k); for(j=0;j<nk;j++) if(!strcmp(k[j].fp,cur_conv+3)){ char ini[8]; wcsncpy(peer,W(lsm_display_name(&k[j])),299); hdr_on=1; hdr_group=0; wcsncpy(hdr_name,W(lsm_display_name(&k[j])),159); lsm_initials(k[j].name,ini); wcsncpy(hdr_ini,W(ini),7); hdr_av=avatar_index(k[j].fp); hdr_online=k[j].online; hdr_trust=k[j].trust;
             hdr_via=k[j].online && k[j].via_relay;
             if(k[j].trust==1) _snwprintf(hdr_sub,160,k[j].online?L"  ·  已验证身份  ·  %s":L"  ·  已验证身份",k[j].via_relay?L"经服务器":L"局域网直连"); else _snwprintf(hdr_sub,160,L"  ·  %s",k[j].trust==2?L"已屏蔽":L"未信任"); /* path only when online and not untrusted/blocked */ _snwprintf(title,400,L"%s    %s  ·  %s  ·  局域网直连",W(k[j].name),k[j].online?L"在线":L"离线",k[j].trust==1?L"已验证身份":k[j].trust==2?L"已屏蔽":L"未验证身份"); } }
         else { char u[37]; nk=lsm_groups(C,&g); for(j=0;j<nk;j++){ lsm_uuid_str(g[j].id,u); if(!strcmp(u,cur_conv+6)){ char ini[8]; _snwprintf(title,400,L"%s    %d 人  ·  群密钥版本 %llu",W(g[j].name),g[j].nmembers,(unsigned long long)g[j].key_epoch); hdr_on=1; hdr_group=1; hdr_online=0; hdr_trust=0; wcsncpy(hdr_name,W(g[j].name),159); lsm_initials(g[j].name,ini); wcsncpy(hdr_ini,W(ini),7); hdr_av=avatar_index(u); _snwprintf(hdr_sub,160,L"%d 位成员  ·  群密钥版本 %llu",g[j].nmembers,(unsigned long long)g[j].key_epoch); } } }
@@ -709,6 +712,7 @@ static void relay_dialog(void){ RECT r; HWND h, c; int y=scale_px(40), en=0, por
     EnableWindow(hMain,FALSE); ShowWindow(h,SW_SHOW); SetFocus(GetDlgItem(h,IDC_R_EN)); }
 static void relay_dialog_refresh(void){ wchar_t st[300]; if(!hRelayStatus) return; relay_status_text(st,300); SetWindowTextW(hRelayStatus,st); }
 
+#include "xp_p0.inc"
 static void do_command(int id){
     char err[256]="", u8[2048]; prompt_t p; memset(&p,0,sizeof p);
     switch(id){
@@ -726,6 +730,9 @@ static void do_command(int id){
           { int rc=lsm_firewall_apply(fc,rep,sizeof rep); char m[2300]; snprintf(m,sizeof m,"%s\r\n\r\n%s",rc==0?"已添加防火墙例外。":"添加失败（可能需要以管理员身份运行）。",rep); msgbox(m,rc==0?MB_ICONINFORMATION:MB_ICONWARNING); } } break; }
     case IDM_REFRESH: lsm_refresh_peers(C); refresh_list(); refresh_chat(); tray_balloon("局域网安全通讯","已刷新联系人列表"); break;
     case IDM_STORAGE: storage_dialog(); break;
+    case IDM_HISTORY: history_dialog(); break;
+    case IDM_PROFILE: my_profile_dialog(); break;
+    case IDM_CPROFILE: contact_profile_dialog(); break;
     case IDM_EMOJI: emoji_insert(); break;
     case IDM_STICKER: sticker_insert(); break;
     case IDM_XFERS: transfers_dialog(); break;
@@ -889,11 +896,11 @@ static void open_menu(int i){ RECT r; GetWindowRect(hMenuBtn[i],&r); SendMessage
 
 static HMENU build_menu(void){
     HMENU m=CreateMenu(), f=CreatePopupMenu(), c=CreatePopupMenu(), g=CreatePopupMenu(), s=CreatePopupMenu(), h=CreatePopupMenu();
-    AM(f,MF_STRING,IDM_DLDIR,L"打开接收文件夹(&D)"); AM(f,MF_STRING,IDM_STORAGE,L"存储管理(&S)…"); AM(f,MF_STRING,IDM_XFERS,L"文件传输(&T)…"); AM(f,MF_STRING,IDM_EMOJI,L"插入表情(&E)…"); AM(f,MF_STRING,IDM_STICKER,L"发送贴纸(&K)…"); AM(f,MF_STRING,IDM_FIREWALL,L"设置防火墙例外(&F)..."); AM(f,MF_SEPARATOR,0,NULL); AM(f,MF_STRING,IDM_EXIT,L"退出(&X)");
-    AM(c,MF_STRING,IDM_ADDIP,L"按 IP 添加(&A)..."); AM(c,MF_STRING,IDM_REFRESH,L"刷新联系人(&R)"); AM(c,MF_SEPARATOR,0,NULL); AM(c,MF_STRING,IDM_TRUST,L"信任(&T)"); AM(c,MF_STRING,IDM_UNTRUST,L"取消信任(&U)"); AM(c,MF_STRING,IDM_BLOCK,L"屏蔽(&B)"); AM(c,MF_STRING,IDM_MUTE,L"免打扰 开/关(&M)");
+    AM(f,MF_STRING,IDM_HISTORY,L"消息历史(&H)…\tCtrl+Shift+F"); AM(f,MF_STRING,IDM_DLDIR,L"打开接收文件夹(&D)"); AM(f,MF_STRING,IDM_STORAGE,L"存储管理(&S)…"); AM(f,MF_STRING,IDM_XFERS,L"文件传输(&T)…"); AM(f,MF_STRING,IDM_EMOJI,L"插入表情(&E)…"); AM(f,MF_STRING,IDM_STICKER,L"发送贴纸(&K)…"); AM(f,MF_STRING,IDM_FIREWALL,L"设置防火墙例外(&F)..."); AM(f,MF_SEPARATOR,0,NULL); AM(f,MF_STRING,IDM_EXIT,L"退出(&X)");
+    AM(c,MF_STRING,IDM_ADDIP,L"按 IP 添加(&A)..."); AM(c,MF_STRING,IDM_REFRESH,L"刷新联系人(&R)"); AM(c,MF_STRING,IDM_CPROFILE,L"联系人资料 / 备注名(&N)…"); AM(c,MF_SEPARATOR,0,NULL); AM(c,MF_STRING,IDM_TRUST,L"信任(&T)"); AM(c,MF_STRING,IDM_UNTRUST,L"取消信任(&U)"); AM(c,MF_STRING,IDM_BLOCK,L"屏蔽(&B)"); AM(c,MF_STRING,IDM_MUTE,L"免打扰 开/关(&M)");
     AM(c,MF_SEPARATOR,0,NULL); AM(c,MF_STRING,IDM_PINOFFER,L"生成 PIN（让对方输入）(&P)"); AM(c,MF_STRING,IDM_PINPAIR,L"输入 PIN 配对(&I)...");
     AM(g,MF_STRING,IDM_GCREATE,L"创建群组(&C)..."); AM(g,MF_STRING,IDM_GINVITE,L"邀请成员(&I)..."); AM(g,MF_STRING,IDM_GREMOVE,L"移除成员(&R)..."); AM(g,MF_STRING,IDM_GLEAVE,L"退出群组(&L)");
-    AM(s,MF_STRING,IDM_NAME,L"修改昵称(&N)..."); AM(s,MF_STRING,IDM_RELAY,L"中转服务器(&R)..."); AM(s,MF_SEPARATOR,0,NULL); AM(s,MF_STRING|(theme_mode==0?MF_CHECKED:0),IDM_THEME_SYS,L"外观：跟随系统(&Y)"); AM(s,MF_STRING|(theme_mode==1?MF_CHECKED:0),IDM_THEME_LIGHT,L"外观：浅色(&L)"); AM(s,MF_STRING|(theme_mode==2?MF_CHECKED:0),IDM_THEME_DARK,L"外观：深色(&K)");
+    AM(s,MF_STRING,IDM_PROFILE,L"个人资料(&P)…"); AM(s,MF_STRING,IDM_NAME,L"修改昵称(&N)..."); AM(s,MF_STRING,IDM_RELAY,L"中转服务器(&R)..."); AM(s,MF_SEPARATOR,0,NULL); AM(s,MF_STRING|(theme_mode==0?MF_CHECKED:0),IDM_THEME_SYS,L"外观：跟随系统(&Y)"); AM(s,MF_STRING|(theme_mode==1?MF_CHECKED:0),IDM_THEME_LIGHT,L"外观：浅色(&L)"); AM(s,MF_STRING|(theme_mode==2?MF_CHECKED:0),IDM_THEME_DARK,L"外观：深色(&K)");
     AM(h,MF_STRING,IDM_DIAG,L"诊断信息(&D)..."); AM(h,MF_STRING,IDM_UPDATE,L"检查更新(&U)..."); AM(h,MF_STRING,IDM_ABOUT,L"关于(&A)");
     AM(m,MF_POPUP,(UINT_PTR)f,L"文件(&F)"); AM(m,MF_POPUP,(UINT_PTR)c,L"联系人(&C)"); AM(m,MF_POPUP,(UINT_PTR)g,L"群组(&G)"); AM(m,MF_POPUP,(UINT_PTR)s,L"设置(&S)"); AM(m,MF_POPUP,(UINT_PTR)h,L"帮助(&H)");
     menu_bg(m);
@@ -905,6 +912,7 @@ static void select_conv(int s){ if(s<0||s>=nlist) return; SendMessageW(hList,LB_
  * (Enter / Shift+Enter live in InputProc). Returns 1 when the key was handled. */
 static int app_key(MSG *msg){ int ctrl=(GetKeyState(VK_CONTROL)&0x8000)!=0, shift=(GetKeyState(VK_SHIFT)&0x8000)!=0;
     if(msg->message!=WM_KEYDOWN || !IsWindowEnabled(hMain) || (GetAncestor(msg->hwnd,GA_ROOT)!=hMain)) return 0;
+    if(ctrl && shift && msg->wParam=='F'){ do_command(IDM_HISTORY); return 1; }
     if(ctrl && msg->wParam=='F'){ SetFocus(hSearch); SendMessageW(hSearch,EM_SETSEL,0,-1); return 1; }
     if(ctrl && msg->wParam=='N'){ do_command(IDM_ADDIP); return 1; }
     if(ctrl && msg->wParam=='R'){ do_command(IDM_REFRESH); return 1; }

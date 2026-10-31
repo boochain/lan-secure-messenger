@@ -3,7 +3,7 @@
 name: ci
 on:
   push:
-    branches: [main, "unify/**", "work/**"]
+    branches: [main, "unify/**"]  # work/** removed to save quota: full CI on main/merge or dispatch
     tags: ["v*"]
   pull_request:
   workflow_dispatch:

@@ -79,6 +79,25 @@ public sealed partial class ChatPage : Page
     /// <summary>Contact / group details (fingerprint, latency, address, key epoch) — kept out of the header.</summary>
     private void Details_Tapped(object sender, TappedRoutedEventArgs e) => _ = ShowDetailsAsync();
     private void Details_Click(object sender, RoutedEventArgs e) => _ = ShowDetailsAsync();
+    // v0.6.1 P0
+    private void History_Click(object sender, RoutedEventArgs e) => _ = P0Dialogs.ShowHistoryAsync(XamlRoot, this, VM.SelectedConversation?.Id);
+    private void ContactProfile_Click(object sender, RoutedEventArgs e) { if (VM.SelectedConversation is { IsGroup: false } c) _ = P0Dialogs.ShowContactProfileAsync(XamlRoot, this, c.PeerFingerprint); }
+    /// <summary>History jump: open the conversation, wait for its messages, then scroll to and select the message.</summary>
+    internal async void JumpTo(string conv, string id)
+    {
+        if (VM.Conversations.FirstOrDefault(c => c.Id == conv) is { } item) VM.SelectedConversation = item;
+        for (int i = 0; i < 30; i++)
+        {
+            await Task.Delay(100);
+            if (VM.Messages.FirstOrDefault(m => m.Id == id) is { } hit)
+            {
+                MessageList.ScrollIntoView(hit, ScrollIntoViewAlignment.Leading);
+                MessageList.SelectedItem = hit;
+                return;
+            }
+        }
+        VM.ShowStatus("该消息较早，未在当前加载范围内（已打开会话）");
+    }
     private async Task ShowDetailsAsync()
     {
         if (!VM.HasSelection) return;

@@ -16,6 +16,20 @@ static const char *js_str(const char *p, char *out, size_t n){ size_t o=0; if(*p
         } else { if(o+1<n) out[o++]=*p; p++; } }
     out[o]=0; return *p=='"'?p+1:NULL; }
 
+static int hist_tests(void){ lsm_msg m[4]; lsm_hq q; int bad=0; memset(m,0,sizeof m);
+    m[0].kind=K_TEXT; m[0].body="\xe4\xbd\xa0\xe5\xa5\xbd World"; strcpy(m[0].conv,"dm:a"); m[0].ts_ms=100; m[0].out=1;
+    m[1].kind=K_FILE; m[1].body=""; strcpy(m[1].file_name,"heart.png"); strcpy(m[1].conv,"dm:b"); m[1].ts_ms=200;
+    m[2].kind=K_FILE; m[2].body=""; strcpy(m[2].file_name,"Photo.JPG"); strcpy(m[2].conv,"dm:a"); m[2].ts_ms=300;
+    m[3].kind=K_SYSTEM; m[3].body="world"; strcpy(m[3].conv,"dm:a");
+    memset(&q,0,sizeof q); q.query="\xe5\xa5\xbd"; bad+=!lsm_history_match(&m[0],&q);
+    q.query="WORLD"; bad+=!lsm_history_match(&m[0],&q); bad+=lsm_history_match(&m[3],&q);
+    memset(&q,0,sizeof q); q.types=1<<LSM_T_STICKER; bad+=!lsm_history_match(&m[1],&q); bad+=lsm_history_match(&m[2],&q);
+    bad+=lsm_msg_type(&m[2])!=LSM_T_IMAGE;
+    memset(&q,0,sizeof q); q.convs="dm:x,dm:a"; q.direction=2; bad+=!lsm_history_match(&m[0],&q); bad+=lsm_history_match(&m[2],&q);
+    memset(&q,0,sizeof q); q.from_ms=100; q.to_ms=200; bad+=!lsm_history_match(&m[0],&q); bad+=lsm_history_match(&m[1],&q);
+    bad+=!lsm_is_sticker_name("lsm-sticker-cat.gif");
+    printf("history_query: %d failures\n",bad); return bad; }
+
 int main(int argc, char **argv){ FILE *f; static char buf[1<<20]; size_t len; const char *p; int n=0, bad=0;
     if(argc<2){ fprintf(stderr,"usage: %s filename_vectors.json\n",argv[0]); return 2; }
     f=fopen(argv[1],"rb"); if(!f){ perror(argv[1]); return 2; } len=fread(buf,1,sizeof buf-1,f); buf[len]=0; fclose(f);
@@ -29,4 +43,5 @@ int main(int argc, char **argv){ FILE *f; static char buf[1<<20]; size_t len; co
         if(strcmp(got,want)){ bad++; printf("MISMATCH sanitize_filename(\"%s\")\n   C:    \"%s\"\n   Rust: \"%s\"\n",in,got,want); }
         p=q; }
     printf("sanitize_filename: %d vectors, %d mismatches\n",n,bad);
+    bad+=hist_tests();
     return (n<10||bad)?1:0; }

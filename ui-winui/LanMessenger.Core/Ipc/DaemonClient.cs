@@ -42,6 +42,12 @@ public sealed class DaemonClient
     public Task<Group> InviteToGroupAsync(string groupId, IEnumerable<string> members) => Call<Group>("invite_to_group", new { group_id = groupId, members = members.ToArray() });
     public Task RemoveGroupMemberAsync(string groupId, string fingerprint) => Call("remove_group_member", new { group_id = groupId, fingerprint });
     public Task LeaveGroupAsync(string groupId) => Call("leave_group", new { group_id = groupId });
+    // v0.6.1 P0: 消息历史 / 个人资料 / 备注名
+    public Task<HistoryPage> HistoryQueryAsync(HistoryQuery q) => Call<HistoryPage>("history_query", q);
+    public Task<JsonElement> MessageContextAsync(string id, int before = 30, int after = 30) => Call("message_context", new { id, before, after });
+    public Task<Me> SetProfileAsync(string? signature, string? avatarPath) => Call<Me>("set_profile", new { signature, avatar_path = avatarPath });
+    public Task<Peer> SetRemarkAsync(string fingerprint, string remark) => Call<Peer>("set_remark", new { fingerprint, remark });
+    public Task<JsonElement> ContactProfileAsync(string fingerprint) => Call("contact_profile", new { fingerprint });
     public Task<List<Message>> SearchAsync(string query, int limit = 100) => Call<List<Message>>("search", new { query, limit });
     public Task BackupAsync(string path, string password) => Call("backup", new { path, password });
     public Task AccountRegisterAsync(string user, string password) => Call("account_register", new { user, password });

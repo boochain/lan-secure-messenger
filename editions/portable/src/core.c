@@ -59,7 +59,8 @@ typedef int sock_t;
 
 #define PROTO 5
 #define CAP_RESUME 1u  /* byte-offset file resume (frame 16 FileResume) */
-#define MY_CAPS CAP_RESUME
+#define CAP_PROFILE 2u /* 个人主页 sync (frame 17 Profile) */
+#define MY_CAPS (CAP_RESUME|CAP_PROFILE)
 #define CHUNK (32*1024)
 #define WINDOW (4ull*1024*1024)
 #define PROGRESS_EVERY (256*1024)
@@ -214,6 +215,7 @@ struct lsm_core {
     peer_rt *rt; int nrt;
     manual_rt *manual; int nmanual;
     lsm_group *groups; int ngroups;
+    char signature[400];
     lsm_msg *msgs; int nmsgs;
     lsm_transfer *xfers; int nxfers;
     outgoing *outbox; int noutbox;
@@ -274,10 +276,10 @@ static lsm_contact *contact_entry(lsm_core *c, const char *fp){ lsm_contact *k=c
 static int trust_of(lsm_core *c, const char *fp){ lsm_contact *k=contact_get(c,fp); return k?k->trust:TRUST_UNKNOWN; }
 static void save_contacts(lsm_core *c){ buf_t b={0}; int i; char ed[65];
     for(i=0;i<c->ncontacts;i++){ lsm_contact *k=&c->contacts[i]; if(k->has_ed) hex_enc(k->ed,32,ed); else ed[0]=0;
-        bfmt(&b,"%s\t",k->fp); esc_put(&b,k->name); bfmt(&b,"\t%s\t%d\t%s\t%lld\t%d\n",ed,k->trust,k->addr,(long long)k->last_seen_ms,k->muted); } /* 7th column (muted) is ignored by older versions */
+        bfmt(&b,"%s\t",k->fp); esc_put(&b,k->name); bfmt(&b,"\t%s\t%d\t%s\t%lld\t%d\t",ed,k->trust,k->addr,(long long)k->last_seen_ms,k->muted); esc_put(&b,k->remark); b_u8(&b,'\t'); esc_put(&b,k->signature); bfmt(&b,"\t%d\n",k->has_avatar); } /* 7th column (muted) is ignored by older versions */
     save_sealed(c,"contacts.dat",&b); b_free(&b); }
 static void load_contacts(lsm_core *c){ char *t=load_sealed(c,"contacts.dat"), *line, *nx; if(!t) return;
-    for(line=t; line && *line; line=nx){ char *f[8]; int n; nx=strchr(line,'\n'); if(nx) *nx++=0; n=split_tabs(line,f,8); if(n>=6){ lsm_contact *k=contact_entry(c,f[0]); scpy(k->name,f[1],sizeof k->name); if(strlen(f[2])==64 && !hex_dec(f[2],k->ed,32)) k->has_ed=1; k->trust=atoi(f[3]); scpy(k->addr,f[4],sizeof k->addr); k->last_seen_ms=atoll(f[5]); if(n>=7) k->muted=atoi(f[6])!=0; } }
+    for(line=t; line && *line; line=nx){ char *f[12]; int n; nx=strchr(line,'\n'); if(nx) *nx++=0; n=split_tabs(line,f,12); if(n>=6){ lsm_contact *k=contact_entry(c,f[0]); scpy(k->name,f[1],sizeof k->name); if(strlen(f[2])==64 && !hex_dec(f[2],k->ed,32)) k->has_ed=1; k->trust=atoi(f[3]); scpy(k->addr,f[4],sizeof k->addr); k->last_seen_ms=atoll(f[5]); if(n>=7) k->muted=atoi(f[6])!=0; if(n>=10){ scpy(k->remark,f[7],sizeof k->remark); scpy(k->signature,f[8],sizeof k->signature); k->has_avatar=atoi(f[9])!=0; } } }
     free(t); }
 
 static lsm_group *group_get(lsm_core *c, const uint8_t id[16]){ int i; for(i=0;i<c->ngroups;i++) if(!memcmp(c->groups[i].id,id,16)) return &c->groups[i]; return NULL; }
@@ -421,6 +423,7 @@ static void dial_failed(lsm_core *c, const char *key, const char *why){
 static void fail_transfers_for(lsm_core *c, const char *fp, const char *why);
 static void on_link_up(lsm_core *c, conn *k);
 static void on_frame(lsm_core *c, conn *k, rd_t *r);
+static void profile_send(lsm_core *c, conn *k); static void profile_recv(lsm_core *c, conn *k, rd_t *r); static void load_profile(lsm_core *c);
 
 struct relay_cl; static void rl_on_link_closed(lsm_core *c, conn *k); static void rl_flush_link(lsm_core *c, conn *k); static void conn_parse(lsm_core *c, conn *k);
 /* close the transport of a link: a socket for LAN links, a CLOSE blob for relay links */
@@ -810,7 +813,7 @@ static void on_link_up(lsm_core *c, conn *k){
     r=rt_entry(c,k->fp); r->dialing=0; r->failures=0; r->next_attempt=0;
     { char as[64]; if(k->via_relay) scpy(as,"relay",sizeof as); else addr_str(&k->addr,as,sizeof as); emit(c,"peer\t%s\tonline\t%s\t%s\t%s",k->fp,ct->name,as,k->rver);
       emit(c,"peer\t%s\tpath\t%s",k->fp,k->via_relay?"relay":"direct"); }
-    flush_outbox(c,k->fp); resend_offers(c,k->fp); }
+    profile_send(c,k); flush_outbox(c,k->fp); resend_offers(c,k->fp); }
 
 static void on_payload(lsm_core *c, const char *fp, const uint8_t id[16], rd_t *r){
     uint32_t v=r_u32(r); char ids[37]; lsm_uuid_str(id,ids);
@@ -879,6 +882,7 @@ static void on_frame(lsm_core *c, conn *k, rd_t *r){
     case 14: { int ok=r_u8(r); if(ok){ lsm_contact *ct=contact_entry(c,k->fp); ct->trust=TRUST_TRUSTED; save_contacts(c); emit(c,"peer\t%s\ttrust\ttrusted",k->fp); }
         emit(c,"pin_result\t%s\t%s",k->fp,ok?"ok":"fail"); break; }
     case 15: conn_close(c,k,"peer closed",0); break;
+    case 17: profile_recv(c,k,r); break;
     case 5: case 6: case 7: case 8: case 9: case 10: case 11: case 12: case 16: on_file_frame(c,k->fp,v,r); break;
     default: break; }
     b_free(&f); }
@@ -1001,7 +1005,7 @@ lsm_core *lsm_start(const lsm_opts *o, char *err, size_t errn){
     c->seen=(uint8_t(*)[16])xmalloc(16*20000);
     c->lsock=c->usock=c->ufallback=BADSOCK;
     if(load_identity(c)){ snprintf(err,errn,"cannot write identity in %s",c->data_dir); free(c); return NULL; }
-    load_contacts(c); load_groups(c); load_history(c); load_outbox(c); rl_init(c); rs_restore(c);
+    load_contacts(c); load_profile(c); load_groups(c); load_history(c); load_outbox(c); rl_init(c); rs_restore(c);
     { char *t=load_sealed(c,"manual.dat"), *l, *nx; for(l=t; l && *l; l=nx){ manual_rt m; nx=strchr(l,'\n'); if(nx) *nx++=0; memset(&m,0,sizeof m); if(resolve(l,41235,&m.sa)) continue; scpy(m.addr,l,sizeof m.addr);
         c->manual=(manual_rt*)xrealloc(c->manual,sizeof(manual_rt)*(c->nmanual+1)); c->manual[c->nmanual++]=m; } free(t); }
     { int i; for(i=0;i<c->ncontacts;i++){ c->contacts[i].online=0; c->contacts[i].rtt_ms=-1; } }
@@ -1333,6 +1337,7 @@ void lsm_initials(const char *name, char out[8]){
 }
 
 #include "resume.c"
+#include "profile_hist.c"
 #include "backup.c"
 
 /* ------------------------------------------------------------ diagnostics (诊断) */

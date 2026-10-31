@@ -616,8 +616,24 @@ impl Engine {
         r.sources.insert(if via_relay { "relay".into() } else if initiator { "outbound".into() } else { "inbound".into() });
         tracing::info!(%fp, name = %hello.name, %addr, initiator, via_relay, "peer online");
         self.emit_peer(&fp);
+        if caps & crate::wire::CAP_PROFILE != 0 {
+            let f = self.my_profile_frame();
+            self.send_ctrl(&fp, f);
+        }
         self.flush_outbox(&fp);
         self.resend_offers(&fp);
+    }
+
+    fn my_profile_frame(&self) -> Frame {
+        let avatar = std::fs::read(self.paths.base.join("avatar.img")).ok().filter(|a| a.len() <= crate::wire::MAX_AVATAR).unwrap_or_default();
+        Frame::Profile { signature: self.settings.signature.clone(), avatar }
+    }
+
+    fn broadcast_profile(&self) {
+        let f = self.my_profile_frame();
+        for c in self.conns.values().filter(|c| c.caps & crate::wire::CAP_PROFILE != 0) {
+            let _ = c.ctrl.send(f.clone());
+        }
     }
 
     fn on_closed(&mut self, fp: &str, conn_id: u64, err: &str) {
@@ -909,6 +925,24 @@ impl Engine {
                 let _ = self.contacts.save();
                 self.emit_peer(fp);
                 self.emit_conv(&dm_conv(fp));
+            }
+            Frame::Profile { signature, avatar } => {
+                let sig: String = crate::util::sanitize_display_name(&signature).chars().take(crate::wire::MAX_SIGNATURE).collect();
+                let dir = self.paths.base.join("avatars");
+                let file = dir.join(format!("{fp}.img"));
+                let sha = if avatar.is_empty() || avatar.len() > crate::wire::MAX_AVATAR {
+                    let _ = std::fs::remove_file(&file);
+                    String::new()
+                } else {
+                    let _ = std::fs::create_dir_all(&dir);
+                    let _ = crate::util::atomic_write(&file, &avatar);
+                    hex::encode(Sha256::digest(&avatar))
+                };
+                let c = self.contacts.entry(fp);
+                c.signature = sig;
+                c.avatar_sha = sha;
+                let _ = self.contacts.save();
+                self.emit_peer(fp);
             }
             Frame::Msg { id, payload } => {
                 let dup = self.seen_set.contains(&id) || self.history.contains(&id.to_string());
@@ -1373,7 +1407,7 @@ impl Engine {
         };
         Peer {
             fingerprint: fp.to_string(),
-            name: self.peer_name(fp),
+            name: c.map(|c| c.remark.clone()).filter(|r| !r.is_empty()).unwrap_or_else(|| self.peer_name(fp)),
             trust: c.map(|c| c.trust).unwrap_or_default(),
             online: conn.is_some(),
             state,
@@ -1385,6 +1419,11 @@ impl Engine {
             unread: self.unread.get(&dm_conv(fp)).map(|v| v.len() as u32).unwrap_or(0),
             rtt_ms: conn.and_then(|c| c.rtt_ms),
             app_version: conn.map(|c| c.app_version.clone()).unwrap_or_default(),
+            nickname: c.map(|c| c.name.clone()).unwrap_or_default(),
+            remark: c.map(|c| c.remark.clone()).unwrap_or_default(),
+            signature: c.map(|c| c.signature.clone()).unwrap_or_default(),
+            avatar_path: c.filter(|c| !c.avatar_sha.is_empty()).map(|_| self.paths.base.join("avatars").join(format!("{fp}.img")).display().to_string()),
+            profile_sync: conn.map(|c| c.caps & crate::wire::CAP_PROFILE != 0).unwrap_or(false),
         }
     }
 
@@ -1724,6 +1763,9 @@ impl Engine {
             log_dir: self.paths.logs.display().to_string(),
             download_dir: self.settings.download_dir(&self.paths).display().to_string(),
             first_run_done: self.settings.first_run_done,
+            signature: self.settings.signature.clone(),
+            avatar_path: Some(self.paths.base.join("avatar.img")).filter(|p| p.exists()).map(|p| p.display().to_string()),
+            account_user: self.settings.account_user.clone(),
         }
     }
 
@@ -2483,6 +2525,73 @@ impl Engine {
                 self.groups.remove(&a.group_id)?;
                 self.emit(Event::GroupRemoved { id: a.group_id.to_string() });
                 ok(json!({"ok": true}))
+            }
+            "history_query" => {
+                let q: crate::history::HistoryQuery = p(params)?;
+                ok(self.history.query(&q))
+            }
+            "message_context" => {
+                #[derive(Deserialize)]
+                struct P {
+                    id: String,
+                    before: Option<usize>,
+                    after: Option<usize>,
+                }
+                let a: P = p(params)?;
+                let (conv, items) = self.history.context(&a.id, a.before.unwrap_or(30), a.after.unwrap_or(30)).ok_or_else(|| RpcError::invalid("消息不存在"))?;
+                ok(json!({"conversation": conv, "messages": items, "id": a.id}))
+            }
+            "get_profile" => ok(self.me_view()),
+            "set_profile" => {
+                #[derive(Deserialize)]
+                struct P {
+                    signature: Option<String>,
+                    /// "" = remove avatar; path = image file (<= 48 KB; UIs downscale first)
+                    avatar_path: Option<String>,
+                }
+                let a: P = p(params)?;
+                if let Some(s) = a.signature {
+                    self.settings.signature = crate::util::sanitize_display_name(&s).chars().take(crate::wire::MAX_SIGNATURE).collect();
+                    self.settings.save(&self.paths)?;
+                }
+                if let Some(ap) = a.avatar_path {
+                    let dst = self.paths.base.join("avatar.img");
+                    if ap.is_empty() {
+                        let _ = std::fs::remove_file(&dst);
+                    } else {
+                        let b = std::fs::read(&ap).map_err(|e| RpcError::invalid(&format!("无法读取头像: {e}")))?;
+                        if b.len() > crate::wire::MAX_AVATAR {
+                            return Err(RpcError::invalid("头像需小于 48 KB（请先缩小图片）"));
+                        }
+                        crate::util::atomic_write(&dst, &b)?;
+                    }
+                }
+                self.broadcast_profile();
+                self.emit(Event::MeUpdated { me: self.me_view() });
+                ok(self.me_view())
+            }
+            "set_remark" => {
+                #[derive(Deserialize)]
+                struct P {
+                    fingerprint: String,
+                    remark: String,
+                }
+                let a: P = p(params)?;
+                self.contacts.entry(&a.fingerprint).remark = crate::util::sanitize_display_name(&a.remark).chars().take(64).collect();
+                self.contacts.save()?;
+                self.emit_peer(&a.fingerprint);
+                self.emit_conv(&dm_conv(&a.fingerprint));
+                ok(self.peer_view(&a.fingerprint))
+            }
+            "contact_profile" => {
+                #[derive(Deserialize)]
+                struct P {
+                    fingerprint: String,
+                }
+                let a: P = p(params)?;
+                let conv = dm_conv(&a.fingerprint);
+                let media = self.history.query(&crate::history::HistoryQuery { conversations: vec![conv.clone()], types: vec!["image".into(), "file".into(), "sticker".into()], limit: 12, ..Default::default() });
+                ok(json!({"peer": self.peer_view(&a.fingerprint), "conversation": conv, "shared_files": media.total, "recent_media": media.items}))
             }
             "search" => {
                 #[derive(Deserialize)]

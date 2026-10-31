@@ -18,6 +18,7 @@
                         <TextBlock Text="{x:Bind VM.MyFingerprint, Mode=OneWay}" FontFamily="Consolas" IsTextSelectionEnabled="True" VerticalAlignment="Center" />
                         <Button Content="复制" Command="{x:Bind VM.CopyFingerprintCommand}" />
                     </StackPanel>
+                    <Button Content="头像与个性签名…" Click="Profile_Click" />
                 </StackPanel>
             </Border>
 

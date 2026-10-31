@@ -73,6 +73,35 @@ public sealed class Peer
     public string AppVersion { get; set; } = "";
     /// <summary>The live link goes through the relay server (false when offline or direct).</summary>
     public bool ViaRelay { get; set; }
+    // v0.6.1: Name = 备注名 when set; Nickname = the peer's own name
+    public string Nickname { get; set; } = "";
+    public string Remark { get; set; } = "";
+    public string Signature { get; set; } = "";
+    public string? AvatarPath { get; set; }
+    public bool ProfileSync { get; set; }
+}
+
+public sealed class HistoryQuery
+{
+    public string Query { get; set; } = "";
+    public List<string> Conversations { get; set; } = new();
+    public long FromMs { get; set; }
+    public long ToMs { get; set; }
+    /// <summary>text | image | file | sticker</summary>
+    public List<string> Types { get; set; } = new();
+    /// <summary>"" | in | out</summary>
+    public string Direction { get; set; } = "";
+    public List<string> Statuses { get; set; } = new();
+    public int Offset { get; set; }
+    public int Limit { get; set; } = 50;
+}
+
+public sealed class HistoryPage
+{
+    public List<Message> Items { get; set; } = new();
+    public int Total { get; set; }
+    public int Offset { get; set; }
+    public bool HasMore { get; set; }
 }
 
 public sealed class GroupMember
@@ -146,6 +175,9 @@ public sealed class Me
     public string LogDir { get; set; } = "";
     public string DownloadDir { get; set; } = "";
     public bool FirstRunDone { get; set; }
+    public string Signature { get; set; } = "";
+    public string? AvatarPath { get; set; }
+    public string AccountUser { get; set; } = "";
 }
 
 public sealed class Settings

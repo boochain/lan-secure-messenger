@@ -344,3 +344,36 @@ async fn storage_info_and_orphan_cleanup() {
     let s2 = a.call("get_storage", json!({})).await;
     assert_eq!(s2["orphan_partials_bytes"].as_u64().unwrap(), 0, "{s2}");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn profile_sync_remark_and_history_query() {
+    let a = node("Alice", json!({})).await;
+    let b = node("Bob", json!({})).await;
+    let pb = b.port().await;
+    a.call("add_peer", json!({"address": format!("127.0.0.1:{pb}")})).await;
+    both_online(&a, &b, 20).await;
+    // profile: signature + avatar propagate live (CAP_PROFILE)
+    let av = a.dir.path().join("me.png");
+    std::fs::write(&av, b"\x89PNG fake avatar").unwrap();
+    a.call("set_profile", json!({"signature": "在 302 会议室", "avatar_path": av.display().to_string()})).await;
+    wait("signature on bob", 15, || async { b.peer(&a.fp).await.map(|p| p["signature"] == "在 302 会议室" && p["avatar_path"].is_string()).unwrap_or(false) }).await;
+    let me = a.call("get_profile", json!({})).await;
+    assert_eq!(me["signature"], "在 302 会议室");
+    // remark is local only
+    b.call("set_remark", json!({"fingerprint": a.fp, "remark": "老板"})).await;
+    let p = b.peer(&a.fp).await.unwrap();
+    assert_eq!((p["name"].as_str(), p["nickname"].as_str()), (Some("老板"), Some("Alice")));
+    // history query across conversations with filters
+    a.send(&b, "下午三点评审").await;
+    a.send(&b, "hello world").await;
+    wait("two msgs on bob", 15, || async { b.msgs(&format!("dm:{}", a.fp)).await.len() >= 2 }).await;
+    let r = b.call("history_query", json!({"query": "评审"})).await;
+    assert_eq!(r["total"], 1);
+    let r = b.call("history_query", json!({"direction": "in", "types": ["text"], "limit": 1})).await;
+    assert_eq!((r["total"].as_u64(), r["has_more"].as_bool()), (Some(2), Some(true)));
+    let id = r["items"][0]["id"].as_str().unwrap().to_string();
+    let ctx = b.call("message_context", json!({"id": id})).await;
+    assert_eq!(ctx["conversation"], format!("dm:{}", a.fp));
+    let cp = b.call("contact_profile", json!({"fingerprint": a.fp})).await;
+    assert_eq!(cp["peer"]["signature"], "在 302 会议室");
+}

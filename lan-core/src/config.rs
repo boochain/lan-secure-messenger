@@ -75,6 +75,8 @@ impl ConfigPaths {
 #[serde(default)]
 pub struct Settings {
     pub display_name: String,
+    /// 个性签名 shown on the profile page and synced to CAP_PROFILE peers.
+    pub signature: String,
     /// UDP discovery port (announces are sent to and received on this port).
     pub discovery_port: u16,
     /// Preferred TCP listen port (falls back to an ephemeral port if busy).
@@ -139,6 +141,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             display_name: default_name(),
+            signature: String::new(),
             discovery_port: DEFAULT_DISCOVERY_PORT,
             listen_port: DEFAULT_LISTEN_PORT,
             discovery_enabled: true,

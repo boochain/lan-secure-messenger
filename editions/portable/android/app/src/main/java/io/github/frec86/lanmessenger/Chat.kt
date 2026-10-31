@@ -50,7 +50,7 @@ import java.io.File
 
 /* ---------------------------------------------------------------- chat screen (spec §5.2-5.6, Android column) */
 @Composable
-fun Chat(st: AppState, conv: String, back: () -> Unit) {
+fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -> Unit) {
     val ctx = LocalContext.current; val p = LocalPalette.current
     val rev by Repo.revision.collectAsState()
     val all = remember(rev, conv) { Repo.messages(conv) }
@@ -68,7 +68,8 @@ fun Chat(st: AppState, conv: String, back: () -> Unit) {
     val rows = remember(msgs, group != null) { buildRows(msgs, group != null) }
     val listState = rememberLazyListState()
     DisposableEffect(conv) { Repo.openConv = conv; onDispose { Repo.openConv = null } }
-    LaunchedEffect(rows.size, rev) { Native.markRead(conv); if (rows.isNotEmpty()) listState.scrollToItem(rows.size - 1) }
+    LaunchedEffect(rows.size, rev) { Native.markRead(conv); val j = Repo.jumpId; val ji = if (j != null) rows.indexOfFirst { (it as? ChatRow.Bubble)?.m?.id == j } else -1
+        if (ji >= 0) { listState.scrollToItem(maxOf(0, ji - 1)); Repo.jumpId = null; Repo.toast.value = "已定位到该消息" } else if (rows.isNotEmpty()) listState.scrollToItem(rows.size - 1) }
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> if (uris.isNotEmpty()) sendUris(ctx, conv, uris) }
     val save = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
         val src = saveSrc; if (uri != null && src != null) try { ctx.contentResolver.openOutputStream(uri)!!.use { o -> File(src).inputStream().use { it.copyTo(o) } }; Repo.toast.value = "已保存" } catch (e: Exception) { Repo.toast.value = "保存失败" } }
@@ -109,6 +110,8 @@ fun Chat(st: AppState, conv: String, back: () -> Unit) {
                     IconButton({ menu = true }) { Ic(R.drawable.ms_more, "菜单", p.fg) }
                     DropdownMenu(menu, { menu = false }) {
                         if (contact != null) {
+                            DropdownMenuItem({ Text("联系人资料 / 备注名") }, { menu = false; openPage("cprofile:" + contact.fp) }, leadingIcon = { Ic(R.drawable.ms_info) })
+                            DropdownMenuItem({ Text("消息历史") }, { menu = false; openPage("history") }, leadingIcon = { Ic(R.drawable.ms_search) })
                             DropdownMenuItem({ Text("信任") }, { menu = false; Native.setTrust(contact.fp, 1); Repo.refresh() }, leadingIcon = { Ic(R.drawable.ms_trusted) })
                             DropdownMenuItem({ Text("取消信任") }, { menu = false; Native.setTrust(contact.fp, 0); Repo.refresh() }, leadingIcon = { Ic(R.drawable.ms_offline) })
                             DropdownMenuItem({ Text(if (Native.isMuted(contact.fp)) "关闭免打扰" else "免打扰") }, { menu = false; Native.setMuted(contact.fp, !Native.isMuted(contact.fp)); Repo.refresh() }, leadingIcon = { Ic(R.drawable.ms_mute) })
