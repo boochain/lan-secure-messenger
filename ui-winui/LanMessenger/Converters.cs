@@ -47,7 +47,9 @@ public static class B
     public static Visibility TickVis(int t) => t == 0 ? Visibility.Collapsed : Visibility.Visible;
     // v0.6.1 P2
     public static string DraftTag(bool hasDraft) => hasDraft ? "[草稿] " : "";
-    public static string Pick(bool cond, string yes, string no) => cond ? yes : no;
+    public static string TickUnlessDraft(bool hasDraft, int t) => hasDraft ? "" : Tick(t);
+    public static string UnlessDraft(bool hasDraft, string s) => hasDraft ? "" : s;
+    public static string DraftOr(bool hasDraft, string draft, string preview) => hasDraft ? draft.Replace('\n', ' ') : preview;
     public static string Picked(int n) => $"已选 {n} 条";
 }
 

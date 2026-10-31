@@ -277,7 +277,7 @@
                                     </Border>
                                 </StackPanel>
                                 <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" MaxLines="1" FontSize="13">
-                                    <Run Text="{x:Bind local:B.DraftTag(HasDraft), Mode=OneWay}" Foreground="{ThemeResource SystemFillColorCriticalBrush}" /><Run Text="{x:Bind local:B.Pick(HasDraft, '', local:B.Tick(LastTick)), Mode=OneWay}" /><Run Text="{x:Bind local:B.Pick(HasDraft, '', LastFrom), Mode=OneWay}" /><Run Text="{x:Bind local:B.Pick(HasDraft, Draft, Preview), Mode=OneWay}" />
+                                    <Run Text="{x:Bind local:B.DraftTag(HasDraft), Mode=OneWay}" Foreground="{ThemeResource SystemFillColorCriticalBrush}" /><Run Text="{x:Bind local:B.TickUnlessDraft(HasDraft, LastTick), Mode=OneWay}" /><Run Text="{x:Bind local:B.UnlessDraft(HasDraft, LastFrom), Mode=OneWay}" /><Run Text="{x:Bind local:B.DraftOr(HasDraft, Draft, Preview), Mode=OneWay}" />
                                 </TextBlock>
                             </StackPanel>
                             <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Spacing="4">
