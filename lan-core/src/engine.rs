@@ -20,6 +20,7 @@ use crate::link::{self, Link, LinkWriter};
 mod ext;
 mod p2;
 mod v062;
+mod ux;
 mod files;
 pub use files::sanitize_filename;
 mod relay;
@@ -116,6 +117,8 @@ pub(crate) enum EngineMsg {
     Relay(relay::RelayEvt),
     /// Opaque retain blob pulled from relay for this device.
     RetainBlob { id: Vec<u8>, blob: Vec<u8> },
+    /// relay confirmed it stores this message for the offline peer
+    Stored { id: String },
     Tick,
 }
 
@@ -216,6 +219,7 @@ pub struct Engine {
     relay_last_open: Instant,
     retain_last_pull: Instant,
     offer_resend_at: Instant,
+    ux_pending: Vec<(String, Instant)>,
 }
 
 pub async fn start(opts: EngineOptions) -> Result<EngineHandle> {
@@ -361,6 +365,7 @@ pub async fn start(opts: EngineOptions) -> Result<EngineHandle> {
         relay_last_open: Instant::now(),
         retain_last_pull: Instant::now() - Duration::from_secs(60),
         offer_resend_at: Instant::now(),
+        ux_pending: Vec::new(),
     };
     eng.rebuild_outbox();
     eng.restore_partials();
@@ -473,6 +478,7 @@ impl Engine {
             EngineMsg::Transfer(ev) => self.on_transfer_evt(ev),
             EngineMsg::Relay(ev) => self.on_relay(ev),
             EngineMsg::RetainBlob { id, blob } => self.on_retain_blob(id, blob),
+            EngineMsg::Stored { id } => self.ux_stored(id),
             EngineMsg::Tick => self.on_tick(),
         }
         false
@@ -744,6 +750,7 @@ impl Engine {
 
     fn on_tick(&mut self) {
         self.v062_sweep();
+        self.ux_tick();
         let now = Instant::now();
         // Heartbeats / dead links.
         let mut dead = vec![];
@@ -1014,6 +1021,7 @@ impl Engine {
     fn add_message(&mut self, mut m: Message, notify: bool) {
         let conv = m.conversation.clone();
         self.v062_on_add(&mut m);
+        self.ux_on_add(&mut m);
         if m.direction == Direction::In && m.kind != MsgKind::System {
             if let Ok(u) = Uuid::parse_str(&m.id) {
                 self.unread.entry(conv.clone()).or_default().push(u);
@@ -1545,7 +1553,10 @@ impl Engine {
         let Ok(plain) = serde_json::to_vec(&payload) else { return };
         let Ok(blob) = crate::crypto::seal_retain(&my_sk, &peer_pk, &plain) else { return };
         let Some(dest) = self.relay_peer_id(dest_fp) else { return };
-        let (tx, _rx) = oneshot::channel();
+        let (tx, rx) = oneshot::channel();
+        let etx = self.tx.clone();
+        let mid = id.to_string();
+        tokio::spawn(async move { if let Ok(Ok(())) = rx.await { let _ = etx.send(EngineMsg::Stored { id: mid }); } });
         let _ = self.relay.send(relay::RelayCmd::Store {
             id: id.as_bytes().to_vec(),
             blob,
@@ -2571,6 +2582,7 @@ impl Engine {
             }
             "react" | "edit_message" | "recall_message" => self.rpc_ext(method, params).unwrap(),
             "set_conv_pinned" | "set_draft" | "set_message_flags" | "send_typing" | "list_flagged" | "forward_message" => self.rpc_p2(method, params).unwrap(),
+            "my_uri" | "add_uri" | "resend" | "file_preview" => self.rpc_ux(method, params).unwrap(),
             "send_poll" | "vote_poll" | "close_poll" | "set_conv_archived" | "set_folder" | "list_folders" | "set_disappearing" => self.rpc_v062(method, params).unwrap(),
             "history_query" => {
                 let q: crate::history::HistoryQuery = p(params)?;

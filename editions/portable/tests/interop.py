@@ -378,6 +378,25 @@ try:
     (ok if (not pre) and up else fail)("add-by-IP: v0.5 dials XP (no discovery)", f"before={pre}")
     out = X.cmd(f"send {A.fp} via add-by-ip")[-1]; mid = out.split()[-1]
     (ok if X.ev(r"^EV msg_update\t%s\t.*\tdelivered" % mid, 15) else fail)("message over add-by-IP link")
+    # v0.6.1 UX: delivery route text, resend guard, file preview, QR/link add with fingerprint-checked trust (both directions)
+    if args.p1:
+        st = "".join(X.cmd(f"status {mid}"))
+        (ok if "已送达（局域网直连）" in st and "resend=0" in st else fail)("UX status text: delivered over LAN", st[-120:])
+        (ok if "ERR" in "".join(X.cmd(f"resend {mid}")) else fail)("UX resend refused for a delivered message")
+        pf = os.path.join(XPDATA + "3", "preview.bin"); open(pf, "wb").write(b"\0" * (3 * 1024 * 1024))
+        pv = "".join(X.cmd(f"preview {A.fp} {pf}"))
+        (ok if "3.0 MB" in pv and "局域网直连" in pv else fail)("UX file size/ETA preview (XP)", pv[-160:])
+        pr = A.j("raw", "file_preview", json.dumps({"conversation": "dm:" + X.fp, "path": pf}))
+        (ok if isinstance(pr, dict) and pr.get("size") == 3 * 1024 * 1024 and "局域网直连" in pr.get("text", "") else fail)("UX file size/ETA preview (Rust)", str(pr)[:160])
+        xu = X.cmd("myuri")[-1].split(" ", 2)[-1]; au = A.j("raw", "my_uri", "{}")
+        (ok if xu.startswith("lsm://add?a=") and f"fp={X.fp}" in xu and au.get("qr_size", 0) >= 21 and "size=" in X.cmd("qr")[0] else fail)("UX my link + QR (both)", xu)
+        X.cmd(f"untrust {A.fp}"); A.j("raw", "set_trust", json.dumps({"fingerprint": X.fp, "trust": "unknown"}))
+        aurl = au["uri"]; aurl = "lsm://add?a=10.77.0.1:%d%s" % (A.port, aurl[aurl.find("&fp="):])
+        X.cmd(f"adduri {aurl}")
+        (ok if wait(lambda: X.trusted(A.fp), 15) else fail)("UX XP adds Rust by link: fingerprint proven -> trusted")
+        xurl = "lsm://add?a=10.77.0.2:%d%s" % (X.port, xu[xu.find("&fp="):])
+        A.j("raw", "add_uri", json.dumps({"uri": xurl}))
+        (ok if wait(lambda: A.peer(X.fp)["trust"] == "trusted", 15) else fail)("UX Rust adds XP by link: fingerprint proven -> trusted")
 except Exception as e:
     import traceback; traceback.print_exc(); fail("harness exception", repr(e)[:300])
 finally:

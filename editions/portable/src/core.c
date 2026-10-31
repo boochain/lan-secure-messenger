@@ -588,7 +588,8 @@ static lsm_msg *add_message(lsm_core *c, const char *id, const char *conv, int o
     scpy(m->sender_name,out?c->name:(sfp[0]?peer_name(c,sfp):""),200); m->kind=kind; m->body=xstrdup(body?body:""); m->ts_ms=ts>0?ts:wall_ms(); m->status=status;
     m->unread=(!out && kind!=K_SYSTEM);
     hist_rec_msg(c,m); v062_on_add(c,m); emit_msg(c,"msg",m); return m; }
-static void set_status(lsm_core *c, lsm_msg *m, int st){ if(!m || m->status==st) return; m->status=st; hist_rec_upd(c,m); emit_msg(c,"msg_update",m); }
+static void ux_on_status(lsm_core *c, lsm_msg *m); static void ux_tick(lsm_core *c);
+static void set_status(lsm_core *c, lsm_msg *m, int st){ if(!m || m->status==st) return; m->status=st; ux_on_status(c,m); hist_rec_upd(c,m); emit_msg(c,"msg_update",m); }
 static void system_msg(lsm_core *c, const char *conv, const char *fmt, ...){ char t[1024], id[37]; uint8_t u[16]; va_list ap; va_start(ap,fmt); vsnprintf(t,sizeof t,fmt,ap); va_end(ap); uuid_new(u); lsm_uuid_str(u,id); add_message(c,id,conv,0,"",K_SYSTEM,t,0,ST_RECEIVED); }
 static void notice(lsm_core *c, const char *fmt, ...){ char t[1024]; va_list ap; va_start(ap,fmt); vsnprintf(t,sizeof t,fmt,ap); va_end(ap); emit(c,"notice\t%s",t); }
 
@@ -899,7 +900,7 @@ static void on_frame(lsm_core *c, conn *k, rd_t *r){
 /* ------------------------------------------------------------ timers + loop */
 static void on_tick(lsm_core *c){
     int64_t now=mono_ms(); conn *k; int i;
-    v062_sweep(c);
+    v062_sweep(c); ux_tick(c);
     for(k=c->conns;k;k=k->next){
         if(k->state==4){ if(now-k->last_rx>=DEAD_AFTER){ conn_close(c,k,"heartbeat timeout",0); continue; }
             if(now-k->last_ping>=PING_EVERY){ buf_t f={0}; k->last_ping=now; b_u32(&f,0); b_u64(&f,(uint64_t)wall_ms()); send_frame(k,&f); b_free(&f); } }
@@ -1351,6 +1352,7 @@ void lsm_initials(const char *name, char out[8]){
 #include "ext.c"
 #include "p2.c"
 #include "v062.c"
+#include "ux.c"
 #include "backup.c"
 
 /* ------------------------------------------------------------ diagnostics (诊断) */
