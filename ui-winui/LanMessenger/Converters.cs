@@ -43,6 +43,7 @@ public static class B
     public static Microsoft.UI.Xaml.Media.Brush Avatar(int index) => AvatarBrushes[((index % 8) + 8) % 8];
     /// <summary>Receipt ticks: 1 sent ✓, 2 delivered ✓✓, 3 read ✓✓ (accent), 4 failed !</summary>
     public static string Tick(int t) => t switch { 1 => "\u2713", 2 or 3 => "\u2713\u2713", 4 => "!", _ => "" };
+    public static bool TickIsRead(int t) => t == 3;
     public static Visibility TickVis(int t) => t == 0 ? Visibility.Collapsed : Visibility.Visible;
 }
 

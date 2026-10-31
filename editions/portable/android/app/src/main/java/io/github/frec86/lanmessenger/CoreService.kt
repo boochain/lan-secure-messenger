@@ -58,7 +58,7 @@ class CoreService : Service() {
                 handle(e)
             }
             if (any) Repo.refresh()
-            Thread.sleep(250)
+            Thread.sleep(150)
         }
     }
 

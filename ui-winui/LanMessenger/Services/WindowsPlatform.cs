@@ -83,6 +83,22 @@ public sealed class WindowsPlatform : IPlatform
         return f?.Path;
     }
 
+    
+    public async Task<bool> ConfirmAsync(string title, string message)
+    {
+        var dlg = ThemeService.Prepare(new Microsoft.UI.Xaml.Controls.ContentDialog
+        {
+            Title = title,
+            Content = message,
+            PrimaryButtonText = "打开",
+            CloseButtonText = "取消",
+            DefaultButton = Microsoft.UI.Xaml.Controls.ContentDialogButton.Close,
+            XamlRoot = Window?.Content?.XamlRoot
+        });
+        if (dlg.XamlRoot == null) return false;
+        return await dlg.ShowAsync() == Microsoft.UI.Xaml.Controls.ContentDialogResult.Primary;
+    }
+
     public void OpenPath(string path)
     {
         try { Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); }

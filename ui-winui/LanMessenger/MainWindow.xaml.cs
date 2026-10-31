@@ -58,6 +58,8 @@ public sealed partial class MainWindow : Window
             _active = e.WindowActivationState != WindowActivationState.Deactivated;
             // Inactive title: secondary text brush (theme-aware), never a fixed colour.
             AppTitleText.Style = (Style)Application.Current.Resources[_active ? "TitleBarActiveTextStyle" : "TitleBarInactiveTextStyle"];
+            if (ConnectionStatusText != null)
+                ConnectionStatusText.Style = (Style)Application.Current.Resources[_active ? "TitleBarActiveTextStyle" : "TitleBarInactiveTextStyle"];
             if (_active) VM.OnWindowActivated();
         };
 

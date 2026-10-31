@@ -509,6 +509,7 @@ public partial class MainViewModel : ObservableObject
             var p = c.IsDm ? Peers.FirstOrDefault(x => x.Fingerprint == c.PeerFingerprint) : null;
             c.IsTrusted = p?.IsTrusted ?? false;
             c.ViaServer = p?.ViaRelay ?? false;   // 经服务器 badge; switches live when a direct link takes over
+            if (c.IsDm && p != null) c.Online = p.Online;
         }
     }
 
@@ -719,17 +720,38 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void OpenMessageFile(MessageItem? m)
+    private async Task OpenMessageFile(MessageItem? m)
     {
         if (m == null || string.IsNullOrEmpty(m.FilePath)) return;
-        if (File.Exists(m.FilePath)) _platform.OpenPath(m.FilePath);
-        else ShowStatus("文件尚未接收完成或已被移动", true);
+        if (!File.Exists(m.FilePath)) { ShowStatus("文件尚未接收完成或已被移动", true); return; }
+        if (FileRisk.IsDangerous(m.FilePath))
+        {
+            var ok = await _platform.ConfirmAsync("打开可执行/脚本文件？",
+                $"“{m.FileName}”可能是可执行或脚本文件。仅在信任来源时打开。\n\n仍要打开吗？");
+            if (!ok) { _platform.RevealInFolder(m.FilePath); ShowStatus("已在文件夹中显示，未直接打开"); return; }
+        }
+        _platform.OpenPath(m.FilePath);
     }
 
     [RelayCommand]
     private void RevealMessageFile(MessageItem? m)
     {
         if (m != null && !string.IsNullOrEmpty(m.FilePath)) _platform.RevealInFolder(m.FilePath);
+    }
+
+    [RelayCommand]
+    private async Task RefreshPeers()
+    {
+        await SafeCall(async c =>
+        {
+            await c.RefreshPeersAsync();
+            var snap = await c.GetSnapshotAsync();
+            _ui.Post(() =>
+            {
+                ApplySnapshot(snap);
+                ShowStatus("已刷新联系人列表");
+            });
+        });
     }
 
     [RelayCommand]
@@ -809,9 +831,16 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private Task RetryTransferAsync(TransferItem? t) => t == null ? Task.CompletedTask : SafeCall(x => x.RetryTransferAsync(t.Id));
     [RelayCommand]
-    private void OpenTransfer(TransferItem? t)
+    private async Task OpenTransfer(TransferItem? t)
     {
-        if (t != null && t.CanOpen) _platform.OpenPath(t.Path);
+        if (t == null || !t.CanOpen || string.IsNullOrEmpty(t.Path)) return;
+        if (FileRisk.IsDangerous(t.Path))
+        {
+            var ok = await _platform.ConfirmAsync("打开可执行/脚本文件？",
+                $"“{t.Name}”可能是可执行或脚本文件。仅在信任来源时打开。\n\n仍要打开吗？");
+            if (!ok) { _platform.RevealInFolder(t.Path); ShowStatus("已在文件夹中显示，未直接打开"); return; }
+        }
+        _platform.OpenPath(t.Path);
     }
     [RelayCommand]
     private void RevealTransfer(TransferItem? t)

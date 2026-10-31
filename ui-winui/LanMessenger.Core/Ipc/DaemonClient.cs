@@ -15,6 +15,7 @@ public sealed class DaemonClient
     public Task<JsonElement> HelloAsync() => Call("hello", new { client = "LanMessenger", version = 1 });
     public Task SubscribeAsync() => Call("subscribe");
     public Task<Snapshot> GetSnapshotAsync() => Call<Snapshot>("get_snapshot");
+    public Task RefreshPeersAsync() => Call("refresh_peers");
     public Task<List<Message>> GetMessagesAsync(string conversation, int limit = 200, long? beforeTs = null)
         => Call<List<Message>>("get_messages", new { conversation, limit, before_ts = beforeTs });
     public Task<Message> SendTextAsync(string conversation, string body) => Call<Message>("send_text", new { conversation, body });

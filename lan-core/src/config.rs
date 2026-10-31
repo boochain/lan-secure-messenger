@@ -146,7 +146,7 @@ impl Default for Settings {
             first_run_done: false,
             auto_trust: false,
             check_updates: true,
-            announce_interval_secs: 3,
+            announce_interval_secs: 2,
             relay_enabled: false,
             relay_host: String::new(),
             relay_port: 9443,

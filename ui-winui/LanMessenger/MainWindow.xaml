@@ -28,10 +28,11 @@
             <Image Grid.Column="0" Source="ms-appx:///Assets/app.png" Width="18" Height="18" VerticalAlignment="Center" />
             <TextBlock x:Name="AppTitleText" Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center" Style="{StaticResource TitleBarActiveTextStyle}"
                        Text="局域网安全通讯" />
-            <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                <Ellipse Width="8" Height="8" Fill="{ThemeResource StatusOnlineBrush}" Visibility="{x:Bind VM.IsConnected, Mode=OneWay}" />
-                <Ellipse Width="8" Height="8" Fill="{ThemeResource StatusWarnBrush}" Visibility="{x:Bind local:B.Not(VM.IsConnected), Mode=OneWay}" />
-                <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="{x:Bind VM.ConnectionText, Mode=OneWay}" />
+            <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,0,8,0">
+                <Ellipse Width="8" Height="8" Fill="{ThemeResource StatusOnlineBrush}" Visibility="{x:Bind VM.IsConnected, Mode=OneWay}" VerticalAlignment="Center" />
+                <Ellipse Width="8" Height="8" Fill="{ThemeResource StatusWarnBrush}" Visibility="{x:Bind local:B.Not(VM.IsConnected), Mode=OneWay}" VerticalAlignment="Center" />
+                <TextBlock x:Name="ConnectionStatusText" VerticalAlignment="Center" Style="{StaticResource TitleBarActiveTextStyle}"
+                           Text="{x:Bind VM.ConnectionText, Mode=OneWay}" />
             </StackPanel>
         </Grid>
 

@@ -59,12 +59,16 @@ fun Home(st: AppState, open: (String) -> Unit) {
             } else {
                 if (tab == 3 && dlg == "relay") IconButton({ dlg = "" }) { Ic(R.drawable.ms_back, "返回", p.fg) }
                 Text(if (tab == 3 && dlg == "relay") "中转服务器（可选）" else when (tab) { 1 -> "群组"; 2 -> "文件传输"; 3 -> "设置"; else -> "局域网安全通讯" }, style = MaterialTheme.typography.titleLarge, color = p.fg, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (tab <= 1) IconButton({ searching = true }) { Ic(R.drawable.ms_search, "搜索", p.fg) }
+                if (tab <= 1) {
+                    IconButton({ Native.refreshPeers(); Repo.refresh(); Repo.toast.value = "已刷新联系人" }) { Ic(R.drawable.ms_network, "刷新联系人", p.fg) }
+                    IconButton({ searching = true }) { Ic(R.drawable.ms_search, "搜索", p.fg) }
+                }
             }
             Box {
                 IconButton({ menu = true }) { Ic(R.drawable.ms_more, "菜单", p.fg) }
                 DropdownMenu(menu, { menu = false }) {
                     DropdownMenuItem({ Text("按 IP 添加") }, { menu = false; dlg = "add" }, leadingIcon = { Ic(R.drawable.ms_add_contact) })
+                    DropdownMenuItem({ Text("刷新联系人") }, { menu = false; Native.refreshPeers(); Repo.refresh(); Repo.toast.value = "已刷新联系人" }, leadingIcon = { Ic(R.drawable.ms_network) })
                     DropdownMenuItem({ Text("生成 PIN（让对方输入）") }, { menu = false; dlg = "pin" }, leadingIcon = { Ic(R.drawable.ms_lock) })
                     DropdownMenuItem({ Text("创建群组") }, { menu = false; dlg = "group" }, leadingIcon = { Ic(R.drawable.ms_groups) })
                     DropdownMenuItem({ Text("修改昵称") }, { menu = false; dlg = "name" }, leadingIcon = { Ic(R.drawable.ms_edit) })

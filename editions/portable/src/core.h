@@ -121,6 +121,8 @@ const char *lsm_download_dir(lsm_core *c);
 int lsm_send_text(lsm_core *c, const char *conv, const char *text, char *msgid_out, char *err);
 int lsm_send_file(lsm_core *c, const char *conv, const char *path, char *err);
 int lsm_add_addr(lsm_core *c, const char *addr, char *err);
+/* Force UDP announce + interface re-enum + reset dial backoffs; emits peer events so UIs refresh. */
+int lsm_refresh_peers(lsm_core *c);
 int lsm_set_trust(lsm_core *c, const char *fp, int trust, char *err);
 /* 免打扰 on/off for a peer (local only, like the Rust core's contact.muted); emits "peer\t<fp>\tmuted\t0|1" */
 int lsm_set_muted(lsm_core *c, const char *fp, int muted, char *err);

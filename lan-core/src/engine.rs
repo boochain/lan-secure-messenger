@@ -38,8 +38,8 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, mpsc, oneshot, Notify};
 use uuid::Uuid;
 
-const PING_EVERY: Duration = Duration::from_secs(5);
-const DEAD_AFTER: Duration = Duration::from_secs(20);
+const PING_EVERY: Duration = Duration::from_secs(4);
+const DEAD_AFTER: Duration = Duration::from_secs(30);
 const STALE_FOR_TIEBREAK: Duration = Duration::from_secs(12);
 const BULK_QUEUE: usize = 64;
 
@@ -1329,6 +1329,37 @@ impl Engine {
         }
     }
 
+    /// Force LAN re-announce, clear dial backoffs, and push a fresh peer/conversation snapshot to UIs.
+    fn refresh_peers(&mut self) {
+        self.disco.nudge();
+        let now = Instant::now();
+        for r in self.rt.values_mut() {
+            r.next_attempt = Some(now);
+            r.failures = r.failures.min(1);
+        }
+        for m in self.manual_rt.values_mut() {
+            m.next_attempt = Some(now);
+            m.failures = m.failures.min(1);
+        }
+        let fps: Vec<String> = self
+            .contacts
+            .contacts
+            .keys()
+            .cloned()
+            .chain(self.rt.keys().cloned())
+            .chain(self.conns.keys().cloned())
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        for fp in &fps {
+            self.emit_peer(fp);
+        }
+        self.emit(Event::Notice {
+            level: "info".into(),
+            text: "已刷新局域网发现与联系人状态".into(),
+        });
+    }
+
     fn emit_peer(&self, fp: &str) {
         self.emit(Event::PeerUpdated { peer: self.peer_view(fp) });
         self.emit(Event::ConversationUpdated { conversation: self.conv_view(&dm_conv(fp)) });
@@ -1590,6 +1621,10 @@ impl Engine {
         match method {
             "hello" => ok(json!({ "daemon_version": APP_VERSION, "protocol": PROTO_VERSION, "fingerprint": self.me, "ipc_version": 1 })),
             "get_snapshot" => ok(self.snapshot()),
+            "refresh_peers" => {
+                self.refresh_peers();
+                ok(json!({ "ok": true }))
+            }
             "get_messages" => {
                 #[derive(Deserialize)]
                 struct P {

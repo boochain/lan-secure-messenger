@@ -24,3 +24,4 @@ ui-winui/**/obj/
 ui-winui/**/*.user
 ui-winui/.vs/
 /ui-smoke/
+editions/portable/linux/lsm_adw_css.h

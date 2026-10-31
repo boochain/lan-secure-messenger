@@ -62,8 +62,8 @@ typedef int sock_t;
 #define CHUNK (32*1024)
 #define WINDOW (4ull*1024*1024)
 #define PROGRESS_EVERY (256*1024)
-#define PING_EVERY 5000
-#define DEAD_AFTER 20000
+#define PING_EVERY 4000
+#define DEAD_AFTER 30000
 #define STALE_TIEBREAK 12000
 #define HS_TIMEOUT 10000
 #define MAX_WIRE (65535+4)
@@ -906,7 +906,7 @@ static void on_tick(lsm_core *c){
         m->dialing=1; m->next_attempt=now+5000; snprintf(key,sizeof key,"addr:%s",m->addr); dial(c,&m->sa,key);
         { conn *x; int started=0; for(x=c->conns;x;x=x->next) if(x->state!=9 && !strcmp(x->dial_key,key)) started=1; if(!started){ m->dialing=0; m->failures++; } } }
     if(!c->o.no_discovery){
-        if(now-c->last_enum>20000){ c->last_enum=now; enum_ifaces(c); }
+        if(now-c->last_enum>10000){ c->last_enum=now; enum_ifaces(c); }
         if(now-c->last_announce>=c->o.announce_ms){ c->last_announce=now; send_announces(c); } }
     else if(c->announce_targets[0] || c->nmanual){ if(now-c->last_announce>=c->o.announce_ms){ c->last_announce=now; send_announces(c);} }
     rl_tick(c);
@@ -964,7 +964,7 @@ lsm_core *lsm_start(const lsm_opts *o, char *err, size_t errn){
     /* a peer or the relay server closing mid-send must surface as EPIPE, not kill the process */
     signal(SIGPIPE, SIG_IGN);
 #endif
-    mu_init(&c->mu); c->o=*o; if(!c->o.discovery_port) c->o.discovery_port=41234; if(!c->o.listen_port) c->o.listen_port=41235; if(!c->o.announce_ms) c->o.announce_ms=3000;
+    mu_init(&c->mu); c->o=*o; if(!c->o.discovery_port) c->o.discovery_port=41234; if(!c->o.listen_port) c->o.listen_port=41235; if(!c->o.announce_ms) c->o.announce_ms=2000;
     scpy(c->data_dir,o->data_dir,sizeof c->data_dir); umkdir(c->data_dir); path_join(c->dl_dir,sizeof c->dl_dir,c->data_dir,"downloads"); umkdir(c->dl_dir);
     if(o->announce_targets) scpy(c->announce_targets,o->announce_targets,sizeof c->announce_targets);
     c->ev_cap=4096; c->events=(char**)xcalloc(c->ev_cap,sizeof(char*));
@@ -1072,6 +1072,29 @@ int lsm_add_addr(lsm_core *c, const char *addr, char *err){ struct sockaddr_in a
     mu_unlock(&c->mu); return 0; }
 int lsm_set_muted(lsm_core *c, const char *fp, int muted, char *err){ lsm_contact *k; (void)err; mu_lock(&c->mu); k=contact_entry(c,fp); k->muted=muted!=0; save_contacts(c);
     emit(c,"peer\t%s\tmuted\t%d",fp,k->muted); mu_unlock(&c->mu); return 0; }
+
+int lsm_refresh_peers(lsm_core *c){
+    int i; int64_t now;
+    if(!c) return -1;
+    mu_lock(&c->mu);
+    now=mono_ms();
+    enum_ifaces(c); c->last_enum=now;
+    send_announces(c); c->last_announce=now;
+    for(i=0;i<c->nrt;i++){ c->rt[i].next_attempt=now; if(c->rt[i].failures>1) c->rt[i].failures=1; }
+    for(i=0;i<c->nmanual;i++){ c->manual[i].next_attempt=now; if(c->manual[i].failures>1) c->manual[i].failures=1; }
+    for(i=0;i<c->ncontacts;i++){
+        lsm_contact *k=&c->contacts[i];
+        if(k->online){
+            char as[64]; if(k->via_relay) scpy(as,"relay",sizeof as); else scpy(as,k->addr[0]?k->addr:"-",sizeof as);
+            emit(c,"peer\t%s\tonline\t%s\t%s\t%s",k->fp,k->name,as,k->app_version);
+            emit(c,"peer\t%s\tpath\t%s",k->fp,k->via_relay?"relay":"direct");
+        } else emit(c,"peer\t%s\toffline\trefresh",k->fp);
+    }
+    notice(c,"已刷新局域网发现与联系人状态");
+    mu_unlock(&c->mu);
+    return 0;
+}
+
 int lsm_set_trust(lsm_core *c, const char *fp, int trust, char *err){ lsm_contact *k; (void)err; mu_lock(&c->mu); k=contact_entry(c,fp); k->trust=trust; save_contacts(c);
     if(trust==TRUST_BLOCKED){ conn *x=conn_by_fp(c,fp); if(x) conn_close(c,x,"blocked",1); }
     emit(c,"peer\t%s\ttrust\t%s",fp,trust==1?"trusted":trust==2?"blocked":"unknown"); mu_unlock(&c->mu); return 0; }
@@ -1131,7 +1154,8 @@ void lsm_transfer_status(lsm_core *c, lsm_transfer *t, char *out, size_t n){
     if(t->state!=TS_ACTIVE || t->hashing){ snprintf(out,n,"%s%s%s",st,path[0]?" · ":"",path); if(t->state==TS_OFFERED && t->transferred){ size_t l=strlen(out); snprintf(out+l,n-l," · 已传 %s/%s (%d%%)",a,b,pct); } return; }
     fmt_bytes(t->rate_bps,r,sizeof r);
     if(t->rate_bps && t->size>t->transferred){ uint64_t s=(t->size-t->transferred)/t->rate_bps; if(s>=3600) snprintf(eta,sizeof eta," · 剩余 %uh%02um",(unsigned)(s/3600),(unsigned)(s%3600/60)); else if(s>=60) snprintf(eta,sizeof eta," · 剩余 %um%02us",(unsigned)(s/60),(unsigned)(s%60)); else snprintf(eta,sizeof eta," · 剩余 %us",(unsigned)s); }
-    snprintf(out,n,"%s %d%% · %s/%s · %s/s%s%s%s",st,pct,a,b,t->rate_bps?r:"--",eta,path[0]?" · ":"",path); }
+    if(t->out) snprintf(out,n,"%s %d%% · %s/%s%s%s",st,pct,a,b,path[0]?" · ":"",path);
+    else snprintf(out,n,"%s %d%% · %s/%s · %s/s%s%s%s",st,pct,a,b,t->rate_bps?r:"--",eta,path[0]?" · ":"",path); }
 int lsm_mark_read(lsm_core *c, const char *conv){ int i, n=0; buf_t p={0}, f={0}; uint8_t id[16];
     mu_lock(&c->mu);
     /* group the unread incoming ids by sender, one Read receipt per sender */

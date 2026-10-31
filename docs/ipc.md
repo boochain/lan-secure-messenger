@@ -57,6 +57,7 @@ because every event carries the full object.)
 | `hello` | `{}` | `{daemon_version, protocol, ipc_version, fingerprint}` |
 | `subscribe` | `{}` | `{ok}` then event stream |
 | `get_snapshot` | `{}` | `Snapshot` |
+| `refresh_peers` | `{}` | `{ok}` — force LAN announce + clear dial backoff + re-emit peer/conversation events |
 | `get_messages` | `{conversation, before_ts?, limit?=200}` | `Message[]` (oldest first) |
 | `send_text` | `{conversation, body}` | `Message` (status `queued` if peer offline — delivered automatically later) |
 | `send_file` | `{conversation, path}` | `Transfer` (first recipient; groups fan out) |

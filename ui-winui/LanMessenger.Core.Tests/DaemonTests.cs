@@ -86,6 +86,7 @@ sealed class FakePlatform : IPlatform
     public Task<string?> PickSaveFileAsync(string s) => Task.FromResult<string?>(null);
     public Task<string?> PickOpenFileAsync() => Task.FromResult<string?>(null);
     public void OpenPath(string path) { }
+    public Task<bool> ConfirmAsync(string title, string message) => Task.FromResult(true);
     public void RevealInFolder(string path) { }
     public void CopyToClipboard(string text) { }
     public void ShowToast(string title, string body, string conv) { lock (Toasts) Toasts.Add((title, body)); }
