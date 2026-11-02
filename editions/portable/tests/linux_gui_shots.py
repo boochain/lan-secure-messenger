@@ -68,8 +68,8 @@ for th in a.themes.split(","):
     if True:
         # GUI -> v0.5 file via the core (drag-drop path is the same lsm_send_file call), image preview on the sender side too
         from PIL import Image as _I; _I.new("RGB", (300, 200), (30, 160, 90)).save(f"{W}/截图.png")
-        # Composer buttons are stacked 发送 / 发送文件… / 表情… — hit the middle one (file chooser), not 表情.
-        x("mousemove", "--window", wid, "1036", "618"); x("click", "1"); time.sleep(2); shot(f"{th}-09-file-chooser")
+        # attach shortcut (composer row is [表情][附件] input [发送])
+        x("key", "ctrl+o"); time.sleep(2); shot(f"{th}-09-file-chooser")
         x("key", "ctrl+l"); time.sleep(0.5); x("type", "--delay", "20", f"{W}/截图.png"); time.sleep(0.5); x("key", "Return"); time.sleep(5)
     shot(f"{th}-02-chat")
     # add-by-IP dialog (header + button)
