@@ -194,7 +194,7 @@ static void bubble_menu(GtkWidget *bub, double x, double y){
     ux_menu(box,id); v062_menu(box,id); p1_menu(box,id); p2_menu(box,id);
     pop_btn(box,"删除这条消息（仅本机）(_D)…","delete",id);
     gtk_popover_set_child(GTK_POPOVER(pop),box); gtk_widget_set_parent(pop,bub); gtk_popover_set_pointing_to(GTK_POPOVER(pop),&r); gtk_popover_set_has_arrow(GTK_POPOVER(pop),FALSE);
-    cls(pop,"menu"); g_signal_connect(pop,"closed",G_CALLBACK(pop_closed),NULL); gtk_popover_popup(GTK_POPOVER(pop)); if(getenv("LSM_UI_TEST")) g_timeout_add(300,test_log_later,(gpointer)"msg-menu"); }
+    cls(pop,"menu"); g_signal_connect(pop,"closed",G_CALLBACK(pop_closed),NULL); gtk_popover_popup(GTK_POPOVER(pop)); if(gtk_widget_get_first_child(box)) gtk_widget_grab_focus(gtk_widget_get_first_child(box)); /* Enter = first command (复制), not the emoji row */ if(getenv("LSM_UI_TEST")) g_timeout_add(300,test_log_later,(gpointer)"msg-menu"); }
 static void bubble_rclick(GtkGestureClick *g, int n, double x, double y, gpointer p){ (void)n; (void)p; bubble_menu(gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(g)),x,y); }
 static void bubble_lpress(GtkGestureLongPress *g, double x, double y, gpointer p){ (void)p; bubble_menu(gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(g)),x,y); }
 static gboolean imgv_key(GtkEventControllerKey *k, guint kv, guint c, GdkModifierType m, gpointer w){ (void)k;(void)c;(void)m; if(kv==GDK_KEY_Escape){ gtk_window_destroy(GTK_WINDOW(w)); return TRUE; } return FALSE; }
