@@ -149,6 +149,9 @@ struct PeerRt {
     failures: u32,
     next_attempt: Option<Instant>,
     last_error: String,
+    /// the direct link died (heartbeat timeout) or a direct dial failed: announces may still arrive by broadcast while
+    /// unicast is blocked, so do not treat "fresh LAN announce" as a working LAN path until this passes
+    lan_down_until: Option<Instant>,
 }
 
 #[derive(Default)]
@@ -626,6 +629,9 @@ impl Engine {
         r.failures = 0;
         r.last_error.clear();
         r.next_attempt = None;
+        if !via_relay {
+            r.lan_down_until = None;
+        }
         r.sources.insert(if via_relay { "relay".into() } else if initiator { "outbound".into() } else { "inbound".into() });
         tracing::info!(%fp, name = %hello.name, %addr, initiator, via_relay, "peer online");
         self.emit_peer(&fp);
@@ -668,6 +674,9 @@ impl Engine {
     fn drop_conn(&mut self, fp: &str, why: &str) {
         if let Some(c) = self.conns.get(fp) {
             let id = c.id;
+            if !c.via_relay {
+                self.rt.entry(fp.to_string()).or_default().lan_down_until = Some(Instant::now() + Duration::from_secs(60));
+            }
             let _ = c.ctrl.send(Frame::Bye);
             self.on_closed(fp, id, why);
         }
@@ -779,7 +788,8 @@ impl Engine {
                 }
                 let lan_fresh = self.rt.get(&fp).and_then(|r| r.last_announce).map(|t| t.elapsed() < Duration::from_secs(15)).unwrap_or(false);
                 let has_cand = !self.candidates(&fp).is_empty();
-                if !lan_fresh || !has_cand {
+                let lan_down = self.rt.get(&fp).map(|r| lan_path_down(r.failures, r.lan_down_until, now)).unwrap_or(false);
+                if !lan_fresh || !has_cand || lan_down {
                     let _ = self.relay.send(relay::RelayCmd::Open(fp));
                 }
             }
@@ -2748,3 +2758,22 @@ pub(crate) fn resolve_addr(s: &str, default_port: u16) -> Option<SocketAddr> {
     with.to_socket_addrs().ok()?.find(|a| a.is_ipv4())
 }
 
+
+/// LAN fallback mode: open a relay session although LAN announces are fresh when the direct path is known broken
+/// (direct dials failing, or the direct link just died of a heartbeat timeout: e.g. unicast blocked, broadcast not).
+fn lan_path_down(dial_failures: u32, down_until: Option<Instant>, now: Instant) -> bool {
+    dial_failures > 0 || down_until.map(|t| now < t).unwrap_or(false)
+}
+
+#[cfg(test)]
+mod lan_path_tests {
+    use super::*;
+    #[test]
+    fn relay_fallback_when_direct_path_dead_despite_fresh_announces() {
+        let now = Instant::now();
+        assert!(!lan_path_down(0, None, now));
+        assert!(lan_path_down(1, None, now));
+        assert!(lan_path_down(0, Some(now + Duration::from_secs(30)), now));
+        assert!(!lan_path_down(0, Some(now - Duration::from_secs(1)), now));
+    }
+}
