@@ -961,22 +961,35 @@ impl Engine {
                     if t.peer_fp != fp || t.direction != Direction::In {
                         return;
                     }
-                    match t.state {
-                        TransferState::Done => self.send_ctrl(fp, Frame::FileComplete { tid, ok: true, error: String::new() }),
-                        TransferState::Offered if t.accepted && t.resume_loading => {
+                    match reoffer_action(t.state, t.accepted, t.resume_loading, t.resumable, t.chunk_tx.is_some()) {
+                        ReofferAction::Complete => { self.send_ctrl(fp, Frame::FileComplete { tid, ok: true, error: String::new() }); }
+                        ReofferAction::WaitPartial => {
                             if let Some(t) = self.transfers.get_mut(&tid) {
                                 t.reoffer_pending = true;
                             }
-                            true
                         }
-                        TransferState::Offered if t.accepted => {
+                        ReofferAction::Accept => {
                             if let Err(e) = self.accept_transfer(tid) {
                                 tracing::debug!(%tid, error = %e.message, "re-accept failed");
                             }
-                            true
                         }
-                        _ => true,
-                    };
+                        ReofferAction::InterruptThenResume => {
+                            // The sender lost its link first (e.g. direct path stalled, re-offered over the relay) while
+                            // our side still looks Active on the dead link: stop the old recv task; its RecvInterrupted
+                            // keeps the partial file and, with reoffer_pending, resumes from that offset (FileResume).
+                            tracing::info!(%tid, "re-offer while receiving: switching link, resuming from partial");
+                            if let Some(t) = self.transfers.get_mut(&tid) {
+                                t.state = TransferState::Offered;
+                                t.error = "连接切换，自动续传".into();
+                                t.credit = None;
+                                t.resume_loading = true;
+                                t.reoffer_pending = true;
+                                t.chunk_tx = None;
+                            }
+                            self.emit_transfer(tid, true);
+                        }
+                        ReofferAction::Ignore => {}
+                    }
                     return;
                 }
                 let name = sanitize_filename(&name);
@@ -1302,5 +1315,35 @@ impl Engine {
                 self.emit_transfer(tid, true);
             }
         }
+    }
+}
+
+
+/// What the receiver does when a FileOffer arrives for a transfer it already knows (reconnect / link switch).
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub(crate) enum ReofferAction { Complete, WaitPartial, Accept, InterruptThenResume, Ignore }
+
+pub(crate) fn reoffer_action(state: TransferState, accepted: bool, resume_loading: bool, resumable: bool, recv_task: bool) -> ReofferAction {
+    match state {
+        TransferState::Done => ReofferAction::Complete,
+        TransferState::Offered if accepted && resume_loading => ReofferAction::WaitPartial,
+        TransferState::Offered if accepted => ReofferAction::Accept,
+        TransferState::Active if resumable && recv_task => ReofferAction::InterruptThenResume,
+        _ => ReofferAction::Ignore,
+    }
+}
+
+#[cfg(test)]
+mod reoffer_tests {
+    use super::*;
+    #[test]
+    fn reoffer_while_active_resumes_instead_of_ignoring() {
+        // regression: rust<->rust direct->relay mid-transfer stuck at "offered" (re-offer ignored while still Active)
+        assert_eq!(reoffer_action(TransferState::Active, true, false, true, true), ReofferAction::InterruptThenResume);
+        assert_eq!(reoffer_action(TransferState::Active, true, false, false, true), ReofferAction::Ignore); // old peer: no resume
+        assert_eq!(reoffer_action(TransferState::Offered, true, true, true, false), ReofferAction::WaitPartial);
+        assert_eq!(reoffer_action(TransferState::Offered, true, false, true, false), ReofferAction::Accept);
+        assert_eq!(reoffer_action(TransferState::Done, true, false, true, false), ReofferAction::Complete);
+        assert_eq!(reoffer_action(TransferState::Offered, false, false, true, false), ReofferAction::Ignore);
     }
 }
