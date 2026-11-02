@@ -170,6 +170,7 @@ static void clear_do(gpointer cv){ int n=lsm_clear_conversation(C,(const char*)c
 static void delete_do(gpointer id){ if(lsm_delete_message(C,(const char*)id)) toast("删除失败：消息不存在"); chat_dirty=list_dirty=1; }
 #include "adw_p1.inc"
 #include "adw_p2.inc"
+#include "adw_compat14.h"
 #include "adw_v062.inc"
 static void select_conv(const char *cv);
 #include "adw_ux.inc"
@@ -363,6 +364,8 @@ static void test_log(const char *what){
             if(gtk_widget_has_css_class(d,"online-dot") && gtk_widget_get_mapped(d) && gtk_widget_compute_bounds(d,win,&r)) printf("ICON online-dot %d,%d,%d,%d\n",(int)r.origin.x-2,(int)r.origin.y-2,(int)r.size.width+4,(int)r.size.height+4); } }
     if(getenv("LSM_UI_TEST") && empty_page && gtk_widget_get_mapped(empty_page)) log_status_icon(empty_page);
     if(getenv("LSM_UI_TEST") && icon_widgets){ if(hdr_shield && !g_ptr_array_find(icon_widgets,hdr_shield,NULL)) g_ptr_array_add(icon_widgets,g_object_ref(hdr_shield)); for(guint q=0;q<icon_widgets->len;q++){ graphene_rect_t r; GtkWidget *w=icon_widgets->pdata[q];
+        GtkWidget *nw=GTK_WIDGET(gtk_widget_get_native(w)); if(nw && nw!=win && gtk_widget_get_mapped(w) && gtk_widget_compute_bounds(w,nw,&r)){ /* inside a popover surface: python maps it to screen via the X window of that size */
+            printf("ICONPOP %d %d %d,%d,%d,%d\n",gtk_widget_get_width(nw),gtk_widget_get_height(nw),(int)r.origin.x-2,(int)r.origin.y-2,(int)r.size.width+4,(int)r.size.height+4); continue; }
         if(gtk_widget_get_mapped(w) && gtk_widget_compute_bounds(w,win,&r)) printf("ICON %s %d,%d,%d,%d\n",GTK_IS_IMAGE(w)?gtk_image_get_icon_name(GTK_IMAGE(w)):"online-dot",(int)r.origin.x-2,(int)r.origin.y-2,(int)r.size.width+4,(int)r.size.height+4); } } const char *t=getenv("LSM_UI_TEST");
     if(getenv("LSM_UI_DEBUG")){ const char *nm[]={"dbg-tv","dbg-frame","dbg-comp","dbg-hint"}; for(int q=0;q<4;q++){ GtkWidget *w=g_object_get_data(G_OBJECT(win),nm[q]); int mn,nat; if(!w) continue; gtk_widget_measure(w,GTK_ORIENTATION_VERTICAL,-1,&mn,&nat,NULL,NULL); printf("DBG %s h=%d min=%d nat=%d\n",nm[q],gtk_widget_get_height(w),mn,nat); } { int mn,nat; gtk_widget_measure(input,GTK_ORIENTATION_VERTICAL,-1,&mn,&nat,NULL,NULL); printf("DBG input h=%d min=%d nat=%d\n",gtk_widget_get_height(input),mn,nat); } }
     if(getenv("LSM_UI_DEBUG")){ GtkWidget *a=g_object_get_data(G_OBJECT(win),"dbg-pic"),*b=g_object_get_data(G_OBJECT(win),"dbg-ov"),*c=g_object_get_data(G_OBJECT(win),"dbg-bub"); if(a&&b&&c) for(GtkWidget *ch=gtk_widget_get_first_child(c);ch;ch=gtk_widget_get_next_sibling(ch)) printf("DBG child %s %dx%d\n",G_OBJECT_TYPE_NAME(ch),gtk_widget_get_width(ch),gtk_widget_get_height(ch)); printf("DBG pic %dx%d ov %dx%d bub %dx%d\n",gtk_widget_get_width(a),gtk_widget_get_height(a),gtk_widget_get_width(b),gtk_widget_get_height(b),gtk_widget_get_width(c),gtk_widget_get_height(c)); }
