@@ -57,7 +57,8 @@ typedef struct {
     int is_poll, poll_multi, poll_closed;
     char *poll_opts;        /* options joined with '\n' (question = body), malloc or NULL */
     char poll_votes[1200];  /* "fp=0,2;fp=1" */
-    int64_t expires_ms;     /* disappearing: deleted at this wall time (0 = never) */
+    int64_t expires_ms;
+    int route;              /* runtime: 1 = went over the LAN, 2 = via the relay server (status text) */     /* disappearing: deleted at this wall time (0 = never) */
     char file_path[520];
     int unread;
 } lsm_msg;
@@ -259,4 +260,17 @@ const char *lsm_resolve_group(lsm_core *c, const char *q, char out[37]);
 /* host firewall: plan only looks (0 = not enabled -> msg, nothing to do; 1 = enabled -> cmd); apply runs cmd after the user said yes */
 int lsm_firewall_plan(const char *exe_path_utf8, char *cmd, size_t cn, char *msg, size_t mn);
 int lsm_firewall_apply(const char *cmd, char *report, size_t n);
+/* v0.6.1 UX (ux.c) */
+void lsm_fmt_size(uint64_t b, char *out, size_t n);
+void lsm_fmt_dur(int64_t secs, char *out, size_t n);
+int lsm_file_preview(lsm_core *c, const char *conv, const char *path, char *out, size_t n); /* takes the lock */
+void lsm_transfer_eta(lsm_transfer *t, char *out, size_t n);            /* lock held */
+const char *lsm_status_text(lsm_core *c, const lsm_msg *m);              /* lock held; "" for incoming */
+int lsm_can_resend(const lsm_msg *m);
+int lsm_resend(lsm_core *c, const char *id, char *newid, char *err);    /* takes the lock */
+int lsm_last_editable(lsm_core *c, const char *conv, char *id_out);     /* lock held */
+int lsm_fuzzy(const char *hay, const char *q);
+int lsm_my_uri(lsm_core *c, char *out, size_t n);                       /* takes the lock */
+int lsm_add_uri(lsm_core *c, const char *uri, char *err);               /* takes the lock */
+int lsm_qr(const char *text, uint8_t *out);                             /* out[177*177]; returns side, 0 = error */
 #endif

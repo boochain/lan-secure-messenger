@@ -727,14 +727,9 @@ public partial class MainViewModel : ObservableObject
         {
             try
             {
-                var len = new FileInfo(p).Length;
-                if (len >= 100L * 1024 * 1024)
-                {
-                    var mb = len / (1024.0 * 1024.0);
-                    var ok = await _platform.ConfirmAsync("发送大文件？",
-                        $"「{Path.GetFileName(p)}」约 {mb:0.#} MB。大文件需双方保持在线，传输时间较长。是否继续？");
-                    if (!ok) continue;
-                }
+                // v0.6.1: always show name, size and ETA (LAN vs relay) before sending, like GTK / XP / Android
+                var pv = await _client!.FilePreviewAsync(c.Id, p);
+                if (!await _platform.ConfirmAsync("发送文件？", pv.Text)) continue;
             }
             catch { /* size probe best-effort */ }
             await SafeCall(x => x.SendFileAsync(c.Id, p));
@@ -828,6 +823,7 @@ public partial class MainViewModel : ObservableObject
     {
         var a = AddPeerAddress.Trim();
         if (a.Length == 0) return;
+        if (IsAddLink(a)) { await AddByLinkAsync(a); _ui.Post(() => AddPeerAddress = ""); return; }
         await SafeCall(async x =>
         {
             await x.AddPeerAsync(a);

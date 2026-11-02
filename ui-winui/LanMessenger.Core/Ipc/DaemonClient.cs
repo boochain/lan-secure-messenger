@@ -49,6 +49,11 @@ public sealed class DaemonClient
     public Task AcceptTransferAsync(string id) => Call("accept_transfer", new { id });
     public Task RejectTransferAsync(string id) => Call("reject_transfer", new { id });
     public Task AddPeerAsync(string address) => Call("add_peer", new { address });
+    // v0.6.1 UX
+    public Task<UxUri> MyUriAsync() => Call<UxUri>("my_uri", new { });
+    public Task AddUriAsync(string uri) => Call("add_uri", new { uri });
+    public Task ResendAsync(string id) => Call("resend", new { id });
+    public Task<UxFilePreview> FilePreviewAsync(string conversation, string path) => Call<UxFilePreview>("file_preview", new { conversation, path });
     public Task RemoveManualPeerAsync(string address) => Call("remove_manual_peer", new { address });
     public Task<Peer> SetTrustAsync(string fingerprint, Trust trust) => Call<Peer>("set_trust", new { fingerprint, trust });
     public Task ForgetPeerAsync(string fingerprint) => Call("forget_peer", new { fingerprint });

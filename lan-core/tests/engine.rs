@@ -499,3 +499,41 @@ async fn v062_polls_folders_archive_disappearing() {
     // the timer-change notices are system messages and never expire
     assert!(a.msgs(&conv_a).await.iter().any(|m| m["kind"] == "system"));
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn ux_qr_add_resend_preview_route() {
+    let a = node("Alice", json!({})).await;
+    let b = node("Bob", json!({})).await;
+    let pb = b.port().await;
+    let u = b.call("my_uri", json!({})).await;
+    let uri = u["uri"].as_str().unwrap().to_string();
+    assert!(uri.starts_with("lsm://add?a=") && uri.contains(&format!("fp={}", b.fp)), "{uri}");
+    assert!(u["qr_size"].as_u64().unwrap() >= 21);
+    // the test peers talk over loopback: swap the address, keep the fingerprint
+    let fp_part = &uri[uri.find("&fp=").unwrap()..];
+    let r = a.call("add_uri", json!({"uri": format!("lsm://add?a=127.0.0.1:{pb}{fp_part}")})).await;
+    assert_eq!(r["fingerprint"], b.fp.as_str());
+    assert!(a.h.call("add_uri", json!({"uri": "http://x"})).await.is_err());
+    both_online(&a, &b, 20).await;
+    wait("qr add trusts the proven fingerprint", 15, || async { a.peer(&b.fp).await.map(|p| p["trust"] == "trusted").unwrap_or(false) }).await;
+    let conv_a = format!("dm:{}", b.fp);
+    let m = a.call("send_text", json!({"conversation": conv_a, "body": "路由"})).await;
+    let mid = m["id"].as_str().unwrap().to_string();
+    wait("route LAN", 15, || async { a.msgs(&conv_a).await.iter().any(|x| x["id"] == mid.as_str() && x["route"] == 1) }).await;
+    assert!(a.h.call("resend", json!({"id": mid})).await.is_err(), "delivered messages are not resent");
+    let dir = tempfile::tempdir().unwrap();
+    let f = dir.path().join("big.bin");
+    std::fs::write(&f, vec![0u8; 3 * 1024 * 1024]).unwrap();
+    let pv = a.call("file_preview", json!({"conversation": conv_a, "path": f.display().to_string()})).await;
+    assert_eq!(pv["size"], 3 * 1024 * 1024);
+    assert!(pv["text"].as_str().unwrap().contains("3.0 MB") && pv["text"].as_str().unwrap().contains("局域网直连"), "{pv}");
+    // offline peer: queued -> one-click resend replaces it with a fresh message
+    b.call("shutdown", json!({})).await;
+    wait("bob offline", 30, || async { !a.online(&b.fp).await }).await;
+    let q = a.call("send_text", json!({"conversation": conv_a, "body": "稍后"})).await;
+    let qid = q["id"].as_str().unwrap().to_string();
+    let r = a.call("resend", json!({"id": qid})).await;
+    let nid = r["id"].as_str().unwrap().to_string();
+    let ms = a.msgs(&conv_a).await;
+    assert!(!ms.iter().any(|x| x["id"] == qid.as_str()) && ms.iter().any(|x| x["id"] == nid.as_str() && x["body"] == "稍后"));
+}

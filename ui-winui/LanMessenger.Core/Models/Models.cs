@@ -374,3 +374,21 @@ public sealed class DaemonEvent
     public string GetString(string field) =>
         Raw.TryGetProperty(field, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
 }
+
+/// <summary>v0.6.1 my_uri: lsm://add?… link and its QR matrix ('1' = dark module, row-major, qr_size²).</summary>
+public sealed class UxUri
+{
+    public string Uri { get; set; } = "";
+    public int QrSize { get; set; }
+    public string Qr { get; set; } = "";
+}
+
+/// <summary>v0.6.1 file_preview: size + ETA text shown before sending a file.</summary>
+public sealed class UxFilePreview
+{
+    public string Name { get; set; } = "";
+    public long Size { get; set; }
+    public long EtaSecs { get; set; }
+    public int Route { get; set; }
+    public string Text { get; set; } = "";
+}

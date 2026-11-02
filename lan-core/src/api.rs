@@ -107,7 +107,16 @@ pub struct MsgExt {
     /// disappearing messages: deleted locally at this wall-clock time (0 = never)
     #[serde(default, skip_serializing_if = "is_zero")]
     pub expires_ms: i64,
+    // v0.6.1 UX
+    /// 1 = sent over the LAN, 2 = via the relay server (0 = unknown / offline)
+    #[serde(default, skip_serializing_if = "is_zero_u8")]
+    pub route: u8,
+    /// relay server confirmed it holds an encrypted copy for the offline peer
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub server_stored: bool,
 }
+
+fn is_zero_u8(v: &u8) -> bool { *v == 0 }
 
 fn is_zero(v: &i64) -> bool { *v == 0 }
 

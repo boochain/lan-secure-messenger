@@ -43,8 +43,22 @@ def icon_rects(lines):
     """ICON lines printed by the GUI right before its latest 'UI ' line: decorative GtkImage icons (no text)."""
     k = max((i for i, l in enumerate(lines) if l.startswith("UI ")), default=-1); out = []
     i = k - 1
-    while i >= 0 and lines[i].startswith("ICON "): out.append([int(v) for v in lines[i].split()[2].split(",")]); i -= 1
+    while i >= 0 and lines[i].startswith("ICON"):
+        f = lines[i].split()
+        if f[0] == "ICON": out.append([int(v) for v in f[2].split(",")])
+        elif f[0] == "ICONPOP":  # bounds inside a popover surface: find that X window (same size) for its screen origin
+            o = popup_origin(int(f[1]), int(f[2]))
+            if o: x, y, w, h = [int(v) for v in f[3].split(",")]; out.append([x + o[0], y + o[1], w, h])
+        i -= 1
     return out
+def popup_origin(w, h):
+    import re
+    t = subprocess.run(["xwininfo", "-root", "-tree"], env=env, capture_output=True, text=True).stdout
+    best = None
+    for m in re.finditer(r"(\d+)x(\d+)\+-?\d+\+-?\d+\s+\+(-?\d+)\+(-?\d+)", t):
+        ww, hh, x, y = map(int, m.groups())
+        if abs(ww - w) <= 64 and abs(hh - h) <= 64 and (best is None or abs(ww - w) + abs(hh - h) < best[0]): best = (abs(ww - w) + abs(hh - h), x + (ww - w) // 2, y + (hh - h) // 2)
+    return best[1:] if best else None
 def shot(name, theme, size="1024x694", g=None):
     wid = subprocess.run(["xdotool", "search", "--onlyvisible", "--name", "局域网安全通讯"], env=env, capture_output=True, text=True).stdout.split()
     path = f"{out}/{name}-{theme}.png"

@@ -68,6 +68,9 @@ fun Home(st: AppState, openPage: (String) -> Unit = {}, open: (String) -> Unit) 
                 IconButton({ menu = true }) { Ic(R.drawable.ms_more, "菜单", p.fg) }
                 DropdownMenu(menu, { menu = false }) {
                     DropdownMenuItem({ Text("按 IP 添加") }, { menu = false; dlg = "add" }, leadingIcon = { Ic(R.drawable.ms_add_contact) })
+                    DropdownMenuItem({ Text("我的二维码") }, { menu = false; dlg = "qr" }, leadingIcon = { Ic(R.drawable.ms_add_contact) })
+                    DropdownMenuItem({ Text("通过链接添加") }, { menu = false; dlg = "link" }, leadingIcon = { Ic(R.drawable.ms_add_contact) })
+                    DropdownMenuItem({ Text("切换会话") }, { menu = false; Ux.quickSwitch.value = true }, leadingIcon = { Ic(R.drawable.ms_search) })
                     DropdownMenuItem({ Text("刷新联系人") }, { menu = false; Native.refreshPeers(); Repo.refresh(); Repo.toast.value = "已刷新联系人" }, leadingIcon = { Ic(R.drawable.ms_network) })
                     DropdownMenuItem({ Text("生成 PIN（让对方输入）") }, { menu = false; dlg = "pin" }, leadingIcon = { Ic(R.drawable.ms_lock) })
                     DropdownMenuItem({ Text("创建群组") }, { menu = false; dlg = "group" }, leadingIcon = { Ic(R.drawable.ms_groups) })
@@ -125,7 +128,9 @@ fun Home(st: AppState, openPage: (String) -> Unit = {}, open: (String) -> Unit) 
         }
     }
     when (dlg) {
-        "add" -> TextDialog("按 IP 添加", "输入对方 IP 地址（可带端口，如 192.168.1.20 或 192.168.1.20:41235）：", onOk = { val e = Native.addAddr(it); if (e.isNotEmpty()) Repo.toast.value = e }, onDismiss = { dlg = "" })
+        "add" -> TextDialog("按 IP 添加", "输入对方 IP 地址（可带端口，如 192.168.1.20 或 192.168.1.20:41235），或粘贴添加链接 lsm://…：", onOk = { if (it.trim().startsWith("lsm://")) Ux.addUri(it) else { val e = Native.addAddr(it); if (e.isNotEmpty()) Repo.toast.value = e } }, onDismiss = { dlg = "" })
+        "link" -> TextDialog("通过链接添加", "粘贴对方的添加链接（lsm://add?…）：", onOk = { Ux.addUri(it) }, onDismiss = { dlg = "" })
+        "qr" -> QrDialog { dlg = "" }
         "name" -> TextDialog("修改昵称", "新的显示名称：", st.me.name, onOk = { Native.setName(it); Repo.refresh() }, onDismiss = { dlg = "" })
         "group" -> PickContacts(st, "创建群组", true, true, true, { fps, n -> val r = Native.groupCreate(n, fps.joinToString(",")); if (r.startsWith("!")) Repo.toast.value = r.drop(1); Repo.refresh() }, { dlg = "" })
         "pin" -> { val pin = remember { Native.pinOffer() }

@@ -53,6 +53,13 @@ object Native {
     @JvmStatic external fun setArchived(conv: String, on: Boolean)
     @JvmStatic external fun setFolders(conv: String, csv: String)
     @JvmStatic external fun setTtl(conv: String, secs: Int): String
+    // v0.6.1 UX
+    @JvmStatic external fun myUri(): String
+    @JvmStatic external fun qr(text: String): String
+    @JvmStatic external fun addUri(uri: String): String
+    @JvmStatic external fun resend(id: String): String
+    @JvmStatic external fun filePreview(conv: String, path: String): String
+    @JvmStatic external fun lastEditable(conv: String): String
     @JvmStatic external fun setConvPinned(conv: String, on: Boolean)
     @JvmStatic external fun setDraft(conv: String, text: String)
     @JvmStatic external fun getDraft(conv: String): String

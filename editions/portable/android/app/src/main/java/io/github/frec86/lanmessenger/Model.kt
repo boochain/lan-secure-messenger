@@ -16,7 +16,7 @@ fun relayStateZh(s: String) = when (s) { "connecting" -> "正在连接中转服�
 data class Msg(val id: String, val out: Boolean, val kind: Int, val status: String, val ts: Long, val sender: String, val body: String, val file: String, val size: Long, val path: String,
                val replyTo: String = "", val quote: String = "", val reactions: String = "", val mine: String = "", val edited: Boolean = false, val recalled: Boolean = false, val canModify: Boolean = false, val voice: Int = -1,
                val forwarded: Boolean = false, val pinned: Boolean = false, val starred: Boolean = false, val mentionsMe: Boolean = false,
-               val expires: Long = 0, val poll: Poll? = null)
+               val expires: Long = 0, val poll: Poll? = null, val statusText: String = "", val canResend: Boolean = false)
 /** v0.6.2 poll on a text message (body = question) */
 data class PollOpt(val text: String, val count: Int, val mine: Boolean)
 data class Poll(val multi: Boolean, val closed: Boolean, val voters: Int, val opts: List<PollOpt>)
@@ -64,7 +64,8 @@ object Repo {
         Msg(it.getString("id"), it.getBoolean("out"), it.getInt("kind"), it.getString("status"), it.getLong("ts"), it.getString("sender"), it.getString("body"), it.getString("file"), it.getLong("size"), it.getString("path"),
             it.optString("reply_to"), it.optString("quote"), it.optString("reactions"), it.optString("mine"), it.optBoolean("edited"), it.optBoolean("recalled"), it.optBoolean("can_modify"), it.optInt("voice", -1),
             it.optBoolean("forwarded"), it.optBoolean("pinned"), it.optBoolean("starred"), it.optBoolean("mentions_me"),
-            it.optLong("expires"), it.optJSONObject("poll")?.let { p -> Poll(p.optBoolean("multi"), p.optBoolean("closed"), p.optInt("voters"), p.getJSONArray("opts").objs().map { o -> PollOpt(o.getString("t"), o.optInt("n"), o.optBoolean("mine")) }) })
+            it.optLong("expires"), it.optJSONObject("poll")?.let { p -> Poll(p.optBoolean("multi"), p.optBoolean("closed"), p.optInt("voters"), p.getJSONArray("opts").objs().map { o -> PollOpt(o.getString("t"), o.optInt("n"), o.optBoolean("mine")) }) },
+            it.optString("status_text"), it.optBoolean("can_resend"))
     }
     private fun csvList(s: String) = s.split(",").map { it.trim() }.filter { it.isNotEmpty() }
     private fun JSONArray.objs() = (0 until length()).map { getJSONObject(it) }

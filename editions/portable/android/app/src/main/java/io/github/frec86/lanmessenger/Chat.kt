@@ -2,6 +2,9 @@ package io.github.frec86.lanmessenger
 
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -205,10 +208,9 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
                                     }
                                 }
                                 if (r.m.kind == 0 && !r.m.recalled) DropdownMenuItem({ Text("复制") }, { clip.setText(androidx.compose.ui.text.AnnotatedString(r.m.body)); msgMenu = null; Repo.toast.value = "已复制" }, leadingIcon = { Ic(R.drawable.ms_copy) })
-                                if (r.m.out && r.m.status == "failed") DropdownMenuItem({ Text("重发") }, {
+                                if (r.m.canResend) DropdownMenuItem({ Text("重新发送") }, {
                                     msgMenu = null
-                                    val e = if (r.m.kind == 0) Native.sendText(conv, r.m.body)
-                                    else if (r.m.path.isNotEmpty()) Native.sendFile(conv, r.m.path) else "无法重发"
+                                    val e = Native.resend(r.m.id)
                                     if (e.isNotEmpty()) Repo.toast.value = errZh(e) else Repo.toast.value = "已重新发送"
                                     Repo.refresh()
                                 }, leadingIcon = { Ic(R.drawable.ms_info) })
@@ -227,7 +229,11 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
                 IconButton({ emojiOpen = !emojiOpen }, Modifier.size(40.dp)) { Ic(R.drawable.ms_emoji, "表情", p.fg2) }
                 Box(Modifier.weight(1f).padding(start = 4.dp, top = 12.dp, bottom = 12.dp)) {
                     if (input.isEmpty()) Text("输入消息", style = MaterialTheme.typography.bodyLarge, color = p.fg2)
-                    BasicTextField(input, { onInput(it) }, Modifier.fillMaxWidth().semantics { contentDescription = "输入消息" }, maxLines = 5,
+                    BasicTextField(input, { onInput(it) }, Modifier.fillMaxWidth().semantics { contentDescription = "输入消息" }.onPreviewKeyEvent { ev ->
+                            // hardware keyboard ↑ in an empty composer: edit the last own message
+                            if (ev.type == androidx.compose.ui.input.key.KeyEventType.KeyDown && ev.key == androidx.compose.ui.input.key.Key.DirectionUp && input.isEmpty() && editing == null) {
+                                val id = Native.lastEditable(conv); all.firstOrNull { it.id == id }?.let { replyTo = null; editing = it; input = it.body; true } ?: false
+                            } else false }, maxLines = 5,
                         textStyle = MaterialTheme.typography.bodyLarge.copy(color = p.fg), cursorBrush = SolidColor(p.accent))
                     DropdownMenu(atOpen, { atOpen = false }) { mentionCandidates(conv).forEach { mc -> DropdownMenuItem({ Text(mc.name) }, { atOpen = false; input = input + mc.name + " " }) } }
                 }
@@ -369,6 +375,11 @@ fun MessageRow(r: ChatRow.Bubble, t: Transfer?, maxW: androidx.compose.ui.unit.D
         }
     }
     if (m.reactions.isNotEmpty() && !m.recalled) Row(Modifier.fillMaxWidth().padding(top = 2.dp), horizontalArrangement = if (m.out) Arrangement.End else Arrangement.Start) { ReactionChips(m) }
+    // v0.6.1: why it failed + one-tap resend
+    if (m.out && (m.status == "failed" || m.status == "rejected") && m.statusText.isNotEmpty()) Row(Modifier.fillMaxWidth().padding(top = 2.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+        Text(m.statusText, style = MaterialTheme.typography.labelSmall, color = p.error, modifier = Modifier.weight(1f, fill = false))
+        if (m.canResend) TextButton({ val e = Native.resend(m.id); Repo.toast.value = if (e.isNotEmpty()) errZh(e) else "已重新发送"; Repo.refresh() }) { Text("重新发送") }
+    }
     }
 }
 

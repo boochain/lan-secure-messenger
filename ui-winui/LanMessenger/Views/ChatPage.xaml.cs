@@ -25,6 +25,7 @@ public sealed partial class ChatPage : Page
         // keyboard shortcuts (Fluent: keyboard accelerators): Ctrl+F search, Ctrl+N add contact, Ctrl+(Shift+)Tab next/prev chat, Esc
         AddAccel(VirtualKey.F, VirtualKeyModifiers.Control, () => FocusSearch());
         AddAccel(VirtualKey.N, VirtualKeyModifiers.Control, OpenAddPeer);
+        AddAccel(VirtualKey.K, VirtualKeyModifiers.Control, () => { _ = UxDialogs.QuickSwitchAsync(XamlRoot); }); // v0.6.1 quick switcher
         // Ctrl+Tab / Ctrl+Shift+Tab: Tab is consumed by focus navigation (and the multi-line composer) before
         // KeyboardAccelerators run (found by the UI smoke runtime check), so handle it in the tunnelling PreviewKeyDown.
         PreviewKeyDown += (_, e) =>
@@ -148,6 +149,11 @@ public sealed partial class ChatPage : Page
         if ((e.OriginalSource as FrameworkElement)?.DataContext is not MessageItem m || m.IsSystem) return;
         var f = new MenuFlyout();
         void Add(string text, string glyph, Action a) { var it = new MenuFlyoutItem { Text = text, Icon = new FontIcon { Glyph = glyph } }; it.Click += (_, _) => a(); f.Items.Add(it); }
+        if (m.CanResend) // v0.6.1: why it failed + one-click resend
+        {
+            f.Items.Add(new MenuFlyoutItem { Text = m.StatusText, IsEnabled = false, Icon = new FontIcon { Glyph = "\uE783" } });
+            Add("重新发送", "\uE72C", async () => await VM.ResendAsync(m)); f.Items.Add(new MenuFlyoutSeparator());
+        }
         if (!m.IsRecalled)
         {
             var sub = new MenuFlyoutSubItem { Text = "表情回应", Icon = new FontIcon { Glyph = "\uE76E" } };
@@ -630,4 +636,6 @@ public sealed partial class ChatPage : Page
         _player.MediaEnded += (_, _) => DispatcherQueue.TryEnqueue(() => { _player?.Dispose(); _player = null; _playing = ""; });
         _player.Play();
     }
+
+    private async void MyQr_Click(object sender, RoutedEventArgs e) => await UxDialogs.MyQrAsync(XamlRoot);
 }
