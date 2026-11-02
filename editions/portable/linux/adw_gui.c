@@ -577,7 +577,7 @@ static void load_palette(void){ int dark=adw_style_manager_get_dark(adw_style_ma
     if(!pal_cp){ pal_cp=gtk_css_provider_new(); gtk_style_context_add_provider_for_display(gdk_display_get_default(),GTK_STYLE_PROVIDER(pal_cp),GTK_STYLE_PROVIDER_PRIORITY_APPLICATION); }
     { GString *s=g_string_new(LSM_ADW_PALETTE[dark?1:0]); char *css=NULL; gsize n=0; char ph[1200]; const char *ad=getenv("LSM_ADW_CSS");
       /* the rules (lsm-adw.css) are compiled in; LSM_ADW_CSS=<file> overrides for design iteration */
-      if(ad && g_file_get_contents(ad,&css,&n,NULL)){ g_string_append(s,css); g_free(css); } else g_string_append(s,LSM_ADW_RULES); (void)ph;
+      if(ad && g_file_get_contents(ad,&css,&n,NULL)){ g_string_append(s,css); g_free(css); } else g_string_append(s,LSM_ADW_RULES); (void)ph; g_string_append(s,"\n/* light transitions (#5): hover / selection fade, no layout motion */ button, row, .msg-row { transition: background-color 120ms ease-out, color 120ms ease-out, box-shadow 120ms ease-out; }\n");
 #if GTK_CHECK_VERSION(4, 12, 0)
       gtk_css_provider_load_from_string(pal_cp,s->str);
 #else

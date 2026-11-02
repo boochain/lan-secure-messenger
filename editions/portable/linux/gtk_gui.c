@@ -438,7 +438,7 @@ static GtkCssProvider *theme_cp;
 static void load_theme_css(void){ /* shared block + the light or dark block of the one CSS file */
     gboolean dark=FALSE; const char *sh=strstr(LSM_THEME_CSS,"/*@shared*/"), *li=strstr(LSM_THEME_CSS,"/*@light*/"), *dk=strstr(LSM_THEME_CSS,"/*@dark*/"); GString *g;
     g_object_get(gtk_settings_get_default(),"gtk-application-prefer-dark-theme",&dark,NULL);
-    g=g_string_new(NULL); g_string_append_len(g,sh,li-sh); if(dark) g_string_append(g,dk); else g_string_append_len(g,li,dk-li);
+    g=g_string_new(NULL); g_string_append_len(g,sh,li-sh); g_string_append(g,"\n/* light transitions (#5): hover / selection fade, no layout motion */ button, row, list row { transition: background-color 120ms ease-out, color 120ms ease-out, box-shadow 120ms ease-out; }\n"); if(dark) g_string_append(g,dk); else g_string_append_len(g,li,dk-li);
     if(!theme_cp){ theme_cp=gtk_css_provider_new(); gtk_style_context_add_provider_for_screen(gdk_screen_get_default(),GTK_STYLE_PROVIDER(theme_cp),GTK_STYLE_PROVIDER_PRIORITY_APPLICATION); }
     gtk_css_provider_load_from_data(theme_cp,g->str,-1,NULL); g_string_free(g,TRUE); }
 static void on_dark_changed(GObject *o, GParamSpec *ps, gpointer p){ (void)o; (void)ps; (void)p; load_theme_css(); }
