@@ -70,7 +70,7 @@ for th in a.themes.split(","):
         from PIL import Image as _I; _I.new("RGB", (300, 200), (30, 160, 90)).save(f"{W}/截图.png")
         # attach shortcut (composer row is [表情][附件] input [发送])
         x("key", "ctrl+o"); time.sleep(2); shot(f"{th}-09-file-chooser")
-        x("key", "ctrl+l"); time.sleep(0.5); x("type", "--delay", "20", f"{W}/截图.png"); time.sleep(0.5); x("key", "Return"); time.sleep(5)
+        x("key", "ctrl+l"); time.sleep(0.5); x("type", "--delay", "20", f"{W}/截图.png"); time.sleep(0.5); x("key", "Return"); time.sleep(2); x("key", "Return"); time.sleep(2); x("key", "Return"); time.sleep(3)  # chooser may need 2 Enters (completion); then Enter = 发送 in the size/ETA preview; extra Enter on an empty composer is a no-op
     shot(f"{th}-02-chat")
     # add-by-IP dialog (header + button)
     x("mousemove", "--window", wid, "22", "20"); x("click", "1"); time.sleep(1.2); x("type", "192.168.1.20"); time.sleep(0.5); shot(f"{th}-04-add-by-ip"); x("key", "Escape"); time.sleep(0.8)

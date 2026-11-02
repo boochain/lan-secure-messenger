@@ -38,7 +38,7 @@ static void ux_row_extras(GtkWidget *row, GtkWidget *meta, const lsm_msg *m){ co
         gtk_widget_set_halign(h,GTK_ALIGN_END); gtk_box_pack_start(GTK_BOX(row),h,FALSE,FALSE,0); } }
 
 /* ---- file preview before sending */
-static int ux_confirm_file(const char *path){ char pv[700]; lsm_file_preview(C,cur_conv,path,pv,sizeof pv); return confirm("发送文件？",pv,"发送"); }
+static int ux_confirm_file(const char *path){ char pv[700]; lsm_file_preview(C,cur_conv,path,pv,sizeof pv); confirm_send_mode=1; return confirm("发送文件？",pv,"发送"); }
 
 /* ---- Ctrl+K quick switcher */
 typedef struct { GtkWidget *d,*e,*lb; } ux_qs;
