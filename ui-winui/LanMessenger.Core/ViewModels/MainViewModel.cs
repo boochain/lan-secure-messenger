@@ -729,7 +729,7 @@ public partial class MainViewModel : ObservableObject
             {
                 // v0.6.1: always show name, size and ETA (LAN vs relay) before sending, like GTK / XP / Android
                 var pv = await _client!.FilePreviewAsync(c.Id, p);
-                if (!await _platform.ConfirmAsync("发送文件？", pv.Text)) continue;
+                if (!await _platform.ConfirmSendAsync("发送文件？", pv.Text)) continue;
             }
             catch { /* size probe best-effort */ }
             await SafeCall(x => x.SendFileAsync(c.Id, p));

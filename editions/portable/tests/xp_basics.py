@@ -76,7 +76,8 @@ A.cmd(f"add 127.0.0.1:{port}")
 xfp = wait(lambda: next((l.split()[1] for l in A.cmd("peers") if l.startswith("PEER") and "Bill" in l), None), 30); A.cmd(f"trust {xfp[:12]}")
 A.cmd(f"send {xfp[:12]} 基础检查：请回复。"); time.sleep(2)
 click(200, 160); time.sleep(1.5)
-# X8 drag & drop: the test hook hands the path to the real WM_DROPFILES handler once a chat is open -> the peer gets the file offer
+# X8 drag & drop: the test hook hands the path to the real WM_DROPFILES handler once a chat is open -> size/ETA confirm (Enter = 确定) -> the peer gets the file offer
+time.sleep(2.5); xdo("key", "Return")
 off = wait(lambda: next((l for l in A.lines if "xp-drop-测试文件.txt" in l), None), 20)
 check(bool(off), f"X8 a dropped file (WM_DROPFILES, shell HDROP) is offered to the open chat ({(off or '')[:70]!r})")
 # X1 Esc closes dialogs: Ctrl+N prompt, 设置 > 中转服务器 dialog

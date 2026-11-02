@@ -24,6 +24,8 @@ public interface IPlatform
     void RevealInFolder(string path);
     /// <summary>Modal yes/no. Returns true when the user confirms.</summary>
     Task<bool> ConfirmAsync(string title, string message);
+    /// <summary>v0.6.1 file-send preview (primary = 发送, Enter sends). Defaults to ConfirmAsync.</summary>
+    Task<bool> ConfirmSendAsync(string title, string message) => ConfirmAsync(title, message);
     void CopyToClipboard(string text);
     void ShowToast(string title, string body, string conversationId);
     bool IsWindowActive { get; }
