@@ -148,6 +148,7 @@ public partial class MessageItem : ObservableObject
     [ObservableProperty] private string _timeText = "";
     [ObservableProperty] private string _statusText = "";
     [ObservableProperty] private bool _isFailed;
+    [ObservableProperty] private bool _canResend;
     [ObservableProperty] private bool _isFile;
     [ObservableProperty] private bool _isText;
     [ObservableProperty] private bool _isImage;
@@ -225,6 +226,7 @@ public partial class MessageItem : ObservableObject
         };
         IsFile = m.Kind == MsgKind.File && m.File != null;
         IsText = m.Kind == MsgKind.Text;
+        CanResend = IsOutgoing && IsFailed && !m.Recalled && m.Poll == null && (IsText || (IsFile && !string.IsNullOrEmpty(m.File!.Path)));
         if (m.File != null)
         {
             FileName = m.File.Name;

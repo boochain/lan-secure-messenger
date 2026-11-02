@@ -263,7 +263,7 @@
                                     <TextBlock Text="对方不在自动发现列表时，输入对方电脑的 IP（可带端口）。" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" />
                                     <Grid ColumnSpacing="6">
                                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                        <TextBox x:Name="AddPeerBox" PlaceholderText="如 192.168.1.20" Text="{x:Bind VM.AddPeerAddress, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" KeyDown="AddPeer_KeyDown" />
+                                        <TextBox x:Name="AddPeerBox" PlaceholderText="如 192.168.1.20 或 lsm://add?… 链接" Text="{x:Bind VM.AddPeerAddress, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" KeyDown="AddPeer_KeyDown" />
                                         <Button Grid.Column="1" Content="添加" Style="{StaticResource AccentButtonStyle}" Command="{x:Bind VM.AddPeerCommand}" />
                                     </Grid>
                                 </StackPanel>
@@ -404,6 +404,9 @@
                                 <MenuFlyoutItem Text="消息历史…" Click="History_Click">
                                     <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE81C;" /></MenuFlyoutItem.Icon>
                                     <MenuFlyoutItem.KeyboardAccelerators><KeyboardAccelerator Modifiers="Control,Shift" Key="F" /></MenuFlyoutItem.KeyboardAccelerators>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem Text="我的二维码 / 添加链接…" Click="MyQr_Click">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xED14;" /></MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
                                 <MenuFlyoutItem Text="发起投票…" Click="NewPoll_Click">
                                     <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE9D2;" /></MenuFlyoutItem.Icon>
