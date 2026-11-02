@@ -770,6 +770,26 @@ impl Engine {
     /// Re-offer every outbound transfer still waiting on a peer that is online.
     /// Covers a lost FileOffer after direct↔relay switch (rust↔rust mid-transfer).
     pub(crate) fn resend_pending_offers(&mut self) {
+        // Stall watchdog (rust<->rust direct->relay race): a resumable outbound transfer that is Active on a link
+        // that no longer carries it (no receiver progress for STALL) goes back to Offered and is re-offered on the
+        // current link; the receiver answers FileResume from its partial offset (or interrupts its stale recv task).
+        let stalled: Vec<Uuid> = self
+            .transfers
+            .values()
+            .filter(|t| t.direction == Direction::Out && is_stalled(t.state, t.resumable, t.rate_mark.0.elapsed()) && self.conns.contains_key(&t.peer_fp))
+            .map(|t| t.id)
+            .collect();
+        for tid in stalled {
+            if let Some(t) = self.transfers.get_mut(&tid) {
+                tracing::info!(%tid, at = t.transferred, "outbound transfer stalled: re-offering to resume");
+                t.state = TransferState::Offered;
+                t.credit = None;
+                t.cancel.store(true, Ordering::Relaxed);
+                t.cancel = Arc::new(AtomicBool::new(false));
+                t.rate_mark = (Instant::now(), t.transferred);
+            }
+            self.emit_transfer(tid, true);
+        }
         let fps: Vec<String> = self
             .conns
             .keys()
@@ -1345,5 +1365,24 @@ mod reoffer_tests {
         assert_eq!(reoffer_action(TransferState::Offered, true, false, true, false), ReofferAction::Accept);
         assert_eq!(reoffer_action(TransferState::Done, true, false, true, false), ReofferAction::Complete);
         assert_eq!(reoffer_action(TransferState::Offered, false, false, true, false), ReofferAction::Ignore);
+    }
+}
+
+const STALL: Duration = Duration::from_secs(20);
+
+/// Outbound transfer counts as stalled when it is Active, resumable and no receiver progress arrived for STALL.
+pub(crate) fn is_stalled(state: TransferState, resumable: bool, since_progress: Duration) -> bool {
+    state == TransferState::Active && resumable && since_progress >= STALL
+}
+
+#[cfg(test)]
+mod stall_tests {
+    use super::*;
+    #[test]
+    fn stalled_active_resumable_transfer_is_reoffered() {
+        assert!(is_stalled(TransferState::Active, true, Duration::from_secs(25)));
+        assert!(!is_stalled(TransferState::Active, true, Duration::from_secs(5)));
+        assert!(!is_stalled(TransferState::Active, false, Duration::from_secs(60))); // old peer: no resume
+        assert!(!is_stalled(TransferState::Offered, true, Duration::from_secs(60)));
     }
 }
