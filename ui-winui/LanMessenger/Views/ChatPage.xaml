@@ -500,6 +500,7 @@
             <Grid Grid.Row="1" VerticalAlignment="Bottom" Padding="12,6" ColumnSpacing="8" Background="{ThemeResource LsmListBackgroundBrush}" BorderBrush="{ThemeResource LsmDividerBrush}" BorderThickness="0,1,0,0"
                   Visibility="{x:Bind VM.HasReplyBar, Mode=OneWay}">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <Grid.Transitions><TransitionCollection><EntranceThemeTransition FromVerticalOffset="8" IsStaggeringEnabled="False" /></TransitionCollection></Grid.Transitions><!-- #5 light transition -->
                 <Border Width="3" CornerRadius="1" Background="{ThemeResource AccentTextFillColorPrimaryBrush}" />
                 <StackPanel Grid.Column="1">
                     <TextBlock Text="{x:Bind VM.ReplyBarTitle, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />

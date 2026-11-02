@@ -132,11 +132,12 @@ static void menu_open_cb(GtkMenuItem *i, gpointer p){ (void)i; open_path_default
 static void menu_reveal_cb(GtkMenuItem *i, gpointer p){ (void)i; reveal_path((const char*)p); }
 static gboolean file_click_cb(GtkWidget *w, GdkEventButton *ev, gpointer p){ (void)w; if(ev->type==GDK_BUTTON_PRESS && ev->button==1){ open_path_default((const char*)p); return TRUE; } return FALSE; }
 /* destructive actions are confirmed; the destructive button is styled and Cancel is the default */
-static int confirm(const char *title, const char *body, const char *ok){
+static int confirm_send_mode; /* one call: non-destructive, Enter = ok (file-send preview) */
+static int confirm(const char *title, const char *body, const char *ok){ int sm=confirm_send_mode; confirm_send_mode=0;
     GtkWidget *d=gtk_message_dialog_new(GTK_WINDOW(win),GTK_DIALOG_MODAL|GTK_DIALOG_DESTROY_WITH_PARENT,GTK_MESSAGE_QUESTION,GTK_BUTTONS_NONE,"%s",title), *b; int r;
     gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(d),"%s",body); gtk_dialog_add_button(GTK_DIALOG(d),"取消",GTK_RESPONSE_CANCEL);
-    b=gtk_dialog_add_button(GTK_DIALOG(d),ok,GTK_RESPONSE_OK); gtk_style_context_add_class(gtk_widget_get_style_context(b),"destructive-action");
-    gtk_dialog_set_default_response(GTK_DIALOG(d),GTK_RESPONSE_CANCEL); gtk_window_set_title(GTK_WINDOW(d),"局域网安全通讯");
+    b=gtk_dialog_add_button(GTK_DIALOG(d),ok,GTK_RESPONSE_OK); gtk_style_context_add_class(gtk_widget_get_style_context(b),sm?"suggested-action":"destructive-action");
+    gtk_dialog_set_default_response(GTK_DIALOG(d),sm?GTK_RESPONSE_OK:GTK_RESPONSE_CANCEL); gtk_window_set_title(GTK_WINDOW(d),"局域网安全通讯");
     r=gtk_dialog_run(GTK_DIALOG(d)); gtk_widget_destroy(d); return r==GTK_RESPONSE_OK; }
 static void refresh_chat(void);
 static char jump_id[40]; static gboolean jump_later(gpointer p);
@@ -437,7 +438,7 @@ static GtkCssProvider *theme_cp;
 static void load_theme_css(void){ /* shared block + the light or dark block of the one CSS file */
     gboolean dark=FALSE; const char *sh=strstr(LSM_THEME_CSS,"/*@shared*/"), *li=strstr(LSM_THEME_CSS,"/*@light*/"), *dk=strstr(LSM_THEME_CSS,"/*@dark*/"); GString *g;
     g_object_get(gtk_settings_get_default(),"gtk-application-prefer-dark-theme",&dark,NULL);
-    g=g_string_new(NULL); g_string_append_len(g,sh,li-sh); if(dark) g_string_append(g,dk); else g_string_append_len(g,li,dk-li);
+    g=g_string_new(NULL); g_string_append_len(g,sh,li-sh); g_string_append(g,"\n/* light transitions (#5): hover / selection fade, no layout motion */ button, row, list row { transition: background-color 120ms ease-out, color 120ms ease-out, box-shadow 120ms ease-out; }\n"); if(dark) g_string_append(g,dk); else g_string_append_len(g,li,dk-li);
     if(!theme_cp){ theme_cp=gtk_css_provider_new(); gtk_style_context_add_provider_for_screen(gdk_screen_get_default(),GTK_STYLE_PROVIDER(theme_cp),GTK_STYLE_PROVIDER_PRIORITY_APPLICATION); }
     gtk_css_provider_load_from_data(theme_cp,g->str,-1,NULL); g_string_free(g,TRUE); }
 static void on_dark_changed(GObject *o, GParamSpec *ps, gpointer p){ (void)o; (void)ps; (void)p; load_theme_css(); }

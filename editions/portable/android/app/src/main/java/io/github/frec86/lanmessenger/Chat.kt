@@ -221,7 +221,12 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
                 }
             }
         }
-        (editing ?: replyTo)?.let { m -> ReplyBar(m, editing != null) { if (editing != null) input = ""; editing = null; replyTo = null } }
+        // #5 light transition: reply / edit bar slides + fades (keeps the last message while leaving)
+        val barMsg = editing ?: replyTo; var lastBar by remember { mutableStateOf<Pair<Msg, Boolean>?>(null) }; if (barMsg != null) lastBar = barMsg to (editing != null)
+        androidx.compose.animation.AnimatedVisibility(barMsg != null, enter = androidx.compose.animation.expandVertically(androidx.compose.animation.core.tween(150)) + androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(150)),
+            exit = androidx.compose.animation.shrinkVertically(androidx.compose.animation.core.tween(120)) + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(120))) {
+            lastBar?.let { (m, ed) -> ReplyBar(m, ed) { if (editing != null) input = ""; editing = null; replyTo = null } }
+        }
         /* composer: [field · attach · mic] (send) */
         Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(8.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.weight(1f).heightIn(min = 48.dp).ifThen(!isDark()) { shadow(1.dp, RoundedCornerShape(24.dp)) }.clip(RoundedCornerShape(24.dp)).background(p.field).padding(horizontal = 4.dp),
