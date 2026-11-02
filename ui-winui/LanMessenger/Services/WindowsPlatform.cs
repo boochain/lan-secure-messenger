@@ -84,6 +84,18 @@ public sealed class WindowsPlatform : IPlatform
     }
 
     
+    public async Task<bool> ConfirmSendAsync(string title, string message)
+    {
+        if (Environment.GetEnvironmentVariable("LSM_UI_SMOKE") is { Length: > 0 }) return true; // UI smoke drives drops / pastes unattended
+        var dlg = ThemeService.Prepare(new Microsoft.UI.Xaml.Controls.ContentDialog
+        {
+            Title = title, Content = message, PrimaryButtonText = "发送", CloseButtonText = "取消",
+            DefaultButton = Microsoft.UI.Xaml.Controls.ContentDialogButton.Primary, XamlRoot = Window?.Content?.XamlRoot
+        });
+        if (dlg.XamlRoot == null) return false;
+        return await dlg.ShowAsync() == Microsoft.UI.Xaml.Controls.ContentDialogResult.Primary;
+    }
+
     public async Task<bool> ConfirmAsync(string title, string message)
     {
         var dlg = ThemeService.Prepare(new Microsoft.UI.Xaml.Controls.ContentDialog

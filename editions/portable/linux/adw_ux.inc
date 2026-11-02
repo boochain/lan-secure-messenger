@@ -34,7 +34,7 @@ static void ux_fail_bar(GtkWidget *bub, const lsm_msg *m){ GtkWidget *h,*l; /* l
 
 /* file size + ETA before sending */
 static void ux_send_now(gpointer p){ char err[256]=""; if(lsm_send_file(C,cur_conv,(const char*)p,err)) info("无法发送文件",err); chat_dirty=1; }
-static void ux_confirm_file(const char *path){ char pv[700]; lsm_file_preview(C,cur_conv,path,pv,sizeof pv); confirm("发送文件？",pv,"发送",0,ux_send_now,g_strdup(path),g_free); }
+static void ux_confirm_file(const char *path){ char pv[700]; lsm_file_preview(C,cur_conv,path,pv,sizeof pv); confirm_default_ok=1; confirm("发送文件？",pv,"发送",0,ux_send_now,g_strdup(path),g_free); }
 
 /* Ctrl+K quick switcher */
 static GtkWidget *ux_qs_e,*ux_qs_lb; static AdwDialog *ux_qs_d;

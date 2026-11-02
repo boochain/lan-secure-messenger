@@ -76,17 +76,19 @@ static int peer_muted(const char *fp){ lsm_contact *k; int n,i,m=0; lsm_lock(C);
 typedef void (*confirm_cb)(gpointer data);
 typedef struct { confirm_cb cb; gpointer data; GDestroyNotify free; } confirm_t;
 static void confirm_resp(GObject *d, const char *resp, gpointer p){ confirm_t *c=p; (void)d; if(!strcmp(resp,"ok")) c->cb(c->data); if(c->free) c->free(c->data); g_free(c); }
+static int confirm_default_ok; /* set for one call: Enter = ok (file-send preview, like Telegram) */
 static void confirm(const char *heading, const char *body, const char *ok, int destructive, confirm_cb cb, gpointer data, GDestroyNotify fr){
+    const char *defr=confirm_default_ok && !destructive ? "ok" : "cancel"; confirm_default_ok=0;
     confirm_t *c=g_new0(confirm_t,1); c->cb=cb; c->data=data; c->free=fr;
 #if ADW_CHECK_VERSION(1, 5, 0)
     AdwDialog *d=adw_alert_dialog_new(heading,body); adw_alert_dialog_add_responses(ADW_ALERT_DIALOG(d),"cancel","取消","ok",ok,NULL);
     if(destructive) adw_alert_dialog_set_response_appearance(ADW_ALERT_DIALOG(d),"ok",ADW_RESPONSE_DESTRUCTIVE); else adw_alert_dialog_set_response_appearance(ADW_ALERT_DIALOG(d),"ok",ADW_RESPONSE_SUGGESTED);
-    adw_alert_dialog_set_default_response(ADW_ALERT_DIALOG(d),"cancel"); adw_alert_dialog_set_close_response(ADW_ALERT_DIALOG(d),"cancel");
+    adw_alert_dialog_set_default_response(ADW_ALERT_DIALOG(d),defr); adw_alert_dialog_set_close_response(ADW_ALERT_DIALOG(d),"cancel");
     g_signal_connect(d,"response",G_CALLBACK(confirm_resp),c); adw_dialog_present(d,win);
 #else
     GtkWidget *d=adw_message_dialog_new(GTK_WINDOW(win),heading,body); adw_message_dialog_add_responses(ADW_MESSAGE_DIALOG(d),"cancel","取消","ok",ok,NULL);
     adw_message_dialog_set_response_appearance(ADW_MESSAGE_DIALOG(d),"ok",destructive?ADW_RESPONSE_DESTRUCTIVE:ADW_RESPONSE_SUGGESTED);
-    adw_message_dialog_set_default_response(ADW_MESSAGE_DIALOG(d),"cancel"); adw_message_dialog_set_close_response(ADW_MESSAGE_DIALOG(d),"cancel");
+    adw_message_dialog_set_default_response(ADW_MESSAGE_DIALOG(d),defr); adw_message_dialog_set_close_response(ADW_MESSAGE_DIALOG(d),"cancel");
     g_signal_connect(d,"response",G_CALLBACK(confirm_resp),c); gtk_window_present(GTK_WINDOW(d));
 #endif
 }

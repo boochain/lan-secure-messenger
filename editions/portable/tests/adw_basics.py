@@ -75,7 +75,8 @@ g = start({"LSM_WINDOW_SIZE": "1024x694", "LSM_UI_TEST_DROP": dropf}); fp = (g.w
 A.cmd(f"add 127.0.0.1:{port}"); time.sleep(2); A.cmd(f"trust {fp[:12]}"); A.cmd(f"send {fp[:12]} 基础检查：请回复。"); time.sleep(3)
 B = peer("b", "陈静", port + 4); B.cmd(f"add 127.0.0.1:{port}"); time.sleep(2); B.cmd(f"trust {fp[:12]}"); B.cmd(f"send {fp[:12]} 第二个会话。"); time.sleep(3)
 xdo("mousemove", "130", "220", "click", "1"); time.sleep(1)   # second row = 王工 (陈静 wrote last)
-# G8 drag & drop: the test hook emits "drop" on the chat's GtkDropTarget with a GdkFileList -> the open chat's peer gets the offer
+# G8 drag & drop: the test hook emits "drop" on the chat's GtkDropTarget with a GdkFileList -> size/ETA confirm (Enter = 发送) -> the open chat's peer gets the offer
+time.sleep(2); xdo("key", "Return")
 off = wait(lambda: next((l for l in A.lines if "拖放测试.txt" in l), None), 20)
 check(bool(off), f"G8 a dropped file (GtkDropTarget drop, GdkFileList) is offered to the open chat ({(off or '')[:60]!r})")
 # G1 Esc closes: Ctrl+I details dialog, Ctrl+N add popover

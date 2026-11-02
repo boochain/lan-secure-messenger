@@ -21,6 +21,9 @@
  *   Software.
  */
 
+#ifndef NDEBUG
+#define NDEBUG /* no assert(): msvcrt _assert/_wassert is missing on XP x64 (xp_import_check) */
+#endif
 #include <assert.h>
 #include <limits.h>
 #include <stdlib.h>
