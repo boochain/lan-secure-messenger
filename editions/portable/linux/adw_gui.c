@@ -182,7 +182,8 @@ static void bubble_action(GtkButton *b, gpointer p){ const char *what=g_object_g
     if(!strcmp(what,"copy")) gdk_clipboard_set_text(gtk_widget_get_clipboard(win),(const char*)p);
     else if(!strcmp(what,"delete")) confirm("删除这条消息？","只会从本机删除，对方仍保留这条消息。此操作无法撤销。","删除",1,delete_do,g_strdup((const char*)p),g_free);
     else if(!strcmp(what,"open")) open_path_safe((const char*)p); }
-static void pop_closed(GtkPopover *p, gpointer d){ (void)d; g_idle_add_once((GSourceOnceFunc)gtk_widget_unparent,p); }
+static int bubble_menu_open; /* a rebuild would unparent the open message menu (receipts / typing arrive while it is up): defer it */
+static void pop_closed(GtkPopover *p, gpointer d){ (void)d; bubble_menu_open=0; g_idle_add_once((GSourceOnceFunc)gtk_widget_unparent,p); }
 static GtkWidget *pop_btn(GtkWidget *box, const char *text, const char *what, const char *arg){ GtkWidget *b=gtk_button_new_with_mnemonic(text); cls(b,"flat"); gtk_widget_set_halign(gtk_button_get_child(GTK_BUTTON(b)),GTK_ALIGN_START);
     g_object_set_data(G_OBJECT(b),"what",(gpointer)what); g_signal_connect_data(b,"clicked",G_CALLBACK(bubble_action),g_strdup(arg),(GClosureNotify)g_free,0); gtk_box_append(GTK_BOX(box),b); return b; }
 /* right-click / long-press on a bubble: 复制 · 打开 · 删除这条消息（仅本机）… */
@@ -194,7 +195,7 @@ static void bubble_menu(GtkWidget *bub, double x, double y){
     ux_menu(box,id); v062_menu(box,id); p1_menu(box,id); p2_menu(box,id);
     pop_btn(box,"删除这条消息（仅本机）(_D)…","delete",id);
     gtk_popover_set_child(GTK_POPOVER(pop),box); gtk_widget_set_parent(pop,bub); gtk_popover_set_pointing_to(GTK_POPOVER(pop),&r); gtk_popover_set_has_arrow(GTK_POPOVER(pop),FALSE);
-    cls(pop,"menu"); g_signal_connect(pop,"closed",G_CALLBACK(pop_closed),NULL); gtk_popover_popup(GTK_POPOVER(pop)); if(gtk_widget_get_first_child(box)) gtk_widget_grab_focus(gtk_widget_get_first_child(box)); /* Enter = first command (复制), not the emoji row */ if(getenv("LSM_UI_TEST")) g_timeout_add(300,test_log_later,(gpointer)"msg-menu"); }
+    cls(pop,"menu"); g_signal_connect(pop,"closed",G_CALLBACK(pop_closed),NULL); gtk_popover_popup(GTK_POPOVER(pop)); bubble_menu_open=1; if(gtk_widget_get_first_child(box)) gtk_widget_grab_focus(gtk_widget_get_first_child(box)); /* Enter = first command (复制), not the emoji row */ if(getenv("LSM_UI_TEST")) g_timeout_add(300,test_log_later,(gpointer)"msg-menu"); }
 static void bubble_rclick(GtkGestureClick *g, int n, double x, double y, gpointer p){ (void)n; (void)p; bubble_menu(gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(g)),x,y); }
 static void bubble_lpress(GtkGestureLongPress *g, double x, double y, gpointer p){ (void)p; bubble_menu(gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(g)),x,y); }
 static gboolean imgv_key(GtkEventControllerKey *k, guint kv, guint c, GdkModifierType m, gpointer w){ (void)k;(void)c;(void)m; if(kv==GDK_KEY_Escape){ gtk_window_destroy(GTK_WINDOW(w)); return TRUE; } return FALSE; }
@@ -568,7 +569,7 @@ static gboolean poll_cb(gpointer p){ char e[4096]; (void)p;
         else if(!strncmp(e,"log\t",4)){ if(getenv("LSM_VERBOSE")) fprintf(stderr,"%s\n",e); }
         else { list_dirty=1; chat_dirty=1; } }
     if(list_dirty){ list_dirty=0; refresh_list(); }
-    if(chat_dirty){ chat_dirty=0; refresh_chat(); if(cur_conv[0]&&gtk_window_is_active(GTK_WINDOW(win))&&lsm_mark_read(C,cur_conv)) list_dirty=1; }
+    if(chat_dirty && !bubble_menu_open){ chat_dirty=0; refresh_chat(); if(cur_conv[0]&&gtk_window_is_active(GTK_WINDOW(win))&&lsm_mark_read(C,cur_conv)) list_dirty=1; }
     return G_SOURCE_CONTINUE; }
 
 /* ---------------------------------------------------------------- theme */
