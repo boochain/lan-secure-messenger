@@ -301,7 +301,7 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <Grid Grid.Column="0" Width="48" Height="48">
-                                <Ellipse Fill="{x:Bind local:B.Avatar(AvatarIndex), Mode=OneWay}" />
+                                <Ellipse Tag="lsm-icon" Fill="{x:Bind local:B.Avatar(AvatarIndex), Mode=OneWay}" />
                                 <TextBlock Text="{x:Bind Initial, Mode=OneWay}" HorizontalAlignment="Center" VerticalAlignment="Center"
                                            Foreground="White" FontSize="16" FontWeight="SemiBold" />
                                 <Ellipse Tag="lsm-icon" Width="14" Height="14" HorizontalAlignment="Right" VerticalAlignment="Bottom" Fill="{ThemeResource StatusOnlineBrush}"
@@ -370,7 +370,7 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <Grid Width="40" Height="40" Tapped="Details_Tapped" ToolTipService.ToolTip="联系人详情">
-                    <Ellipse Fill="{x:Bind local:B.Avatar(VM.SelectedConversation.AvatarIndex), Mode=OneWay}" />
+                    <Ellipse Tag="lsm-icon" Fill="{x:Bind local:B.Avatar(VM.SelectedConversation.AvatarIndex), Mode=OneWay}" />
                     <TextBlock Text="{x:Bind VM.SelectedConversation.Initial, Mode=OneWay}" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="White" FontWeight="SemiBold" />
                     <Ellipse Tag="lsm-icon" Width="12" Height="12" HorizontalAlignment="Right" VerticalAlignment="Bottom" Fill="{ThemeResource StatusOnlineBrush}"
                              Stroke="{ThemeResource LsmListBackgroundBrush}" StrokeThickness="2" Visibility="{x:Bind VM.SelectedConversation.ShowOnlineDot, Mode=OneWay}" />
