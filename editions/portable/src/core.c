@@ -699,6 +699,21 @@ static void send_offer(lsm_core *c, lsm_transfer *t){ buf_t f={0}; uint8_t mid[1
 static void resend_offers(lsm_core *c, const char *fp){ int i; for(i=0;i<c->nxfers;i++){ lsm_transfer *t=&c->xfers[i]; if(t->out && t->state==TS_OFFERED && !strcmp(t->peer_fp,fp)) send_offer(c,t); } }
 static void send_tid_frame(lsm_core *c, const char *fp, uint32_t v, const uint8_t tid[16], const char *reason){ buf_t f={0}; b_u32(&f,v); b_uuid(&f,tid); if(reason) b_str(&f,reason); send_to_fp(c,fp,&f); b_free(&f); }
 static void file_complete(lsm_core *c, lsm_transfer *t, int ok, const char *err){ buf_t f={0}; b_u32(&f,11); b_uuid(&f,t->tid); b_u8(&f,(uint8_t)ok); b_str(&f,err); send_to_fp(c,t->peer_fp,&f); b_free(&f); }
+static int take_forced_sha_fail(void){
+    static int left=-1;
+    if(left<0){ const char *e=getenv("LSM_FORCE_SHA_FAIL"); left=e?atoi(e):0; if(left<0) left=0; }
+    if(left<=0) return 0;
+    left--; return 1; }
+static int truncate_part(FILE *f, uint64_t n){
+#ifdef _WIN32
+    HANDLE h=(HANDLE)_get_osfhandle(_fileno(f));
+    LARGE_INTEGER li; li.QuadPart=(__int64)n;
+    if(h==(HANDLE)-1 || !SetFilePointerEx(h,li,NULL,FILE_BEGIN) || !SetEndOfFile(h)) return -1;
+    return 0;
+#else
+    return ftruncate(fileno(f), (off_t)n)==0 ? 0 : -1;
+#endif
+}
 static void file_progress(lsm_core *c, lsm_transfer *t){ buf_t f={0}; b_u32(&f,9); b_uuid(&f,t->tid); b_u64(&f,t->transferred); send_to_fp(c,t->peer_fp,&f); b_free(&f); }
 static int accept_transfer(lsm_core *c, lsm_transfer *t){ char part[600]; conn *k=conn_by_fp(c,t->peer_fp); umkdir(c->dl_dir);
     t->resumable=(k && (k->rcaps&CAP_RESUME))?1:0; t->accepted=1; t->error[0]=0;
@@ -718,7 +733,7 @@ static int accept_transfer(lsm_core *c, lsm_transfer *t){ char part[600]; conn *
     rs_sidecar_write(c,t); send_tid_frame(c,t->peer_fp,6,t->tid,NULL); emit_xfer(c,t); return 0; }
 /* sender pump: called every loop iteration; respects 16 MiB credit window and socket backlog */
 static void pump_files(lsm_core *c){ int i; uint8_t *buf=NULL;
-    for(i=0;i<c->nxfers;i++){ lsm_transfer *t=&c->xfers[i]; conn *k; if(!t->out || t->state!=TS_ACTIVE || !t->fp_handle) continue;
+    for(i=0;i<c->nxfers;i++){ lsm_transfer *t=&c->xfers[i]; conn *k; if(!t->out || t->state!=TS_ACTIVE || !t->fp_handle || t->hashing) continue;
         k=conn_by_fp(c,t->peer_fp); if(!k){ continue; }
         while(t->transferred<t->size && k->out.n<2*1024*1024 && t->transferred-t->credit<=WINDOW){
             size_t want=(size_t)((t->size-t->transferred)<CHUNK?(t->size-t->transferred):CHUNK), n; buf_t f={0};
@@ -754,8 +769,9 @@ static void on_file_frame(lsm_core *c, const char *fp, uint32_t v, rd_t *r){
             notice(c,"\xe5\xb7\xb2\xe6\x8b\x92\xe6\x94\xb6\xe6\x9d\xa5\xe8\x87\xaa\xe6\x9c\xaa\xe4\xbf\xa1\xe4\xbb\xbb\xe8\x81\x94\xe7\xb3\xbb\xe4\xba\xba %s \xe7\x9a\x84\xe6\x96\x87\xe4\xbb\xb6 %s",peer_name(c,fp),nm); emit_xfer(c,t); }
         else if(accept_transfer(c,t)){ t->state=TS_REJECTED; send_tid_frame(c,fp,7,tid,"cannot create file"); emit_xfer(c,t); }
         break; }
-    case 6: case 16: if(t && t->out && t->state==TS_OFFERED && !t->hashing){ uint64_t off=0; uint8_t pre[32]; conn *k=conn_by_fp(c,fp);
+    case 6: case 16: if(t && t->out && !t->hashing && (t->state==TS_OFFERED || (v==16 && t->state==TS_ACTIVE))){ uint64_t off=0; uint8_t pre[32]; conn *k=conn_by_fp(c,fp);
         if(v==16){ off=r_u64(r); r_fix(r,pre,32); if(r->err) break; }
+        if(t->fp_handle){ fclose((FILE*)t->fp_handle); t->fp_handle=NULL; }
         t->fp_handle=ufopen(t->path,"rb"); if(!t->fp_handle){ xfer_fail(c,t,TS_FAILED,"open failed"); send_tid_frame(c,fp,12,tid,"open failed"); break; }
         t->resumable=(k && (k->rcaps&CAP_RESUME))?1:0; t->error[0]=0;
         if(off>0 && off<=t->size){ rs_start_prefix(t,off,pre); break; } /* resume.c: chunked prefix check, then ACTIVE at off or 0 */
@@ -776,7 +792,31 @@ static void on_file_frame(lsm_core *c, const char *fp, uint32_t v, rd_t *r){
     case 10: if(t && !t->out && t->state==TS_ACTIVE){ uint8_t h[32]; char fin[600];
         t->state=TS_VERIFYING; fclose((FILE*)t->fp_handle); t->fp_handle=NULL; sha256_final((sha256_ctx*)t->hash,h); free(t->hash); t->hash=NULL;
         if(t->transferred!=t->size){ char e[128]; snprintf(e,sizeof e,"\xe6\x96\x87\xe4\xbb\xb6\xe4\xb8\x8d\xe5\xae\x8c\xe6\x95\xb4 (%llu/%llu)",(unsigned long long)t->transferred,(unsigned long long)t->size); t->state=TS_ACTIVE; xfer_fail(c,t,TS_FAILED,e); file_complete(c,t,0,e); break; }
-        if(memcmp(h,t->sha,32)){ t->state=TS_ACTIVE; xfer_fail(c,t,TS_FAILED,"SHA-256 \xe6\xa0\xa1\xe9\xaa\x8c\xe5\xa4\xb1\xe8\xb4\xa5"); file_complete(c,t,0,"SHA-256 \xe6\xa0\xa1\xe9\xaa\x8c\xe5\xa4\xb1\xe8\xb4\xa5"); break; }
+        if(memcmp(h,t->sha,32) || take_forced_sha_fail()){
+            t->sha_retries++;
+            if(t->sha_retries>3){ t->state=TS_ACTIVE; xfer_fail(c,t,TS_FAILED,"SHA-256 \xe6\xa0\xa1\xe9\xaa\x8c\xe5\xa4\xb1\xe8\xb4\xa5"); file_complete(c,t,0,"SHA-256 \xe6\xa0\xa1\xe9\xaa\x8c\xe5\xa4\xb1\xe8\xb4\xa5"); break; }
+            {
+                uint64_t good=t->resumed_from; uint8_t pre[32], buf[8192]; FILE *pf; uint64_t left;
+                pf=ufopen(t->part, good?"r+b":"wb");
+                if(!pf){ t->state=TS_ACTIVE; xfer_fail(c,t,TS_FAILED,"SHA-256 \xe6\xa0\xa1\xe9\xaa\x8c\xe5\xa4\xb1\xe8\xb4\xa5"); file_complete(c,t,0,"SHA-256 \xe6\xa0\xa1\xe9\xaa\x8c\xe5\xa4\xb1\xe8\xb4\xa5"); break; }
+                if(good){
+                    if(truncate_part(pf,good)){ fclose(pf); t->state=TS_ACTIVE; xfer_fail(c,t,TS_FAILED,"SHA-256 \xe6\xa0\xa1\xe9\xaa\x8c\xe5\xa4\xb1\xe8\xb4\xa5"); file_complete(c,t,0,"SHA-256 \xe6\xa0\xa1\xe9\xaa\x8c\xe5\xa4\xb1\xe8\xb4\xa5"); break; }
+                    fseek(pf,0,SEEK_SET);
+                    t->hash=xmalloc(sizeof(sha256_ctx)); sha256_init((sha256_ctx*)t->hash);
+                    left=good;
+                    while(left){ size_t w=left>sizeof buf?sizeof buf:(size_t)left; size_t n=fread(buf,1,w,pf); if(!n) break; sha256_update((sha256_ctx*)t->hash,buf,n); left-=n; }
+                    if(left){ fclose(pf); free(t->hash); t->hash=NULL; t->state=TS_ACTIVE; xfer_fail(c,t,TS_FAILED,"SHA-256 \xe6\xa0\xa1\xe9\xaa\x8c\xe5\xa4\xb1\xe8\xb4\xa5"); file_complete(c,t,0,"SHA-256 \xe6\xa0\xa1\xe9\xaa\x8c\xe5\xa4\xb1\xe8\xb4\xa5"); break; }
+                    { sha256_ctx tmp=*(sha256_ctx*)t->hash; sha256_final(&tmp,pre); }
+                    fseek(pf,0,SEEK_END);
+                } else {
+                    sha256(pre,"",0);
+                    t->hash=xmalloc(sizeof(sha256_ctx)); sha256_init((sha256_ctx*)t->hash);
+                }
+                t->fp_handle=pf; t->transferred=good; t->last_prog=good; t->state=TS_ACTIVE; t->error[0]=0;
+                { buf_t f={0}; b_u32(&f,16); b_uuid(&f,t->tid); b_u64(&f,good); b_put(&f,pre,32); send_to_fp(c,t->peer_fp,&f); b_free(&f); }
+                emit_xfer(c,t);
+            }
+            break; }
         unique_path(c,t->name,fin,sizeof fin);
         if(urename(t->part,fin)){ t->state=TS_ACTIVE; xfer_fail(c,t,TS_FAILED,"rename failed"); file_complete(c,t,0,"rename failed"); break; }
         scpy(t->path,fin,sizeof t->path); t->state=TS_DONE; rs_sidecar_remove(t);

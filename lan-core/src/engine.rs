@@ -22,7 +22,7 @@ mod p2;
 mod v062;
 mod ux;
 mod files;
-pub use files::sanitize_filename;
+pub use files::{sanitize_filename, test_force_sha_fail};
 mod relay;
 pub use relay::RelayConfig;
 use files::{TransferEvt, TransferRt};

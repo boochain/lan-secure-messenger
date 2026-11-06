@@ -80,7 +80,11 @@ for th in a.themes.split(","):
     x("mousemove", "--window", wid, "150", "128"); x("click", "1"); time.sleep(2)
     if True:
         # GUI -> v0.5 file via the core (drag-drop path is the same lsm_send_file call), image preview on the sender side too
-        from PIL import Image as _I; _I.new("RGB", (300, 200), (30, 160, 90)).save(f"{W}/截图.png")
+        shot_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "ui-photo.jpg")
+        if os.path.isfile(shot_src):
+            shutil.copyfile(shot_src, f"{W}/截图.png")
+        else:
+            from PIL import Image as _I; _I.new("RGB", (300, 200), (30, 160, 90)).save(f"{W}/截图.png")
         # attach shortcut (composer row is [表情][附件] input [发送])
         x("key", "ctrl+o"); time.sleep(2); shot(f"{th}-09-file-chooser")
         x("key", "ctrl+l"); time.sleep(0.5); x("type", "--delay", "20", f"{W}/截图.png"); time.sleep(0.5); x("key", "Return"); time.sleep(2)

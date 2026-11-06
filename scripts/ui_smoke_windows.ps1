@@ -99,6 +99,8 @@ foreach ($theme in "light", "dark") {
   & $M --ipc $bobPipe send-file $FA $Img
   $pdf = Join-Path $dir "需求说明-v2.pdf"; [IO.File]::WriteAllBytes($pdf, (New-Object byte[] 1363149))
   & $M --ipc $bobPipe send-file $FA $pdf   # incoming file -> file card with the download button
+  $sticker = "ui-winui\LanMessenger\Assets\stickers\thumb.png"
+  if (Test-Path $sticker) { & $M --ipc $bobPipe send-file $FA $sticker }   # incoming Twemoji sticker in chat
   & $M --ipc $bobPipe group-create "CI 测试群" $FA
   $relayPeers = @()
   if ($Relay) {

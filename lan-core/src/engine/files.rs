@@ -7,12 +7,33 @@
 
 use super::*;
 use sha2::{Digest, Sha256};
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::watch;
 
 const WINDOW: u64 = 16 * 1024 * 1024;
 const PROGRESS_EVERY: u64 = 256 * 1024;
+
+/// Remaining forced SHA-256 failures (test hook). Each End that takes one decrements the counter.
+static SHA_FAIL_LEFT: AtomicU32 = AtomicU32::new(0);
+
+/// Force the next `n` receiver checksums to fail so auto-retry (max 3) can be exercised.
+pub fn test_force_sha_fail(n: u32) {
+    SHA_FAIL_LEFT.store(n, Ordering::SeqCst);
+}
+
+fn take_forced_sha_fail() -> bool {
+    let mut cur = SHA_FAIL_LEFT.load(Ordering::SeqCst);
+    loop {
+        if cur == 0 {
+            return false;
+        }
+        match SHA_FAIL_LEFT.compare_exchange_weak(cur, cur - 1, Ordering::SeqCst, Ordering::SeqCst) {
+            Ok(_) => return true,
+            Err(v) => cur = v,
+        }
+    }
+}
 
 /// Partial download kept across a link loss (CAP_RESUME peers).
 pub(crate) struct ResumePart {
@@ -257,6 +278,13 @@ async fn recv_task(
         let _ = tx.send(EngineMsg::Transfer(TransferEvt::RecvDone { tid, result: Err(e) }));
     };
     let (mut written, mut h) = resume.unwrap_or((0, Sha256::new()));
+    let last_good = written;
+    let prefix_hasher = h.clone();
+    let prefix_sha: [u8; 32] = {
+        let tmp = prefix_hasher.clone();
+        tmp.finalize().into()
+    };
+    let mut sha_retries: u32 = 0;
     let opened = if written > 0 {
         match tokio::fs::OpenOptions::new().write(true).open(&part).await {
             Ok(f) => f.set_len(written).await.map(|_| f),
@@ -308,14 +336,35 @@ async fn recv_task(
             RecvCmd::End => {
                 let _ = f.flush().await;
                 let _ = f.sync_all().await;
-                drop(f);
                 if written != size {
+                    drop(f);
                     return fail(format!("文件不完整 ({written}/{size})"), &part);
                 }
                 let got: [u8; 32] = h.finalize().into();
-                if got != sha {
-                    return fail("SHA-256 校验失败".into(), &part);
+                if got != sha || take_forced_sha_fail() {
+                    sha_retries += 1;
+                    if sha_retries > 3 {
+                        drop(f);
+                        return fail("SHA-256 校验失败".into(), &part);
+                    }
+                    tracing::warn!(%tid, sha_retries, last_good, "SHA-256 mismatch: retrying from last good offset");
+                    use tokio::io::AsyncSeekExt;
+                    if f.set_len(last_good).await.is_err() || f.seek(std::io::SeekFrom::Start(last_good)).await.is_err() {
+                        drop(f);
+                        return fail("SHA-256 校验失败".into(), &part);
+                    }
+                    written = last_good;
+                    last = last_good;
+                    h = prefix_hasher.clone();
+                    let _ = ctrl.send(Frame::FileResume {
+                        tid,
+                        offset: last_good,
+                        prefix_sha256: prefix_sha,
+                    });
+                    let _ = tx.send(EngineMsg::Transfer(TransferEvt::RecvProgress { tid, written: last_good }));
+                    continue;
                 }
+                drop(f);
                 let fin = unique_path(&dir, &name);
                 if let Err(e) = std::fs::rename(&part, &fin) {
                     return fail(format!("重命名失败: {e}"), &part);
@@ -1111,8 +1160,15 @@ impl Engine {
                 let bulk = conn.bulk.clone();
                 let can_resume = conn.caps & crate::wire::CAP_RESUME != 0;
                 let t = self.transfers.get_mut(&tid).unwrap();
-                if t.state != TransferState::Offered {
+                // Offered = first accept / reconnect resume. Verifying = receiver SHA mismatch retry (FileResume after FileEnd).
+                if t.state == TransferState::Verifying && resume.is_none() {
                     return;
+                }
+                if t.state != TransferState::Offered && t.state != TransferState::Verifying {
+                    return;
+                }
+                if t.state == TransferState::Verifying {
+                    t.cancel = Arc::new(AtomicBool::new(false));
                 }
                 t.state = TransferState::Active;
                 t.resumable = can_resume;

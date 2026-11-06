@@ -69,5 +69,13 @@
             </NavigationView.FooterMenuItems>
             <Frame x:Name="ContentFrame" />
         </NavigationView>
+
+        <!-- Fullscreen image viewer: covers title bar + nav + content, like GTK/XP. Esc/关闭 to exit. -->
+        <Grid x:Name="ImageViewerHost"
+              Grid.Row="0" Grid.RowSpan="3"
+              Visibility="Collapsed"
+              HorizontalAlignment="Stretch"
+              VerticalAlignment="Stretch"
+              Background="Black" />
     </Grid>
 </Window>

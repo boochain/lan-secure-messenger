@@ -38,6 +38,7 @@ public sealed partial class ChatPage : Page
         };
         AddAccel(VirtualKey.Escape, VirtualKeyModifiers.None, () =>
         {
+            if (ImageViewerOpen()) { CloseImageViewer(); return true; }
             if (SearchTip.IsOpen) { SearchTip.IsOpen = false; return true; }
             if (!string.IsNullOrEmpty(SearchBox.Text)) { SearchBox.Text = ""; Composer.Focus(FocusState.Keyboard); return true; }
             return false;   // let dialogs/flyouts handle Esc themselves
@@ -412,10 +413,23 @@ public sealed partial class ChatPage : Page
 
     private void OpenFile_Click(object sender, RoutedEventArgs e) => VM.OpenMessageFileCommand.Execute(ItemOf(sender));
     private void RevealFile_Click(object sender, RoutedEventArgs e) => VM.RevealMessageFileCommand.Execute(ItemOf(sender));
-    ContentDialog? _imgDlg;
     ScrollViewer? _imgSv;
     Image? _imgView;
     BitmapImage? _imgBmp;
+
+    Grid? ImageHost() => (App.MainWin?.Root as Grid)?.FindName("ImageViewerHost") as Grid;
+    bool ImageViewerOpen() => ImageHost() is { Visibility: Visibility.Visible };
+
+    void CloseImageViewer()
+    {
+        var host = ImageHost();
+        if (host != null)
+        {
+            host.Children.Clear();
+            host.Visibility = Visibility.Collapsed;
+        }
+        _imgSv = null; _imgView = null; _imgBmp = null;
+    }
 
     public bool SmokeOpenImageViewer()
     {
@@ -430,15 +444,13 @@ public sealed partial class ChatPage : Page
         var z = Math.Min(8f, Math.Max(2.5f, _imgSv.ZoomFactor * 2.5f));
         _imgSv.ChangeView(null, null, z);
     }
-    public void SmokeCloseImageViewer()
-    {
-        try { _imgDlg?.Hide(); } catch { }
-        _imgDlg = null; _imgSv = null; _imgView = null; _imgBmp = null;
-    }
+    public void SmokeCloseImageViewer() => CloseImageViewer();
 
     void ShowImageViewer(MessageItem m)
     {
         if (string.IsNullOrEmpty(m.FilePath) || !File.Exists(m.FilePath)) return;
+        var host = ImageHost();
+        if (host == null) return;
         _imgBmp = new BitmapImage(new Uri(m.FilePath));
         _imgView = new Image { Source = _imgBmp, Stretch = Stretch.Uniform };
         _imgSv = new ScrollViewer
@@ -480,22 +492,22 @@ public sealed partial class ChatPage : Page
         }));
         bar.Children.Add(Mk("+", () => { if (_imgSv != null) _imgSv.ChangeView(null, null, Math.Min(8f, _imgSv.ZoomFactor * 1.25f)); }));
         bar.Children.Add(Mk("−", () => { if (_imgSv != null) _imgSv.ChangeView(null, null, Math.Max(0.25f, _imgSv.ZoomFactor / 1.25f)); }));
-        var hint = new TextBlock { Text = "滚轮缩放  ·  拖动平移  ·  双击切换适应/1:1  ·  +/- 缩放", Foreground = new SolidColorBrush(Microsoft.UI.Colors.LightGray), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
+        bar.Children.Add(Mk("关闭", CloseImageViewer));
+        var hint = new TextBlock { Text = "滚轮缩放  ·  拖动平移  ·  双击切换适应/1:1  ·  +/- 缩放  ·  Esc 关闭", Foreground = new SolidColorBrush(Microsoft.UI.Colors.LightGray), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
         bar.Children.Add(hint);
-        var root = new Grid { Background = new SolidColorBrush(Microsoft.UI.Colors.Black), MinWidth = 640, MinHeight = 480 };
-        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        var overlay = new Grid { Background = new SolidColorBrush(Microsoft.UI.Colors.Black), HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Stretch, IsTabStop = true };
+        overlay.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        overlay.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         Grid.SetRow(_imgSv, 0); Grid.SetRow(bar, 1);
-        root.Children.Add(_imgSv); root.Children.Add(bar);
-        _imgDlg = Services.ThemeService.Prepare(new ContentDialog
+        overlay.Children.Add(_imgSv); overlay.Children.Add(bar);
+        overlay.KeyDown += (_, ev) =>
         {
-            XamlRoot = Content.XamlRoot,
-            Title = m.FileName,
-            Content = root,
-            CloseButtonText = "关闭",
-            DefaultButton = ContentDialogButton.Close,
-        });
-        _ = _imgDlg.ShowAsync();
+            if (ev.Key == VirtualKey.Escape) { CloseImageViewer(); ev.Handled = true; }
+        };
+        host.Children.Clear();
+        host.Children.Add(overlay);
+        host.Visibility = Visibility.Visible;
+        overlay.Focus(FocusState.Programmatic);
     }
 
     private void Image_Tapped(object sender, TappedRoutedEventArgs e)

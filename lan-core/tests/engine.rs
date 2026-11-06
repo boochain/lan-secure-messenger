@@ -229,6 +229,40 @@ async fn file_transfer_and_cancel() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn file_checksum_mismatch_retries() {
+    lan_core::engine::test_force_sha_fail(1);
+    let a = node("A", json!({})).await;
+    let b = node("B", json!({})).await;
+    a.call("add_peer", json!({"address": format!("127.0.0.1:{}", b.port().await)})).await;
+    both_online(&a, &b, 10).await;
+    let src = a.dir.path().join("retry.bin");
+    let data: Vec<u8> = (0..(256 * 1024 + 77)).map(|i| (i * 17 % 251) as u8).collect();
+    std::fs::write(&src, &data).unwrap();
+    let t = a.call("send_file", json!({"conversation": format!("dm:{}", b.fp), "path": src.display().to_string()})).await;
+    let tid = t["id"].as_str().unwrap().to_string();
+    wait("checksum retry succeeds", 30, || async {
+        a.snap().await["transfers"].as_array().unwrap().iter().any(|x| x["id"] == tid.as_str() && x["state"] == "done")
+    })
+    .await;
+    let bt = b.snap().await["transfers"].as_array().unwrap().iter().find(|x| x["id"] == tid.as_str()).cloned().unwrap();
+    assert_eq!(bt["state"], "done", "{bt}");
+    let got = std::fs::read(bt["path"].as_str().unwrap()).unwrap();
+    assert_eq!(got, data, "content mismatch after checksum retry");
+
+    lan_core::engine::test_force_sha_fail(4);
+    let src2 = a.dir.path().join("fail.bin");
+    std::fs::write(&src2, &data).unwrap();
+    let t2 = a.call("send_file", json!({"conversation": format!("dm:{}", b.fp), "path": src2.display().to_string()})).await;
+    let tid2 = t2["id"].as_str().unwrap().to_string();
+    wait("checksum retries exhausted", 30, || async {
+        let bf = b.snap().await["transfers"].as_array().unwrap().iter().any(|x| x["id"] == tid2.as_str() && x["state"] == "failed");
+        let af = a.snap().await["transfers"].as_array().unwrap().iter().any(|x| x["id"] == tid2.as_str() && x["state"] == "failed");
+        bf && af
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn groups_fanout_and_rekey() {
     let a = node("A", json!({})).await;
     let b = node("B", json!({})).await;

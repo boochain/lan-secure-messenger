@@ -101,6 +101,7 @@ typedef struct {
     int hashing;             /* internal: 1 sender prefix check, 2 receiver re-hash of a restored .part (chunked) */
     uint64_t hash_want, hash_done; void *hctx; uint8_t hpre[32]; int reoffer_pending;
     uint64_t rate_bps, rate_b0; int64_t rate_t0; /* runtime throughput sample (lsm_transfer_status) */
+    int sha_retries;         /* receiver: SHA-256 mismatches retried so far (max 3) */
 } lsm_transfer;
 
 typedef struct lsm_core lsm_core;
