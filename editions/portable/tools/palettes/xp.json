@@ -52,6 +52,7 @@
   },
   "dark": {
    "window": "#202020",
+   "viewer": "#000000",
    "list": "#262626",
    "chat": "#1E1E1E",
    "rowsel": "#1F3A5F",

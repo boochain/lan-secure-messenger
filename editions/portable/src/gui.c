@@ -532,10 +532,7 @@ static LRESULT CALLBACK ImgViewProc(HWND h, UINT m, WPARAM w, LPARAM l){
             dw=(int)(imgv_w*k); if(dw<1) dw=1; dh=(int)(imgv_h*k); if(dh<1) dh=1; x=(cw-dw)/2+imgv_offx; y=(ch-dh)/2+imgv_offy;
             { HDC mdc=CreateCompatibleDC(dc); HGDIOBJ ob=SelectObject(mdc,imgv_bm); SetStretchBltMode(dc,HALFTONE);
               StretchBlt(dc,x,y,dw,dh,mdc,0,0,imgv_w,imgv_h,SRCCOPY); SelectObject(mdc,ob); DeleteDC(mdc); } }
-        { RECT t=rc; t.top=t.bottom-scale_px(22);
-          /* Dark: window_bg (#202020) so the audited hint strip is on-palette.
-             Light keeps black (matches palette fg #000000). */
-          FillRect(dc,&t, (theme_mode==2 && brWin)? brWin : (HBRUSH)GetStockObject(BLACK_BRUSH));
+        { RECT t=rc; t.top=t.bottom-scale_px(22); FillRect(dc,&t,(HBRUSH)GetStockObject(BLACK_BRUSH));
           SetBkMode(dc,TRANSPARENT); SetTextColor(dc,RGB(220,220,220));
           DrawTextW(dc,L"滚轮缩放  ·  拖动平移  ·  双击切换适应/1:1  ·  +/- 缩放  ·  0 适应  ·  Esc 关闭",-1,&t,DT_CENTER|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX); }
         EndPaint(h,&ps); return 0; }
