@@ -576,7 +576,7 @@ public static class UiSmoke
             void Walk(DependencyObject d)
             {
                 if (d is UIElement ue && ue.Visibility != Visibility.Visible) return;
-                if (d is FrameworkElement fe && fe.Tag as string == "lsm-icon" && fe.ActualWidth > 0 && fe.ActualHeight > 0) icons.Add(Box(fe, 2));
+                if (d is FrameworkElement fe && (fe.Tag as string == "lsm-icon" || fe.Tag as string == "lsm-content") && fe.ActualWidth > 0 && fe.ActualHeight > 0) icons.Add(Box(fe, 2));
                 int n = VisualTreeHelper.GetChildrenCount(d);
                 for (int i = 0; i < n; i++) Walk(VisualTreeHelper.GetChild(d, i));
             }
@@ -587,6 +587,7 @@ public static class UiSmoke
                 var dlg = pop.Child as ContentDialog ?? FindDescendant<ContentDialog>(pop.Child);
                 if (dlg == null) continue;
                 if (FindNamed(dlg, "BackgroundElement") is FrameworkElement bg && bg.ActualWidth > 0) only = Box(bg, 0);
+                Walk(dlg); // dialog-internal tagged surfaces (image-viewer ScrollViewer, decorative icons)
             }
             var key = Path.GetFileName(file);
             if (only != null)

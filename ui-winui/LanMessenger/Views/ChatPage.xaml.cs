@@ -444,6 +444,7 @@ public sealed partial class ChatPage : Page
         _imgSv = new ScrollViewer
         {
             Content = _imgView,
+            Tag = "lsm-content",  // user image; zoom interpolates colours — colour-audit ignores this surface
             ZoomMode = ZoomMode.Enabled,
             MinZoomFactor = 0.25f,
             MaxZoomFactor = 8,
