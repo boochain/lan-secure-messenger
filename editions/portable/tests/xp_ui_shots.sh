@@ -41,8 +41,9 @@ for TH in light dark; do
     head -c 200000 /dev/urandom > "$T/示例文件.bin"; $M send-file "$FX" "$T/示例文件.bin" >/dev/null; sleep 3
     cp "$ROOT/stickers/thumb.png" "$T/thumb.png"
     convert -size 560x380 gradient:#3b4a7a-#d98a5b -fill "#f6d27a" -draw "circle 380,170 380,215" "$T/photo.png"
-    $M send-file "$FX" "$T/thumb.png" >/dev/null
-    $M send-file "$FX" "$T/photo.png" >/dev/null; sleep 4
+    cp "$T/photo.png" "$OUT/content-photo.png"
+    $M send-file "$FX" "$T/photo.png" >/dev/null
+    $M send-file "$FX" "$T/thumb.png" >/dev/null; sleep 4
     CL 150 160; sleep 1; xdotool type --delay 30 "OK, 收到 thanks"; xdotool key Return; sleep 2
   fi
   CL 150 160; sleep 1.5; shot "xp-$TH-02-chat"

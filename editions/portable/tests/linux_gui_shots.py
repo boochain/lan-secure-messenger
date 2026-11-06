@@ -48,7 +48,7 @@ for i in range(0, 640, 40): d.rectangle([i, 300 - i // 3, i + 30, 400], fill=(25
 d.ellipse([480, 40, 580, 140], fill=(255, 230, 120)); im.save(f"{W}/会议白板.png")
 open(f"{W}/季度报告.txt", "w", encoding="utf-8").write("季度报告\n" * 2000)
 for th in a.themes.split(","):
-    tenv = dict(env, LSM_THEME=th, LSM_INSTANCE=th)
+    tenv = dict(env, LSM_THEME=th, LSM_INSTANCE=th, LSM_UI_TEST="1")
     gui = bg([a.gui, "--data", f"{W}/gui", "--name", "李明的笔记本", "--port", "47330", "--disco-port", "47331", "--no-discovery"], env=tenv)
     time.sleep(4)
     def area(w):

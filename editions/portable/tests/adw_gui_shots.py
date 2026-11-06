@@ -158,7 +158,11 @@ for _ in range(60):
     time.sleep(0.5)
 time.sleep(1.5); shot("dialog-update-check", "light", g=g)
 upd = open(UPD, encoding="utf-8").read().strip() if os.path.exists(UPD) else "(no result)"
-check(upd.startswith("newer=0") and "已是最新版本" in upd and (not want or f"version={want} " in upd), f"update check up to date for {want or 'this build'}: {upd}")
+# Same policy as WinUI smoke: GitHub 403/rate-limit/network is not a version-gate failure.
+if any(k in upd.lower() for k in ("无法连接", "网络不可用", "未安装 curl", "403", "429", "rate limit", "timeout", "timed out")):
+    print("SKIP update check (GitHub unreachable):", upd, flush=True)
+else:
+    check(upd.startswith("newer=0") and "已是最新版本" in upd and (not want or f"version={want} " in upd), f"update check up to date for {want or 'this build'}: {upd}")
 xdo("key", "Escape"); time.sleep(0.3); xdo("key", "ctrl+q"); time.sleep(1); g.p.poll() is None and g.p.kill()
 import json; json.dump(ignore, open(f"{out}/audit_ignore.json", "w"), ensure_ascii=False, indent=1)
 compp and compp.kill(); xv.kill(); subprocess.run(["kill", env.get("DBUS_SESSION_BUS_PID", "0")])
