@@ -76,10 +76,10 @@ def hint_bar_ignore(png):
         return tuple(int(statistics.median([c[i] for c in cs])) for i in range(3))
     def dist(a, b):
         return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5
-    base = sig(h - 3); cut = max(1, h - 20)
+    base = sig(h - 3); cut = max(1, h - 48)
     for y in range(h - 4, max(0, h - 90), -1):
         if dist(sig(y), base) > 12:
-            cut = min(y + 2, h - 14); break
+            cut = min(y + 2, h - 40); break
     return [[0, 0, w, max(1, cut)]]
 for f in glob.glob(f"{out}/*.icons"):
     r = [[int(v) for v in l.split()[2].split(",")] for l in open(f, encoding="utf-8") if l.startswith("ICON ")]

@@ -349,10 +349,21 @@ public static class UiSmoke
         catch (Exception e) { Check(false, "W8 drop: " + e.Message); }
         try
         {   // W13: 删除（仅本机）… from a real right-click asks first; Esc (the default 取消) keeps the message
-            cp.ScrollMessagesToTopForSmoke();
-            await Task.Delay(800);
-            var row = Descendants(cp.SmokeMessageList).OfType<ListViewItem>()
-                .FirstOrDefault(i => (i.Content ?? i.DataContext) is MessageItem m && m.IsText && !m.IsSystem && i.ActualHeight > 0 && Center(i).Y > 0 && Center(i).Y < ((FrameworkElement)w.Content).ActualHeight);
+            var textMsg = App.VM.Messages.FirstOrDefault(m => m.IsText && !m.IsSystem);
+            if (textMsg == null) { Check(false, "W13: no text message in the conversation"); return; }
+            ListViewItem? row = null;
+            for (int attempt = 0; attempt < 10 && row == null; attempt++)
+            {
+                cp.SmokeMessageList.ScrollIntoView(textMsg, ScrollIntoViewAlignment.Leading);
+                cp.SmokeMessageList.UpdateLayout();
+                await Task.Delay(300);
+                row = Descendants(cp.SmokeMessageList).OfType<ListViewItem>()
+                    .FirstOrDefault(i => ReferenceEquals(i.Content ?? i.DataContext, textMsg) && i.ActualHeight > 0
+                        && Center(i).Y > 0 && Center(i).Y < ((FrameworkElement)w.Content).ActualHeight)
+                    ?? Descendants(cp.SmokeMessageList).OfType<ListViewItem>()
+                    .FirstOrDefault(i => (i.Content ?? i.DataContext) is MessageItem m && m.IsText && !m.IsSystem && i.ActualHeight > 0
+                        && Center(i).Y > 0 && Center(i).Y < ((FrameworkElement)w.Content).ActualHeight);
+            }
             if (row == null) { Check(false, "W13: no visible text message row"); return; }
             int count = App.VM.Messages.Count;
             await RightClickAsync(w, row);
