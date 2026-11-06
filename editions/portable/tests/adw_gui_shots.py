@@ -59,11 +59,22 @@ def popup_origin(w, h):
         ww, hh, x, y = map(int, m.groups())
         if abs(ww - w) <= 64 and abs(hh - h) <= 64 and (best is None or abs(ww - w) + abs(hh - h) < best[0]): best = (abs(ww - w) + abs(hh - h), x + (ww - w) // 2, y + (hh - h) // 2)
     return best[1:] if best else None
+def emoji_boxes(png):
+    """Colour-emoji reaction glyphs (and similar bitmap pictures) are not UI text."""
+    from PIL import Image; import numpy as np
+    try: import cv2
+    except ImportError: return []
+    a = np.asarray(Image.open(png).convert("RGB")).astype(int); r, g, b = a[..., 0], a[..., 1], a[..., 2]
+    m = ((r > 180) & (g > 80) & (g < 220) & (b < 100)).astype(np.uint8)
+    n, _, st, _ = cv2.connectedComponentsWithStats(m, connectivity=8)
+    return [[int(st[i, 0]) - 4, int(st[i, 1]) - 4, int(st[i, 2]) + 8, int(st[i, 3]) + 8] for i in range(1, n) if 16 <= st[i, cv2.CC_STAT_AREA] <= 8000]
 def shot(name, theme, size="1024x694", g=None):
     wid = subprocess.run(["xdotool", "search", "--onlyvisible", "--name", "局域网安全通讯"], env=env, capture_output=True, text=True).stdout.split()
     path = f"{out}/{name}-{theme}.png"
     subprocess.run(["import", "-window", "root", "-crop", size + "+0+0", "+repage", path], env=env)
     r = icon_rects(g.lines) if g else []
+    if "message-menu" in name:
+        r = list(r) + emoji_boxes(path)
     if r: ignore[os.path.basename(path)] = r; ignore["_reasons"][os.path.basename(path)] = "decorative icons only: trusted-identity shield (symbolic GtkImage) online dot (empty GtkBox; status is also spelled out as text) the colour-emoji reaction glyphs in the message menu (bitmap pictures; each button also has a tooltip) and the empty-state AdwStatusPage illustration (title + description carry the meaning); bounds reported by the app"
     print("shot", path, "windows", wid, flush=True); return path
 def shot_title(name, theme, title, g=None):
@@ -78,6 +89,10 @@ def shot_title(name, theme, title, g=None):
             gm[k] = int(v) if str(v).lstrip("-").isdigit() else v
         if gm.get("WIDTH"):
             subprocess.run(["import", "-window", "root", "-crop", f'{gm["WIDTH"]}x{gm["HEIGHT"]}+{gm["X"]}+{gm["Y"]}', "+repage", path], env=env)
+            if "image-viewer" in name:
+                # zoomed/scaled user-image pixels are not exact --content matches; audit the hint bar only
+                ignore[os.path.basename(path)] = [[0, 0, int(gm["WIDTH"]), max(1, int(gm["HEIGHT"]) - 32)]]
+                ignore["_reasons"][os.path.basename(path)] = "user-sent image in the viewer (fit or zoom interpolates colours away from the original file); the hint bar under the picture is still audited"
             print("shot", path, "title", title, "wid", wids[-1], flush=True)
             return path
     return shot(name, theme, g=g)

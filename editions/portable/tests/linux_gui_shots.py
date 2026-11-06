@@ -140,6 +140,13 @@ for th in a.themes.split(","):
     if os.path.exists(fc):
         # ignore the whole chooser overlay region (center of window)
         ign[f"{th}-09-file-chooser.png"] = [[250, 80, 600, 560]]
+    for kind in ("12-image-viewer", "13-image-viewer-zoom"):
+        vp = f"{a.out}/{th}-{kind}.png"
+        if os.path.exists(vp):
+            from PIL import Image as _Im
+            im = _Im.open(vp); w, h = im.size
+            ign[f"{th}-{kind}.png"] = [[0, 0, w, max(1, h - 32)]]
+            ign["_reasons"][f"{th}-{kind}.png"] = "user-sent image in the viewer (fit/zoom interpolates colours); the hint bar under the picture is still audited"
 json.dump(ign, open(ign_path, "w"), ensure_ascii=False, indent=1); print("wrote", ign_path, flush=True)
 
 # release gate: live update check (GitHub releases API) with this build's version must say "up to date"
