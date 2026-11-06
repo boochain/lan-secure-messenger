@@ -59,6 +59,28 @@ def popup_origin(w, h):
         ww, hh, x, y = map(int, m.groups())
         if abs(ww - w) <= 64 and abs(hh - h) <= 64 and (best is None or abs(ww - w) + abs(hh - h) < best[0]): best = (abs(ww - w) + abs(hh - h), x + (ww - w) // 2, y + (hh - h) // 2)
     return best[1:] if best else None
+def hint_bar_ignore(png):
+    """Ignore the picture (and matching window fill) above the viewer's bottom hint bar."""
+    from PIL import Image
+    import statistics
+    im = Image.open(png).convert("RGB")
+    w, h = im.size
+    pix = im.load()
+    def sig(y):
+        y = max(0, min(h - 1, y))
+        band = max(8, w // 6)
+        xs = list(range(0, band, 4)) + list(range(w - band, w, 4))
+        cs = [pix[x, y] for x in xs]
+        return tuple(int(statistics.median([c[i] for c in cs])) for i in range(3))
+    def dist(a, b):
+        return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5
+    base = sig(h - 3)  # skip a 1px window border on the last row
+    cut = max(1, h - 20)
+    for y in range(h - 4, max(0, h - 90), -1):
+        if dist(sig(y), base) > 12:
+            cut = min(y + 2, h - 14)
+            break
+    return [[0, 0, w, max(1, cut)]]
 def emoji_boxes(png):
     """Colour-emoji reaction glyphs (and similar bitmap pictures) are not UI text."""
     from PIL import Image; import numpy as np
@@ -99,7 +121,7 @@ def shot_title(name, theme, title, g=None):
             subprocess.run(["import", "-window", "root", "-crop", f'{gm["WIDTH"]}x{gm["HEIGHT"]}+{gm["X"]}+{gm["Y"]}', "+repage", path], env=env)
             if "image-viewer" in name:
                 # zoomed/scaled user-image pixels are not exact --content matches; audit the hint bar only
-                ignore[os.path.basename(path)] = [[0, 0, int(gm["WIDTH"]), max(1, int(gm["HEIGHT"]) - 32)]]
+                ignore[os.path.basename(path)] = hint_bar_ignore(path)
                 ignore["_reasons"][os.path.basename(path)] = "user-sent image in the viewer (fit or zoom interpolates colours away from the original file); the hint bar under the picture is still audited"
             print("shot", path, "title", title, "wid", wids[-1], flush=True)
             return path

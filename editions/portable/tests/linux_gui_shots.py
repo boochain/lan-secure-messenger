@@ -115,6 +115,28 @@ for th in a.themes.split(","):
     gui.terminate(); gui.wait(5); time.sleep(1)
 # Colour-emoji in chat (e.g. 📎) and modal dialogs: OCR reads emoji as low-contrast "text";
 # file-chooser is OS chrome + folder thumbnails. Record ignore rects for the colour audit.
+def hint_bar_ignore(png):
+    """Ignore the picture (and matching window fill) above the viewer's bottom hint bar."""
+    from PIL import Image
+    import statistics
+    im = Image.open(png).convert("RGB")
+    w, h = im.size
+    pix = im.load()
+    def sig(y):
+        y = max(0, min(h - 1, y))
+        band = max(8, w // 6)
+        xs = list(range(0, band, 4)) + list(range(w - band, w, 4))
+        cs = [pix[x, y] for x in xs]
+        return tuple(int(statistics.median([c[i] for c in cs])) for i in range(3))
+    def dist(a, b):
+        return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5
+    base = sig(h - 3)  # skip a 1px window border on the last row
+    cut = max(1, h - 20)
+    for y in range(h - 4, max(0, h - 90), -1):
+        if dist(sig(y), base) > 12:
+            cut = min(y + 2, h - 14)
+            break
+    return [[0, 0, w, max(1, cut)]]
 def emoji_boxes(png):
     from PIL import Image; import numpy as np
     try: import cv2
@@ -143,9 +165,7 @@ for th in a.themes.split(","):
     for kind in ("12-image-viewer", "13-image-viewer-zoom"):
         vp = f"{a.out}/{th}-{kind}.png"
         if os.path.exists(vp):
-            from PIL import Image as _Im
-            im = _Im.open(vp); w, h = im.size
-            ign[f"{th}-{kind}.png"] = [[0, 0, w, max(1, h - 32)]]
+            ign[f"{th}-{kind}.png"] = hint_bar_ignore(vp)
             ign["_reasons"][f"{th}-{kind}.png"] = "user-sent image in the viewer (fit/zoom interpolates colours); the hint bar under the picture is still audited"
 json.dump(ign, open(ign_path, "w"), ensure_ascii=False, indent=1); print("wrote", ign_path, flush=True)
 
