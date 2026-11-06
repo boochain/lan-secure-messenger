@@ -1,6 +1,10 @@
 package io.github.frec86.lanmessenger
 
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.key
@@ -424,11 +428,39 @@ fun ImageBubble(m: Msg, path: String, first: Boolean) {
         Box(Modifier.align(Alignment.BottomEnd).padding(8.dp)) { Meta(m, over = true) }
     }
     if (full) {
-        val big = remember(path) { decodeSampled(path, 2048) }
+        val big = remember(path) { decodeSampled(path, 4096) }
         Dialog(onDismissRequest = { full = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-            Box(Modifier.fillMaxSize().background(Color.Black).clickable { full = false }, contentAlignment = Alignment.Center) {
-                if (big != null) Image(big.asImageBitmap(), m.file, Modifier.fillMaxWidth().fillMaxHeight(), contentScale = ContentScale.Fit)
-                Text("点击或返回关闭", color = Color.White.copy(alpha = .7f), modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp), fontSize = 13.sp)
+            var scale by remember { mutableFloatStateOf(1f) }
+            var off by remember { mutableStateOf(Offset.Zero) }
+            val zoomState = rememberTransformableState { zoom, pan, _ ->
+                val ns = (scale * zoom).coerceIn(1f, 8f)
+                scale = ns
+                off = if (ns <= 1.01f) Offset.Zero else Offset(off.x + pan.x, off.y + pan.y)
+            }
+            Box(Modifier.fillMaxSize().background(Color.Black)) {
+                if (big != null) Image(
+                    big.asImageBitmap(), m.file,
+                    Modifier.fillMaxSize()
+                        .pointerInput(Unit) {
+                            detectTapGestures(onDoubleTap = {
+                                if (scale > 1.05f) { scale = 1f; off = Offset.Zero } else scale = 2.5f
+                            })
+                        }
+                        .transformable(zoomState)
+                        .graphicsLayer {
+                            scaleX = scale; scaleY = scale
+                            translationX = off.x; translationY = off.y
+                        },
+                    contentScale = ContentScale.Fit)
+                Row(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton({ scale = 1f; off = Offset.Zero }) { Text("适应", color = Color.White) }
+                    TextButton({ scale = 2.5f }) { Text("1:1", color = Color.White) }
+                    TextButton({ scale = (scale * 1.25f).coerceAtMost(8f) }, Modifier.semantics { contentDescription = "放大" }) { Text("+", color = Color.White) }
+                    TextButton({ scale = (scale / 1.25f).coerceAtLeast(1f); if (scale <= 1.01f) off = Offset.Zero }) { Text("−", color = Color.White) }
+                    TextButton({ full = false }, Modifier.semantics { contentDescription = "关闭图片" }) { Text("✕", color = Color.White) }
+                }
+                Text("双指缩放 · 双击放大 · 拖动查看  ·  点 ✕ 或返回关闭", color = Color.White.copy(alpha = .7f),
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp), fontSize = 13.sp)
             }
         }
     }

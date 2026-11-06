@@ -1,7 +1,7 @@
 //! File / image transfers over the peer's long-lived link.
 //!
 //! Sender: hash (sha256) → `FileOffer` (queued until the peer is online) → on `FileAccept`
-//! stream `FileChunk`s through the low-priority bulk queue with a 4 MiB credit window driven
+//! stream `FileChunk`s through the low-priority bulk queue with a 16 MiB credit window driven
 //! by the receiver's `FileProgress` → `FileEnd`. Receiver writes `<dir>/.<name>.<tid>.part`,
 //! verifies sha256, renames to a unique final name and answers `FileComplete`.
 
@@ -11,7 +11,7 @@ use std::sync::atomic::AtomicBool;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::watch;
 
-const WINDOW: u64 = 4 * 1024 * 1024;
+const WINDOW: u64 = 16 * 1024 * 1024;
 const PROGRESS_EVERY: u64 = 256 * 1024;
 
 /// Partial download kept across a link loss (CAP_RESUME peers).
@@ -217,7 +217,7 @@ async fn send_task(
             return Err("已取消".into());
         }
         while off.saturating_sub(*credit.borrow()) > WINDOW {
-            match tokio::time::timeout(Duration::from_secs(30), credit.changed()).await {
+            match tokio::time::timeout(Duration::from_secs(45), credit.changed()).await {
                 Ok(Ok(())) => {}
                 Ok(Err(_)) => return Err("已取消".into()),
                 Err(_) => return Err("对方长时间无响应".into()),
@@ -286,6 +286,10 @@ async fn recv_task(
                     written = 0;
                     last = 0;
                     h = Sha256::new();
+                }
+                if offset + data.len() as u64 <= written {
+                    // Duplicate (retransmit / resume overlap): already hashed and written.
+                    continue;
                 }
                 if offset != written || written + data.len() as u64 > size {
                     return fail("数据块顺序错误".into(), &part);

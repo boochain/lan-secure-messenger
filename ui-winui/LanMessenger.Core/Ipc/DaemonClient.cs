@@ -16,6 +16,8 @@ public sealed class DaemonClient
     public Task SubscribeAsync() => Call("subscribe");
     public Task<Snapshot> GetSnapshotAsync() => Call<Snapshot>("get_snapshot");
     public Task RefreshPeersAsync() => Call("refresh_peers");
+    public Task WakeAsync() => Call("wake");
+    public Task ReconnectServerAsync() => Call("reconnect_server");
     public Task<JsonElement> GetStorageAsync() => Call("get_storage");
     public Task<JsonElement> CleanupStorageAsync(bool failedPartials = true, bool orphans = true, bool finishedTransfers = false)
         => Call("cleanup_storage", new { failed_partials = failedPartials, orphans, finished_transfers = finishedTransfers });

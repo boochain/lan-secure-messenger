@@ -5,7 +5,7 @@
 #include <stddef.h>
 
 #ifndef LSM_APP_VERSION
-#define LSM_APP_VERSION "0.6.1" /* set by tools/set-version.py from VERSION */
+#define LSM_APP_VERSION "0.6.2" /* set by tools/set-version.py from VERSION */
 #endif
 #define FP_LEN 20 /* "XXXX-XXXX-XXXX-XXXX" + NUL */
 
@@ -141,6 +141,10 @@ int lsm_send_file(lsm_core *c, const char *conv, const char *path, char *err);
 int lsm_add_addr(lsm_core *c, const char *addr, char *err);
 /* Force UDP announce + interface re-enum + reset dial backoffs; emits peer events so UIs refresh. */
 int lsm_refresh_peers(lsm_core *c);
+/* Foreground / network-change: refresh LAN discovery + nudge a down relay (does not drop a live session). */
+int lsm_wake(lsm_core *c);
+/* User-facing: drop and immediately re-open the relay session, then refresh peers. */
+int lsm_reconnect_server(lsm_core *c);
 /* Fill UTF-8 lines: key\tvalue (bytes / paths). Returns bytes written. */
 size_t lsm_storage_info(lsm_core *c, char *buf, size_t n);
 /* orphans/failed partials + optional clear finished transfer rows. Returns files removed. */

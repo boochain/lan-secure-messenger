@@ -537,3 +537,62 @@ async fn ux_qr_add_resend_preview_route() {
     let ms = a.msgs(&conv_a).await;
     assert!(!ms.iter().any(|x| x["id"] == qid.as_str()) && ms.iter().any(|x| x["id"] == nid.as_str() && x["body"] == "稍后"));
 }
+
+/// Local throughput check (not run in CI): `cargo test -p lan-core --test engine file_transfer_1gb_direct -- --ignored --nocapture`
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore]
+async fn file_transfer_1gb_direct() {
+    use std::io::{Read, Write};
+    use sha2::{Digest, Sha256};
+    let n: u64 = std::env::var("LSM_XFER_BYTES").ok().and_then(|s| s.parse().ok()).unwrap_or(1024 * 1024 * 1024);
+    fn write_pat(p: &std::path::Path, n: u64) {
+        let mut f = std::fs::File::create(p).unwrap();
+        let mut buf = vec![0u8; 1024 * 1024];
+        let mut left = n;
+        let mut i = 0u64;
+        while left > 0 {
+            let m = left.min(buf.len() as u64) as usize;
+            for (j, b) in buf[..m].iter_mut().enumerate() {
+                *b = ((i.wrapping_mul(131) + j as u64) % 251) as u8;
+            }
+            f.write_all(&buf[..m]).unwrap();
+            left -= m as u64;
+            i += 1;
+        }
+    }
+    fn sha_file(p: &std::path::Path) -> String {
+        let mut h = Sha256::new();
+        let mut f = std::fs::File::open(p).unwrap();
+        let mut buf = vec![0u8; 1024 * 1024];
+        loop {
+            let n = f.read(&mut buf).unwrap();
+            if n == 0 { break; }
+            h.update(&buf[..n]);
+        }
+        format!("{:x}", h.finalize())
+    }
+    let a = node("A", json!({})).await;
+    let b = node("B", json!({})).await;
+    a.call("add_peer", json!({"address": format!("127.0.0.1:{}", b.port().await)})).await;
+    both_online(&a, &b, 15).await;
+    let src = a.dir.path().join("one-gib.bin");
+    write_pat(&src, n);
+    let want = sha_file(&src);
+    let t0 = Instant::now();
+    let t = a.call("send_file", json!({"conversation": format!("dm:{}", b.fp), "path": src.display().to_string()})).await;
+    let tid = t["id"].as_str().unwrap().to_string();
+    wait("large file sender done", 600, || async {
+        a.snap().await["transfers"].as_array().unwrap().iter().any(|x| x["id"] == tid.as_str() && x["state"] == "done")
+    }).await;
+    let elapsed = t0.elapsed();
+    let bt = b.snap().await["transfers"].as_array().unwrap().iter().find(|x| x["id"] == tid.as_str()).cloned().unwrap();
+    assert_eq!(bt["state"], "done", "{bt}");
+    let path = bt["path"].as_str().unwrap();
+    assert_eq!(std::fs::metadata(path).unwrap().len(), n);
+    assert_eq!(sha_file(std::path::Path::new(path)), want, "content mismatch");
+    let mbps = (n as f64 / 1_000_000.0) / elapsed.as_secs_f64();
+    println!(
+        "direct transfer {} bytes ok in {:.2}s ({:.1} MB/s, CHUNK={} WINDOW 16 MiB) tid={}",
+        n, elapsed.as_secs_f64(), mbps, lan_core::wire::CHUNK, tid
+    );
+}

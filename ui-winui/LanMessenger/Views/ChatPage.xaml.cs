@@ -412,24 +412,96 @@ public sealed partial class ChatPage : Page
 
     private void OpenFile_Click(object sender, RoutedEventArgs e) => VM.OpenMessageFileCommand.Execute(ItemOf(sender));
     private void RevealFile_Click(object sender, RoutedEventArgs e) => VM.RevealMessageFileCommand.Execute(ItemOf(sender));
-    private async void Image_Tapped(object sender, TappedRoutedEventArgs e)
+    ContentDialog? _imgDlg;
+    ScrollViewer? _imgSv;
+    Image? _imgView;
+    BitmapImage? _imgBmp;
+
+    public bool SmokeOpenImageViewer()
     {
-        e.Handled = true;
-        var m = ItemOf(sender);
-        if (m == null || string.IsNullOrEmpty(m.FilePath) || !System.IO.File.Exists(m.FilePath)) return;
-        // in-app fullscreen viewer (Esc / click closes); "在文件夹中显示" remains on the file card
-        var img = new Image { Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(m.FilePath)), Stretch = Stretch.Uniform, MaxWidth = 1200, MaxHeight = 800 };
-        var box = new Border { Background = new SolidColorBrush(Microsoft.UI.Colors.Black), Child = img, Padding = new Thickness(8) };
-        var dlg = new ContentDialog
+        var m = VM.Messages.FirstOrDefault(x => x.IsImage && !string.IsNullOrEmpty(x.FilePath) && File.Exists(x.FilePath));
+        if (m == null) return false;
+        ShowImageViewer(m);
+        return true;
+    }
+    public void SmokeZoomImageViewer()
+    {
+        if (_imgSv == null) return;
+        var z = Math.Min(8f, Math.Max(2.5f, _imgSv.ZoomFactor * 2.5f));
+        _imgSv.ChangeView(null, null, z);
+    }
+    public void SmokeCloseImageViewer()
+    {
+        try { _imgDlg?.Hide(); } catch { }
+        _imgDlg = null; _imgSv = null; _imgView = null; _imgBmp = null;
+    }
+
+    void ShowImageViewer(MessageItem m)
+    {
+        if (string.IsNullOrEmpty(m.FilePath) || !File.Exists(m.FilePath)) return;
+        _imgBmp = new BitmapImage(new Uri(m.FilePath));
+        _imgView = new Image { Source = _imgBmp, Stretch = Stretch.Uniform };
+        _imgSv = new ScrollViewer
+        {
+            Content = _imgView,
+            ZoomMode = ZoomMode.Enabled,
+            MinZoomFactor = 0.25f,
+            MaxZoomFactor = 8,
+            HorizontalScrollMode = ScrollMode.Enabled,
+            VerticalScrollMode = ScrollMode.Enabled,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Background = new SolidColorBrush(Microsoft.UI.Colors.Black),
+        };
+        _imgView.DoubleTapped += (_, ev) =>
+        {
+            ev.Handled = true;
+            if (_imgSv == null) return;
+            if (_imgSv.ZoomFactor > 1.05f || _imgSv.ZoomFactor < 0.95f) _imgSv.ChangeView(null, null, 1f);
+            else
+            {
+                float one = 2.5f;
+                if (_imgView.ActualWidth > 1 && _imgBmp?.PixelWidth > 0)
+                    one = Math.Max(1f, (float)(_imgBmp.PixelWidth / _imgView.ActualWidth));
+                _imgSv.ChangeView(null, null, Math.Min(8f, one));
+            }
+        };
+        var bar = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Spacing = 8, Padding = new Thickness(8) };
+        Button Mk(string t, Action a) { var b = new Button { Content = t }; b.Click += (_, __) => a(); return b; }
+        bar.Children.Add(Mk("适应", () => { _imgSv?.ChangeView(0, 0, 1f); }));
+        bar.Children.Add(Mk("1:1", () =>
+        {
+            if (_imgSv == null || _imgView == null) return;
+            float one = 2.5f;
+            if (_imgView.ActualWidth > 1 && _imgBmp?.PixelWidth > 0)
+                one = Math.Max(1f, (float)(_imgBmp.PixelWidth / _imgView.ActualWidth));
+            _imgSv.ChangeView(null, null, Math.Min(8f, one));
+        }));
+        bar.Children.Add(Mk("+", () => { if (_imgSv != null) _imgSv.ChangeView(null, null, Math.Min(8f, _imgSv.ZoomFactor * 1.25f)); }));
+        bar.Children.Add(Mk("−", () => { if (_imgSv != null) _imgSv.ChangeView(null, null, Math.Max(0.25f, _imgSv.ZoomFactor / 1.25f)); }));
+        var hint = new TextBlock { Text = "滚轮缩放  ·  拖动平移  ·  双击切换适应/1:1  ·  +/- 缩放", Foreground = new SolidColorBrush(Microsoft.UI.Colors.LightGray), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
+        bar.Children.Add(hint);
+        var root = new Grid { Background = new SolidColorBrush(Microsoft.UI.Colors.Black), MinWidth = 640, MinHeight = 480 };
+        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        Grid.SetRow(_imgSv, 0); Grid.SetRow(bar, 1);
+        root.Children.Add(_imgSv); root.Children.Add(bar);
+        _imgDlg = Services.ThemeService.Prepare(new ContentDialog
         {
             XamlRoot = Content.XamlRoot,
             Title = m.FileName,
-            Content = new ScrollViewer { Content = box, ZoomMode = ZoomMode.Enabled, MinZoomFactor = 0.5f, MaxZoomFactor = 4, HorizontalScrollMode = ScrollMode.Auto, VerticalScrollMode = ScrollMode.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Auto },
+            Content = root,
             CloseButtonText = "关闭",
             DefaultButton = ContentDialogButton.Close,
-        };
-        box.Tapped += (_, __) => { try { dlg.Hide(); } catch { } }; // click image closes (Esc via Close button)
-        try { await Services.ThemeService.Prepare(dlg).ShowAsync(); } catch { }
+        });
+        _ = _imgDlg.ShowAsync();
+    }
+
+    private void Image_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        e.Handled = true;
+        var m = ItemOf(sender);
+        if (m != null) ShowImageViewer(m);
     }
 
     private void Conversation_DragOver(object sender, DragEventArgs e)

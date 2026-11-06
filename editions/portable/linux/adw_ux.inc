@@ -34,7 +34,38 @@ static void ux_fail_bar(GtkWidget *bub, const lsm_msg *m){ GtkWidget *h,*l; /* l
 
 /* file size + ETA before sending */
 static void ux_send_now(gpointer p){ char err[256]=""; if(lsm_send_file(C,cur_conv,(const char*)p,err)) info("无法发送文件",err); chat_dirty=1; }
-static void ux_confirm_file(const char *path){ char pv[700]; lsm_file_preview(C,cur_conv,path,pv,sizeof pv); confirm_default_ok=1; confirm("发送文件？",pv,"发送",0,ux_send_now,g_strdup(path),g_free); }
+static int path_is_send_image(const char *path){ const char *b,*e; if(!path||!path[0]) return 0;
+    b=strrchr(path,'/'); b=b?b+1:path; if(strstr(path,"sticker")||strstr(b,"lsm-sticker")) return 0;
+    e=strrchr(b,'.'); if(!e) return 0; e++;
+    return !g_ascii_strcasecmp(e,"png")||!g_ascii_strcasecmp(e,"jpg")||!g_ascii_strcasecmp(e,"jpeg")||!g_ascii_strcasecmp(e,"bmp")||!g_ascii_strcasecmp(e,"webp"); }
+static int compress_image_file(const char *src, char *out, size_t n){
+    GError *er=NULL; GdkPixbuf *pb=gdk_pixbuf_new_from_file(src,&er); int w,h,ok; if(!pb){ if(er) g_error_free(er); return 0; }
+    w=gdk_pixbuf_get_width(pb); h=gdk_pixbuf_get_height(pb);
+    if(w>1920||h>1920){ double k=w>h?1920.0/w:1920.0/h; GdkPixbuf *sc=gdk_pixbuf_scale_simple(pb,(int)(w*k)<1?1:(int)(w*k),(int)(h*k)<1?1:(int)(h*k),GDK_INTERP_BILINEAR); g_object_unref(pb); pb=sc; }
+    snprintf(out,n,"%s/lsm-img-%d-%ld.jpg",g_get_tmp_dir(),(int)getpid(),(long)time(NULL));
+    ok=gdk_pixbuf_save(pb,out,"jpeg",NULL,"quality","80",NULL); g_object_unref(pb); return ok; }
+static void ux_img_resp(GObject *d, const char *resp, gpointer p){ char *path=p, tmp[600]; const char *sendp=path; (void)d;
+    if(!strcmp(resp,"ok")){ if(compress_image_file(path,tmp,sizeof tmp)) sendp=tmp; ux_send_now((gpointer)sendp); }
+    else if(!strcmp(resp,"original")) ux_send_now(path);
+    g_free(path); }
+static void ux_confirm_file(const char *path){
+    char pv[700], body[1400];
+    if(path_is_send_image(path)){
+        lsm_file_preview(C,cur_conv,path,pv,sizeof pv);
+        snprintf(body,sizeof body,"%s\n\n默认压缩后发送（最长边 1920 像素，JPEG 画质约 80，去掉拍摄信息）。",pv);
+#if ADW_CHECK_VERSION(1, 5, 0)
+        { AdwDialog *d=adw_alert_dialog_new("发送图片？",body); adw_alert_dialog_add_responses(ADW_ALERT_DIALOG(d),"cancel","取消","original","原图发送","ok","压缩发送",NULL);
+          adw_alert_dialog_set_response_appearance(ADW_ALERT_DIALOG(d),"ok",ADW_RESPONSE_SUGGESTED);
+          adw_alert_dialog_set_default_response(ADW_ALERT_DIALOG(d),"ok"); adw_alert_dialog_set_close_response(ADW_ALERT_DIALOG(d),"cancel");
+          g_signal_connect(d,"response",G_CALLBACK(ux_img_resp),g_strdup(path)); adw_dialog_present(d,win); }
+#else
+        { GtkWidget *d=adw_message_dialog_new(GTK_WINDOW(win),"发送图片？",body); adw_message_dialog_add_responses(ADW_MESSAGE_DIALOG(d),"cancel","取消","original","原图发送","ok","压缩发送",NULL);
+          adw_message_dialog_set_response_appearance(ADW_MESSAGE_DIALOG(d),"ok",ADW_RESPONSE_SUGGESTED);
+          adw_message_dialog_set_default_response(ADW_MESSAGE_DIALOG(d),"ok"); adw_message_dialog_set_close_response(ADW_MESSAGE_DIALOG(d),"cancel");
+          g_signal_connect(d,"response",G_CALLBACK(ux_img_resp),g_strdup(path)); gtk_window_present(GTK_WINDOW(d)); }
+#endif
+        return; }
+    lsm_file_preview(C,cur_conv,path,pv,sizeof pv); confirm_default_ok=1; confirm("发送文件？",pv,"发送",0,ux_send_now,g_strdup(path),g_free); }
 
 /* Ctrl+K quick switcher */
 static GtkWidget *ux_qs_e,*ux_qs_lb; static AdwDialog *ux_qs_d;

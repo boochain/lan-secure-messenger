@@ -52,6 +52,17 @@ class MainActivity : ComponentActivity() {
     private val pendingShare = mutableStateOf<List<Uri>>(emptyList())
     private val openConv = mutableStateOf<String?>(null)
     private val pendingText = mutableStateOf<String?>(null)
+    private var lastWake = 0L
+    private fun wakeQuiet() {
+        val now = System.currentTimeMillis()
+        if (now - lastWake < 2000L) return
+        lastWake = now
+        try { Native.wake() } catch (_: Throwable) {}
+    }
+    private val netCb = object : android.net.ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: android.net.Network) { wakeQuiet() }
+        override fun onLost(network: android.net.Network) { wakeQuiet() }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge(navigationBarStyle = androidx.activity.SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT))
@@ -63,12 +74,20 @@ class MainActivity : ComponentActivity() {
         setContent { AppTheme { App(pendingShare, openConv, pendingText) } }
         lifecycle.addObserver(LifecycleEventObserver { _, e ->
             when (e) {
-                Lifecycle.Event.ON_START, Lifecycle.Event.ON_RESUME -> Repo.appForeground = true
+                Lifecycle.Event.ON_START, Lifecycle.Event.ON_RESUME -> { Repo.appForeground = true; wakeQuiet() }
                 Lifecycle.Event.ON_STOP, Lifecycle.Event.ON_PAUSE -> Repo.appForeground = false
                 else -> {}
             }
         })
-
+        try {
+            val cm = getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+            if (Build.VERSION.SDK_INT >= 24) cm.registerDefaultNetworkCallback(netCb)
+            else @Suppress("DEPRECATION") cm.registerNetworkCallback(android.net.NetworkRequest.Builder().build(), netCb)
+        } catch (_: Throwable) {}
+    }
+    override fun onDestroy() {
+        try { (getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).unregisterNetworkCallback(netCb) } catch (_: Throwable) {}
+        super.onDestroy()
     }
     /** hardware keyboard: Ctrl+K quick switcher, Ctrl+Shift+F message history */
     override fun dispatchKeyEvent(ev: android.view.KeyEvent): Boolean {

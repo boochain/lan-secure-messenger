@@ -2,6 +2,7 @@ using System.Diagnostics;
 using LanMessenger.Core.ViewModels;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage.Pickers;
+using System.Runtime.InteropServices.WindowsRuntime;
 
 namespace LanMessenger.Services;
 
@@ -94,6 +95,61 @@ public sealed class WindowsPlatform : IPlatform
         });
         if (dlg.XamlRoot == null) return false;
         return await dlg.ShowAsync() == Microsoft.UI.Xaml.Controls.ContentDialogResult.Primary;
+    }
+
+    public async Task<int> ConfirmImageSendAsync(string title, string message)
+    {
+        if (Environment.GetEnvironmentVariable("LSM_UI_SMOKE") is { Length: > 0 }) return 1;
+        var dlg = ThemeService.Prepare(new Microsoft.UI.Xaml.Controls.ContentDialog
+        {
+            Title = title, Content = message,
+            PrimaryButtonText = "压缩发送", SecondaryButtonText = "原图发送", CloseButtonText = "取消",
+            DefaultButton = Microsoft.UI.Xaml.Controls.ContentDialogButton.Primary, XamlRoot = Window?.Content?.XamlRoot
+        });
+        if (dlg.XamlRoot == null) return 0;
+        var r = await dlg.ShowAsync();
+        if (r == Microsoft.UI.Xaml.Controls.ContentDialogResult.Primary) return 1;
+        if (r == Microsoft.UI.Xaml.Controls.ContentDialogResult.Secondary) return 2;
+        return 0;
+    }
+
+    public async Task<string?> CompressImageAsync(string path)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(path) || !File.Exists(path)) return null;
+            using var fs = File.OpenRead(path);
+            using var ras = fs.AsRandomAccessStream();
+            var dec = await Windows.Graphics.Imaging.BitmapDecoder.CreateAsync(ras);
+            double w = dec.PixelWidth, h = dec.PixelHeight, k = 1;
+            if (w > 1920 || h > 1920) k = Math.Min(1920 / w, 1920 / h);
+            var transform = new Windows.Graphics.Imaging.BitmapTransform
+            {
+                ScaledWidth = (uint)Math.Max(1, Math.Round(w * k)),
+                ScaledHeight = (uint)Math.Max(1, Math.Round(h * k)),
+                InterpolationMode = Windows.Graphics.Imaging.BitmapInterpolationMode.Fant
+            };
+            var sb = await dec.GetSoftwareBitmapAsync(
+                Windows.Graphics.Imaging.BitmapPixelFormat.Bgra8,
+                Windows.Graphics.Imaging.BitmapAlphaMode.Premultiplied,
+                transform,
+                Windows.Graphics.Imaging.ExifOrientationMode.RespectExifOrientation,
+                Windows.Graphics.Imaging.ColorManagementMode.DoNotColorManage);
+            var dest = Path.Combine(Path.GetTempPath(), $"lsm-img-{Environment.ProcessId}-{DateTime.Now.Ticks}.jpg");
+            using (var ofs = File.Create(dest))
+            using (var os = ofs.AsRandomAccessStream())
+            {
+                var props = new Windows.Graphics.Imaging.BitmapPropertySet
+                {
+                    { "ImageQuality", new Windows.Graphics.Imaging.BitmapTypedValue(0.80f, Windows.Foundation.PropertyType.Single) }
+                };
+                var enc = await Windows.Graphics.Imaging.BitmapEncoder.CreateAsync(Windows.Graphics.Imaging.BitmapEncoder.JpegEncoderId, os, props);
+                enc.SetSoftwareBitmap(sb);
+                await enc.FlushAsync();
+            }
+            return dest;
+        }
+        catch { return null; }
     }
 
     public async Task<bool> ConfirmAsync(string title, string message)

@@ -17,6 +17,16 @@ def shot(name):  # root grab cropped to the main window (dialogs/menus/tooltips 
             k, _, v = l.partition("="); g[k] = int(v) if v.isdigit() else v
     crop = ["-crop", f'{g["WIDTH"]}x{g["HEIGHT"]}+{g["X"]}+{g["Y"]}', "+repage"] if g else []
     subprocess.run(["import", "-window", "root"] + crop + [f"{a.out}/{name}.png"], env=env); print("shot", name, flush=True)
+def shot_title(name, title):
+    wids = x("search", "--onlyvisible", "--name", title).split()
+    if wids:
+        g = {}
+        for l in x("getwindowgeometry", "--shell", wids[-1]).splitlines():
+            k, _, v = l.partition("="); g[k] = int(v) if str(v).lstrip("-").isdigit() else v
+        if g.get("WIDTH"):
+            subprocess.run(["import", "-window", "root", "-crop", f'{g["WIDTH"]}x{g["HEIGHT"]}+{g["X"]}+{g["Y"]}', "+repage", f"{a.out}/{name}.png"], env=env)
+            print("shot", name, flush=True); return
+    shot(name)
 def lm(*c): return subprocess.run([f"{a.rust_bin}/lan-msg", "--ipc", f"{W}/r.sock"] + list(c), capture_output=True, text=True, timeout=30).stdout
 bg(["Xvfb", DISP, "-screen", "0", "1280x800x24", "-nolisten", "tcp"]); time.sleep(2)
 dbus = subprocess.run(["dbus-launch", "--sh-syntax"], env=env, capture_output=True, text=True).stdout
@@ -72,6 +82,11 @@ for th in a.themes.split(","):
         x("key", "ctrl+o"); time.sleep(2); shot(f"{th}-09-file-chooser")
         x("key", "ctrl+l"); time.sleep(0.5); x("type", "--delay", "20", f"{W}/截图.png"); time.sleep(0.5); x("key", "Return"); time.sleep(2); x("key", "Return"); time.sleep(2); x("key", "Return"); time.sleep(3)  # chooser may need 2 Enters (completion); then Enter = 发送 in the size/ETA preview; extra Enter on an empty composer is a no-op
     shot(f"{th}-02-chat")
+    x("key", "F6"); time.sleep(1.5); shot_title(f"{th}-12-image-viewer", "图片")
+    for _ in range(5):
+        x("key", "plus"); time.sleep(0.12)
+    time.sleep(0.6); shot_title(f"{th}-13-image-viewer-zoom", "图片")
+    x("key", "Escape"); time.sleep(0.5)
     # add-by-IP dialog (header + button)
     x("mousemove", "--window", wid, "22", "20"); x("click", "1"); time.sleep(1.2); x("type", "192.168.1.20"); time.sleep(0.5); shot(f"{th}-04-add-by-ip"); x("key", "Escape"); time.sleep(0.8)
     # error state: invalid address -> error dialog

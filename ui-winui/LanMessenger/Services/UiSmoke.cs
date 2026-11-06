@@ -92,6 +92,17 @@ public static class UiSmoke
                         // Popup layer: the "更多" menu flyout; then the top of the conversation (peer's first message).
                         if (w.CurrentPage is ChatPage cp)
                         {
+                            if (cp.SmokeOpenImageViewer())
+                            {
+                                await Task.Delay(1500);
+                                await ShotAsync(w, dir, "page-image-viewer", label, theme);
+                                cp.SmokeZoomImageViewer();
+                                await Task.Delay(800);
+                                await ShotAsync(w, dir, "page-image-viewer-zoom", label, theme);
+                                cp.SmokeCloseImageViewer();
+                                await Task.Delay(500);
+                            }
+                            else Fail("no image file to open in the fullscreen viewer");
                             cp.ScrollMessagesToTopForSmoke();
                             await Task.Delay(1500);
                             await ShotAsync(w, dir, "page-chat-dm-top", label, theme);

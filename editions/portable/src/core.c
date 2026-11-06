@@ -62,8 +62,8 @@ typedef int sock_t;
 #define CAP_PROFILE 2u /* 个人主页 sync (frame 17 Profile) */
 #define CAP_EXT 4u /* Payload::Ext (reply/react/edit/recall) */
 #define MY_CAPS (CAP_RESUME|CAP_PROFILE|CAP_EXT)
-#define CHUNK (32*1024)
-#define WINDOW (4ull*1024*1024)
+#define CHUNK (60*1024)
+#define WINDOW (16ull*1024*1024)
 #define PROGRESS_EVERY (256*1024)
 #define PING_EVERY 4000
 #define DEAD_AFTER 30000
@@ -716,18 +716,18 @@ static int accept_transfer(lsm_core *c, lsm_transfer *t){ char part[600]; conn *
     t->fp_handle=ufopen(part,"wb"); if(!t->fp_handle){ return -1; }
     free(t->hash); t->hash=xmalloc(sizeof(sha256_ctx)); sha256_init((sha256_ctx*)t->hash); t->transferred=0; t->resumed_from=0; t->last_prog=0; t->state=TS_ACTIVE;
     rs_sidecar_write(c,t); send_tid_frame(c,t->peer_fp,6,t->tid,NULL); emit_xfer(c,t); return 0; }
-/* sender pump: called every loop iteration; respects 4 MiB credit window and socket backlog */
+/* sender pump: called every loop iteration; respects 16 MiB credit window and socket backlog */
 static void pump_files(lsm_core *c){ int i; uint8_t *buf=NULL;
     for(i=0;i<c->nxfers;i++){ lsm_transfer *t=&c->xfers[i]; conn *k; if(!t->out || t->state!=TS_ACTIVE || !t->fp_handle) continue;
         k=conn_by_fp(c,t->peer_fp); if(!k){ continue; }
-        while(t->transferred<t->size && k->out.n<512*1024 && t->transferred-t->credit<=WINDOW){
+        while(t->transferred<t->size && k->out.n<2*1024*1024 && t->transferred-t->credit<=WINDOW){
             size_t want=(size_t)((t->size-t->transferred)<CHUNK?(t->size-t->transferred):CHUNK), n; buf_t f={0};
             if(!buf) buf=(uint8_t*)xmalloc(CHUNK);
             n=fread(buf,1,want,(FILE*)t->fp_handle);
             if(n==0){ xfer_fail(c,t,TS_FAILED,"\xe6\x96\x87\xe4\xbb\xb6\xe5\x9c\xa8\xe5\x8f\x91\xe9\x80\x81\xe8\xbf\x87\xe7\xa8\x8b\xe4\xb8\xad\xe8\xa2\xab\xe4\xbf\xae\xe6\x94\xb9\xe6\x88\x96\xe6\x88\xaa\xe6\x96\xad"); send_tid_frame(c,t->peer_fp,12,t->tid,"read error"); break; }
             b_u32(&f,8); b_uuid(&f,t->tid); b_u64(&f,t->transferred); b_bytes(&f,buf,n); send_frame(k,&f); b_free(&f); t->transferred+=n; }
         if(t->state==TS_ACTIVE && t->transferred>=t->size){ fclose((FILE*)t->fp_handle); t->fp_handle=NULL; send_tid_frame(c,t->peer_fp,10,t->tid,NULL); emit_xfer(c,t); }
-        if(t->state==TS_ACTIVE && t->transferred-t->credit>WINDOW && mono_ms()-t->last_credit_mono>30000){ xfer_fail(c,t,TS_FAILED,"\xe5\xaf\xb9\xe6\x96\xb9\xe9\x95\xbf\xe6\x97\xb6\xe9\x97\xb4\xe6\x97\xa0\xe5\x93\x8d\xe5\xba\x94"); send_tid_frame(c,t->peer_fp,12,t->tid,"timeout"); } }
+        if(t->state==TS_ACTIVE && t->transferred-t->credit>WINDOW && mono_ms()-t->last_credit_mono>45000){ xfer_fail(c,t,TS_FAILED,"\xe5\xaf\xb9\xe6\x96\xb9\xe9\x95\xbf\xe6\x97\xb6\xe9\x97\xb4\xe6\x97\xa0\xe5\x93\x8d\xe5\xba\x94"); send_tid_frame(c,t->peer_fp,12,t->tid,"timeout"); } }
     free(buf); }
 
 static void on_file_frame(lsm_core *c, const char *fp, uint32_t v, rd_t *r){
@@ -767,6 +767,7 @@ static void on_file_frame(lsm_core *c, const char *fp, uint32_t v, rd_t *r){
         if(off==0 && t->transferred>0){ /* sender could not continue (prefix differs): restart from 0 */
             fclose((FILE*)t->fp_handle); t->fp_handle=ufopen(t->part,"wb"); if(!t->fp_handle){ xfer_fail(c,t,TS_FAILED,"write failed"); file_complete(c,t,0,"write failed"); break; }
             sha256_init((sha256_ctx*)t->hash); t->transferred=0; t->resumed_from=0; t->last_prog=0; }
+        if(off+n<=t->transferred) break; /* duplicate / overlap after resume */
         if(off!=t->transferred || t->transferred+n>t->size){ xfer_fail(c,t,TS_FAILED,"\xe6\x95\xb0\xe6\x8d\xae\xe5\x9d\x97\xe9\xa1\xba\xe5\xba\x8f\xe9\x94\x99\xe8\xaf\xaf"); file_complete(c,t,0,"\xe6\x95\xb0\xe6\x8d\xae\xe5\x9d\x97\xe9\xa1\xba\xe5\xba\x8f\xe9\x94\x99\xe8\xaf\xaf"); break; }
         if(fwrite(d,1,n,(FILE*)t->fp_handle)!=n){ xfer_fail(c,t,TS_FAILED,"write failed"); file_complete(c,t,0,"write failed (disk full?)"); break; }
         sha256_update((sha256_ctx*)t->hash,d,n); t->transferred+=n;
@@ -1121,11 +1122,8 @@ int lsm_add_addr(lsm_core *c, const char *addr, char *err){ struct sockaddr_in a
 int lsm_set_muted(lsm_core *c, const char *fp, int muted, char *err){ lsm_contact *k; (void)err; mu_lock(&c->mu); k=contact_entry(c,fp); k->muted=muted!=0; save_contacts(c);
     emit(c,"peer\t%s\tmuted\t%d",fp,k->muted); mu_unlock(&c->mu); return 0; }
 
-int lsm_refresh_peers(lsm_core *c){
-    int i; int64_t now;
-    if(!c) return -1;
-    mu_lock(&c->mu);
-    now=mono_ms();
+static void refresh_peers_locked(lsm_core *c, int noisy){
+    int i; int64_t now=mono_ms();
     enum_ifaces(c); c->last_enum=now;
     send_announces(c); c->last_announce=now;
     for(i=0;i<c->nrt;i++){ c->rt[i].next_attempt=now; if(c->rt[i].failures>1) c->rt[i].failures=1; }
@@ -1138,10 +1136,49 @@ int lsm_refresh_peers(lsm_core *c){
             emit(c,"peer\t%s\tpath\t%s",k->fp,k->via_relay?"relay":"direct");
         } else emit(c,"peer\t%s\toffline\trefresh",k->fp);
     }
-    notice(c,"已刷新局域网发现与联系人状态");
+    if(noisy) notice(c,"已刷新局域网发现与联系人状态");
+}
+
+int lsm_refresh_peers(lsm_core *c){
+    if(!c) return -1;
+    mu_lock(&c->mu);
+    refresh_peers_locked(c,1);
     mu_unlock(&c->mu);
     return 0;
 }
+
+int lsm_wake(lsm_core *c){
+    struct relay_cl *r;
+    if(!c) return -1;
+    mu_lock(&c->mu);
+    refresh_peers_locked(c,0);
+    r=c->rl;
+    if(r && r->enabled && r->st!=RS_UP){
+        r->fails=0; r->next_attempt=0;
+        if(r->st==RS_OFF) r->st=RS_IDLE;
+    }
+    mu_unlock(&c->mu);
+    return 0;
+}
+
+int lsm_reconnect_server(lsm_core *c){
+    struct relay_cl *r;
+    if(!c) return -1;
+    mu_lock(&c->mu);
+    r=c->rl;
+    if(r && r->enabled){
+        rl_disconnect(c,"user reconnect",0);
+        r->fails=0; r->st=RS_IDLE; r->next_attempt=0;
+        rl_set_status(c,"connecting","正在重新连接…");
+        notice(c,"正在重新连接服务器…");
+    } else {
+        notice(c,"未启用中转服务器，已刷新局域网连接");
+    }
+    refresh_peers_locked(c,0);
+    mu_unlock(&c->mu);
+    return 0;
+}
+
 
 
 static uint64_t dir_bytes(const char *dir){

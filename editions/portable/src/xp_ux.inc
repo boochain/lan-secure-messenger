@@ -27,8 +27,18 @@ static void ux_add_uri(void){ prompt_t p; char u8[1600]; memset(&p,0,sizeof p);
     if(prompt(L"通过链接添加",L"粘贴对方的添加链接（lsm://add?…）：",L"",&p,1) && p.text[0]) ux_add_uri_text(U(p.text,u8,sizeof u8)); }
 
 /* file size + ETA before sending: 0 sent, 1 cancelled, -1 error (err filled) */
-static int ux_send_file(const char *path, char *err){ char pv[700], q[800]; lsm_file_preview(C,cur_conv,path,pv,sizeof pv); snprintf(q,sizeof q,"发送文件？\n%s",pv);
-    if(tmsg(L"发送文件",W(q),1)!=1) return 1; return lsm_send_file(C,cur_conv,path,err)?-1:0; }
+static int ux_send_file(const char *path, char *err){ char pv[700], q[1400], tmp[520]; const char *sendp=path; int img;
+    lsm_file_preview(C,cur_conv,path,pv,sizeof pv); img=path_is_send_image(path);
+    if(img && !getenv("LSM_UI_TEST")){
+        snprintf(q,sizeof q,"发送图片？\n%s\n\n点「是」压缩发送（推荐：最长边 1920，JPEG 画质约 80，去掉拍摄信息）。\n点「否」发送原图。",pv);
+        { int r=MessageBoxW(hMain,W(q),L"发送图片",MB_YESNOCANCEL|MB_ICONQUESTION|MB_DEFBUTTON1);
+          if(r==IDCANCEL) return 1;
+          if(r==IDYES && compress_image_file(path,tmp,sizeof tmp)) sendp=tmp; }
+        return lsm_send_file(C,cur_conv,sendp,err)?-1:0; }
+    snprintf(q,sizeof q,"发送文件？\n%s",pv);
+    if(tmsg(L"发送文件",W(q),1)!=1) return 1;
+    if(img && compress_image_file(path,tmp,sizeof tmp)) sendp=tmp;
+    return lsm_send_file(C,cur_conv,sendp,err)?-1:0; }
 
 /* message menu: 重新发送 (cmd 75) */
 static void ux_menu(HMENU pm, const char *id){ lsm_msg *m; int n,i,can=0; lsm_lock(C); n=lsm_messages(C,&m); for(i=0;i<n;i++) if(!strcmp(m[i].id,id)){ can=lsm_can_resend(&m[i]); break; } lsm_unlock(C);

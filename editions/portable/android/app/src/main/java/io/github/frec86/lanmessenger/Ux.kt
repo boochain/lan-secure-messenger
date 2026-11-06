@@ -1,5 +1,9 @@
 package io.github.frec86.lanmessenger
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import java.io.File
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -65,6 +69,28 @@ fun QrDialog(onDismiss: () -> Unit) {
         dismissButton = { TextButton(onDismiss) { Text("关闭") } })
 }
 
+fun isSendImage(path: String): Boolean {
+    val n = path.substringAfterLast('/').lowercase()
+    if (path.contains("sticker") || n.contains("lsm-sticker")) return false
+    return n.endsWith(".png") || n.endsWith(".jpg") || n.endsWith(".jpeg") || n.endsWith(".bmp") || n.endsWith(".webp")
+}
+fun compressImageFile(src: String): String? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(src, bounds)
+    val w = bounds.outWidth; val h = bounds.outHeight
+    if (w <= 0 || h <= 0) return null
+    val sample = (maxOf(w, h) / 1920).coerceAtLeast(1)
+    val bmp = BitmapFactory.decodeFile(src, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return null
+    val outBmp = if (bmp.width > 1920 || bmp.height > 1920) {
+        val k = 1920f / maxOf(bmp.width, bmp.height)
+        Bitmap.createScaledBitmap(bmp, (bmp.width * k).toInt().coerceAtLeast(1), (bmp.height * k).toInt().coerceAtLeast(1), true).also { if (it !== bmp) bmp.recycle() }
+    } else bmp
+    val dest = File(System.getProperty("java.io.tmpdir") ?: ".", "lsm-img-${System.currentTimeMillis()}.jpg")
+    return try {
+        dest.outputStream().use { outBmp.compress(Bitmap.CompressFormat.JPEG, 80, it) }
+        dest.absolutePath
+    } catch (_: Exception) { null } finally { if (!outBmp.isRecycled) outBmp.recycle() }
+}
 /** global dialogs: scanned link confirm, file size / ETA confirm, Ctrl+K */
 @Composable
 fun UxHost(st: AppState, open: (String) -> Unit) {
@@ -77,10 +103,23 @@ fun UxHost(st: AppState, open: (String) -> Unit) {
     }
     Ux.pendingFiles.value?.let { (conv, files) ->
         val lines = remember(files) { files.map { Native.filePreview(conv, it) } }
-        LsmAlertDialog(onDismissRequest = { Ux.pendingFiles.value = null }, title = { Text(if (files.size == 1) "发送文件？" else "发送 ${files.size} 个文件？") },
-            text = { Column(verticalArrangement = Arrangement.spacedBy(4.dp)) { lines.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) } } },
-            confirmButton = { TextButton({ Ux.pendingFiles.value = null
-                for (f in files) { val e = Native.sendFile(conv, f); if (e.isNotEmpty()) Repo.toast.value = errZh(e) }; Repo.refresh() }) { Text("发送") } },
+        val imgs = files.filter { isSendImage(it) }
+        fun sendAll(compress: Boolean) {
+            Ux.pendingFiles.value = null
+            for (f in files) {
+                val path = if (compress && isSendImage(f)) (compressImageFile(f) ?: f) else f
+                val e = Native.sendFile(conv, path); if (e.isNotEmpty()) Repo.toast.value = errZh(e)
+            }
+            Repo.refresh()
+        }
+        LsmAlertDialog(onDismissRequest = { Ux.pendingFiles.value = null },
+            title = { Text(if (imgs.isNotEmpty() && imgs.size == files.size) (if (files.size == 1) "发送图片？" else "发送 ${files.size} 张图片？") else if (files.size == 1) "发送文件？" else "发送 ${files.size} 个文件？") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                lines.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                if (imgs.isNotEmpty()) Text("默认压缩后发送（最长边 1920 像素，JPEG 画质约 80，去掉拍摄信息）。", style = MaterialTheme.typography.bodyMedium)
+                if (imgs.isNotEmpty()) TextButton({ sendAll(false) }) { Text("原图发送") }
+            } },
+            confirmButton = { TextButton({ sendAll(imgs.isNotEmpty()) }) { Text(if (imgs.isNotEmpty()) "压缩发送" else "发送") } },
             dismissButton = { TextButton({ Ux.pendingFiles.value = null }) { Text("取消") } })
     }
     if (Ux.quickSwitch.value) {

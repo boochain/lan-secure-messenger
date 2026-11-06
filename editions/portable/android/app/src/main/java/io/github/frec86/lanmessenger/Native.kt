@@ -13,6 +13,8 @@ object Native {
     @JvmStatic external fun sendFile(conv: String, path: String): String
     @JvmStatic external fun addAddr(addr: String): String
     @JvmStatic external fun refreshPeers()
+    @JvmStatic external fun wake()
+    @JvmStatic external fun reconnectServer()
     @JvmStatic external fun setTrust(fp: String, trust: Int): String
     @JvmStatic external fun setMuted(fp: String, muted: Boolean): String
     @JvmStatic external fun isMuted(fp: String): Boolean

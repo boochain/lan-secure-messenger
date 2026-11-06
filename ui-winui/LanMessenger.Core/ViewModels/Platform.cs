@@ -26,6 +26,10 @@ public interface IPlatform
     Task<bool> ConfirmAsync(string title, string message);
     /// <summary>v0.6.1 file-send preview (primary = 发送, Enter sends). Defaults to ConfirmAsync.</summary>
     Task<bool> ConfirmSendAsync(string title, string message) => ConfirmAsync(title, message);
+    /// <summary>0 cancel, 1 compress (default), 2 original.</summary>
+    async Task<int> ConfirmImageSendAsync(string title, string message) => await ConfirmSendAsync(title, message) ? 1 : 0;
+    /// <summary>Downscale to max 1920px JPEG ~q80 and strip EXIF. Null = send the original.</summary>
+    Task<string?> CompressImageAsync(string path) => Task.FromResult<string?>(null);
     void CopyToClipboard(string text);
     void ShowToast(string title, string body, string conversationId);
     bool IsWindowActive { get; }

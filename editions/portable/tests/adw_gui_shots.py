@@ -96,6 +96,11 @@ for i, theme in enumerate(["light", "dark"]):
     xdo("type", "--delay", "20", "OK, see you at 3 pm."); xdo("key", "Return"); time.sleep(1.5)
     check(A.wait_for("see you at 3 pm", 8) is not None, f"[{theme}] Enter in the composer sends (peer received it)")
     time.sleep(1); shot("page-chat-dm", theme, g=g)
+    xdo("key", "F6"); time.sleep(1.5); shot("page-image-viewer", theme, g=g)
+    for _ in range(5):
+        xdo("key", "plus"); time.sleep(0.12)
+    time.sleep(0.6); shot("page-image-viewer-zoom", theme, g=g)
+    xdo("key", "Escape"); time.sleep(0.5)
     gl = len(g.lines); xdo("key", "ctrl+f"); l = g.wait_for("UI search", 5, gl)
     check(l is not None and "Text" in l, f"[{theme}] shortcut Ctrl+F focuses the conversation search ({l})"); xdo("key", "Escape"); time.sleep(0.4)
     gl = len(g.lines); xdo("key", "ctrl+n"); l = g.wait_for("UI add-contact", 5, gl)

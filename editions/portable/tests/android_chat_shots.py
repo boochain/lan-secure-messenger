@@ -79,7 +79,17 @@ P = ui_seed.seed(mk, app_addr, App(), pdf, photo)
 for th in ("light", "dark"):
     sh("cmd uimode night " + ("yes" if th == "dark" else "no")); time.sleep(6)
     shot(f"android-{th}-10-list")
-    tap_text("王工"); time.sleep(2); shot(f"android-{th}-11-chat"); back()
+    tap_text("王工"); time.sleep(2); shot(f"android-{th}-11-chat")
+    img = find(lambda n: re.search(r"\.(jpe?g|png|webp|gif)$", n.get("content-desc") or "", re.I))
+    if img:
+        tap(*img); time.sleep(1.5); shot(f"android-{th}-12-image-viewer")
+        z = find(lambda n: n.get("text") == "+" or n.get("content-desc") == "放大")
+        if z: tap(*z); time.sleep(0.8)
+        shot(f"android-{th}-13-image-viewer-zoom")
+        back(); time.sleep(1)
+    else:
+        print("WARN no image bubble to open", flush=True)
+    back()
 # ---- regression: system Back navigates (chat -> list), closes menus first, survives rotation, double-back exits
 def has(t): return find(lambda n: n.get("text") == t or n.get("content-desc") == t) is not None
 def resumed(): return PKG in sh("dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity'")

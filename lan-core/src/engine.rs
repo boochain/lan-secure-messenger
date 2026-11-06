@@ -1667,6 +1667,10 @@ impl Engine {
 
     /// Force LAN re-announce, clear dial backoffs, and push a fresh peer/conversation snapshot to UIs.
     fn refresh_peers(&mut self) {
+        self.refresh_peers_inner(true);
+    }
+
+    fn refresh_peers_inner(&mut self, noisy: bool) {
         self.disco.nudge();
         let now = Instant::now();
         for r in self.rt.values_mut() {
@@ -1690,10 +1694,35 @@ impl Engine {
         for fp in &fps {
             self.emit_peer(fp);
         }
-        self.emit(Event::Notice {
-            level: "info".into(),
-            text: "已刷新局域网发现与联系人状态".into(),
-        });
+        if noisy {
+            self.emit(Event::Notice {
+                level: "info".into(),
+                text: "已刷新局域网发现与联系人状态".into(),
+            });
+        }
+    }
+
+    /// Foreground / network-change / user reconnect.
+    /// `force_relay`: drop a live relay session and open a new one; otherwise only nudge a down relay
+    /// and pull retained messages.
+    fn wake(&mut self, force_relay: bool) {
+        self.refresh_peers_inner(false);
+        if self.settings.relay_enabled {
+            if force_relay {
+                let _ = self.relay.send(relay::RelayCmd::Reconnect);
+                self.emit(Event::Notice {
+                    level: "info".into(),
+                    text: "正在重新连接服务器…".into(),
+                });
+            }
+            self.retain_last_pull = Instant::now() - Duration::from_secs(60);
+            self.kick_retain_pull();
+        } else if force_relay {
+            self.emit(Event::Notice {
+                level: "info".into(),
+                text: "未启用中转服务器，已刷新局域网连接".into(),
+            });
+        }
     }
 
     fn emit_peer(&self, fp: &str) {
@@ -2211,6 +2240,14 @@ impl Engine {
             "get_snapshot" => ok(self.snapshot()),
             "refresh_peers" => {
                 self.refresh_peers();
+                ok(json!({ "ok": true }))
+            }
+            "wake" => {
+                self.wake(false);
+                ok(json!({ "ok": true }))
+            }
+            "reconnect_server" => {
+                self.wake(true);
                 ok(json!({ "ok": true }))
             }
             "get_storage" => ok(self.storage_view()),

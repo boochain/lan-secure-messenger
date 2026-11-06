@@ -92,6 +92,8 @@ pub enum RelayCmd {
     StoreDel { id: Vec<u8> },
     ListRetain { reply: ListReply },
     AccountRevoke { user: String, pass: String, reply: AccountReply },
+    /// Drop the current relay TCP session (if any) and reconnect immediately.
+    Reconnect,
 }
 
 pub enum RelayEvt {
@@ -144,7 +146,7 @@ async fn run(shared: Arc<Shared>, mut cmd: mpsc::UnboundedReceiver<RelayCmd>, tx
                     Some(RelayCmd::Fetch { reply, .. }) => { let _ = reply.send(Err("relay offline".into())); }
                     Some(RelayCmd::ListRetain { reply }) => { let _ = reply.send(Err("relay offline".into())); }
                     Some(RelayCmd::AccountRevoke { reply, .. }) => { let _ = reply.send(Err("relay offline".into())); }
-                    Some(RelayCmd::StoreDel { .. }) | Some(RelayCmd::Open(_)) | Some(RelayCmd::Rename) => {}
+                    Some(RelayCmd::StoreDel { .. }) | Some(RelayCmd::Open(_)) | Some(RelayCmd::Rename) | Some(RelayCmd::Reconnect) => {}
                 }
             }
             fails = 0;
@@ -189,6 +191,7 @@ async fn run(shared: Arc<Shared>, mut cmd: mpsc::UnboundedReceiver<RelayCmd>, tx
                     Some(RelayCmd::Fetch { reply, .. }) => { let _ = reply.send(Err("relay offline".into())); }
                     Some(RelayCmd::ListRetain { reply }) => { let _ = reply.send(Err("relay offline".into())); }
                     Some(RelayCmd::AccountRevoke { reply, .. }) => { let _ = reply.send(Err("relay offline".into())); }
+                    Some(RelayCmd::Reconnect) => { fails = 0; break; }
                     Some(RelayCmd::StoreDel { .. }) | Some(RelayCmd::Open(_)) | Some(RelayCmd::Rename) => {}
                 }
             }
@@ -648,8 +651,9 @@ async fn session(
                         return End::Reconfigure(c);
                     }
                 }
-                Some(RelayCmd::Rename) => {
+                Some(RelayCmd::Rename) | Some(RelayCmd::Reconnect) => {
                     // Info is fixed per relay connection; reconnect to publish the new name.
+                    // Reconnect: user or foreground asked to drop and re-open now.
                     let _ = wtx.send(frame(T_BYE, &[])).await;
                     return End::Reconfigure(cfg.clone());
                 }

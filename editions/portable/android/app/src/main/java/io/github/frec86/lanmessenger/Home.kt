@@ -61,6 +61,7 @@ fun Home(st: AppState, openPage: (String) -> Unit = {}, open: (String) -> Unit) 
                 Text(if (tab == 3 && dlg == "relay") "中转服务器（可选）" else when (tab) { 1 -> "群组"; 2 -> "文件传输"; 3 -> "设置"; else -> "局域网安全通讯" }, style = MaterialTheme.typography.titleLarge, color = p.fg, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (tab <= 1) {
                     IconButton({ Native.refreshPeers(); Repo.refresh(); Repo.toast.value = "已刷新联系人" }) { Ic(R.drawable.ms_network, "刷新联系人", p.fg) }
+                    TextButton({ Native.reconnectServer(); Repo.refresh(); Repo.toast.value = "正在重新连接服务器…" }) { Text("重连", color = p.fg) }
                     IconButton({ searching = true }) { Ic(R.drawable.ms_search, "搜索", p.fg) }
                 }
             }
@@ -72,6 +73,7 @@ fun Home(st: AppState, openPage: (String) -> Unit = {}, open: (String) -> Unit) 
                     DropdownMenuItem({ Text("通过链接添加") }, { menu = false; dlg = "link" }, leadingIcon = { Ic(R.drawable.ms_add_contact) })
                     DropdownMenuItem({ Text("切换会话") }, { menu = false; Ux.quickSwitch.value = true }, leadingIcon = { Ic(R.drawable.ms_search) })
                     DropdownMenuItem({ Text("刷新联系人") }, { menu = false; Native.refreshPeers(); Repo.refresh(); Repo.toast.value = "已刷新联系人" }, leadingIcon = { Ic(R.drawable.ms_network) })
+                    DropdownMenuItem({ Text("重连服务器") }, { menu = false; Native.reconnectServer(); Repo.refresh(); Repo.toast.value = "正在重新连接服务器…" }, leadingIcon = { Ic(R.drawable.ms_network) })
                     DropdownMenuItem({ Text("生成 PIN（让对方输入）") }, { menu = false; dlg = "pin" }, leadingIcon = { Ic(R.drawable.ms_lock) })
                     DropdownMenuItem({ Text("创建群组") }, { menu = false; dlg = "group" }, leadingIcon = { Ic(R.drawable.ms_groups) })
                     DropdownMenuItem({ Text("个人资料") }, { menu = false; openPage("profile") }, leadingIcon = { Ic(R.drawable.ms_edit) })

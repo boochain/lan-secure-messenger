@@ -660,10 +660,15 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    private DateTime _lastWake = DateTime.MinValue;
     public void OnWindowActivated()
     {
         var c = SelectedConversation;
         if (c != null && c.HasUnread) _ = SafeCall(x => x.MarkReadAsync(c.Id));
+        if ((DateTime.UtcNow - _lastWake).TotalSeconds < 2) return;
+        _lastWake = DateTime.UtcNow;
+        if (_client == null) return;
+        _ = SafeCall(x => x.WakeAsync());
     }
 
     // ------------------------------------------------------------ commands: chat
@@ -719,20 +724,46 @@ public partial class MainViewModel : ObservableObject
 
     public Task SendFileAsync(string path) => SendFilesAsync(new[] { path });
 
+    static bool IsSendImage(string path)
+    {
+        var name = Path.GetFileName(path) ?? "";
+        if (name.Contains("lsm-sticker", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains($"{Path.DirectorySeparatorChar}stickers{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("/stickers/", StringComparison.OrdinalIgnoreCase))
+            return false;
+        var ext = Path.GetExtension(path);
+        return ext.Equals(".png", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".bmp", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".webp", StringComparison.OrdinalIgnoreCase);
+    }
+
     public async Task SendFilesAsync(IEnumerable<string> paths)
     {
         if (!EnsureCanSendFile()) return;
         var c = SelectedConversation!;
         foreach (var p in paths)
         {
+            var send = p;
             try
             {
-                // v0.6.1: always show name, size and ETA (LAN vs relay) before sending, like GTK / XP / Android
                 var pv = await _client!.FilePreviewAsync(c.Id, p);
-                if (!await _platform.ConfirmSendAsync("发送文件？", pv.Text)) continue;
+                if (IsSendImage(p))
+                {
+                    var choice = await _platform.ConfirmImageSendAsync("发送图片？",
+                        pv.Text + "\n\n默认压缩后发送（最长边 1920 像素，JPEG 画质约 80，去掉拍摄信息）。");
+                    if (choice == 0) continue;
+                    if (choice == 1)
+                    {
+                        var compressed = await _platform.CompressImageAsync(p);
+                        if (!string.IsNullOrEmpty(compressed)) send = compressed;
+                    }
+                }
+                else if (!await _platform.ConfirmSendAsync("发送文件？", pv.Text)) continue;
             }
             catch { /* size probe best-effort */ }
-            await SafeCall(x => x.SendFileAsync(c.Id, p));
+            await SafeCall(x => x.SendFileAsync(c.Id, send));
         }
     }
 
@@ -814,6 +845,21 @@ public partial class MainViewModel : ObservableObject
             {
                 ApplySnapshot(snap);
                 ShowStatus("已刷新联系人列表");
+            });
+        });
+    }
+
+    [RelayCommand]
+    private async Task ReconnectServer()
+    {
+        await SafeCall(async c =>
+        {
+            await c.ReconnectServerAsync();
+            var snap = await c.GetSnapshotAsync();
+            _ui.Post(() =>
+            {
+                ApplySnapshot(snap);
+                ShowStatus("正在重新连接服务器…");
             });
         });
     }

@@ -20,8 +20,9 @@ pub const MY_CAPS: u32 = CAP_RESUME | CAP_PROFILE | CAP_EXT;
 pub const MAX_AVATAR: usize = 48 * 1024;
 /// Max signature (个性签名) length in chars.
 pub const MAX_SIGNATURE: usize = 120;
-/// File chunk payload size (Noise messages are limited to 65535 bytes).
-pub const CHUNK: usize = 32 * 1024;
+/// File chunk payload size. Noise plaintext max is 65535; FileChunk framing is ~40 bytes,
+/// so 60 KiB leaves headroom while nearly doubling throughput vs the old 32 KiB.
+pub const CHUNK: usize = 60 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Announce {
@@ -126,4 +127,22 @@ pub fn decode<'a, T: Deserialize<'a>>(b: &'a [u8]) -> anyhow::Result<T> {
         .allow_trailing_bytes()
         .with_limit(1 << 20)
         .deserialize(b)?)
+}
+
+#[cfg(test)]
+mod chunk_tests {
+    use super::*;
+    use uuid::Uuid;
+
+    #[test]
+    fn file_chunk_fits_noise_limit() {
+        let f = Frame::FileChunk { tid: Uuid::nil(), offset: u64::MAX, data: vec![0u8; CHUNK] };
+        let enc = encode(&f).expect("encode");
+        assert!(
+            enc.len() <= 65535,
+            "FileChunk of CHUNK bytes encoded to {} (Noise plaintext max 65535)",
+            enc.len()
+        );
+        assert!(CHUNK > 32 * 1024, "CHUNK should be larger than the legacy 32 KiB");
+    }
 }
