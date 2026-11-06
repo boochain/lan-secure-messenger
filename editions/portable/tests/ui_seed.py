@@ -48,7 +48,7 @@ def wait(f, t, step=1.0):
 PEERS = ["王工", "Alice Chen", "张伟", "李娜", "Bob Miller"]
 GROUP = "产品设计组"
 
-def seed(mk, app_addr, app, pdf, photo, say=print):
+def seed(mk, app_addr, app, pdf, photo, say=print, sticker=None):
     """mk(name, index) -> Peer. Returns the peers by name. Order = oldest activity first, so the list sorts like the mockup."""
     P = {n: mk(n, i) for i, n in enumerate(PEERS)}
     for p in P.values(): p.cmd(f"add {app_addr}")
@@ -71,6 +71,8 @@ def seed(mk, app_addr, app, pdf, photo, say=print):
     app.send_text("王工", "收到 👍 新版界面截图发我看看？")
     w.cmd(f"read {fp}"); time.sleep(1)
     w.cmd(f"sendfile {fp} {photo}"); time.sleep(4)
+    if sticker:
+        w.cmd(f"sendfile {fp} {sticker}"); time.sleep(3)
     w.cmd(f"sendfile {fp} {pdf}"); time.sleep(4)
     w.cmd(f"send {fp} 这是最新的数据，第 4 页有改动。"); time.sleep(1.5)
     app.send_text("王工", "OK, see you at 3 pm. 会议室我来订。")

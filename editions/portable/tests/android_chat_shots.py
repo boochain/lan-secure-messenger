@@ -66,6 +66,7 @@ def mk(name, i):
     p = ui_seed.Peer(name, [ADB, "shell", "-T", f"{args.cli} --data /data/local/tmp/seed/{tag} --name {shlex.quote(name)} --no-discovery --port {port} --disco-port {port + 1} --announce-ms 1000"], args.out)
     p.port = port; return p
 photo = "/data/local/tmp/界面截图.jpg"; adb("push", os.path.join(HERE, "assets", "ui-photo.jpg"), photo)
+sticker = "/data/local/tmp/lsm-sticker-thumb.png"; adb("push", os.path.join(HERE, "..", "stickers", "thumb.png"), sticker)
 # App JNI sets bind_lan_ip=auto so TCP listen is on the emulator LAN IP (typically 10.0.2.15), not 127.0.0.1.
 def emu_lan_ip():
     out = sh("ip -4 -o addr show scope global 2>/dev/null || true")
@@ -75,7 +76,7 @@ def emu_lan_ip():
             return m.group(1)
     return "10.0.2.15"
 app_addr = f"{emu_lan_ip()}:41235"; print("seed app_addr", app_addr, flush=True)
-P = ui_seed.seed(mk, app_addr, App(), pdf, photo)
+P = ui_seed.seed(mk, app_addr, App(), pdf, photo, sticker=sticker)
 for th in ("light", "dark"):
     sh("cmd uimode night " + ("yes" if th == "dark" else "no")); time.sleep(6)
     shot(f"android-{th}-10-list")

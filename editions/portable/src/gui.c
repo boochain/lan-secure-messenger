@@ -42,7 +42,7 @@
 #define IDM_DIAG 243
 #define IDM_CLEAR 245
 #define IDM_REFRESH 246
-#define IDM_RECONNECT 247
+#define IDM_RECONNECT 266
 #define IDM_STORAGE 247
 #define IDM_EMOJI 248
 #define IDM_STICKER 250
