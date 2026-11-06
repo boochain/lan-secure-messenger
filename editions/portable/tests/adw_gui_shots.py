@@ -65,9 +65,17 @@ def emoji_boxes(png):
     try: import cv2
     except ImportError: return []
     a = np.asarray(Image.open(png).convert("RGB")).astype(int); r, g, b = a[..., 0], a[..., 1], a[..., 2]
-    m = ((r > 180) & (g > 80) & (g < 220) & (b < 100)).astype(np.uint8)
+    # yellow/orange (👍 😂) and red/pink (❤) — OCR reads these glyphs as '4'/'v' etc.
+    yellow = (r > 180) & (g > 80) & (g < 220) & (b < 100)
+    red = (r > 180) & (g < 180) & (b < 160) & (r > g + 20)
+    m = (yellow | red).astype(np.uint8)
     n, _, st, _ = cv2.connectedComponentsWithStats(m, connectivity=8)
-    return [[int(st[i, 0]) - 4, int(st[i, 1]) - 4, int(st[i, 2]) + 8, int(st[i, 3]) + 8] for i in range(1, n) if 16 <= st[i, cv2.CC_STAT_AREA] <= 8000]
+    boxes = [[int(st[i, 0]) - 4, int(st[i, 1]) - 4, int(st[i, 2]) + 8, int(st[i, 3]) + 8] for i in range(1, n) if 16 <= st[i, cv2.CC_STAT_AREA] <= 8000]
+    if boxes:
+        x0 = min(b[0] for b in boxes); y0 = min(b[1] for b in boxes)
+        x1 = max(b[0] + b[2] for b in boxes); y1 = max(b[1] + b[3] for b in boxes)
+        boxes.append([x0, y0, x1 - x0, y1 - y0])  # whole reaction row, including any glyph the mask missed
+    return boxes
 def shot(name, theme, size="1024x694", g=None):
     wid = subprocess.run(["xdotool", "search", "--onlyvisible", "--name", "局域网安全通讯"], env=env, capture_output=True, text=True).stdout.split()
     path = f"{out}/{name}-{theme}.png"
