@@ -117,6 +117,8 @@ public static class UiSmoke
                             await ShotAsync(w, dir, "dialog-details", label, theme);
                             Check(!App.VM.SelectedSubtitle.Contains("指纹") && !App.VM.SelectedSubtitle.Contains(" ms"), $"chat header subtitle has no fingerprint/latency ('{App.VM.SelectedSubtitle}')");
                             { var open = DialogOpen(w); await KeysAsync(VK_ESCAPE); await Task.Delay(600); Check(open && !DialogOpen(w), $"Esc closes the contact-details dialog (open before={open})"); }
+                            cp.ScrollMessagesToTopForSmoke();
+                            await Task.Delay(800);
                             await ContextMenuChecksAsync(w, cp, dir, label, theme);
                             if (!_basicsDone) { _basicsDone = true; await BasicsChecksAsync(w, cp); }
                             await ComposerKeysCheckAsync(cp);
@@ -347,6 +349,8 @@ public static class UiSmoke
         catch (Exception e) { Check(false, "W8 drop: " + e.Message); }
         try
         {   // W13: 删除（仅本机）… from a real right-click asks first; Esc (the default 取消) keeps the message
+            cp.ScrollMessagesToTopForSmoke();
+            await Task.Delay(800);
             var row = Descendants(cp.SmokeMessageList).OfType<ListViewItem>()
                 .FirstOrDefault(i => (i.Content ?? i.DataContext) is MessageItem m && m.IsText && !m.IsSystem && i.ActualHeight > 0 && Center(i).Y > 0 && Center(i).Y < ((FrameworkElement)w.Content).ActualHeight);
             if (row == null) { Check(false, "W13: no visible text message row"); return; }
@@ -515,8 +519,12 @@ public static class UiSmoke
         if (new FileInfo(file).Length < 5000) Fail($"{name}: screenshot looks empty");
         if (!ThemeService.HighContrast)
         {
-            if (theme == ElementTheme.Dark && luma > 0.45) Fail($"{name}: dark theme but screenshot is bright (mean luma {luma:F2})");
-            if (theme == ElementTheme.Light && luma < 0.55) Fail($"{name}: light theme but screenshot is dark (mean luma {luma:F2})");
+            // Fullscreen image viewer is a black overlay on every theme (same as GTK/XP); skip the page-luma gate.
+            if (!name.Contains("image-viewer"))
+            {
+                if (theme == ElementTheme.Dark && luma > 0.45) Fail($"{name}: dark theme but screenshot is bright (mean luma {luma:F2})");
+                if (theme == ElementTheme.Light && luma < 0.55) Fail($"{name}: light theme but screenshot is dark (mean luma {luma:F2})");
+            }
         }
         CheckContrast(w, $"{name}-{label}", theme);
         RecordAuditHints(w, dir, file);
@@ -570,7 +578,11 @@ public static class UiSmoke
             int[] Box(FrameworkElement fe, int pad)
             {
                 var p = fe.TransformToVisual(null).TransformPoint(new Point(0, 0));
-                return new[] { (int)(ox + p.X * sc) - pad, (int)(oy + p.Y * sc) - pad, (int)(fe.ActualWidth * sc) + 2 * pad, (int)(fe.ActualHeight * sc) + 2 * pad };
+                int x = (int)(ox + p.X * sc) - pad, y = (int)(oy + p.Y * sc) - pad;
+                int bw = (int)(fe.ActualWidth * sc) + 2 * pad, bh = (int)(fe.ActualHeight * sc) + 2 * pad;
+                if (x < 0) { bw += x; x = 0; }
+                if (y < 0) { bh += y; y = 0; }
+                return new[] { x, y, Math.Max(1, bw), Math.Max(1, bh) };
             }
             var icons = new List<int[]>();
             void Walk(DependencyObject d)

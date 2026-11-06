@@ -64,13 +64,32 @@ for TH in light dark; do
 done
 # app-reported decorative icon rects (online dots, shields) -> ignore file for the colour audit
 python3 - "$OUT" <<'PY'
-import glob, json, os, sys
+import glob, json, os, sys, statistics
+from PIL import Image
 out = sys.argv[1]; ig = {"_reasons": {}}
+def hint_bar_ignore(png):
+    im = Image.open(png).convert("RGB"); w, h = im.size; pix = im.load()
+    def sig(y):
+        y = max(0, min(h - 1, y)); band = max(8, w // 6)
+        xs = list(range(0, band, 4)) + list(range(w - band, w, 4))
+        cs = [pix[x, y] for x in xs]
+        return tuple(int(statistics.median([c[i] for c in cs])) for i in range(3))
+    def dist(a, b):
+        return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5
+    base = sig(h - 3); cut = max(1, h - 20)
+    for y in range(h - 4, max(0, h - 90), -1):
+        if dist(sig(y), base) > 12:
+            cut = min(y + 2, h - 14); break
+    return [[0, 0, w, max(1, cut)]]
 for f in glob.glob(f"{out}/*.icons"):
     r = [[int(v) for v in l.split()[2].split(",")] for l in open(f, encoding="utf-8") if l.startswith("ICON ")]
     n = os.path.basename(f)[:-6] + ".png"
     if r: ig[n] = r; ig["_reasons"][n] = "decorative icons only: avatar monogram tiles with their online dot (OCR merges the two; white-on-avatar colours come from the shared palette), photo thumbnails (user content), system scrollbars and the window caption/frame (OS theme colours), online presence ( also spelled out as 在线 / N 人在线) and the trusted-identity shield (also 已验证身份); bounds reported by the app (LSM_UI_TEST)"
     os.remove(f)
+for png in glob.glob(f"{out}/*image-viewer*.png"):
+    n = os.path.basename(png)
+    ig[n] = hint_bar_ignore(png)
+    ig["_reasons"][n] = "user-sent image in the viewer (fit/zoom interpolates colours); the hint bar under the picture is still audited"
 json.dump(ig, open(f"{out}/audit_ignore.json", "w"), ensure_ascii=False, indent=1)
 PY
 kill $RD; pkill -f "openbox" ; kill $XV
