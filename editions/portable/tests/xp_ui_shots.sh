@@ -69,17 +69,22 @@ from PIL import Image
 out = sys.argv[1]; ig = {"_reasons": {}}
 def hint_bar_ignore(png):
     im = Image.open(png).convert("RGB"); w, h = im.size; pix = im.load()
-    def sig(y):
-        y = max(0, min(h - 1, y)); band = max(8, w // 6)
-        xs = list(range(0, band, 4)) + list(range(w - band, w, 4))
+    def sig(y, x0, x1):
+        y = max(0, min(h - 1, y)); xs = list(range(x0, x1, 4)) or [min(x0, w - 1)]
         cs = [pix[x, y] for x in xs]
         return tuple(int(statistics.median([c[i] for c in cs])) for i in range(3))
     def dist(a, b):
         return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5
-    base = sig(h - 3); cut = max(1, h - 48)
-    for y in range(h - 4, max(0, h - 90), -1):
-        if dist(sig(y), base) > 12:
-            cut = min(y + 2, h - 40); break
+    # Center column, not the side margins: a zoomed picture is letterboxed in
+    # black, so side samples never see it and a wide reserved strip (h-40)
+    # swallows the bottom of the photo (Twemoji yellow flagged as stray).
+    cx0, cx1 = max(0, w // 4), min(w, (3 * w) // 4)
+    if cx1 <= cx0: cx0, cx1 = 0, w
+    base = sig(h - 6, cx0, cx1)
+    cut = max(1, h - 24)  # painted hint bar is scale_px(22) plus the OS border
+    for y in range(h - 8, max(0, h - 100), -1):
+        if dist(sig(y, cx0, cx1), base) > 18:
+            cut = min(y + 2, h - 24); break
     return [[0, 0, w, max(1, cut)]]
 for f in glob.glob(f"{out}/*.icons"):
     r = [[int(v) for v in l.split()[2].split(",")] for l in open(f, encoding="utf-8") if l.startswith("ICON ")]
