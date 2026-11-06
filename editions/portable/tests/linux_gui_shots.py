@@ -65,10 +65,13 @@ for th in a.themes.split(","):
     # select the contact (first row of the list)
     x("mousemove", "--window", wid, "150", "128"); x("click", "1"); time.sleep(1.5)
     if th == a.themes.split(",")[0]:
-        # trust from the GUI menu: open menu, pick 信任当前联系人 (2nd entry)
+        # trust from the GUI menu: 信任当前联系人 is the 5th item (separators skipped)
         x("key", "F10"); time.sleep(1)
         shot(f"{th}-03-menu"); x("key", "Escape"); time.sleep(0.5)
-        x("key", "F10"); time.sleep(0.8); x("key", "Down", "Return"); time.sleep(1)
+        x("key", "F10"); time.sleep(0.8)
+        for _ in range(4):
+            x("key", "Down"); time.sleep(0.08)
+        x("key", "Return"); time.sleep(1)
         lm("send", gfp, "李明你好，下午三点的评审会改到 302 会议室。"); time.sleep(1.5)
         x("mousemove", "--window", wid, "560", "640"); x("click", "1"); time.sleep(0.5); x("type", "--delay", "40", "OK, thanks!"); x("key", "Return"); time.sleep(1.5)
         lm("send", gfp, "顺便把白板照片和季度报告发你，请查收 📎"); lm("send-file", gfp, f"{W}/会议白板.png"); lm("send-file", gfp, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "stickers", "thumb.png")); lm("send-file", gfp, f"{W}/季度报告.txt"); time.sleep(6)
@@ -80,7 +83,7 @@ for th in a.themes.split(","):
         from PIL import Image as _I; _I.new("RGB", (300, 200), (30, 160, 90)).save(f"{W}/截图.png")
         # attach shortcut (composer row is [表情][附件] input [发送])
         x("key", "ctrl+o"); time.sleep(2); shot(f"{th}-09-file-chooser")
-        x("key", "ctrl+l"); time.sleep(0.5); x("type", "--delay", "20", f"{W}/截图.png"); time.sleep(0.5); x("key", "Return"); time.sleep(2); x("key", "Return"); time.sleep(1.5)
+        x("key", "ctrl+l"); time.sleep(0.5); x("type", "--delay", "20", f"{W}/截图.png"); time.sleep(0.5); x("key", "Return"); time.sleep(2)
         shot(f"{th}-14-send-image")  # 发送图片？ 压缩发送 / 原图发送 / 取消
         x("key", "Return"); time.sleep(3)  # Enter = 压缩发送
     shot(f"{th}-02-chat")

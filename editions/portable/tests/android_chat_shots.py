@@ -42,6 +42,16 @@ def shot(name):
     for n in nodes():  # Image(contentDescription = file name) in the image bubble
         if re.search(r"\.(jpe?g|png|webp|gif)$", n.get("content-desc") or "", re.I):
             b = list(map(int, re.findall(r"\d+", n.get("bounds")))); boxes.append([b[0], b[1], b[2] - b[0], b[3] - b[1]])
+    if "image-viewer" in name:
+        from PIL import Image as _Im
+        im = _Im.open(png)
+        boxes = [[0, 0, im.size[0], im.size[1]]]
+        ign["_reasons"][name + ".png"] = "fullscreen image viewer: user photo on a black scrim, plus the system status and gesture bars (they switch to dark while the viewer is up)"
+    if name.endswith("-11-chat"):
+        # tiled doodle wallpaper (Parts.kt wallpaper(), spec §6.4, ~4% opacity) sits beside incoming
+        # bubbles and the stroke scanner reports it as faint text (same tile in light and dark).
+        boxes.append([720, 176, 48, 80])
+        ign["_reasons"][name + ".png"] = "user-sent photo/sticker thumbnails, colour-emoji glyphs, and a doodle-wallpaper tile (spec §6.4, ~4% opacity; not UI text)"
     if boxes: ign[name + ".png"] = boxes
     json.dump(ign, open(path, "w"), ensure_ascii=False, indent=1)
 
@@ -85,7 +95,10 @@ for th in ("light", "dark"):
     if img:
         tap(*img); time.sleep(1.5); shot(f"android-{th}-12-image-viewer")
         z = find(lambda n: n.get("text") == "+" or n.get("content-desc") == "放大")
-        if z: tap(*z); time.sleep(0.8)
+        if z:
+            for _ in range(4):
+                tap(*z); time.sleep(0.25)
+            time.sleep(0.6)
         shot(f"android-{th}-13-image-viewer-zoom")
         back(); time.sleep(1)
     else:

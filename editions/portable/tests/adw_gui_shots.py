@@ -66,6 +66,21 @@ def shot(name, theme, size="1024x694", g=None):
     r = icon_rects(g.lines) if g else []
     if r: ignore[os.path.basename(path)] = r; ignore["_reasons"][os.path.basename(path)] = "decorative icons only: trusted-identity shield (symbolic GtkImage) online dot (empty GtkBox; status is also spelled out as text) the colour-emoji reaction glyphs in the message menu (bitmap pictures; each button also has a tooltip) and the empty-state AdwStatusPage illustration (title + description carry the meaning); bounds reported by the app"
     print("shot", path, "windows", wid, flush=True); return path
+def shot_title(name, theme, title, g=None):
+    """Crop to a named window (the image viewer is titled 图片). Avoids the main-window strip beside a smaller transient."""
+    wids = subprocess.run(["xdotool", "search", "--onlyvisible", "--name", title], env=env, capture_output=True, text=True).stdout.split()
+    path = f"{out}/{name}-{theme}.png"
+    if wids:
+        geo = subprocess.run(["xdotool", "getwindowgeometry", "--shell", wids[-1]], env=env, capture_output=True, text=True).stdout
+        gm = {}
+        for l in geo.splitlines():
+            k, _, v = l.partition("=")
+            gm[k] = int(v) if str(v).lstrip("-").isdigit() else v
+        if gm.get("WIDTH"):
+            subprocess.run(["import", "-window", "root", "-crop", f'{gm["WIDTH"]}x{gm["HEIGHT"]}+{gm["X"]}+{gm["Y"]}', "+repage", path], env=env)
+            print("shot", path, "title", title, "wid", wids[-1], flush=True)
+            return path
+    return shot(name, theme, g=g)
 img = f"{W}/设计稿-v3.png"
 subprocess.run(["convert", "-size", "960x660", "gradient:#7aa7d8-#2b4f7e", "-fill", "#ffffff", "-draw", "roundrectangle 120,120 840,540 24,24", img])
 pdf = f"{W}/需求说明-v2.pdf"; open(pdf, "wb").write(os.urandom(1024 * 1300))
@@ -83,8 +98,8 @@ for i, theme in enumerate(["light", "dark"]):
     A.cmd(f"send {fp[:12]} 你看下聊天列表的间距，有问题告诉我。"); time.sleep(0.4)
     sticker = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "stickers", "thumb.png")
     A.cmd(f"sendfile {fp[:12]} {img}", 60); time.sleep(0.4)
-    A.cmd(f"sendfile {fp[:12]} {sticker}", 60); time.sleep(0.6)
     A.cmd(f"sendfile {fp[:12]} {pdf}", 60); time.sleep(0.4)
+    shutil.copy(img, os.path.join(out, "content-design.png"))
     B.cmd(f"send {fp[:12]} Lunch at 12:30?"); time.sleep(3)
     gl = len(g.lines)
     xdo("key", "ctrl+Tab"); l = g.wait_for("UI next-conv", 5, gl)
@@ -97,11 +112,10 @@ for i, theme in enumerate(["light", "dark"]):
         xdo("key", "ctrl+Tab"); time.sleep(0.6)
     xdo("type", "--delay", "20", "OK, see you at 3 pm."); xdo("key", "Return"); time.sleep(1.5)
     check(A.wait_for("see you at 3 pm", 8) is not None, f"[{theme}] Enter in the composer sends (peer received it)")
-    time.sleep(1); shot("page-chat-dm", theme, g=g)
-    xdo("key", "F6"); time.sleep(1.5); shot("page-image-viewer", theme, g=g)
+    xdo("key", "F6"); time.sleep(1.5); shot_title("page-image-viewer", theme, "图片", g=g)
     for _ in range(5):
         xdo("key", "plus"); time.sleep(0.12)
-    time.sleep(0.6); shot("page-image-viewer-zoom", theme, g=g)
+    time.sleep(0.6); shot_title("page-image-viewer-zoom", theme, "图片", g=g)
     xdo("key", "Escape"); time.sleep(0.5)
     gl = len(g.lines); xdo("key", "ctrl+f"); l = g.wait_for("UI search", 5, gl)
     check(l is not None and "Text" in l, f"[{theme}] shortcut Ctrl+F focuses the conversation search ({l})"); xdo("key", "Escape"); time.sleep(0.4)
@@ -116,6 +130,9 @@ for i, theme in enumerate(["light", "dark"]):
     check(l is not None, f"[{theme}] F1 opens About"); time.sleep(0.8); shot("dialog-about", theme, g=g); xdo("key", "Escape"); time.sleep(0.4)
     gl = len(g.lines); xdo("mousemove", "420", "485", "click", "3"); l = g.wait_for("UI msg-menu", 5, gl)
     check(l is not None, f"[{theme}] right-click on a message (file card) opens its menu"); time.sleep(0.5); shot("popup-message-menu", theme, g=g); xdo("key", "Escape")
+    # Twemoji sticker after the layout-sensitive shots so the file-card click and popovers stay as before
+    A.cmd(f"sendfile {fp[:12]} {sticker}", 60); time.sleep(2.5)
+    shot("page-chat-dm", theme, g=g)
     xdo("key", "ctrl+q"); g.p.wait(10) if g.p.poll() is None else None
     check(g.p.poll() is not None, f"[{theme}] shortcut Ctrl+Q quits")
     if g.p.poll() is None: g.p.kill()
