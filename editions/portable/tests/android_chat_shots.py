@@ -9,7 +9,7 @@ args = ap.parse_args(); os.makedirs(args.out, exist_ok=True)
 ADB = os.environ.get("ADB", "adb"); PKG = "io.github.frec86.lanmessenger"; HERE = os.path.dirname(os.path.abspath(__file__))
 def adb(*a, t=180): return subprocess.run([ADB] + list(a), capture_output=True, text=True, timeout=t).stdout
 def sh(c, t=180): return adb("shell", c, t=t)
-def tap(x, y): sh(f"input touchscreen motionevent DOWN {x} {y}; input touchscreen motionevent UP {x} {y}")
+def tap(x, y): sh(f"input tap {x} {y}")  # one-shot tap; split DOWN/UP across input(1) startups was a long-press on ConvRow
 def nodes():
     sh("uiautomator dump /sdcard/ui.xml"); x = sh("cat /sdcard/ui.xml")
     return list(ET.fromstring(x[x.index("<?xml"):]).iter("node")) if "<?xml" in x else []
