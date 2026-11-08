@@ -26,6 +26,12 @@ shot(){ xdotool mousemove 1095 755; sleep 0.7  # pointer off the window: no hove
   import -window root -crop ${W}x${H}+${X}+${Y} +repage "$OUT/$1.png"; echo "shot $1 ${W}x${H}+${X}+${Y}"; }
 CL(){ eval $(xdotool getwindowgeometry --shell "$WID"); xdotool mousemove $((X+$1)) $((Y+$2)) click 1; }
 menu(){ xdotool key "alt+$1"; sleep 1.2; }
+# Menubar popups cover the left search box. An empty box owner-draws
+# "搜索联系人和群组 (Ctrl+F)"; OCR then samples mixed menu/hint pixels
+# (xp-light-05-menu-groups: "(Ctrl" as #FEEFCB on #7F9DA6). Type into
+# search first so the hint is not painted, then restore after the shot.
+fill_search(){ xdotool key ctrl+f; sleep 0.25; xdotool type --delay 15 "x"; sleep 0.25; }
+clear_search(){ xdotool key ctrl+f; sleep 0.15; xdotool key ctrl+a BackSpace; sleep 0.2; }
 rm -rf "$WINEPREFIX/drive_c/lsmshots"
 for TH in light dark; do
   LSM_UI_TEST=1 wine "$EXE" --data "C:\\lsmshots" --name "XP 旧电脑" --port 0 --disco-port 47012 --targets 127.0.0.1:47011 --theme $TH >"$T/gui-$TH.log" 2>&1 &
@@ -69,10 +75,10 @@ for TH in light dark; do
   xdotool key ctrl+shift+7; sleep 0.7; shot "xp-$TH-page-profile"
   xdotool key ctrl+shift+8; sleep 0.7; shot "xp-$TH-page-diagnostics"
   xdotool key ctrl+shift+1; sleep 0.5
-  menu f; shot "xp-$TH-03-menu-file"; xdotool key Escape Escape; sleep 0.5
-  menu c; shot "xp-$TH-04-menu-contacts"; xdotool key Escape Escape; sleep 0.5
-  menu g; shot "xp-$TH-05-menu-groups"; xdotool key Escape Escape; sleep 0.5
-  menu s; shot "xp-$TH-06-menu-settings"; xdotool key Escape Escape; sleep 0.5
+  fill_search; menu f; shot "xp-$TH-03-menu-file"; xdotool key Escape Escape; clear_search
+  fill_search; menu c; shot "xp-$TH-04-menu-contacts"; xdotool key Escape Escape; clear_search
+  fill_search; menu g; shot "xp-$TH-05-menu-groups"; xdotool key Escape Escape; clear_search
+  fill_search; menu s; shot "xp-$TH-06-menu-settings"; xdotool key Escape Escape; clear_search
   menu c; xdotool key a; sleep 1.5; xdotool type "192.168.1.20"; sleep 0.5; shot "xp-$TH-07-dialog-add-ip"
   xdotool key ctrl+a; xdotool type "bad address"; xdotool key Return; sleep 1.5; shot "xp-$TH-08-error"; xdotool key Return; sleep 0.8
   menu c; xdotool key p; sleep 1.5; shot "xp-$TH-09-pin"; xdotool key Return; sleep 0.8
