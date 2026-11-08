@@ -55,6 +55,9 @@ try:
     sh(f"pm clear {PKG}"); sh("cmd uimode night no"); sh(f"pm grant {PKG} android.permission.POST_NOTIFICATIONS")
     sh(f"am start -W -n {PKG}/.MainActivity"); time.sleep(10)
     check(bool(sh(f"pidof {PKG}").strip()), "app running after launch")
+    if has("开始使用"):
+        shot("android-light-00-first-run")  # first-run LSMF_account_mode
+        tap_text("开始使用"); time.sleep(1.5)
     # ---- 设置 › 中转服务器（可选）: off by default
     tap_text("设置"); tap_text("中转服务器（可选）")
     check(has("未启用") and has("保存并连接"), "relay screen opens, off by default (未启用)")

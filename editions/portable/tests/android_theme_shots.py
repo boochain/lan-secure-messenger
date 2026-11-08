@@ -40,6 +40,9 @@ for k in ("window_animation_scale", "transition_animation_scale", "animator_dura
 for th in ("light", "dark"):
     adb("shell", "cmd", "uimode", "night", "yes" if th == "dark" else "no"); adb("shell", "am", "force-stop", PKG); time.sleep(3)
     adb("shell", "am", "start", "-W", "-n", f"{PKG}/.MainActivity"); time.sleep(12)
+    if find(lambda n: n.get("text") == "开始使用"):
+        shot(f"android-{th}-00-first-run")  # first-run LSMF_account_mode
+        tap_text("开始使用"); time.sleep(1.5)
     shot(f"android-{th}-01-empty")
     tap_text("按 IP 添加"); shot(f"android-{th}-02-add-ip-dialog", True)
     r = find(lambda n: n.get("class") == "android.widget.EditText"); tap(*r); time.sleep(1); adb("shell", "input", "text", "bad"); time.sleep(1)

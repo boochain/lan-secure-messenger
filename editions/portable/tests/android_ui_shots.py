@@ -59,7 +59,11 @@ if args.apk: print(adb("install", "-r", args.apk, t=600).strip())
 adb("shell", "pm", "clear", PKG); adb("shell", "cmd", "uimode", "night", "no")
 adb("shell", "pm", "grant", PKG, "android.permission.POST_NOTIFICATIONS")
 win = Rust("办公室-Windows", 47700); xp = Rust("XP旧电脑", 47710)
-launch(); shot("light-01-empty")
+launch();
+if find(lambda n: n.get("text") == "开始使用"):
+    shot("light-00-first-run")  # first-run LSMF_account_mode
+    tap_text("开始使用"); time.sleep(1.5)
+shot("light-01-empty")
 for port in (47700, 47710):
     tap_text("按 IP 添加"); tap_edit(); adb("shell", "input", "text", f"10.0.2.2:{port}"); time.sleep(2); tap_text("确定")
 amfp = wait(lambda: [p["fingerprint"] for p in win.peers() if p.get("online")], 90)

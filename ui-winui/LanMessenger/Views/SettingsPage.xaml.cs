@@ -144,13 +144,19 @@ public sealed partial class SettingsPage : Page
         catch { /* not a text file */ }
         try
         {
-            var psi = new System.Diagnostics.ProcessStartInfo("zbarimg", $"-q --raw "{path}"") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
+            var args = "-q --raw \"" + path + "\"";
+            var psi = new System.Diagnostics.ProcessStartInfo("zbarimg", args)
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
             using var proc = System.Diagnostics.Process.Start(psi);
             var output = proc == null ? "" : await proc.StandardOutput.ReadToEndAsync();
             if (proc != null) await proc.WaitForExitAsync();
-            var line = (output ?? "").Split('
-', '
-').FirstOrDefault(s => s.StartsWith("lsm://", StringComparison.Ordinal));
+            var line = (output ?? "").Replace('\r', '\n').Split('\n')
+                .FirstOrDefault(s => s.StartsWith("lsm://", StringComparison.Ordinal));
             if (!string.IsNullOrEmpty(line)) { await VM.AddByLinkAsync(line.Trim()); return; }
         }
         catch { /* zbarimg not installed */ }

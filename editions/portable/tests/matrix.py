@@ -323,9 +323,14 @@ for a, b in itertools.combinations_with_replacement(kinds, 2):
             # v0.7.1 passwordless account (recovery key; no server/account password)
             try:
                 if a == "rust":
-                    out = A.m("account-setup", "--relay-host", RHOST, "--relay-port", str(RPORT))
+                    # when --android, A is always the emulator peer; the rust engine is B
+                    peer = B if andr else A
+                    rh = "127.0.0.1" if andr else RHOST
+                    out = peer.m("account-setup", "--relay-host", rh, "--relay-port", str(RPORT))
                     checks["account-setup"] = "recovery_key" in out or "RK1-" in out
-                    out2 = A.m("reveal-recovery-key")
+                    if not checks["account-setup"]:
+                        details[f"{pair} account-setup"] = (out or "")[:200]
+                    out2 = peer.m("reveal-recovery-key")
                     checks["reveal-recovery-key"] = "recovery_key" in out2 or "RK1-" in out2
                 else:
                     r = A.cmd("account-setup")

@@ -559,8 +559,9 @@ static void activate(GtkApplication *a, gpointer p){
     gtk_box_pack_start(GTK_BOX(vb),title_lbl,FALSE,FALSE,0); gtk_box_pack_start(GTK_BOX(vb),sub_lbl,FALSE,FALSE,0); gtk_header_bar_set_custom_title(GTK_HEADER_BAR(hb),vb);
     mb=gtk_menu_button_new(); gtk_button_set_image(GTK_BUTTON(mb),gtk_image_new_from_icon_name("open-menu-symbolic",GTK_ICON_SIZE_BUTTON)); gtk_widget_set_tooltip_text(mb,"菜单");
     menu=gtk_menu_new();
-    mi(menu,"按 IP 添加…",A_ADDIP); mi(menu,"通过链接添加 / 从图片识别…",A_ADDURI); mi(menu,"我的二维码…",A_MYQR); mi(menu,"服务器二维码…",A_SERVERQR); mi(menu,"配对新设备…",A_PAIRQR); mi(menu,"切换账号/设备模式…",A_ACCTMODE); mi(menu,"显示恢复密钥…",A_REVEALRK); mi(menu,"切换会话… (Ctrl+K)",A_QUICK); sep(menu); mi(menu,"信任当前联系人",A_TRUST); mi(menu,"取消信任",A_UNTRUST); mi(menu,"屏蔽",A_BLOCK); sep(menu);
+    mi(menu,"按 IP 添加…",A_ADDIP); mi(menu,"通过链接添加…",A_ADDURI); mi(menu,"我的二维码…",A_MYQR); mi(menu,"切换会话… (Ctrl+K)",A_QUICK); sep(menu); mi(menu,"信任当前联系人",A_TRUST); mi(menu,"取消信任",A_UNTRUST); mi(menu,"屏蔽",A_BLOCK); sep(menu);
     mi(menu,"生成 PIN（让对方输入）",A_PINOFFER); mi(menu,"输入 PIN 配对…",A_PINPAIR); sep(menu);
+    { GtkWidget *am=gtk_menu_new(),*ai=gtk_menu_item_new_with_label("账号与二维码"); mi(am,"服务器二维码…",A_SERVERQR); mi(am,"配对新设备…",A_PAIRQR); mi(am,"从图片识别二维码…",A_ADDURI); mi(am,"切换账号/设备模式…",A_ACCTMODE); mi(am,"显示恢复密钥…",A_REVEALRK); gtk_menu_item_set_submenu(GTK_MENU_ITEM(ai),am); gtk_menu_shell_append(GTK_MENU_SHELL(menu),ai); } /* extras in a submenu so the main menu stays shorter than the window */
     { GtkWidget *gm=gtk_menu_new(),*gi=gtk_menu_item_new_with_label("群组"); mi(gm,"创建群组…",A_GCREATE); mi(gm,"邀请成员…",A_GINVITE); mi(gm,"移除成员…",A_GREMOVE); mi(gm,"退出群组",A_GLEAVE); gtk_menu_item_set_submenu(GTK_MENU_ITEM(gi),gm); gtk_menu_shell_append(GTK_MENU_SHELL(menu),gi); } /* submenus keep the main menu shorter than the window */
     
     { GtkWidget *cm=gtk_menu_new(),*ci=gtk_menu_item_new_with_label("当前会话");
