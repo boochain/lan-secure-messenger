@@ -168,6 +168,7 @@
                     <TextBox x:Name="PasteUriBox" Header="粘贴 lsm:// 链接（添加联系人 / 连接服务器 / 配对新设备）" PlaceholderText="lsm://add?… 或 lsm://relay?… 或 lsm://pair?…" Tag="LSMF_qr_scan" />
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button Content="应用链接" Click="ApplyUri_Click" Tag="LSMF_qr_scan" />
+                        <Button Content="从图片识别" Click="ScanImage_Click" Tag="LSMF_qr_scan" />
                         <Button Content="服务器二维码" Click="ServerQr_Click" Tag="LSMF_qr_server" />
                         <Button Content="配对新设备二维码" Click="PairQr_Click" Tag="LSMF_qr_pair" />
                     </StackPanel>

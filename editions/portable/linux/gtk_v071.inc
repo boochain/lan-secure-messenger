@@ -21,14 +21,24 @@ static void v071_first_run(void){
           gtk_dialog_run(GTK_DIALOG(n)); gtk_widget_destroy(n); } } }
     gtk_widget_destroy(d);
 }
+static void v071_apply_scanned(const char *u){ char err[256]=""; if(!u||!u[0]) return;
+    if(lsm_apply_uri(C,u,err)) msgbox(GTK_MESSAGE_WARNING,err[0]?err:"无法识别链接"); else msgbox(GTK_MESSAGE_INFO,"已处理链接"); }
+static void v071_scan_image_file(void){ /* LSMF_qr_scan — image file where zbarimg is present; else paste */
+    GtkWidget *fc=gtk_file_chooser_dialog_new("选择二维码图片",GTK_WINDOW(win),GTK_FILE_CHOOSER_ACTION_OPEN,"取消",GTK_RESPONSE_CANCEL,"识别",GTK_RESPONSE_ACCEPT,NULL);
+    char uri[800]="";
+    if(gtk_dialog_run(GTK_DIALOG(fc))==GTK_RESPONSE_ACCEPT){ char *f=gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(fc));
+        if(f){ if(lsm_uri_from_file(f,uri,sizeof uri)) msgbox(GTK_MESSAGE_WARNING,"无法从该文件识别二维码，请改为粘贴 lsm:// 链接（安装 zbarimg 后可从图片识别）。"); else v071_apply_scanned(uri); g_free(f); } }
+    gtk_widget_destroy(fc); }
 static void v071_paste_uri(void){
-    GtkWidget *d=gtk_dialog_new_with_buttons("扫描或粘贴链接",GTK_WINDOW(win),GTK_DIALOG_MODAL,"添加",GTK_RESPONSE_OK,"取消",GTK_RESPONSE_CANCEL,NULL);
-    GtkWidget *box=gtk_dialog_get_content_area(GTK_DIALOG(d)), *e; char *t, err[256]="";
-    gtk_box_pack_start(GTK_BOX(box),gtk_label_new("粘贴 lsm://add、lsm://relay 或 lsm://pair 链接（桌面也可从图片识别后粘贴）。"),FALSE,FALSE,4);
+    GtkWidget *d=gtk_dialog_new_with_buttons("扫描或粘贴链接",GTK_WINDOW(win),GTK_DIALOG_MODAL,"从图片识别",2,"添加",GTK_RESPONSE_OK,"取消",GTK_RESPONSE_CANCEL,NULL);
+    GtkWidget *box=gtk_dialog_get_content_area(GTK_DIALOG(d)), *e; char *t, err[256]=""; int resp;
+    gtk_box_pack_start(GTK_BOX(box),gtk_label_new("粘贴 lsm://add、lsm://relay 或 lsm://pair 链接。也可以选择一张二维码图片识别（需系统安装 zbarimg）。"),FALSE,FALSE,4);
     e=gtk_entry_new(); gtk_widget_set_name(e,"LSMF_qr_scan"); gtk_box_pack_start(GTK_BOX(box),e,FALSE,FALSE,4);
     gtk_widget_show_all(d);
-    if(gtk_dialog_run(GTK_DIALOG(d))==GTK_RESPONSE_OK){ t=g_strdup(gtk_entry_get_text(GTK_ENTRY(e))); if(t&&t[0]){ if(lsm_apply_uri(C,t,err)) msgbox(GTK_MESSAGE_WARNING,err[0]?err:"无法识别链接"); else msgbox(GTK_MESSAGE_INFO,"已处理链接"); } g_free(t); }
-    gtk_widget_destroy(d);
+    resp=gtk_dialog_run(GTK_DIALOG(d));
+    if(resp==2){ gtk_widget_destroy(d); v071_scan_image_file(); return; }
+    if(resp==GTK_RESPONSE_OK){ t=g_strdup(gtk_entry_get_text(GTK_ENTRY(e))); if(t&&t[0]) v071_apply_scanned(t); g_free(t); }
+    gtk_widget_destroy(d); (void)err;
 }
 static void v071_show_uri_qr(const char *title, const char *uri){
     GtkWidget *d,*ca,*da,*l; ux_qrn=lsm_qr(uri,ux_qrm);

@@ -106,7 +106,17 @@ impl Engine {
         }))
     }
 
-    fn acct_try_upload(&self, lookup: &str, rk: &str) -> bool {
+    pub(crate) fn acct_maybe_reupload(&mut self) {
+        if self.settings.account_mode != "account" {
+            return;
+        }
+        let Some(rk) = account::load_recovery_key(&self.paths) else { return };
+        let Ok(lookup) = account::account_lookup(&rk) else { return };
+        let _ = self.acct_try_upload(&lookup, &rk);
+    }
+
+    fn acct_try_upload(&mut self, lookup: &str, rk: &str) -> bool {
+        let _ = self.history.flush(true);
         let tmp = self.paths.root.join("account-backup.tmp");
         if crate::backup::export_backup(&self.paths, rk, &tmp).is_err() {
             return false;

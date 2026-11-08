@@ -79,7 +79,7 @@ impl AccountStore {
         if !dir.exists() {
             return Err("no user");
         }
-        if blob.len() > 2 * 1024 * 1024 {
+        if blob.len() > 12 * 1024 * 1024 {
             return Err("too large");
         }
         fs::write(dir.join("identity.bak"), blob).map_err(|_| "io")

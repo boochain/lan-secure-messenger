@@ -111,6 +111,8 @@ pub struct HistoryStore {
     enabled: bool,
     path: std::path::PathBuf,
     dirty: bool,
+    /// Set when flush actually wrote to disk; Engine takes this to schedule an account re-upload.
+    wrote: bool,
     last_save: Instant,
     /// ids deleted on this device ("tombstones"): a resend from the peer must not bring them back
     deleted: std::collections::HashSet<String>,
@@ -155,7 +157,7 @@ impl HistoryStore {
         let tomb_path = paths.history.with_extension("deleted");
         let deleted_order: Vec<String> = fs::read(&tomb_path).ok().and_then(|d| open_at_rest(&key, &d).ok()).and_then(|p| serde_json::from_slice(&p).ok()).unwrap_or_default();
         let deleted = deleted_order.iter().cloned().collect();
-        Ok(Self { key, messages, enabled, path: paths.history.clone(), dirty: false, last_save: Instant::now(), deleted, deleted_order })
+        Ok(Self { key, messages, enabled, path: paths.history.clone(), dirty: false, wrote: false, last_save: Instant::now(), deleted, deleted_order })
     }
 
     pub fn push(&mut self, m: Message) {
@@ -285,8 +287,16 @@ impl HistoryStore {
         let plain = serde_json::to_vec(&self.messages)?;
         atomic_write(&self.path, &seal_at_rest(&self.key, &plain)?)?;
         self.dirty = false;
+        self.wrote = true;
         self.last_save = Instant::now();
         Ok(())
+    }
+
+    /// True if a flush wrote the file since the previous take.
+    pub fn take_wrote(&mut self) -> bool {
+        let w = self.wrote;
+        self.wrote = false;
+        w
     }
 
     pub fn set_enabled(&mut self, on: bool) {

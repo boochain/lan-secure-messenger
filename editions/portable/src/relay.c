@@ -217,6 +217,17 @@ static void rl_tick(lsm_core *c){
         rl_frame(r,RT_PAIR_PUT,hdr,36,c->pair_blob,c->pair_blob_n); c->pair_offer=0;
     }
     if(c->pair_pending==1){ rl_frame(r,RT_PAIR_GET,c->pair_token,32,NULL,0); c->pair_pending=2; }
+    if(c->acct_backup_dirty && c->recovery_key[0] && !strcmp(c->account_mode,"account")){
+        char tmp[600], err[256]="", look[40]; uint8_t hdr[80]; uint16_t ln; size_t bn=0; uint8_t *blob;
+        path_join(tmp,sizeof tmp,c->data_dir,"account-backup.tmp");
+        if(!lsm_backup_export_locked(c,c->recovery_key,tmp,err) && !lsm_acct_lookup(c->recovery_key,look,sizeof look)){
+            blob=read_file(tmp,&bn); remove(tmp);
+            if(blob && bn){ ln=(uint16_t)strlen(look); hdr[0]=(uint8_t)(ln>>8); hdr[1]=(uint8_t)ln; memcpy(hdr+2,look,ln); hdr[2+ln]=0; hdr[3+ln]=0;
+                rl_frame(r,RT_ACCOUNT_REGISTER,hdr,4+ln,NULL,0);
+                rl_frame(r,RT_ACCOUNT_PUT_BACKUP,hdr,2+ln,blob,bn); }
+            free(blob); c->acct_backup_dirty=0;
+        }
+    }
     if(now-r->last_rx>(int64_t)r->hb*3000){ rl_fail(c,"error","\xe5\xbf\x83\xe8\xb7\xb3\xe8\xb6\x85\xe6\x97\xb6"); return; } /* 心跳超时 */
     /* open relay sessions to relay peers that have no link at all (LAN direct preferred) */
     for(i=0;i<r->npeers;i++){ rl_peer *p=&r->peers[i]; lsm_contact *ct=contact_get(c,p->fp); conn *k;

@@ -1,3 +1,4 @@
+using System.Linq;
 using LanMessenger.Core.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -123,6 +124,38 @@ public sealed partial class SettingsPage : Page
     }
     private async void RestoreAccount_Click(object sender, RoutedEventArgs e) => await VM.RestoreAccountAsync(RestoreKeyBox.Text);
     private async void ApplyUri_Click(object sender, RoutedEventArgs e) => await VM.AddByLinkAsync(PasteUriBox.Text);
+    private async void ScanImage_Click(object sender, RoutedEventArgs e)
+    {
+        var files = await App.Platform.PickFilesAsync();
+        var path = files?.FirstOrDefault();
+        if (string.IsNullOrEmpty(path)) return;
+        try
+        {
+            var text = await System.IO.File.ReadAllTextAsync(path);
+            var i = text.IndexOf("lsm://", StringComparison.Ordinal);
+            if (i >= 0)
+            {
+                var end = i;
+                while (end < text.Length && !char.IsWhiteSpace(text[end])) end++;
+                await VM.AddByLinkAsync(text[i..end]);
+                return;
+            }
+        }
+        catch { /* not a text file */ }
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo("zbarimg", $"-q --raw "{path}"") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
+            using var proc = System.Diagnostics.Process.Start(psi);
+            var output = proc == null ? "" : await proc.StandardOutput.ReadToEndAsync();
+            if (proc != null) await proc.WaitForExitAsync();
+            var line = (output ?? "").Split('
+', '
+').FirstOrDefault(s => s.StartsWith("lsm://", StringComparison.Ordinal));
+            if (!string.IsNullOrEmpty(line)) { await VM.AddByLinkAsync(line.Trim()); return; }
+        }
+        catch { /* zbarimg not installed */ }
+        VM.ShowStatus("无法从该文件识别二维码，请将 lsm:// 链接粘贴到上方。桌面扫码以粘贴链接为主；安装 zbar 后可从图片识别。");
+    }
     private async void ServerQr_Click(object sender, RoutedEventArgs e)
     {
         var uri = await VM.RelayUriAsync();

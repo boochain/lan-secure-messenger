@@ -739,3 +739,164 @@ async fn v071_account_mode_local() {
         _ => panic!("add"),
     }
 }
+
+fn assert_no_plaintext(root: &std::path::Path, text: &str, file_bytes: &[u8]) {
+    fn walk(p: &std::path::Path, text: &str, file_bytes: &[u8]) {
+        if p.is_dir() {
+            if let Ok(rd) = std::fs::read_dir(p) {
+                for e in rd.flatten() {
+                    walk(&e.path(), text, file_bytes);
+                }
+            }
+            return;
+        }
+        let Ok(b) = std::fs::read(p) else { return };
+        assert!(
+            !b.windows(text.len()).any(|w| w == text.as_bytes()),
+            "plaintext message leaked into {}",
+            p.display()
+        );
+        if file_bytes.len() >= 8 {
+            assert!(
+                !b.windows(file_bytes.len()).any(|w| w == file_bytes),
+                "plaintext file leaked into {}",
+                p.display()
+            );
+        }
+    }
+    walk(root, text, file_bytes);
+}
+
+async fn start_named(name: &str, base: &std::path::Path) -> EngineHandle {
+    let ov = serde_json::json!({
+        "display_name": name,
+        "listen_port": 0,
+        "discovery_enabled": false,
+        "multicast_enabled": false,
+        "auto_trust": true,
+        "announce_interval_secs": 1,
+        "exclude_interfaces": [" | "],
+        "download_dir": base.join("dl").display().to_string(),
+    });
+    start(EngineOptions { paths: ConfigPaths::from_base(base), ipc_endpoint: "test".into(), overrides: Some(ov) }).await.unwrap()
+}
+
+/// Device A in account mode sends/receives text + a file; a fresh device B restores
+/// the encrypted backup and sees both. Anything written like a relay `data_dir`
+/// (the LSMBAK02 blob) must not contain plaintext.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn v071_account_history_restore() {
+    const SECRET_OUT: &str = "LSM-V071-SECRET-MSG-账号历史同步";
+    const SECRET_IN: &str = "LSM-V071-SECRET-REPLY-from-peer";
+    const FILE_BYTES: &[u8] = b"LSM-V071-FILE-PAYLOAD-NO-PLAINTEXT-ON-SERVER";
+
+    let a = node("Ada", json!({})).await;
+    let p = node("Pat", json!({})).await;
+    a.call("add_peer", json!({"address": format!("127.0.0.1:{}", p.port().await)})).await;
+    both_online(&a, &p, 10).await;
+
+    let setup = a.call("account_setup", json!({})).await;
+    let rk = setup["recovery_key"].as_str().unwrap().to_string();
+    let lookup = setup["lookup"].as_str().unwrap().to_string();
+    assert!(rk.starts_with("RK1-"), "{setup}");
+    assert_eq!(a.snap().await["me"]["account_mode"], "account");
+
+    let mout = a.send(&p, SECRET_OUT).await;
+    let min = p.send(&a, SECRET_IN).await;
+    let (ca, cb) = (format!("dm:{}", p.fp), format!("dm:{}", a.fp));
+    wait("peer got secret", 10, || has_body(&p, &cb, SECRET_OUT)).await;
+    wait("A got reply", 10, || has_body(&a, &ca, SECRET_IN)).await;
+    wait("out delivered", 10, || delivered(&a, &ca, mout["id"].as_str().unwrap())).await;
+    wait("in delivered", 10, || delivered(&p, &cb, min["id"].as_str().unwrap())).await;
+
+    let src = a.dir.path().join("secret-file.bin");
+    std::fs::write(&src, FILE_BYTES).unwrap();
+    let t = a.call("send_file", json!({"conversation": ca, "path": src.display().to_string()})).await;
+    let tid = t["id"].as_str().unwrap().to_string();
+    wait("file sent", 20, || async {
+        a.snap().await["transfers"].as_array().unwrap().iter().any(|x| x["id"] == tid.as_str() && x["state"] == "done")
+    }).await;
+    wait("file received", 20, || async {
+        p.snap().await["transfers"].as_array().unwrap().iter().any(|x| x["id"] == tid.as_str() && x["state"] == "done")
+    }).await;
+
+    let bak = a.dir.path().join("account-hist.lsmbak");
+    a.call("backup", json!({"path": bak.display().to_string(), "password": rk})).await;
+    let blob = std::fs::read(&bak).unwrap();
+    assert!(blob.starts_with(b"LSMBAK02"), "backup must be LSMBAK02");
+    assert_no_plaintext(&bak, SECRET_OUT, FILE_BYTES);
+    assert_no_plaintext(&bak, SECRET_IN, FILE_BYTES);
+
+    let server_dir = tempfile::tempdir().unwrap();
+    let user_dir = server_dir.path().join("users").join(&lookup);
+    std::fs::create_dir_all(&user_dir).unwrap();
+    std::fs::write(user_dir.join("identity.bak"), &blob).unwrap();
+    assert_no_plaintext(server_dir.path(), SECRET_OUT, FILE_BYTES);
+    assert_no_plaintext(server_dir.path(), SECRET_IN, FILE_BYTES);
+
+    let bdir = tempfile::tempdir().unwrap();
+    lan_core::backup::import_backup(&ConfigPaths::from_base(bdir.path()), &rk, &bak).unwrap();
+    let bh = start_named("AdaRestored", bdir.path()).await;
+    assert_eq!(bh.fingerprint, a.fp, "restored device must keep the same identity");
+    let bnode = Node { h: bh, fp: a.fp.clone(), dir: bdir };
+    let msgs = bnode.msgs(&ca).await;
+    assert!(msgs.iter().any(|m| m["body"] == SECRET_OUT), "outgoing text missing on B: {msgs:?}");
+    assert!(msgs.iter().any(|m| m["body"] == SECRET_IN), "incoming text missing on B: {msgs:?}");
+    let fmsg = msgs.iter().find(|m| m["kind"] == "file").cloned().expect("file message missing on B");
+    let fpath = fmsg["file"]["path"].as_str().expect("file path missing after restore");
+    assert_eq!(std::fs::read(fpath).unwrap(), FILE_BYTES, "restored file content mismatch at {fpath}");
+
+    // Optional live relay PUT/GET when the binary is already built (not required on every CI job).
+    let bin = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../relay-server/target/debug/relay-server");
+    if bin.exists() {
+        let rdir = tempfile::tempdir().unwrap();
+        let port = free_udp_port();
+        let cfg = rdir.path().join("relay.toml");
+        let data = rdir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        std::fs::write(&cfg, format!(
+            "[server]\nbind = \"127.0.0.1\"\nport = {port}\npassphrase = \"\"\ndata_dir = \"{}\"\nstatus_addr = \"off\"\n[log]\nlevel = \"error\"\n",
+            data.display().to_string().replace('\\', "/")
+        )).unwrap();
+        let mut child = std::process::Command::new(&bin)
+            .arg("--config").arg(&cfg)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("spawn relay-server");
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        let setup2 = a.call("account_setup", json!({"relay_host": "127.0.0.1", "relay_port": port})).await;
+        assert_eq!(setup2["lookup"], lookup);
+        // Ensure the latest history+file blob is what the server stores.
+        let put = a.call("account_backup_put", json!({"user": lookup, "password": rk})).await;
+        assert_eq!(put["ok"], true, "{put}");
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert_no_plaintext(&data, SECRET_OUT, FILE_BYTES);
+        assert_no_plaintext(&data, SECRET_IN, FILE_BYTES);
+
+        let cdir = tempfile::tempdir().unwrap();
+        let ch = start_named("FreshB", cdir.path()).await;
+        let cfp_before = ch.fingerprint.clone();
+        let cnode = Node { h: ch, fp: cfp_before.clone(), dir: cdir };
+        let rest = cnode.call("account_restore", json!({"recovery_key": rk, "relay_host": "127.0.0.1", "relay_port": port})).await;
+        assert_eq!(rest["ok"], true, "{rest}");
+        let _ = cnode.h.call("shutdown", json!({})).await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        let ch2 = start_named("FreshB2", cnode.dir.path()).await;
+        assert_eq!(ch2.fingerprint, a.fp, "relay restore must recover identity, was {cfp_before}");
+        let c2 = Node { h: ch2, fp: a.fp.clone(), dir: tempfile::tempdir().unwrap() };
+        // msgs live on cnode.dir (same path as ch2)
+        let msgs2 = {
+            // query via restored handle
+            c2.h.call("get_messages", json!({"conversation": ca, "limit": 2000})).await.unwrap()
+        };
+        let arr = msgs2.as_array().cloned().unwrap();
+        assert!(arr.iter().any(|m| m["body"] == SECRET_OUT), "relay-restored text missing: {arr:?}");
+        assert!(arr.iter().any(|m| m["body"] == SECRET_IN), "relay-restored reply missing: {arr:?}");
+        let f2 = arr.iter().find(|m| m["kind"] == "file").cloned().expect("relay-restored file missing");
+        let p2 = f2["file"]["path"].as_str().expect("relay-restored file path");
+        assert_eq!(std::fs::read(p2).unwrap(), FILE_BYTES);
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+}

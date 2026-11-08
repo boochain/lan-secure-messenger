@@ -3,7 +3,9 @@
  * key = Argon2id(password, salt), m=19456 KiB, t=2, p=1, v1.3 (the Rust argon2 crate defaults).
  * Payload (serde): version, identity_json, contacts_json, settings_json, history_key_hex, groups_key_hex, groups_file_hex.
  * C carries identity, contacts (name/trust/ed25519/addr/last_seen/muted), manual addresses and display name.
- * Groups / history use edition-specific formats and are not converted (null on export, ignored on import).
+ * Also history_enc_hex (sealed history.dat) and files:[{name,orig_path,data_hex}].
+ * history_key_hex is hex(store_key) so a restored device can decrypt history.dat.
+ * Groups remain edition-specific (null). Rust messages.enc is not converted to C records.
  * #included from core.c. */
 #define BAK_MAGIC "LSMBAK02"
 #define BS(b,lit) b_put((b),(lit),sizeof(lit)-1)
@@ -44,11 +46,11 @@ static const char *bk_get(const char *p, const char *k){ size_t kl=strlen(k); p=
 static const char *bk_first(const char *p){ p=bk_ws(p); if(*p!='[') return NULL; p=bk_ws(p+1); return *p==']'?NULL:p; }
 static const char *bk_next(const char *p){ p=bk_ws(bk_skip(p)); if(*p!=',') return NULL; return bk_ws(p+1); }
 static char *bk_gstr(const char *o, const char *k){ const char *v=bk_get(o,k); return v?bk_dstr(v):NULL; }
+static void bk_hex(buf_t *b, const uint8_t *d, size_t n){ static const char *hx="0123456789abcdef"; size_t i; b_res(b,n*2); for(i=0;i<n;i++){ b_u8(b,(uint8_t)hx[d[i]>>4]); b_u8(b,(uint8_t)hx[d[i]&15]); } }
 
-int lsm_backup_export(lsm_core *c, const char *pw, const char *path, char *err){
+static int bak_write(lsm_core *c, const char *pw, const char *path, char *err){
     buf_t cj={0}, pj={0}, out={0}; char hx[65], h2[65]; int i, r; uint8_t salt[16], key[32], nonce[12], mac[16], *ct;
     if(!pw || strlen(pw)<6){ snprintf(err,256,"备份密码至少 6 个字符"); return -1; }
-    mu_lock(&c->mu);
     hex_enc(c->x_sk,32,hx); hex_enc(c->ed_seed,32,h2);
     { char id[200]; snprintf(id,sizeof id,"{\n  \"x25519_secret\": \"%s\",\n  \"ed25519_secret\": \"%s\"\n}",hx,h2); BS(&pj,"{\"version\":2,\"identity_json\":"); bk_str(&pj,id); }
     BS(&cj,"{\"contacts\":[");
@@ -60,8 +62,22 @@ int lsm_backup_export(lsm_core *c, const char *pw, const char *path, char *err){
     BS(&cj,"],\"manual\":["); for(i=0;i<c->nmanual;i++){ if(i) b_u8(&cj,','); bk_str(&cj,c->manual[i].addr); } BS(&cj,"],\"muted_groups\":[]}"); b_u8(&cj,0);
     BS(&pj,",\"contacts_json\":"); bk_str(&pj,(char*)cj.p);
     { buf_t sj={0}; BS(&sj,"{\"display_name\":"); bk_str(&sj,c->name); BS(&sj,"}"); BS(&pj,",\"settings_json\":"); bk_str(&pj,(char*)sj.p); b_free(&sj); }
-    mu_unlock(&c->mu);
-    BS(&pj,",\"history_key_hex\":null,\"groups_key_hex\":null,\"groups_file_hex\":null}");
+    { char kh[65]; hex_enc(c->store_key,32,kh); BS(&pj,",\"history_key_hex\":"); bk_str(&pj,kh); }
+    BS(&pj,",\"groups_key_hex\":null,\"groups_file_hex\":null");
+    { int fi,nfl=0; char (*fps)[520]=NULL; char (*fns)[260]=NULL;
+      for(i=0;i<c->nmsgs;i++){ if(!c->msgs[i].file_path[0]) continue;
+        fps=(void*)xrealloc(fps,sizeof(*fps)*(size_t)(nfl+1)); fns=(void*)xrealloc(fns,sizeof(*fns)*(size_t)(nfl+1));
+        scpy(fps[nfl],c->msgs[i].file_path,520); scpy(fns[nfl],c->msgs[i].file_name[0]?c->msgs[i].file_name:"file",260); nfl++; }
+      { char hp[600]; size_t hn=0; uint8_t *hd; path_join(hp,sizeof hp,c->data_dir,"history.dat"); hd=read_file(hp,&hn);
+        if(hd){ BS(&pj,",\"history_enc_hex\":\""); bk_hex(&pj,hd,hn); BS(&pj,"\""); free(hd); } else BS(&pj,",\"history_enc_hex\":null"); }
+      BS(&pj,",\"files\":[");
+      { int first=1; for(fi=0;fi<nfl;fi++){ size_t fnlen=0; uint8_t *fb=read_file(fps[fi],&fnlen);
+          if(!fb||fnlen>4u*1024u*1024u){ free(fb); continue; }
+          if(!first) b_u8(&pj,','); first=0;
+          BS(&pj,"{\"name\":"); bk_str(&pj,fns[fi]); BS(&pj,",\"orig_path\":"); bk_str(&pj,fps[fi]);
+          BS(&pj,",\"data_hex\":\""); bk_hex(&pj,fb,fnlen); BS(&pj,"\"}"); free(fb); } }
+      BS(&pj,"]"); free(fps); free(fns); }
+    b_u8(&pj,'}');
     rand_bytes(salt,16); rand_bytes(nonce,12);
     if(bak_kdf(pw,salt,key)){ b_free(&cj); b_free(&pj); snprintf(err,256,"out of memory"); return -1; }
     ct=(uint8_t*)xmalloc(pj.n+1);
@@ -69,6 +85,10 @@ int lsm_backup_export(lsm_core *c, const char *pw, const char *path, char *err){
     b_put(&out,BAK_MAGIC,8); b_put(&out,salt,16); b_put(&out,nonce,12); b_put(&out,ct,pj.n); b_put(&out,mac,16);
     r=write_atomic(path,out.p,out.n); if(r) snprintf(err,256,"无法写入 %s",path);
     crypto_wipe(key,32); crypto_wipe(pj.p,pj.n); crypto_wipe(cj.p,cj.n); free(ct); b_free(&cj); b_free(&pj); b_free(&out); return r?-1:0; }
+
+int lsm_backup_export_locked(lsm_core *c, const char *pw, const char *path, char *err){ return bak_write(c,pw,path,err); }
+int lsm_backup_export(lsm_core *c, const char *pw, const char *path, char *err){
+    int rc; mu_lock(&c->mu); rc=bak_write(c,pw,path,err); mu_unlock(&c->mu); return rc; }
 
 int lsm_backup_import(const char *data_dir, const char *pw, const char *path, char *err, char *fp_out){
     size_t n; uint8_t *d=read_file(path,&n), key[32], *pl; char *idj=NULL, *cjs=NULL, *sjs=NULL, *xs=NULL, *es=NULL, p[600]; int rc=-1;
@@ -85,7 +105,11 @@ int lsm_backup_import(const char *data_dir, const char *pw, const char *path, ch
     if(!idj || !(xs=bk_gstr(idj,"x25519_secret")) || !(es=bk_gstr(idj,"ed25519_secret")) || strlen(xs)!=64 || strlen(es)!=64 || hex_dec(xs,x_sk,32) || hex_dec(es,ed_seed,32)){ snprintf(err,256,"备份中的身份数据无效"); goto out; }
     umkdir(data_dir);
     { char t[131]; hex_enc(x_sk,32,t); t[64]='\n'; hex_enc(ed_seed,32,t+65); t[129]='\n'; path_join(p,sizeof p,data_dir,"identity.txt"); if(write_atomic(p,t,130)){ snprintf(err,256,"无法写入 %s",p); crypto_wipe(t,sizeof t); goto out; } crypto_wipe(t,sizeof t); }
-    path_join(p,sizeof p,data_dir,"state.key"); { size_t kn; uint8_t *k=read_file(p,&kn); if(k&&kn==32) memcpy(skey,k,32); else { rand_bytes(skey,32); write_atomic(p,skey,32); } free(k); }
+    path_join(p,sizeof p,data_dir,"state.key");
+    { char *hkh=bk_gstr((char*)pl,"history_key_hex"); size_t kn; uint8_t *k;
+      if(hkh && strlen(hkh)==64 && !hex_dec(hkh,skey,32)) write_atomic(p,skey,32);
+      else { k=read_file(p,&kn); if(k&&kn==32) memcpy(skey,k,32); else { rand_bytes(skey,32); write_atomic(p,skey,32); } free(k); }
+      free(hkh); }
     { buf_t cb={0}, mb={0}; const char *a, *e; size_t sn; uint8_t *s;
       for(e=cjs?bk_first(bk_get(cjs,"contacts")?bk_get(cjs,"contacts"):"[]"):NULL; e; e=bk_next(e)){
           char *fp=bk_gstr(e,"fingerprint"), *nm=bk_gstr(e,"name"), *tr=bk_gstr(e,"trust"), *ed=bk_gstr(e,"ed25519_pk"), *ad=NULL; const char *ls=bk_get(e,"last_seen_ms"), *mu=bk_get(e,"muted");
@@ -97,6 +121,21 @@ int lsm_backup_import(const char *data_dir, const char *pw, const char *path, ch
       s=seal_rand(skey,cb.p?cb.p:(const uint8_t*)"",cb.n,&sn); path_join(p,sizeof p,data_dir,"contacts.dat"); write_atomic(p,s,sn); free(s);
       s=seal_rand(skey,mb.p?mb.p:(const uint8_t*)"",mb.n,&sn); path_join(p,sizeof p,data_dir,"manual.dat"); write_atomic(p,s,sn); free(s); b_free(&cb); b_free(&mb); }
     if(sjs){ char *nm=bk_gstr(sjs,"display_name"); if(nm&&*nm){ char t[300]; sanitize_name(nm,t,sizeof t); path_join(p,sizeof p,data_dir,"name.txt"); write_atomic(p,t,strlen(t)); } free(nm); }
+    { char *heh=bk_gstr((char*)pl,"history_enc_hex");
+      if(heh && heh[0] && !(strlen(heh)&1)){ size_t hn=strlen(heh)/2; uint8_t *hb=(uint8_t*)malloc(hn?hn:1);
+        if(hb && !hex_dec(heh,hb,hn)){ path_join(p,sizeof p,data_dir,"history.dat"); write_atomic(p,hb,hn); }
+        free(hb); }
+      free(heh); }
+    { const char *fa=bk_get((char*)pl,"files"); const char *e; char dl[600];
+      path_join(dl,sizeof dl,data_dir,"downloads"); umkdir(dl);
+      for(e=fa?bk_first(fa):NULL; e; e=bk_next(e)){
+        char *nm=bk_gstr(e,"name"), *hx=bk_gstr(e,"data_hex");
+        if(nm && hx && hx[0] && !(strlen(hx)&1)){ size_t fn=strlen(hx)/2; uint8_t *fb=(uint8_t*)malloc(fn?fn:1);
+          if(fb && fn<=4u*1024u*1024u && !hex_dec(hx,fb,fn)){ const char *bn=nm,*s; char dest[600];
+            for(s=nm;*s;s++) if(*s=='/'||*s=='\\') bn=s+1; if(!*bn) bn="file";
+            path_join(dest,sizeof dest,dl,bn); write_atomic(dest,fb,fn); }
+          free(fb); }
+        free(nm); free(hx); } }
     if(fp_out){ uint8_t pk[32]; crypto_x25519_public_key(pk,x_sk); fp_from_x(pk,fp_out); }
     rc=0;
 out:

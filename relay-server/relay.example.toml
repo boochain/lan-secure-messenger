@@ -7,7 +7,7 @@ salt = ""                 # 32 hex chars; deploy scripts generate one. "" = buil
 status_addr = ""          # "" = 127.0.0.1:<port+1>; "off" disables
 
 [limits]
-max_frame = 1048640       # bytes per frame
+max_frame = 12582976      # bytes per frame (12 MiB + 64; fits account history+file backups)
 max_connections = 1024
 max_connections_per_ip = 64
 rate_bytes_per_sec = 67108864

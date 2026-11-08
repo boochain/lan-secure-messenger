@@ -160,6 +160,7 @@ size_t lsm_diagnostics(lsm_core *c, char *buf, size_t n);
  * Export: identity, contacts, manual addresses, display name. Import writes into data_dir (the core must NOT be
  * running on it; restart afterwards). fp_out (FP_LEN, may be NULL) receives the restored identity fingerprint. */
 int lsm_backup_export(lsm_core *c, const char *password, const char *path, char *err);
+int lsm_backup_export_locked(lsm_core *c, const char *password, const char *path, char *err);
 int lsm_backup_import(const char *data_dir, const char *password, const char *path, char *err, char *fp_out);
 int lsm_pin_offer(lsm_core *c, char pin_out[8]);
 int lsm_pin_pair(lsm_core *c, const char *fp, const char *pin, char *err); /* async: event pin_result */
@@ -292,5 +293,6 @@ int lsm_account_setup(lsm_core *c, char *rk_out, size_t n, char *err);
 int lsm_set_account_mode(lsm_core *c, const char *mode, char *rk_out, size_t n, char *err);
 int lsm_relay_uri(lsm_core *c, char *out, size_t n);
 int lsm_account_pair_uri(lsm_core *c, char *uri_out, size_t n, char *err);
+int lsm_uri_from_file(const char *path, char *out, size_t n);           /* text file or zbarimg */
 int lsm_qr(const char *text, uint8_t *out);                             /* out[177*177]; returns side, 0 = error */
 #endif

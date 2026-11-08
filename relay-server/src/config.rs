@@ -67,7 +67,7 @@ impl Default for ServerCfg {
 impl Default for Limits {
     fn default() -> Self {
         Limits {
-            max_frame: 1024 * 1024 + 64,
+            max_frame: 12 * 1024 * 1024 + 64,
             max_connections: 1024,
             max_connections_per_ip: 64,
             rate_bytes_per_sec: 64 * 1024 * 1024,

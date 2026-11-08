@@ -4,6 +4,7 @@
 #define IDM_PAIRQR   268
 #define IDM_ACCTMODE 269
 #define IDM_REVEALRK 270
+#define IDM_SCANIMG  271
 static void v071_first_run(void){
     char err[256]=""; int r;
     if(lsm_first_run_done(C)) return;
@@ -25,3 +26,14 @@ static void v071_switch_mode(void){
     else msgbox(to_acc?"已切换到账号模式":"已切换到设备模式",MB_ICONINFORMATION);
 }
 static void v071_reveal_rk(void){ char rk[80]=""; if(lsm_reveal_recovery_key(C,rk,sizeof rk)||!rk[0]) msgbox("还没有恢复密钥（请先开启账号模式）",MB_ICONINFORMATION); else { char m[256]; snprintf(m,sizeof m,"恢复密钥（请妥善保管，服务器看不到明文）：\r\n%s",rk); msgbox(m,MB_ICONINFORMATION); } }
+
+static void v071_scan_image(void){ /* LSMF_qr_scan — image file or text containing lsm://; zbarimg if present */
+    OPENFILENAMEW of; wchar_t path[MAX_PATH]; char u8[1200], uri[800]="";
+    memset(&of,0,sizeof of); of.lStructSize=sizeof of; of.hwndOwner=hMain; path[0]=0; of.lpstrFile=path; of.nMaxFile=MAX_PATH;
+    of.lpstrFilter=L"图片或文本\0*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.txt\0所有文件\0*.*\0";
+    of.Flags=OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST|OFN_HIDEREADONLY;
+    if(!GetOpenFileNameW(&of)) return;
+    WideCharToMultiByte(CP_UTF8,0,path,-1,u8,sizeof u8,NULL,NULL);
+    if(lsm_uri_from_file(u8,uri,sizeof uri)) msgbox("无法从该文件识别二维码，请改为粘贴 lsm:// 链接。",MB_ICONWARNING);
+    else ux_add_uri_text(uri);
+}

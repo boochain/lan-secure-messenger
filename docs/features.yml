@@ -274,7 +274,7 @@ features:
     title: 首次运行选择账号模式或设备模式，设置中可切换
     hook: LSMF_account_mode
     automated_test:
-      winui: lan-core/tests/engine.rs#v071_account_mode_local
+      winui: lan-core/tests/engine.rs#v071_account_history_restore
       xp: editions/portable/tests/c_unit_test.c#v071_account
       gtk3: editions/portable/tests/c_unit_test.c#v071_account
       adw: editions/portable/tests/c_unit_test.c#v071_account

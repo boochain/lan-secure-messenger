@@ -200,7 +200,7 @@ json.dump(ign, open(ign_path, "w"), ensure_ascii=False, indent=1); print("wrote"
 
 # release gate: live update check (GitHub releases API) with this build's version must say "up to date"
 UPD = f"{W}/upd.txt"; want = os.environ.get("LSM_EXPECT_VERSION") or (os.environ["GITHUB_REF_NAME"][1:] if os.environ.get("GITHUB_REF_TYPE") == "tag" else open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "VERSION")).read().strip())
-gui = bg([a.gui, "--data", f"{W}/gui-upd", "--name", "更新检查", "--port", "47340", "--disco-port", "47341", "--no-discovery"], env=dict(env, LSM_THEME="light", LSM_INSTANCE="upd", LSM_TEST_UPDCHECK=UPD))
+gui = bg([a.gui, "--data", f"{W}/gui-upd", "--name", "更新检查", "--port", "47340", "--disco-port", "47341", "--no-discovery"], env=dict(env, LSM_THEME="light", LSM_INSTANCE="upd", LSM_UI_TEST="1", LSM_TEST_UPDCHECK=UPD))
 for _ in range(60):
     if os.path.exists(UPD): break
     time.sleep(0.5)

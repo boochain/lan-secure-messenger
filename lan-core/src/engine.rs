@@ -488,11 +488,18 @@ impl Engine {
         false
     }
 
+    fn persist_history(&mut self, force: bool) {
+        let _ = self.history.flush(force);
+        if self.history.take_wrote() {
+            self.acct_maybe_reupload();
+        }
+    }
+
     fn on_shutdown(&mut self) {
         for c in self.conns.values() {
             let _ = c.ctrl.send(Frame::Bye);
         }
-        let _ = self.history.flush(true);
+        self.persist_history(true);
         let _ = self.contacts.save();
         tracing::info!("engine stopped");
         self.shutdown.notify_waiters();
@@ -875,7 +882,7 @@ impl Engine {
                 }
             }
         }
-        let _ = self.history.flush(false);
+        self.persist_history(false);
     }
 
     fn on_seen(&mut self, s: Seen) {
@@ -2053,6 +2060,7 @@ impl Engine {
                     Ok(v) => v,
                     Err(e) => { let _ = reply.send(Err(RpcError::invalid(e.to_string()))); return; }
                 };
+                self.persist_history(true);
                 let tmp = self.paths.root.join("account-backup.tmp");
                 if let Err(e) = crate::backup::export_backup(&self.paths, &a.password, &tmp) {
                     let _ = reply.send(Err(RpcError::new(-32021, format!("{e:#}"))));

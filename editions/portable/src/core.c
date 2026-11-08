@@ -233,6 +233,7 @@ struct lsm_core {
     char recovery_key[80];
     int first_run_done;
     int pair_pending, pair_offer;
+    int acct_backup_dirty;
     uint8_t pair_token[32], pair_wrap[32];
     uint8_t *pair_blob; size_t pair_blob_n;
     volatile int stop;
@@ -333,7 +334,7 @@ static void file_sync(FILE *f){
 }
 static void load_ext_rec(lsm_core *c, char **f, int k); static void load_v062_rec(lsm_core *c, char **f, int k);
 static void hist_append(lsm_core *c, buf_t *rec){ char p[600]; size_t sn; uint8_t *s=seal_rand(c->store_key,rec->p,rec->n,&sn); FILE *f; uint8_t l[4]; int i;
-    path_join(p,sizeof p,c->data_dir,"history.dat"); f=ufopen(p,"ab"); if(f){ for(i=0;i<4;i++) l[i]=(uint8_t)(sn>>(8*i)); fwrite(l,1,4,f); fwrite(s,1,sn,f); fflush(f); file_sync(f); fclose(f);} free(s); }
+    path_join(p,sizeof p,c->data_dir,"history.dat"); f=ufopen(p,"ab"); if(f){ for(i=0;i<4;i++) l[i]=(uint8_t)(sn>>(8*i)); fwrite(l,1,4,f); fwrite(s,1,sn,f); fflush(f); file_sync(f); fclose(f);} free(s); if(c->account_mode[0]&&!strcmp(c->account_mode,"account")) c->acct_backup_dirty=1; }
 static lsm_msg *msg_get(lsm_core *c, const char *id){ int i; for(i=c->nmsgs-1;i>=0;i--) if(!strcmp(c->msgs[i].id,id)) return &c->msgs[i]; return NULL; }
 static void hist_rec_msg(lsm_core *c, lsm_msg *m){ buf_t b={0};
     bfmt(&b,"M\t%s\t%s\t%d\t%s\t",m->id,m->conv,m->out,m->sender_fp); esc_put(&b,m->sender_name); bfmt(&b,"\t%d\t",m->kind); esc_put(&b,m->body?m->body:"");
@@ -352,6 +353,12 @@ static void load_history(lsm_core *c){ char p[600]; size_t n,off=0; uint8_t *d; 
         else if(f[0][0]=='D' && k>=2){ tomb_add(c,f[1]); msg_unlink(c,f[1]); }
         else if(f[0][0]=='S' && k>=5){ lsm_msg *m=msg_get(c,f[1]); if(m){ m->status=atoi(f[2]); m->unread=atoi(f[3]); if(f[4][0]) scpy(m->file_path,f[4],520);} }
         free(pl); }
+    { int i; for(i=0;i<c->nmsgs;i++){ lsm_msg *m=&c->msgs[i]; FILE *tf; char alt[600], dl[600]; const char *bn,*s;
+        if(!m->file_name[0]) continue;
+        tf=m->file_path[0]?ufopen(m->file_path,"rb"):NULL; if(tf){ fclose(tf); continue; }
+        bn=m->file_name; for(s=m->file_name;*s;s++) if(*s=='/'||*s=='\\') bn=s+1;
+        path_join(dl,sizeof dl,c->data_dir,"downloads"); path_join(alt,sizeof alt,dl,bn);
+        tf=ufopen(alt,"rb"); if(tf){ fclose(tf); scpy(m->file_path,alt,520); } } }
     free(d); }
 
 static int tomb_has(lsm_core *c, const char *id){ int i; for(i=c->ntomb-1;i>=0;i--) if(!strcmp(c->tomb[i],id)) return 1; return 0; }

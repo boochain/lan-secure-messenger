@@ -105,6 +105,7 @@ int lsm_account_setup(lsm_core *c, char *rk_out, size_t n, char *err){
     else { lsm_acct_generate_rk(rk,sizeof rk); acct_set_rk(c,rk); }
     scpy(c->account_mode,"account",sizeof c->account_mode);
     c->first_run_done=1;
+    c->acct_backup_dirty=1;
     acct_save(c);
     scpy(rk_out,rk,n);
     mu_unlock(&c->mu);
@@ -175,3 +176,40 @@ int lsm_account_pair_uri(lsm_core *c, char *uri_out, size_t n, char *err){
     mu_unlock(&c->mu);
     (void)err; return 0;
 }
+
+int lsm_uri_from_file(const char *path, char *out, size_t n){
+    size_t fn=0, i, lim; uint8_t *d; const char *s,*e; char cmd[1200], buf[800]; FILE *fp;
+    if(!path||!path[0]||!out||n<8) return -1;
+    out[0]=0;
+    d=read_file(path,&fn);
+    if(d){ lim=fn<8192?fn:8192;
+        for(i=0;i+6<lim;i++) if(!memcmp(d+i,"lsm://",6)){
+            s=(char*)d+i; e=s; while((size_t)(e-(char*)d)<fn && *e && *e!=' ' && *e!='\n' && *e!='\r' && *e!='\t') e++;
+            if((size_t)(e-s)<n){ memcpy(out,s,(size_t)(e-s)); out[e-s]=0; free(d); return 0; } }
+        free(d); }
+    { const char *q; for(q=path;*q;q++) if(*q=='\'' || *q=='"' || *q==';' || *q=='|' || *q=='&' || *q=='$' || *q=='`' || *q=='\n') return -1; }
+#ifdef _WIN32
+    snprintf(cmd,sizeof cmd,"zbarimg -q --raw \"%s\" 2>NUL", path);
+    fp=_popen(cmd,"r");
+#else
+    snprintf(cmd,sizeof cmd,"zbarimg -q --raw '%s' 2>/dev/null", path);
+    fp=popen(cmd,"r");
+#endif
+    if(!fp) return -1;
+    if(!fgets(buf,sizeof buf,fp)){
+#ifdef _WIN32
+        _pclose(fp);
+#else
+        pclose(fp);
+#endif
+        return -1; }
+#ifdef _WIN32
+    _pclose(fp);
+#else
+    pclose(fp);
+#endif
+    { char *z=buf+strlen(buf); while(z>buf && (z[-1]=='\n'||z[-1]=='\r'||z[-1]==' ')) *--z=0; }
+    if(strncmp(buf,"lsm://",6)) return -1;
+    scpy(out,buf,n); return 0;
+}
+

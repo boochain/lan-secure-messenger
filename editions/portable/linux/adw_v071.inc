@@ -41,9 +41,29 @@ static void v071_show_uri_qr(const char *title, const char *uri){
 }
 static void v071_show_server_qr(void){ char u[400]=""; if(lsm_relay_uri(C,u,sizeof u)||!u[0]){ toast("请先在设置里填写中转服务器"); return; } v071_show_uri_qr("服务器二维码",u); }
 static void v071_show_pair_qr(void){ char u[500]="",err[256]=""; if(lsm_account_pair_uri(C,u,sizeof u,err)){ toast(err[0]?err:"无法生成配对码"); return; } v071_show_uri_qr("配对新设备",u); }
+static GtkWidget *v071_uri_entry;
+static void v071_img_picked(GObject *src, GAsyncResult *res, gpointer p){
+    GFile *f=gtk_file_dialog_open_finish(GTK_FILE_DIALOG(src),res,NULL); char *path, uri[800]="", err[256]=""; (void)p;
+    if(!f) return; path=g_file_get_path(f);
+    if(!path || lsm_uri_from_file(path,uri,sizeof uri)) toast("无法从该文件识别二维码，请改为粘贴 lsm:// 链接（安装 zbarimg 后可从图片识别）。");
+    else if(lsm_apply_uri(C,uri,err)) toast(err[0]?err:"无法识别链接"); else toast("已处理链接");
+    g_free(path); g_object_unref(f); }
+static void v071_scan_image_file(void){ GtkFileDialog *d=gtk_file_dialog_new(); /* LSMF_qr_scan */
+    gtk_file_dialog_set_title(d,"选择二维码图片"); gtk_file_dialog_open(d,GTK_WINDOW(win),NULL,v071_img_picked,NULL); g_object_unref(d); }
+static void v071_paste_done(AdwAlertDialog *d, const char *r, gpointer p){
+    char err[256]=""; const char *t; (void)d;(void)p;
+    if(r && !strcmp(r,"img")){ v071_scan_image_file(); return; }
+    if(r && !strcmp(r,"ok") && v071_uri_entry){ t=gtk_editable_get_text(GTK_EDITABLE(v071_uri_entry));
+        if(t&&t[0]){ if(lsm_apply_uri(C,t,err)) toast(err[0]?err:"无法识别链接"); else toast("已处理链接"); } } }
 static void v071_paste_uri(void){
-    /* LSMF_qr_scan — paste fallback; desktop can also pick an image later */
-    GtkWidget *e=add_entry; if(e){ gtk_popover_popup(GTK_POPOVER(add_popover)); gtk_widget_grab_focus(e); toast("在添加框里粘贴 lsm://add、lsm://relay 或 lsm://pair"); }
+    GtkWidget *box=gtk_box_new(GTK_ORIENTATION_VERTICAL,8), *e=gtk_entry_new(); AdwDialog *d;
+    gtk_entry_set_placeholder_text(GTK_ENTRY(e),"lsm://add?… 或 lsm://relay?… 或 lsm://pair?…");
+    gtk_widget_set_name(e,"LSMF_qr_scan"); v071_uri_entry=e; gtk_box_append(GTK_BOX(box),e);
+    d=adw_alert_dialog_new("扫描或粘贴链接","粘贴 lsm:// 链接，或从图片识别（需系统安装 zbarimg）。");
+    adw_alert_dialog_add_responses(ADW_ALERT_DIALOG(d),"img","从图片识别","ok","添加","cancel","取消",NULL);
+    adw_alert_dialog_set_extra_child(ADW_ALERT_DIALOG(d),box);
+    g_signal_connect(d,"response",G_CALLBACK(v071_paste_done),NULL);
+    adw_dialog_present(d,win);
 }
 static void v071_switch_mode(void){
     char rk[80]="", err[256]=""; const char *cur=lsm_account_mode(C); int to_acc=strcmp(cur,"account")!=0;

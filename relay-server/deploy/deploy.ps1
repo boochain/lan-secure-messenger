@@ -109,7 +109,7 @@ salt = "$($script:Salt)"
 status_addr = ""
 
 [limits]
-max_frame = 1048640
+max_frame = 12582976
 max_connections = 1024
 max_connections_per_ip = 64
 
