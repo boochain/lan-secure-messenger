@@ -58,6 +58,20 @@ def shot(name):
 def _hit(label):
     return find(lambda n: n.get("text") == label or n.get("content-desc") == label
                 or (n.get("content-desc") or "").startswith(label))
+def dismiss_conv_menu():
+    for _ in range(4):
+        if find(lambda n: n.get("text") in ("置顶", "取消置顶", "标为已读", "查看指纹", "删除（仅本机）")):
+            back(); time.sleep(0.45)
+        else:
+            break
+def open_chat(name="王工"):
+    dismiss_conv_menu()
+    tap_text(name); time.sleep(1.2)
+    if find(lambda n: n.get("text") == "输入消息" or n.get("content-desc") == "输入消息"):
+        return True
+    dismiss_conv_menu()
+    tap_text(name); time.sleep(1.5)
+    return find(lambda n: n.get("text") == "输入消息" or n.get("content-desc") == "输入消息") is not None
 class App:
     def trust(s, name):
         row = ui_seed.wait(lambda: find(lambda n: n.get("text") == name), 90, 2)
@@ -153,7 +167,7 @@ for th in ("light", "dark"):
     if find(lambda n: n.get("text") == "聊天" or n.get("content-desc") == "聊天"):
         try: tap_text("聊天", timeout=10)
         except Exception: pass
-    tap_text("王工"); time.sleep(2); shot(f"android-{th}-11-chat")
+    open_chat("王工"); time.sleep(0.8); shot(f"android-{th}-11-chat")
     img = find(lambda n: re.search(r"\.(jpe?g|png|webp|gif)$", n.get("content-desc") or "", re.I))
     if img:
         tap(*img); time.sleep(1.5); shot(f"android-{th}-12-image-viewer")
@@ -176,16 +190,16 @@ def check(cond, what):
     if not cond: FAILS.append(what)
 sh("cmd uimode night no"); time.sleep(4)
 # delete (this device only): long-press a bubble -> 删除（仅本机） -> confirm -> gone
-tap_text("王工")
+open_chat("王工")
 r = ui_seed.wait(lambda: find(lambda n: (n.get("text") or "").startswith("这是最新的数据")), 30, 2)
 if r: sh(f"input swipe {r[0]} {r[1]} {r[0]} {r[1]} 900"); time.sleep(2)
 okm = has("删除（仅本机）")
 if okm: tap_text("删除（仅本机）"); tap_text("删除")
 time.sleep(2); check(okm and not has("这是最新的数据，第 4 页有改动。"), "long-press 删除（仅本机） with confirmation removes the message")
 back()
-tap_text("王工"); check(has("输入消息"), "open chat")
+check(open_chat("王工") and has("输入消息"), "open chat")
 back(); check(has("局域网安全通讯") and not has("输入消息") and resumed(), "Back from chat returns to the list (app stays open)")
-tap_text("王工"); tap_text("菜单"); check(has("查看指纹"), "chat menu open")
+open_chat("王工"); tap_text("菜单"); check(has("查看指纹"), "chat menu open")
 back(); check(not has("查看指纹") and has("输入消息"), "Back closes the menu, stays in the chat")
 sh("settings put system accelerometer_rotation 0"); sh("settings put system user_rotation 1"); time.sleep(4)
 check(has("输入消息"), "rotation keeps the open chat")
@@ -198,7 +212,7 @@ back()
 if has("关闭搜索"): back()
 check(not has("关闭搜索") and has("局域网安全通讯") and resumed(), "Back closes the list search, app stays open")
 # A8 process death: open chat, Home, kill the process, relaunch from the launcher -> the same chat is restored
-tap_text("王工"); sh("input keyevent 3"); time.sleep(2); pid0 = sh(f"pidof {PKG}").strip(); sh(f"am kill {PKG}"); time.sleep(3); pid1 = sh(f"pidof {PKG}").strip()
+open_chat("王工"); sh("input keyevent 3"); time.sleep(2); pid0 = sh(f"pidof {PKG}").strip(); sh(f"am kill {PKG}"); time.sleep(3); pid1 = sh(f"pidof {PKG}").strip()
 if pid1 and pid1 == pid0:   # am kill spares a process with a foreground service (CoreService): kill it the way the low-memory killer does
     sh(f"su 0 kill -9 {pid0} || run-as {PKG} kill -9 {pid0}"); time.sleep(3); pid1 = sh(f"pidof {PKG}").strip()
 print(f"process death: pid {pid0!r} -> {pid1!r}", flush=True)

@@ -218,6 +218,7 @@ fun ConvRow(c: Conv, click: () -> Unit) {
         if (it != SwipeToDismissBoxValue.Settled) menu = true
         false
     })
+    LaunchedEffect(menu) { dismiss.snapTo(SwipeToDismissBoxValue.Settled) }
     // LSMF_chat_list_swipe LSMF_chat_list_menu
     SwipeToDismissBox(state = dismiss, modifier = Modifier.testTag("LSMF_chat_list_swipe").semantics { contentDescription = "LSMF_chat_list_menu" },
         backgroundContent = {
@@ -226,7 +227,7 @@ fun ConvRow(c: Conv, click: () -> Unit) {
             }
         }) {
         Box {
-            Row(Modifier.fillMaxWidth().height(72.dp).combinedClickable(onClick = click, onLongClick = { menu = true }).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().height(72.dp).background(p.window).combinedClickable(onClick = click, onLongClick = { menu = true }).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Avatar(c.name, c.key, 48.dp, c.online, p.window)
                 Spacer(Modifier.width(16.dp))
                 Column(Modifier.weight(1f)) {
