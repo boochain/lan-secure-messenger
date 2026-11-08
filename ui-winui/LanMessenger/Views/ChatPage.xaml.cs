@@ -204,7 +204,7 @@ public sealed partial class ChatPage : Page
 
     private void ConvList_Holding(object sender, Microsoft.UI.Xaml.Input.HoldingRoutedEventArgs e)
     {
-        if (e.HoldingState != Microsoft.UI.Xaml.Input.HoldingState.Started) return;
+        if (e.HoldingState != Microsoft.UI.Input.HoldingState.Started) return;
         if ((e.OriginalSource as FrameworkElement)?.DataContext is not ConversationItem c) return;
         ShowConvListMenu(c, (FrameworkElement)e.OriginalSource, e.GetPosition((FrameworkElement)e.OriginalSource));
         e.Handled = true;
