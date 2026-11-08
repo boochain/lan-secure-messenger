@@ -27,7 +27,9 @@ static void v070_popup(GtkWidget *row, const char *conv){
     gtk_widget_set_parent(pop,row);
     g_signal_connect(pop,"closed",G_CALLBACK(v070_pop_closed),NULL);
     gtk_popover_popup(GTK_POPOVER(pop));
+    if(getenv("LSM_UI_TEST")){ printf("UI conv-menu\n"); fflush(stdout); }
 }
+
 static void v070_pressed(GtkGestureClick *g, gint n, gdouble x, gdouble y, gpointer p){
     GtkWidget *list=gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(g));
     GtkListBoxRow *row; const char *conv; (void)n; (void)p;

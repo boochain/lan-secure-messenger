@@ -34,7 +34,9 @@ static void v070_popup(GtkWidget *anchor, GdkEventButton *ev, const char *conv){
         g_signal_connect_data(it,"activate",G_CALLBACK(v070_conv_act),g_strdup(conv),(GClosureNotify)g_free,0);
         gtk_menu_shell_append(GTK_MENU_SHELL(menu),it); }
     gtk_widget_show_all(menu); gtk_menu_popup_at_pointer(GTK_MENU(menu),(GdkEvent*)ev);
+    if(getenv("LSM_UI_TEST")){ printf("UI conv-menu\n"); fflush(stdout); }
 }
+
 static gboolean v070_list_button(GtkWidget *list, GdkEventButton *ev, gpointer p){
     GtkListBoxRow *row; const char *conv; (void)p;
     if(ev->type!=GDK_BUTTON_PRESS || ev->button!=3) return FALSE;

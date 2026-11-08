@@ -116,6 +116,26 @@ for th in a.themes.split(","):
     x("key", "Return"); time.sleep(1.5); shot(f"{th}-07-pin"); x("key", "Return"); time.sleep(0.8)
     # drag-drop hint is only visible during a drag; tray shown top-right in stalonetray
     subprocess.run(["import", "-window", "root", "-crop", "200x40+1080+0", "-scale", "300%", f"{a.out}/{th}-08-tray-crop.png"], env=env)
+    # LSMF_chat_list_menu: right-click a chat-list row (list starts after the 72px rail, below the header)
+    x("mousemove", "--window", wid, "150", "128"); x("click", "3"); time.sleep(0.8)
+    shot(f"{th}-15-conv-menu")  # conv-menu LSMF_chat_list_menu LSMF_chat_pin LSMF_chat_mark_read LSMF_chat_mark_unread LSMF_chat_mute LSMF_chat_delete
+    x("key", "Escape"); time.sleep(0.4)
+    # LSMF_nav_* pages via the left rail (x≈36; header ≈46px so first button is around y=66)
+    # LSMF_nav_chats LSMF_nav_contacts LSMF_nav_groups LSMF_nav_transfers LSMF_nav_files LSMF_nav_settings LSMF_nav_profile LSMF_nav_diagnostics
+    rail = [
+        (66, "16-page-chats", "LSMF_nav_chats"),
+        (100, "17-page-contacts", "LSMF_nav_contacts"),
+        (134, "18-page-groups", "LSMF_nav_groups"),
+        (168, "19-page-transfers", "LSMF_nav_transfers"),
+        (202, "20-page-files", "LSMF_nav_files"),
+        (236, "21-page-settings", "LSMF_nav_settings"),
+        (270, "22-page-profile", "LSMF_nav_profile"),
+        (304, "23-page-diagnostics", "LSMF_nav_diagnostics"),
+    ]
+    for y, name, hook in rail:
+        x("mousemove", "--window", wid, "36", str(y)); x("click", "1"); time.sleep(0.7)
+        shot(f"{th}-{name}")  # hook captured above
+    x("mousemove", "--window", wid, "36", "66"); x("click", "1"); time.sleep(0.4)
     gui.terminate(); gui.wait(5); time.sleep(1)
 # Colour-emoji in chat (e.g. 📎) and modal dialogs: OCR reads emoji as low-contrast "text";
 # file-chooser is OS chrome + folder thumbnails. Record ignore rects for the colour audit.

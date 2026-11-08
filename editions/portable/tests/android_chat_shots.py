@@ -90,6 +90,47 @@ P = ui_seed.seed(mk, app_addr, App(), pdf, photo, sticker=sticker)
 for th in ("light", "dark"):
     sh("cmd uimode night " + ("yes" if th == "dark" else "no")); time.sleep(6)
     shot(f"android-{th}-10-list")
+    # LSMF_chat_list_menu: long-press a conversation row (王工)
+    row = find(lambda n: n.get("text") == "王工")
+    if row:
+        sh(f"input swipe {row[0]} {row[1]} {row[0]} {row[1]} 900"); time.sleep(1.5)
+        shot(f"android-{th}-14-conv-menu-longpress")  # conv-menu-longpress LSMF_chat_list_menu LSMF_chat_pin LSMF_chat_mark_read LSMF_chat_mark_unread LSMF_chat_mute LSMF_chat_delete
+        if find(lambda n: n.get("text") in ("置顶", "取消置顶")) is None:
+            print("WARN long-press conv menu missing 置顶", flush=True)
+        back(); time.sleep(1)
+        row = find(lambda n: n.get("text") == "王工") or row
+        # LSMF_chat_list_swipe: horizontal swipe opens the same menu
+        sh(f"input swipe {row[0]} {row[1]} {row[0] + 280} {row[1]} 350"); time.sleep(1.5)
+        shot(f"android-{th}-15-conv-menu-swipe")  # conv-menu-swipe LSMF_chat_list_swipe
+        if find(lambda n: n.get("text") in ("置顶", "取消置顶", "标为已读")) is None:
+            print("WARN swipe conv menu missing items", flush=True)
+        back(); time.sleep(1)
+    else:
+        print("WARN no 王工 row for conv long-press/swipe", flush=True)
+    # LSMF_nav_* bottom tabs + overflow pages
+    # LSMF_nav_chats LSMF_nav_contacts LSMF_nav_groups LSMF_nav_transfers LSMF_nav_files LSMF_nav_settings LSMF_nav_profile LSMF_nav_diagnostics
+    for label, hook in (("联系人", "LSMF_nav_contacts"), ("群组", "LSMF_nav_groups"),
+                        ("传输", "LSMF_nav_transfers"), ("文件站", "LSMF_nav_files"),
+                        ("设置", "LSMF_nav_settings"), ("聊天", "LSMF_nav_chats")):
+        try:
+            tap_text(label, timeout=20)
+            shot(f"android-{th}-page-{hook.split('_')[-1]}")
+        except Exception as e:
+            print("WARN nav", label, e, flush=True)
+    try:
+        if find(lambda n: n.get("content-desc") == "个人资料"):
+            tap_text("个人资料", timeout=15)
+            shot(f"android-{th}-page-profile")
+            back(); time.sleep(1)
+        tap_text("菜单", timeout=15)
+        tap_text("诊断信息", timeout=15)
+        shot(f"android-{th}-page-diagnostics")
+        back(); time.sleep(1)
+    except Exception as e:
+        print("WARN profile/diag pages", e, flush=True)
+    if find(lambda n: n.get("text") == "聊天" or n.get("content-desc") == "聊天"):
+        try: tap_text("聊天", timeout=10)
+        except Exception: pass
     tap_text("王工"); time.sleep(2); shot(f"android-{th}-11-chat")
     img = find(lambda n: re.search(r"\.(jpe?g|png|webp|gif)$", n.get("content-desc") or "", re.I))
     if img:

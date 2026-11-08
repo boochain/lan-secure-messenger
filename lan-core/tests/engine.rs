@@ -572,6 +572,89 @@ async fn ux_qr_add_resend_preview_route() {
     assert!(!ms.iter().any(|x| x["id"] == qid.as_str()) && ms.iter().any(|x| x["id"] == nid.as_str() && x["body"] == "稍后"));
 }
 
+
+async fn restart_node(n: Node) -> Node {
+    let dir = n.dir;
+    let old_fp = n.fp.clone();
+    let notified = n.h.shutdown.notified();
+    let _ = n.h.call("shutdown", json!({})).await;
+    let _ = tokio::time::timeout(Duration::from_secs(8), notified).await;
+    drop(n.h);
+    let ov = json!({
+        "listen_port": 0,
+        "discovery_enabled": false,
+        "multicast_enabled": false,
+        "auto_trust": true,
+        "announce_interval_secs": 1,
+        "exclude_interfaces": [" | "],
+        "download_dir": dir.path().join("dl").display().to_string(),
+    });
+    let h = start(EngineOptions { paths: ConfigPaths::from_base(dir.path()), ipc_endpoint: "test".into(), overrides: Some(ov) }).await.unwrap();
+    assert_eq!(h.fingerprint, old_fp, "restart must keep identity");
+    Node { fp: h.fingerprint.clone(), h, dir }
+}
+
+fn conv<'a>(snap: &'a Value, id: &str) -> Option<&'a Value> {
+    snap["conversations"].as_array()?.iter().find(|c| c["id"] == id)
+}
+
+/// Pin & mute persist across engine restart; mark_read/unread update unread
+/// badge counts without touching another conversation; clear_conversation
+/// removes only that conversation's local history.
+#[tokio::test(flavor = "multi_thread")]
+async fn v070_chat_list_actions() {
+    let a = node("Alice", json!({})).await;
+    let b = node("Bob", json!({})).await;
+    let c = node("Carol", json!({})).await;
+    let pb = b.port().await;
+    let pc = c.port().await;
+    a.call("add_peer", json!({"address": format!("127.0.0.1:{pb}")})).await;
+    a.call("add_peer", json!({"address": format!("127.0.0.1:{pc}")})).await;
+    both_online(&a, &b, 20).await;
+    both_online(&a, &c, 20).await;
+    let conv_ab = format!("dm:{}", b.fp);
+    let conv_ac = format!("dm:{}", c.fp);
+    b.send(&a, "from Bob").await;
+    c.send(&a, "from Carol").await;
+    wait("alice has bob msg", 15, || has_body(&a, &conv_ab, "from Bob")).await;
+    wait("alice has carol msg", 15, || has_body(&a, &conv_ac, "from Carol")).await;
+    wait("unread badges after incoming", 10, || async {
+        let s = a.snap().await;
+        conv(&s, &conv_ab).and_then(|c| c["unread"].as_u64()).unwrap_or(0) >= 1
+            && conv(&s, &conv_ac).and_then(|c| c["unread"].as_u64()).unwrap_or(0) >= 1
+    }).await;
+    let unread_c = conv(&a.snap().await, &conv_ac).unwrap()["unread"].as_u64().unwrap();
+    a.call("mark_read", json!({"conversation": conv_ab})).await;
+    let s = a.snap().await;
+    assert_eq!(conv(&s, &conv_ab).unwrap()["unread"].as_u64().unwrap(), 0, "mark_read must clear unread badge");
+    assert_eq!(conv(&s, &conv_ac).unwrap()["unread"].as_u64().unwrap(), unread_c, "mark_read must not change the other conversation");
+    a.call("mark_unread", json!({"conversation": conv_ab})).await;
+    let s = a.snap().await;
+    assert!(conv(&s, &conv_ab).unwrap()["unread"].as_u64().unwrap() >= 1, "mark_unread must restore unread badge");
+    assert_eq!(conv(&s, &conv_ac).unwrap()["unread"].as_u64().unwrap(), unread_c, "mark_unread must not change the other conversation");
+    a.call("set_conv_pinned", json!({"conversation": conv_ab, "pinned": true})).await;
+    a.call("set_muted", json!({"conversation": conv_ab, "muted": true})).await;
+    let s = a.snap().await;
+    assert_eq!(conv(&s, &conv_ab).unwrap()["pinned"], true);
+    assert_eq!(a.peer(&b.fp).await.unwrap()["muted"], true);
+    assert_eq!(a.peer(&c.fp).await.unwrap()["muted"], false);
+    let n_ab = a.msgs(&conv_ab).await.len();
+    assert!(n_ab >= 1);
+    let n_ac = a.msgs(&conv_ac).await.len();
+    assert!(n_ac >= 1);
+    let n_c_local = c.msgs(&format!("dm:{}", a.fp)).await.len();
+    a.call("clear_conversation", json!({"conversation": conv_ac})).await;
+    assert_eq!(a.msgs(&conv_ac).await.len(), 0, "delete must clear that conversation locally");
+    assert_eq!(a.msgs(&conv_ab).await.len(), n_ab, "delete must not remove another conversation");
+    assert_eq!(c.msgs(&format!("dm:{}", a.fp)).await.len(), n_c_local, "delete is local-only; peer keeps their copy");
+    let a = restart_node(a).await;
+    let s = a.snap().await;
+    assert_eq!(conv(&s, &conv_ab).unwrap()["pinned"], true, "pin must persist across restart");
+    assert_eq!(a.peer(&b.fp).await.unwrap()["muted"], true, "mute must persist across restart");
+    assert_eq!(a.msgs(&conv_ac).await.len(), 0, "deleted conversation must stay gone after restart");
+    assert_eq!(a.msgs(&conv_ab).await.len(), n_ab, "other conversation must survive restart");
+}
+
 /// Local throughput check (not run in CI): `cargo test -p lan-core --test engine file_transfer_1gb_direct -- --ignored --nocapture`
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore]

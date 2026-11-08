@@ -178,6 +178,19 @@ for i, theme in enumerate(["light", "dark"]):
     # Twemoji sticker after the layout-sensitive shots so the file-card click and popovers stay as before
     A.cmd(f"sendfile {fp[:12]} {sticker}", 60); time.sleep(2.5)
     shot("page-chat-dm", theme, g=g)
+    # LSMF_chat_list_menu: right-click a chat-list row (rail is 80px; sidebar header ~46px)
+    gl = len(g.lines)
+    xdo("mousemove", "160", "140", "click", "3")
+    l = g.wait_for("UI conv-menu", 5, gl)
+    check(l is not None, f"[{theme}] right-click on a chat-list row opens conv menu ({l})")
+    time.sleep(0.5); shot("popup-conv-menu", theme, g=g)  # LSMF_chat_list_menu LSMF_chat_pin LSMF_chat_mark_read LSMF_chat_mark_unread LSMF_chat_mute LSMF_chat_delete
+    xdo("key", "Escape"); time.sleep(0.4)
+    # LSMF_nav_* rail pages (x≈40; buttons packed from the top of the window)
+    # LSMF_nav_chats LSMF_nav_contacts LSMF_nav_groups LSMF_nav_transfers LSMF_nav_files LSMF_nav_settings LSMF_nav_profile LSMF_nav_diagnostics
+    for i, name in enumerate(("chats", "contacts", "groups", "transfers", "files", "settings", "profile", "diagnostics")):
+        xdo("mousemove", "40", str(20 + i * 36), "click", "1"); time.sleep(0.7)
+        shot(f"page-{name}" if name != "chats" else "page-nav-chats", theme, g=g)
+    xdo("mousemove", "40", "20", "click", "1"); time.sleep(0.3)
     xdo("key", "ctrl+q"); g.p.wait(10) if g.p.poll() is None else None
     check(g.p.poll() is not None, f"[{theme}] shortcut Ctrl+Q quits")
     if g.p.poll() is None: g.p.kill()

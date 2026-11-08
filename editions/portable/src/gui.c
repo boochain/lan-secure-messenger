@@ -797,7 +797,7 @@ static void do_command(int id){
     char err[256]="", u8[2048]; prompt_t p; memset(&p,0,sizeof p);
     switch(id){
     case IDM_V070_CHATS: case IDM_V070_CONTACTS: case IDM_V070_FILES: case IDM_V070_GROUPS:
-    case IDM_V070_PROFILE: case IDM_V070_DIAG: case IDM_V070_SETTINGS:
+    case IDM_V070_PROFILE: case IDM_V070_DIAG: case IDM_V070_SETTINGS: case IDM_V070_TRANSFERS:
     case IDM_V070_MARKREAD: case IDM_V070_MARKUNREAD: v070_on_command(id); break;
     case IDM_EXIT: p2_save_draft(); DestroyWindow(hMain); break;
     case IDM_RELAY: relay_dialog(); break;
@@ -1016,6 +1016,16 @@ static int app_key(MSG *msg){ int ctrl=(GetKeyState(VK_CONTROL)&0x8000)!=0, shif
     if(ctrl && !shift && msg->wParam=='K'){ do_command(IDM_QUICK); return 1; }
     if(ctrl && msg->wParam=='R'){ do_command(IDM_REFRESH); return 1; }
     if(msg->wParam==VK_F6 && getenv("LSM_UI_TEST")){ test_open_last_image(); return 1; }
+    if(getenv("LSM_UI_TEST") && ctrl && shift){
+        if(msg->wParam=='1'){ v070_on_command(IDM_V070_CHATS); return 1; }
+        if(msg->wParam=='2'){ v070_on_command(IDM_V070_CONTACTS); return 1; }
+        if(msg->wParam=='3'){ v070_on_command(IDM_V070_GROUPS); return 1; }
+        if(msg->wParam=='4'){ v070_on_command(IDM_V070_TRANSFERS); return 1; }
+        if(msg->wParam=='5'){ v070_on_command(IDM_V070_FILES); return 1; }
+        if(msg->wParam=='6'){ v070_on_command(IDM_V070_SETTINGS); return 1; }
+        if(msg->wParam=='7'){ v070_on_command(IDM_V070_PROFILE); return 1; }
+        if(msg->wParam=='8'){ v070_on_command(IDM_V070_DIAG); return 1; }
+    }
     if(ctrl && msg->wParam==VK_TAB){ int s=(int)SendMessageW(hList,LB_GETCURSEL,0,0); if(nlist){ s=shift?(s<=0?nlist-1:s-1):(s+1)%nlist; select_conv(s); } return 1; }
     if(msg->wParam==VK_ESCAPE && msg->hwnd==hSearch){ if(GetWindowTextLengthW(hSearch)) SetWindowTextW(hSearch,L""); else SetFocus(hList); return 1; }
     return 0; }

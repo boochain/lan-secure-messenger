@@ -51,6 +51,24 @@ for TH in light dark; do
   for _ in 1 2 3 4 5; do xdotool key plus; sleep 0.12; done
   sleep 0.6; shot "xp-$TH-image-viewer-zoom"
   xdotool key Escape; sleep 0.5
+  # LSMF_chat_list_menu: right-click the selected conversation row
+  CL 150 160; sleep 0.4
+  eval $(xdotool getwindowgeometry --shell "$WID")
+  xdotool mousemove $((X+150)) $((Y+160)) click 3
+  sleep 1
+  shot "xp-$TH-12-conv-menu"  # conv-menu LSMF_chat_list_menu LSMF_chat_pin LSMF_chat_mark_read LSMF_chat_mark_unread LSMF_chat_mute LSMF_chat_delete
+  xdotool key Escape; sleep 0.5
+  # LSMF_nav_* pages via LSM_UI_TEST Ctrl+Shift+1..8 (no mnemonic clash with 生成 PIN)
+  # LSMF_nav_chats LSMF_nav_contacts LSMF_nav_groups LSMF_nav_transfers LSMF_nav_files LSMF_nav_settings LSMF_nav_profile LSMF_nav_diagnostics
+  xdotool key ctrl+shift+1; sleep 0.7; shot "xp-$TH-page-chats"
+  xdotool key ctrl+shift+2; sleep 0.7; shot "xp-$TH-page-contacts"
+  xdotool key ctrl+shift+3; sleep 0.7; shot "xp-$TH-page-groups"
+  xdotool key ctrl+shift+4; sleep 0.7; shot "xp-$TH-page-transfers"
+  xdotool key ctrl+shift+5; sleep 0.7; shot "xp-$TH-page-files"
+  xdotool key ctrl+shift+6; sleep 0.7; shot "xp-$TH-page-settings"
+  xdotool key ctrl+shift+7; sleep 0.7; shot "xp-$TH-page-profile"
+  xdotool key ctrl+shift+8; sleep 0.7; shot "xp-$TH-page-diagnostics"
+  xdotool key ctrl+shift+1; sleep 0.5
   menu f; shot "xp-$TH-03-menu-file"; xdotool key Escape Escape; sleep 0.5
   menu c; shot "xp-$TH-04-menu-contacts"; xdotool key Escape Escape; sleep 0.5
   menu g; shot "xp-$TH-05-menu-groups"; xdotool key Escape Escape; sleep 0.5

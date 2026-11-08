@@ -38,6 +38,86 @@ static int ext_tests(void){ int bad=0; char r[400]="", e[40], v[200]; buf_t b={0
     bad+=!xj_get((char*)b.p,"body",v,sizeof v)||strcmp(v,"a\"b\n\xe4\xbd\xa0"); bad+=!xj_get((char*)b.p,"k",v,sizeof v)||strcmp(v,"text"); bad+=xj_get((char*)b.p,"nope",v,sizeof v);
     b_free(&b); if(bad) printf("ext_tests: %d failures\n",bad); else printf("ext_tests OK\n"); return bad; }
 
+static int v070_unread(lsm_core *c, const char *conv){
+    lsm_msg *m; int n,i,u=0;
+    lsm_lock(c); n=lsm_messages(c,&m);
+    for(i=0;i<n;i++) if(m[i].unread && !strcmp(m[i].conv,conv)) u++;
+    lsm_unlock(c); return u;
+}
+static int v070_nmsg(lsm_core *c, const char *conv){
+    lsm_msg *m; int n,i,u=0;
+    lsm_lock(c); n=lsm_messages(c,&m);
+    for(i=0;i<n;i++) if(!strcmp(m[i].conv,conv)) u++;
+    lsm_unlock(c); return u;
+}
+static int v070_muted(lsm_core *c, const char *fp){
+    lsm_contact *k; int n,i, mu=0;
+    lsm_lock(c); n=lsm_contacts(c,&k);
+    for(i=0;i<n;i++) if(!strcmp(k[i].fp,fp)) mu=k[i].muted;
+    lsm_unlock(c); return mu;
+}
+static int v070_pinned(lsm_core *c, const char *conv){
+    int on; lsm_lock(c); on=lsm_conv_pinned(c,conv); lsm_unlock(c); return on;
+}
+static void v070_add(lsm_core *c, const char *id, const char *conv, const char *sfp, const char *body){
+    lsm_lock(c); add_message(c,id,conv,0,sfp,K_TEXT,body,0,ST_RECEIVED); lsm_unlock(c);
+}
+
+/* Pin & mute persist across restart; mark read/unread updates unread badge
+ * counts without touching another conversation; delete removes only that conversation. */
+static int v070_conv_actions(void){
+    char dir[256], err[256]="", ca[80], cb[80];
+    const char *fpa="AAAA-AAAA-AAAA-AAAA", *fpb="BBBB-BBBB-BBBB-BBBB";
+    lsm_opts o; lsm_core *c; int bad=0, pid;
+#ifdef _WIN32
+    pid=(int)GetCurrentProcessId();
+    snprintf(dir,sizeof dir,".\\lsm-v070-%d",pid);
+#else
+    pid=(int)getpid();
+    snprintf(dir,sizeof dir,"/tmp/lsm-v070-%d",pid);
+    mkdir(dir,0700);
+#endif
+    snprintf(ca,sizeof ca,"dm:%s",fpa); snprintf(cb,sizeof cb,"dm:%s",fpb);
+    memset(&o,0,sizeof o); o.data_dir=dir; o.name="V070"; o.no_discovery=1;
+    o.listen_port=41000+(pid%2000); o.discovery_port=o.listen_port+1;
+    c=lsm_start(&o,err,sizeof err);
+    if(!c){ printf("v070_conv_actions: lsm_start failed: %s\n",err); return 1; }
+    v070_add(c,"id-a1",ca,fpa,"hello A1");
+    v070_add(c,"id-a2",ca,fpa,"hello A2");
+    v070_add(c,"id-b1",cb,fpb,"hello B1");
+    if(v070_unread(c,ca)!=2){ printf("v070: unread A want 2 got %d\n",v070_unread(c,ca)); bad++; }
+    if(v070_unread(c,cb)!=1){ printf("v070: unread B want 1 got %d\n",v070_unread(c,cb)); bad++; }
+    lsm_mark_read(c,ca);
+    if(v070_unread(c,ca)!=0){ printf("v070: mark_read A unread=%d\n",v070_unread(c,ca)); bad++; }
+    if(v070_unread(c,cb)!=1){ printf("v070: mark_read leaked to B unread=%d\n",v070_unread(c,cb)); bad++; }
+    if(lsm_mark_unread(c,ca)!=0){ printf("v070: mark_unread failed\n"); bad++; }
+    if(v070_unread(c,ca)<1){ printf("v070: mark_unread A unread=%d\n",v070_unread(c,ca)); bad++; }
+    if(v070_unread(c,cb)!=1){ printf("v070: mark_unread leaked to B unread=%d\n",v070_unread(c,cb)); bad++; }
+    if(lsm_set_conv_pinned(c,ca,1)!=0){ printf("v070: pin failed\n"); bad++; }
+    if(!v070_pinned(c,ca)){ printf("v070: not pinned in-session\n"); bad++; }
+    if(lsm_set_muted(c,fpa,1,err)!=0){ printf("v070: mute failed %s\n",err); bad++; }
+    if(!v070_muted(c,fpa)){ printf("v070: not muted in-session\n"); bad++; }
+    if(v070_muted(c,fpb)){ printf("v070: mute leaked to B\n"); bad++; }
+    if(lsm_clear_conversation(c,ca)<1){ printf("v070: clear A removed nothing\n"); bad++; }
+    if(v070_nmsg(c,ca)!=0){ printf("v070: A still has %d msgs after delete\n",v070_nmsg(c,ca)); bad++; }
+    if(v070_nmsg(c,cb)!=1){ printf("v070: delete A also removed B (now %d)\n",v070_nmsg(c,cb)); bad++; }
+    lsm_stop(c);
+    err[0]=0; c=lsm_start(&o,err,sizeof err);
+    if(!c){ printf("v070_conv_actions: restart failed: %s\n",err); return bad+1; }
+    if(!v070_pinned(c,ca)){ printf("v070: pin did not persist across restart\n"); bad++; }
+    if(!v070_muted(c,fpa)){ printf("v070: mute did not persist across restart\n"); bad++; }
+    if(v070_nmsg(c,ca)!=0){ printf("v070: deleted A msgs reappeared (%d)\n",v070_nmsg(c,ca)); bad++; }
+    if(v070_nmsg(c,cb)!=1){ printf("v070: B msgs lost after restart (%d)\n",v070_nmsg(c,cb)); bad++; }
+    lsm_stop(c);
+#ifdef _WIN32
+    { char cmd[300]; snprintf(cmd,sizeof cmd,"rmdir /s /q \"%s\"",dir); system(cmd); }
+#else
+    { char cmd[300]; snprintf(cmd,sizeof cmd,"rm -rf '%s'",dir); system(cmd); }
+#endif
+    if(bad) printf("v070_conv_actions: %d failures\n",bad); else printf("v070_conv_actions OK\n");
+    return bad;
+}
+
 int main(int argc, char **argv){ FILE *f; static char buf[1<<20]; size_t len; const char *p; int n=0, bad=0;
     if(argc<2){ fprintf(stderr,"usage: %s filename_vectors.json\n",argv[0]); return 2; }
     f=fopen(argv[1],"rb"); if(!f){ perror(argv[1]); return 2; } len=fread(buf,1,sizeof buf-1,f); buf[len]=0; fclose(f);
@@ -51,5 +131,5 @@ int main(int argc, char **argv){ FILE *f; static char buf[1<<20]; size_t len; co
         if(strcmp(got,want)){ bad++; printf("MISMATCH sanitize_filename(\"%s\")\n   C:    \"%s\"\n   Rust: \"%s\"\n",in,got,want); }
         p=q; }
     printf("sanitize_filename: %d vectors, %d mismatches\n",n,bad);
-    bad+=hist_tests(); bad+=ext_tests();
+    bad+=hist_tests(); bad+=ext_tests(); bad+=v070_conv_actions();
     return (n<10||bad)?1:0; }

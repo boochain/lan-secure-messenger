@@ -8,6 +8,7 @@
 #define IDM_V070_PROFILE   476
 #define IDM_V070_DIAG      477
 #define IDM_V070_SETTINGS  478
+#define IDM_V070_TRANSFERS 479
 /* hooks (must appear in this UI file):
  * LSMF_nav_chats LSMF_nav_contacts LSMF_nav_groups LSMF_nav_transfers LSMF_nav_files
  * LSMF_nav_settings LSMF_nav_profile LSMF_nav_diagnostics
@@ -43,13 +44,14 @@ static void v070_show_page(const char *name){
     v070_page_text(w,4000); SetWindowTextW(hV070Page,w); ShowWindow(hV070Page,SW_SHOW); BringWindowToTop(hV070Page); v070_relayout();
 }
 static void v070_on_command(int id){
-    if(id==IDM_V070_CHATS){ if(hV070Page) ShowWindow(hV070Page,SW_HIDE); snprintf(v070_page,sizeof v070_page,"chats"); }
+    if(id==IDM_V070_CHATS){ if(hV070Page) ShowWindow(hV070Page,SW_HIDE); snprintf(v070_page,sizeof v070_page,"chats"); v070_relayout(); }
     else if(id==IDM_V070_CONTACTS) v070_show_page("contacts");
     else if(id==IDM_V070_GROUPS) v070_show_page("groups");
     else if(id==IDM_V070_FILES) v070_show_page("files");
     else if(id==IDM_V070_PROFILE) v070_show_page("profile");
     else if(id==IDM_V070_DIAG) v070_show_page("diagnostics");
     else if(id==IDM_V070_SETTINGS) v070_show_page("settings");
+    else if(id==IDM_V070_TRANSFERS) v070_show_page("transfers");
     else if(id==IDM_V070_MARKREAD && cur_conv[0]){ lsm_mark_read(C,cur_conv); refresh_list(); refresh_chat(); } /* LSMF_chat_mark_read */
     else if(id==IDM_V070_MARKUNREAD && cur_conv[0]){ lsm_mark_unread(C,cur_conv); refresh_list(); } /* LSMF_chat_mark_unread */
 }
@@ -59,7 +61,7 @@ static void v070_extend_contact_menu(HMENU pm){
     InsertMenuW(pm,0,MF_BYPOSITION|MF_STRING,IDM_V070_MARKREAD,L"标为已读");
 }
 static void v070_extend_menus(HMENU filem, HMENU contactsm, HMENU settingsm){
-    if(filem){ AM(filem,MF_STRING,IDM_V070_FILES,L"文件站(&I)…"); AM(filem,MF_STRING,IDM_V070_CHATS,L"聊天页(&C)"); }
-    if(contactsm){ AM(contactsm,MF_STRING,IDM_V070_CONTACTS,L"联系人页(&P)"); AM(contactsm,MF_STRING,IDM_V070_GROUPS,L"群组页(&G)"); }
-    if(settingsm){ AM(settingsm,MF_STRING,IDM_V070_PROFILE,L"个人资料页(&I)"); AM(settingsm,MF_STRING,IDM_V070_SETTINGS,L"设置页(&E)"); AM(settingsm,MF_STRING,IDM_V070_DIAG,L"诊断页(&D)"); }
+    if(filem){ AM(filem,MF_STRING,IDM_V070_FILES,L"文件站"); AM(filem,MF_STRING,IDM_V070_TRANSFERS,L"传输页"); AM(filem,MF_STRING,IDM_V070_CHATS,L"聊天页"); }
+    if(contactsm){ AM(contactsm,MF_STRING,IDM_V070_CONTACTS,L"联系人页"); AM(contactsm,MF_STRING,IDM_V070_GROUPS,L"群组页"); }
+    if(settingsm){ AM(settingsm,MF_STRING,IDM_V070_PROFILE,L"个人资料页"); AM(settingsm,MF_STRING,IDM_V070_SETTINGS,L"设置页"); AM(settingsm,MF_STRING,IDM_V070_DIAG,L"诊断页"); }
 }

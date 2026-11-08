@@ -2,8 +2,15 @@
 # Platforms checked: winui, xp, gtk3, adw, android
 # (GTK3 and GTK4/libadwaita are listed separately so neither Linux UI can lag.)
 # CI: python3 tools/check_feature_parity.py
-# Each feature has one hook id (LSMF_<id>). The checker greps that string in
-# each platform's UI sources. Add the hook next to the real control / handler.
+#
+# Each feature has one hook id (LSMF_<id>). The checker requires, per platform:
+#   implemented     — hook string present in that platform's UI sources
+#   automated_test  — a test file that exists and contains the fragment after '#'
+#                     (engine / C unit tests are allowed here)
+#   gui_verified    — a screenshot/smoke driver that exists and contains the
+#                     fragment; unit tests (lan-core/tests/**, c_unit_test.c)
+#                     cannot count as GUI verification
+# Add the hook next to the real control / handler.
 
 platforms:
   winui:
@@ -44,46 +51,218 @@ features:
   - id: nav_chats
     title: 聊天页
     hook: LSMF_nav_chats
+    automated_test:
+      winui: ui-winui/LanMessenger/Services/UiSmoke.cs#page-chat
+      xp: editions/portable/tests/xp_ui_shots.sh#LSMF_nav_chats
+      gtk3: editions/portable/tests/linux_gui_shots.py#LSMF_nav_chats
+      adw: editions/portable/tests/adw_gui_shots.py#LSMF_nav_chats
+      android: editions/portable/tests/android_chat_shots.py#LSMF_nav_chats
+    gui_verified:
+      winui: ui-winui/LanMessenger/Services/UiSmoke.cs#page-chat
+      xp: editions/portable/tests/xp_ui_shots.sh#LSMF_nav_chats
+      gtk3: editions/portable/tests/linux_gui_shots.py#LSMF_nav_chats
+      adw: editions/portable/tests/adw_gui_shots.py#LSMF_nav_chats
+      android: editions/portable/tests/android_chat_shots.py#LSMF_nav_chats
   - id: nav_contacts
     title: 联系人页
     hook: LSMF_nav_contacts
+    automated_test:
+      winui: ui-winui/LanMessenger/Services/UiSmoke.cs#page-contacts
+      xp: editions/portable/tests/xp_ui_shots.sh#LSMF_nav_contacts
+      gtk3: editions/portable/tests/linux_gui_shots.py#LSMF_nav_contacts
+      adw: editions/portable/tests/adw_gui_shots.py#LSMF_nav_contacts
+      android: editions/portable/tests/android_chat_shots.py#LSMF_nav_contacts
+    gui_verified:
+      winui: ui-winui/LanMessenger/Services/UiSmoke.cs#page-contacts
+      xp: editions/portable/tests/xp_ui_shots.sh#LSMF_nav_contacts
+      gtk3: editions/portable/tests/linux_gui_shots.py#LSMF_nav_contacts
+      adw: editions/portable/tests/adw_gui_shots.py#LSMF_nav_contacts
+      android: editions/portable/tests/android_chat_shots.py#LSMF_nav_contacts
   - id: nav_groups
     title: 群组页
     hook: LSMF_nav_groups
+    automated_test:
+      winui: ui-winui/LanMessenger/Services/UiSmoke.cs#page-groups
+      xp: editions/portable/tests/xp_ui_shots.sh#LSMF_nav_groups
+      gtk3: editions/portable/tests/linux_gui_shots.py#LSMF_nav_groups
+      adw: editions/portable/tests/adw_gui_shots.py#LSMF_nav_groups
+      android: editions/portable/tests/android_chat_shots.py#LSMF_nav_groups
+    gui_verified:
+      winui: ui-winui/LanMessenger/Services/UiSmoke.cs#page-groups
+      xp: editions/portable/tests/xp_ui_shots.sh#LSMF_nav_groups
+      gtk3: editions/portable/tests/linux_gui_shots.py#LSMF_nav_groups
+      adw: editions/portable/tests/adw_gui_shots.py#LSMF_nav_groups
+      android: editions/portable/tests/android_chat_shots.py#LSMF_nav_groups
   - id: nav_transfers
     title: 传输页
     hook: LSMF_nav_transfers
+    automated_test:
+      winui: ui-winui/LanMessenger/Services/UiSmoke.cs#page-transfers
+      xp: editions/portable/tests/xp_ui_shots.sh#LSMF_nav_transfers
+      gtk3: editions/portable/tests/linux_gui_shots.py#LSMF_nav_transfers
+      adw: editions/portable/tests/adw_gui_shots.py#LSMF_nav_transfers
+      android: editions/portable/tests/android_chat_shots.py#LSMF_nav_transfers
+    gui_verified:
+      winui: ui-winui/LanMessenger/Services/UiSmoke.cs#page-transfers
+      xp: editions/portable/tests/xp_ui_shots.sh#LSMF_nav_transfers
+      gtk3: editions/portable/tests/linux_gui_shots.py#LSMF_nav_transfers
+      adw: editions/portable/tests/adw_gui_shots.py#LSMF_nav_transfers
+      android: editions/portable/tests/android_chat_shots.py#LSMF_nav_transfers
   - id: nav_files
     title: 文件站（接收文件 / 存储）
     hook: LSMF_nav_files
+    automated_test:
+      winui: ui-winui/LanMessenger/Services/UiSmoke.cs#page-files
+      xp: editions/portable/tests/xp_ui_shots.sh#LSMF_nav_files
+      gtk3: editions/portable/tests/linux_gui_shots.py#LSMF_nav_files
+      adw: editions/portable/tests/adw_gui_shots.py#LSMF_nav_files
+      android: editions/portable/tests/android_chat_shots.py#LSMF_nav_files
+    gui_verified:
+      winui: ui-winui/LanMessenger/Services/UiSmoke.cs#page-files
+      xp: editions/portable/tests/xp_ui_shots.sh#LSMF_nav_files
+      gtk3: editions/portable/tests/linux_gui_shots.py#LSMF_nav_files
+      adw: editions/portable/tests/adw_gui_shots.py#LSMF_nav_files
+      android: editions/portable/tests/android_chat_shots.py#LSMF_nav_files
   - id: nav_settings
     title: 设置页
     hook: LSMF_nav_settings
+    automated_test:
+      winui: ui-winui/LanMessenger/Services/UiSmoke.cs#page-settings
+      xp: editions/portable/tests/xp_ui_shots.sh#LSMF_nav_settings
+      gtk3: editions/portable/tests/linux_gui_shots.py#LSMF_nav_settings
+      adw: editions/portable/tests/adw_gui_shots.py#LSMF_nav_settings
+      android: editions/portable/tests/android_chat_shots.py#LSMF_nav_settings
+    gui_verified:
+      winui: ui-winui/LanMessenger/Services/UiSmoke.cs#page-settings
+      xp: editions/portable/tests/xp_ui_shots.sh#LSMF_nav_settings
+      gtk3: editions/portable/tests/linux_gui_shots.py#LSMF_nav_settings
+      adw: editions/portable/tests/adw_gui_shots.py#LSMF_nav_settings
+      android: editions/portable/tests/android_chat_shots.py#LSMF_nav_settings
   - id: nav_profile
     title: 个人资料页
     hook: LSMF_nav_profile
+    automated_test:
+      winui: ui-winui/LanMessenger/Services/UiSmoke.cs#page-profile
+      xp: editions/portable/tests/xp_ui_shots.sh#LSMF_nav_profile
+      gtk3: editions/portable/tests/linux_gui_shots.py#LSMF_nav_profile
+      adw: editions/portable/tests/adw_gui_shots.py#LSMF_nav_profile
+      android: editions/portable/tests/android_chat_shots.py#LSMF_nav_profile
+    gui_verified:
+      winui: ui-winui/LanMessenger/Services/UiSmoke.cs#page-profile
+      xp: editions/portable/tests/xp_ui_shots.sh#LSMF_nav_profile
+      gtk3: editions/portable/tests/linux_gui_shots.py#LSMF_nav_profile
+      adw: editions/portable/tests/adw_gui_shots.py#LSMF_nav_profile
+      android: editions/portable/tests/android_chat_shots.py#LSMF_nav_profile
   - id: nav_diagnostics
     title: 诊断页
     hook: LSMF_nav_diagnostics
+    automated_test:
+      winui: ui-winui/LanMessenger/Services/UiSmoke.cs#page-diag
+      xp: editions/portable/tests/xp_ui_shots.sh#LSMF_nav_diagnostics
+      gtk3: editions/portable/tests/linux_gui_shots.py#LSMF_nav_diagnostics
+      adw: editions/portable/tests/adw_gui_shots.py#LSMF_nav_diagnostics
+      android: editions/portable/tests/android_chat_shots.py#LSMF_nav_diagnostics
+    gui_verified:
+      winui: ui-winui/LanMessenger/Services/UiSmoke.cs#page-diag
+      xp: editions/portable/tests/xp_ui_shots.sh#LSMF_nav_diagnostics
+      gtk3: editions/portable/tests/linux_gui_shots.py#LSMF_nav_diagnostics
+      adw: editions/portable/tests/adw_gui_shots.py#LSMF_nav_diagnostics
+      android: editions/portable/tests/android_chat_shots.py#LSMF_nav_diagnostics
   - id: chat_delete
     title: 会话删除（聊天列表）
     hook: LSMF_chat_delete
+    automated_test:
+      winui: lan-core/tests/engine.rs#v070_chat_list_actions
+      xp: editions/portable/tests/c_unit_test.c#v070_conv_actions
+      gtk3: editions/portable/tests/c_unit_test.c#v070_conv_actions
+      adw: editions/portable/tests/c_unit_test.c#v070_conv_actions
+      android: editions/portable/tests/c_unit_test.c#v070_conv_actions
+    gui_verified:
+      winui: ui-winui/LanMessenger/Services/UiSmoke.cs#popup-conv-menu
+      xp: editions/portable/tests/xp_ui_shots.sh#conv-menu
+      gtk3: editions/portable/tests/linux_gui_shots.py#conv-menu
+      adw: editions/portable/tests/adw_gui_shots.py#popup-conv-menu
+      android: editions/portable/tests/android_chat_shots.py#conv-menu
   - id: chat_pin
     title: 会话置顶 / 取消置顶（聊天列表）
     hook: LSMF_chat_pin
+    automated_test:
+      winui: lan-core/tests/engine.rs#v070_chat_list_actions
+      xp: editions/portable/tests/c_unit_test.c#v070_conv_actions
+      gtk3: editions/portable/tests/c_unit_test.c#v070_conv_actions
+      adw: editions/portable/tests/c_unit_test.c#v070_conv_actions
+      android: editions/portable/tests/c_unit_test.c#v070_conv_actions
+    gui_verified:
+      winui: ui-winui/LanMessenger/Services/UiSmoke.cs#popup-conv-menu
+      xp: editions/portable/tests/xp_ui_shots.sh#conv-menu
+      gtk3: editions/portable/tests/linux_gui_shots.py#conv-menu
+      adw: editions/portable/tests/adw_gui_shots.py#popup-conv-menu
+      android: editions/portable/tests/android_chat_shots.py#conv-menu
   - id: chat_mark_read
     title: 标记已读（聊天列表）
     hook: LSMF_chat_mark_read
+    automated_test:
+      winui: lan-core/tests/engine.rs#v070_chat_list_actions
+      xp: editions/portable/tests/c_unit_test.c#v070_conv_actions
+      gtk3: editions/portable/tests/c_unit_test.c#v070_conv_actions
+      adw: editions/portable/tests/c_unit_test.c#v070_conv_actions
+      android: editions/portable/tests/c_unit_test.c#v070_conv_actions
+    gui_verified:
+      winui: ui-winui/LanMessenger/Services/UiSmoke.cs#popup-conv-menu
+      xp: editions/portable/tests/xp_ui_shots.sh#conv-menu
+      gtk3: editions/portable/tests/linux_gui_shots.py#conv-menu
+      adw: editions/portable/tests/adw_gui_shots.py#popup-conv-menu
+      android: editions/portable/tests/android_chat_shots.py#conv-menu
   - id: chat_mark_unread
     title: 标记未读（聊天列表）
     hook: LSMF_chat_mark_unread
+    automated_test:
+      winui: lan-core/tests/engine.rs#v070_chat_list_actions
+      xp: editions/portable/tests/c_unit_test.c#v070_conv_actions
+      gtk3: editions/portable/tests/c_unit_test.c#v070_conv_actions
+      adw: editions/portable/tests/c_unit_test.c#v070_conv_actions
+      android: editions/portable/tests/c_unit_test.c#v070_conv_actions
+    gui_verified:
+      winui: ui-winui/LanMessenger/Services/UiSmoke.cs#popup-conv-menu
+      xp: editions/portable/tests/xp_ui_shots.sh#conv-menu
+      gtk3: editions/portable/tests/linux_gui_shots.py#conv-menu
+      adw: editions/portable/tests/adw_gui_shots.py#popup-conv-menu
+      android: editions/portable/tests/android_chat_shots.py#conv-menu
   - id: chat_mute
     title: 免打扰（聊天列表）
     hook: LSMF_chat_mute
+    automated_test:
+      winui: lan-core/tests/engine.rs#v070_chat_list_actions
+      xp: editions/portable/tests/c_unit_test.c#v070_conv_actions
+      gtk3: editions/portable/tests/c_unit_test.c#v070_conv_actions
+      adw: editions/portable/tests/c_unit_test.c#v070_conv_actions
+      android: editions/portable/tests/c_unit_test.c#v070_conv_actions
+    gui_verified:
+      winui: ui-winui/LanMessenger/Services/UiSmoke.cs#popup-conv-menu
+      xp: editions/portable/tests/xp_ui_shots.sh#conv-menu
+      gtk3: editions/portable/tests/linux_gui_shots.py#conv-menu
+      adw: editions/portable/tests/adw_gui_shots.py#popup-conv-menu
+      android: editions/portable/tests/android_chat_shots.py#conv-menu
   - id: chat_list_menu
     title: 桌面右键 / Android 长按打开会话操作菜单
     hook: LSMF_chat_list_menu
+    automated_test:
+      winui: ui-winui/LanMessenger/Services/UiSmoke.cs#popup-conv-menu
+      xp: editions/portable/tests/xp_ui_shots.sh#conv-menu
+      gtk3: editions/portable/tests/linux_gui_shots.py#conv-menu
+      adw: editions/portable/tests/adw_gui_shots.py#popup-conv-menu
+      android: editions/portable/tests/android_chat_shots.py#conv-menu-longpress
+    gui_verified:
+      winui: ui-winui/LanMessenger/Services/UiSmoke.cs#popup-conv-menu
+      xp: editions/portable/tests/xp_ui_shots.sh#conv-menu
+      gtk3: editions/portable/tests/linux_gui_shots.py#conv-menu
+      adw: editions/portable/tests/adw_gui_shots.py#popup-conv-menu
+      android: editions/portable/tests/android_chat_shots.py#conv-menu-longpress
   - id: chat_list_swipe
     title: Android 列表滑动打开会话操作
     hook: LSMF_chat_list_swipe
     platforms: [android]
+    automated_test:
+      android: editions/portable/tests/android_chat_shots.py#conv-menu-swipe
+    gui_verified:
+      android: editions/portable/tests/android_chat_shots.py#conv-menu-swipe

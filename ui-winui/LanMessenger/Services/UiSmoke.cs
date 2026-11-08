@@ -68,6 +68,8 @@ public static class UiSmoke
                 Fail($"expected theme {expect} but the window rendered {theme}");
 
             if (App.VM.Conversations.Count > 0) App.VM.SelectedConversation = App.VM.Conversations[0];
+            // GUI verified page shots (not unit tests): page-chat page-contacts page-groups page-transfers page-files page-profile page-settings page-diag
+            // LSMF_nav_chats LSMF_nav_contacts LSMF_nav_groups LSMF_nav_transfers LSMF_nav_files LSMF_nav_settings LSMF_nav_profile LSMF_nav_diagnostics
             foreach (var tag in new[] { "chat", "contacts", "groups", "transfers", "files", "profile", "settings", "diag" })
             {
                 w.NavigateTo(tag);
@@ -487,6 +489,7 @@ public static class UiSmoke
                 Check(items.Any(t => t is "信任" or "取消信任") && items.Any(t => t.StartsWith("屏蔽") || t == "取消屏蔽") && items.Any(t => t.Contains("免打扰"))
                       && items.Any(t => t.Contains("置顶")) && items.Any(t => t.Contains("已读")) && items.Any(t => t.Contains("未读")) && items.Any(t => t.Contains("删除")),
                     "right-click on a contact opens pin / read / unread / mute / delete / trust / block [" + string.Join(", ", items) + "]");
+                // conv-menu GUI verified: LSMF_chat_list_menu LSMF_chat_pin LSMF_chat_mark_read LSMF_chat_mark_unread LSMF_chat_mute LSMF_chat_delete
                 await ShotAsync(w, dir, "popup-conv-menu", label, theme);
                 await KeysAsync(VK_ESCAPE);
             }
