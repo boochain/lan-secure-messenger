@@ -64,8 +64,10 @@ fun Home(st: AppState, openPage: (String) -> Unit = {}, open: (String) -> Unit) 
                 SearchField(q, { q = it }, "搜索联系人和群组", Modifier.weight(1f))
             } else {
                 if (tab == 5 && dlg == "relay") IconButton({ dlg = "" }) { Ic(R.drawable.ms_back, "返回", p.fg) }
-                Text(if (tab == 5 && dlg == "relay") "中转服务器（可选）" else when (tab) { 1 -> "联系人"; 2 -> "群组"; 3 -> "文件传输"; 4 -> "文件站"; 5 -> "设置"; else -> "局域网安全通讯" }, style = MaterialTheme.typography.titleLarge, color = p.fg, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(if (tab == 5 && dlg == "relay") "中转服务器（可选）" else when (tab) { 1 -> "联系人"; 2 -> "群组"; 3 -> "文件传输"; 4 -> "文件站"; 5 -> "设置"; else -> "局域网安全通讯" }, style = MaterialTheme.typography.titleLarge, color = p.fg, modifier = Modifier.weight(1f).widthIn(min = 0.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (tab <= 2) {
+                    TextButton({ Native.reconnectServer(); Repo.refresh(); Repo.toast.value = "正在重新连接服务器…" },
+                        Modifier.semantics { contentDescription = "重连" }) { Text("重连", color = p.fg) }
                     IconButton({ searching = true }) { Ic(R.drawable.ms_search, "搜索", p.fg) }
                 }
             }
