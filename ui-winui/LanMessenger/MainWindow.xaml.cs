@@ -247,8 +247,11 @@ public sealed partial class MainWindow : Window
     {
         Type page = tag switch
         {
+            "contacts" => typeof(ContactsPage),
             "groups" => typeof(GroupsPage),
             "transfers" => typeof(TransfersPage),
+            "files" => typeof(FilesPage),
+            "profile" => typeof(ProfilePage),
             "settings" => typeof(SettingsPage),
             "diag" => typeof(DiagnosticsPage),
             _ => typeof(ChatPage),

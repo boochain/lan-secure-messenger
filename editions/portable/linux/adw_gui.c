@@ -174,6 +174,7 @@ static void delete_do(gpointer id){ if(lsm_delete_message(C,(const char*)id)) to
 #include "adw_p2.inc"
 #include "adw_compat14.h"
 #include "adw_v062.inc"
+#include "adw_v070.inc"
 static void select_conv(const char *cv);
 #include "adw_ux.inc"
 static void bubble_action(GtkButton *b, gpointer p){ const char *what=g_object_get_data(G_OBJECT(b),"what"); GtkWidget *pop=gtk_widget_get_ancestor(GTK_WIDGET(b),GTK_TYPE_POPOVER);
@@ -748,7 +749,7 @@ static void activate(GtkApplication *a, gpointer p){
     adw_navigation_split_view_set_min_sidebar_width(ADW_NAVIGATION_SPLIT_VIEW(split),260); adw_navigation_split_view_set_max_sidebar_width(ADW_NAVIGATION_SPLIT_VIEW(split),260); adw_navigation_split_view_set_sidebar_width_fraction(ADW_NAVIGATION_SPLIT_VIEW(split),0.3);
     { AdwBreakpoint *bp=adw_breakpoint_new(adw_breakpoint_condition_parse("max-width: 600sp")); GValue v=G_VALUE_INIT; g_value_init(&v,G_TYPE_BOOLEAN); g_value_set_boolean(&v,TRUE);
       adw_breakpoint_add_setter(bp,G_OBJECT(split),"collapsed",&v); g_value_unset(&v); adw_application_window_add_breakpoint(ADW_APPLICATION_WINDOW(win),bp); }
-    adw_application_window_set_content(ADW_APPLICATION_WINDOW(win),split); (void)ov;
+    adw_application_window_set_content(ADW_APPLICATION_WINDOW(win),v070_wrap(split)); (void)ov;
     load_window(); g_signal_connect(win,"close-request",G_CALLBACK(on_close),NULL);
     gtk_window_present(GTK_WINDOW(win)); refresh_list(); refresh_chat(); g_signal_connect(win,"notify::is-active",G_CALLBACK(adw_active),NULL); if(getenv("LSM_TEST_UPDCHECK")) g_timeout_add(1500,upd_test_start,NULL);
     { const char *oc=getenv("LSM_OPEN_CONV"); if(oc) select_conv(oc); }

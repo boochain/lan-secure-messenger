@@ -26,6 +26,7 @@ object Native {
     @JvmStatic external fun groupRemove(gid: String, fp: String): String
     @JvmStatic external fun groupLeave(gid: String): String
     @JvmStatic external fun markRead(conv: String)
+    @JvmStatic external fun markUnread(conv: String)
     /** delete one message on this device only (tombstoned in the core); false if not found */
     @JvmStatic external fun deleteMessage(id: String): Boolean
     @JvmStatic external fun clearConversation(conv: String): Int

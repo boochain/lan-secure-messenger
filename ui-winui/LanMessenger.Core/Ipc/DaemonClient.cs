@@ -63,6 +63,7 @@ public sealed class DaemonClient
     public Task<Me> CompleteFirstRunAsync(string? name) => Call<Me>("complete_first_run", new { name });
     public Task SetMutedAsync(string conversation, bool muted) => Call("set_muted", new { conversation, muted });
     public Task MarkReadAsync(string conversation) => Call("mark_read", new { conversation });
+    public Task MarkUnreadAsync(string conversation) => Call("mark_unread", new { conversation });
     /// <summary>Delete one message on this device only (the other side keeps its copy).</summary>
     public Task DeleteMessageAsync(string id) => Call("delete_message", new { id });
     public Task ClearConversationAsync(string conversation) => Call("clear_conversation", new { conversation });

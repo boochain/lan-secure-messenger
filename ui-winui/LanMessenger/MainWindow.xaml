@@ -49,21 +49,30 @@
                         CompactPaneLength="48"
                         SelectionChanged="Nav_SelectionChanged">
             <NavigationView.MenuItems>
-                <NavigationViewItem Content="聊天" ToolTipService.ToolTip="聊天" Tag="chat">
+                <NavigationViewItem Content="聊天" ToolTipService.ToolTip="聊天" Tag="chat" AutomationProperties.AutomationId="LSMF_nav_chats">
                     <NavigationViewItem.Icon><FontIcon Glyph="&#xE8BD;" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem Content="群组" ToolTipService.ToolTip="群组" Tag="groups">
+                <NavigationViewItem Content="联系人" ToolTipService.ToolTip="联系人" Tag="contacts" AutomationProperties.AutomationId="LSMF_nav_contacts">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE77B;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="群组" ToolTipService.ToolTip="群组" Tag="groups" AutomationProperties.AutomationId="LSMF_nav_groups">
                     <NavigationViewItem.Icon><FontIcon Glyph="&#xE716;" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem Content="传输" ToolTipService.ToolTip="传输" Tag="transfers">
+                <NavigationViewItem Content="传输" ToolTipService.ToolTip="传输" Tag="transfers" AutomationProperties.AutomationId="LSMF_nav_transfers">
                     <NavigationViewItem.Icon><FontIcon Glyph="&#xE896;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="文件站" ToolTipService.ToolTip="文件站" Tag="files" AutomationProperties.AutomationId="LSMF_nav_files">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE8B7;" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
             </NavigationView.MenuItems>
             <NavigationView.FooterMenuItems>
-                <NavigationViewItem Content="诊断" ToolTipService.ToolTip="诊断" Tag="diag">
+                <NavigationViewItem Content="我的" ToolTipService.ToolTip="个人资料" Tag="profile" AutomationProperties.AutomationId="LSMF_nav_profile">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE77B;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="诊断" ToolTipService.ToolTip="诊断" Tag="diag" AutomationProperties.AutomationId="LSMF_nav_diagnostics">
                     <NavigationViewItem.Icon><FontIcon Glyph="&#xE9D9;" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem Content="设置" ToolTipService.ToolTip="设置" Tag="settings">
+                <NavigationViewItem Content="设置" ToolTipService.ToolTip="设置" Tag="settings" AutomationProperties.AutomationId="LSMF_nav_settings">
                     <NavigationViewItem.Icon><FontIcon Glyph="&#xE713;" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
             </NavigationView.FooterMenuItems>

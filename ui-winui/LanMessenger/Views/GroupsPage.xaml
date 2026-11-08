@@ -17,7 +17,7 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <StackPanel>
-                <TextBlock Text="群组" Style="{StaticResource TitleTextBlockStyle}" />
+                <TextBlock Text="群组" Style="{StaticResource TitleTextBlockStyle}" AutomationProperties.AutomationId="LSMF_nav_groups" />
                 <TextBlock Text="群消息使用群密钥加密；移除成员后会自动更换密钥（rekey）。只能邀请已信任的联系人。"
                            Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" />
             </StackPanel>

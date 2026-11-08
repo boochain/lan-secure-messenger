@@ -23,6 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: python3 tools/set-version.py --check
+      - run: python3 tools/check_feature_parity.py
   windows:        # Rust core tests, lan-daemon/lan-msg, WinUI 3 x64 (+ light/dark UI smoke, colour audit), arm64 package
     if: github.event_name != 'workflow_dispatch' || inputs.jobs == '' || contains(format(',{0},', inputs.jobs), ',windows,')
     uses: ./.github/workflows/windows.yml

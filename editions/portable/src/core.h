@@ -168,6 +168,7 @@ int lsm_group_invite(lsm_core *c, const char *gid, const char **fps, int n, char
 int lsm_group_remove(lsm_core *c, const char *gid, const char *fp, char *err);
 int lsm_group_leave(lsm_core *c, const char *gid, char *err);
 int lsm_mark_read(lsm_core *c, const char *conv);
+int lsm_mark_unread(lsm_core *c, const char *conv); /* local badge only; last message in conv */
 /* avatar initials, shared rule (WinUI Fmt.Initials, Android initials()): CJK first -> 1 char; Latin -> up to 2 Latin
  * word initials, never mixed with CJK; else the first code point. out gets UTF-8, NUL-terminated (needs 8 bytes). */
 void lsm_initials(const char *name, char out[8]);

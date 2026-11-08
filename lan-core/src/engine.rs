@@ -2547,6 +2547,22 @@ impl Engine {
                 self.emit_conv(&a.conversation);
                 ok(json!({"ok": true}))
             }
+            "mark_unread" => {
+                let a: ConvP = p(params)?;
+                if let Some(last) = self.history.last_in(&a.conversation) {
+                    if let Ok(u) = Uuid::parse_str(&last.id) {
+                        let e = self.unread.entry(a.conversation.clone()).or_default();
+                        if !e.contains(&u) { e.push(u); }
+                    }
+                }
+                if let Some(fp) = a.conversation.strip_prefix("dm:") {
+                    self.emit_peer(fp);
+                } else if let Some(gid) = a.conversation.strip_prefix("group:").and_then(|g| Uuid::parse_str(g).ok()) {
+                    self.emit_group(&gid);
+                }
+                self.emit_conv(&a.conversation);
+                ok(json!({"ok": true}))
+            }
             "create_group" => {
                 #[derive(Deserialize)]
                 struct P {

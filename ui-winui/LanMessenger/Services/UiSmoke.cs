@@ -68,7 +68,7 @@ public static class UiSmoke
                 Fail($"expected theme {expect} but the window rendered {theme}");
 
             if (App.VM.Conversations.Count > 0) App.VM.SelectedConversation = App.VM.Conversations[0];
-            foreach (var tag in new[] { "chat", "groups", "transfers", "settings", "diag" })
+            foreach (var tag in new[] { "chat", "contacts", "groups", "transfers", "files", "profile", "settings", "diag" })
             {
                 w.NavigateTo(tag);
                 if (tag == "diag") await App.VM.RefreshDiagnosticsAsync(false);
@@ -484,8 +484,10 @@ public static class UiSmoke
             {
                 await RightClickAsync(w, dmRow);
                 var items = OpenMenuItems(w);
-                Check(items.Any(t => t is "信任" or "取消信任") && items.Any(t => t.StartsWith("屏蔽") || t == "取消屏蔽") && items.Any(t => t.Contains("免打扰")),
-                    "right-click on a contact opens trust / mute / block [" + string.Join(", ", items) + "]");
+                Check(items.Any(t => t is "信任" or "取消信任") && items.Any(t => t.StartsWith("屏蔽") || t == "取消屏蔽") && items.Any(t => t.Contains("免打扰"))
+                      && items.Any(t => t.Contains("置顶")) && items.Any(t => t.Contains("已读")) && items.Any(t => t.Contains("未读")) && items.Any(t => t.Contains("删除")),
+                    "right-click on a contact opens pin / read / unread / mute / delete / trust / block [" + string.Join(", ", items) + "]");
+                await ShotAsync(w, dir, "popup-conv-menu", label, theme);
                 await KeysAsync(VK_ESCAPE);
             }
             Check(OpenMenuItems(w).Count == 0, "Esc closes the context menu");

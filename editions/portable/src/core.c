@@ -1355,6 +1355,12 @@ int lsm_mark_read(lsm_core *c, const char *conv){ int i, n=0; buf_t p={0}, f={0}
             for(i=0;i<c->nmsgs;i++){ lsm_msg *m=&c->msgs[i]; uint8_t u[16]; if(m->out||m->kind==K_SYSTEM||strcmp(m->conv,conv)||strcmp(m->sender_fp,fp)||m->status!=ST_RECEIVED) continue; if(lsm_uuid_parse(m->id,u)) continue; b_uuid(&p,u); cnt++; m->status=ST_READ; hist_rec_upd(c,m); }
             if(cnt){ int k2; for(k2=0;k2<8;k2++) p.p[4+k2]=(uint8_t)(cnt>>(8*k2)); uuid_new(id); frame_msg(&f,id,&p); send_to_fp(c,fp,&f); } } }
     b_free(&p); b_free(&f); mu_unlock(&c->mu); return n; }
+int lsm_mark_unread(lsm_core *c, const char *conv){ int i, last=-1;
+    if(!c||!conv||!conv[0]) return -1;
+    mu_lock(&c->mu);
+    for(i=0;i<c->nmsgs;i++) if(!strcmp(c->msgs[i].conv,conv) && c->msgs[i].kind!=K_SYSTEM) last=i;
+    if(last>=0 && !c->msgs[last].unread){ c->msgs[last].unread=1; hist_rec_upd(c,&c->msgs[last]); }
+    mu_unlock(&c->mu); return last>=0?0:-1; }
 int lsm_set_name(lsm_core *c, const char *name){ conn *k; buf_t f={0}; char p[600]; mu_lock(&c->mu); sanitize_name(name,c->name,sizeof c->name); path_join(p,sizeof p,c->data_dir,"name.txt"); write_atomic(p,c->name,strlen(c->name));
     b_u32(&f,2); b_str(&f,c->name); for(k=c->conns;k;k=k->next) if(k->state==4) send_frame(k,&f); b_free(&f); mu_unlock(&c->mu); return 0; }
 int lsm_transfer_cancel(lsm_core *c, const char *tids, char *err){ uint8_t tid[16]; lsm_transfer *t; mu_lock(&c->mu);

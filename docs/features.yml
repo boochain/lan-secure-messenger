@@ -1,0 +1,89 @@
+# Four-surface feature parity table (v0.7.0).
+# Platforms checked: winui, xp, gtk3, adw, android
+# (GTK3 and GTK4/libadwaita are listed separately so neither Linux UI can lag.)
+# CI: python3 tools/check_feature_parity.py
+# Each feature has one hook id (LSMF_<id>). The checker greps that string in
+# each platform's UI sources. Add the hook next to the real control / handler.
+
+platforms:
+  winui:
+    roots:
+      - ui-winui
+  xp:
+    roots:
+      - editions/portable/src/gui.c
+      - editions/portable/src/xp_ux.inc
+      - editions/portable/src/xp_p0.inc
+      - editions/portable/src/xp_p1.inc
+      - editions/portable/src/xp_p2.inc
+      - editions/portable/src/xp_v062.inc
+      - editions/portable/src/xp_v070.inc
+  gtk3:
+    roots:
+      - editions/portable/linux/gtk_gui.c
+      - editions/portable/linux/gtk_ux.inc
+      - editions/portable/linux/gtk_p0.inc
+      - editions/portable/linux/gtk_p1.inc
+      - editions/portable/linux/gtk_p2.inc
+      - editions/portable/linux/gtk_v062.inc
+      - editions/portable/linux/gtk_v070.inc
+  adw:
+    roots:
+      - editions/portable/linux/adw_gui.c
+      - editions/portable/linux/adw_ux.inc
+      - editions/portable/linux/adw_p0.inc
+      - editions/portable/linux/adw_p1.inc
+      - editions/portable/linux/adw_p2.inc
+      - editions/portable/linux/adw_v062.inc
+      - editions/portable/linux/adw_v070.inc
+  android:
+    roots:
+      - editions/portable/android/app/src/main
+
+features:
+  - id: nav_chats
+    title: 聊天页
+    hook: LSMF_nav_chats
+  - id: nav_contacts
+    title: 联系人页
+    hook: LSMF_nav_contacts
+  - id: nav_groups
+    title: 群组页
+    hook: LSMF_nav_groups
+  - id: nav_transfers
+    title: 传输页
+    hook: LSMF_nav_transfers
+  - id: nav_files
+    title: 文件站（接收文件 / 存储）
+    hook: LSMF_nav_files
+  - id: nav_settings
+    title: 设置页
+    hook: LSMF_nav_settings
+  - id: nav_profile
+    title: 个人资料页
+    hook: LSMF_nav_profile
+  - id: nav_diagnostics
+    title: 诊断页
+    hook: LSMF_nav_diagnostics
+  - id: chat_delete
+    title: 会话删除（聊天列表）
+    hook: LSMF_chat_delete
+  - id: chat_pin
+    title: 会话置顶 / 取消置顶（聊天列表）
+    hook: LSMF_chat_pin
+  - id: chat_mark_read
+    title: 标记已读（聊天列表）
+    hook: LSMF_chat_mark_read
+  - id: chat_mark_unread
+    title: 标记未读（聊天列表）
+    hook: LSMF_chat_mark_unread
+  - id: chat_mute
+    title: 免打扰（聊天列表）
+    hook: LSMF_chat_mute
+  - id: chat_list_menu
+    title: 桌面右键 / Android 长按打开会话操作菜单
+    hook: LSMF_chat_list_menu
+  - id: chat_list_swipe
+    title: Android 列表滑动打开会话操作
+    hook: LSMF_chat_list_swipe
+    platforms: [android]

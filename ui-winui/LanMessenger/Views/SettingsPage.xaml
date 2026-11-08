@@ -7,7 +7,7 @@
     Background="Transparent">
     <ScrollViewer><!-- padding lives on the content: ScrollViewer.Padding clipped cards 16px above the edge with no border (audit: indistinct card/page) -->
         <StackPanel Spacing="12" MaxWidth="860" HorizontalAlignment="Stretch" Margin="16,4,16,16">
-            <TextBlock Text="设置" Style="{StaticResource TitleTextBlockStyle}" />
+            <TextBlock Text="设置" Style="{StaticResource TitleTextBlockStyle}" AutomationProperties.AutomationId="LSMF_nav_settings" />
 
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">

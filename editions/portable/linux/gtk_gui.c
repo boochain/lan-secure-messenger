@@ -230,6 +230,7 @@ static char jump_id[40]; static gboolean jump_later(gpointer p);
 #include "gtk_p1.inc"
 #include "gtk_p2.inc"
 #include "gtk_v062.inc"
+#include "gtk_v070.inc"
 #include "gtk_ux.inc"
 static gboolean delete_msg_idle(gpointer id){
     if(confirm("删除这条消息？","只会从本机删除，对方仍保留这条消息。此操作无法撤销。","删除")){ if(lsm_delete_message(C,(const char*)id)) msgbox(GTK_MESSAGE_WARNING,"删除失败：消息不存在。"); refresh_chat(); }
@@ -607,7 +608,7 @@ static void activate(GtkApplication *a, gpointer p){
     gtk_box_pack_start(GTK_BOX(right),stack,TRUE,TRUE,0);
     gtk_paned_pack1(GTK_PANED(paned),left,FALSE,FALSE); gtk_paned_pack2(GTK_PANED(paned),right,TRUE,FALSE);
     { GtkWidget *root=gtk_box_new(GTK_ORIENTATION_VERTICAL,0); status_lbl=gtk_label_new(""); gtk_label_set_xalign(GTK_LABEL(status_lbl),0); gtk_style_context_add_class(gtk_widget_get_style_context(status_lbl),"statusbar"); gtk_label_set_selectable(GTK_LABEL(status_lbl),TRUE);
-      gtk_box_pack_start(GTK_BOX(root),paned,TRUE,TRUE,0); gtk_box_pack_start(GTK_BOX(root),gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE,FALSE,0); gtk_box_pack_start(GTK_BOX(root),status_lbl,FALSE,FALSE,0); gtk_container_add(GTK_CONTAINER(win),root); }
+      gtk_box_pack_start(GTK_BOX(root),v070_wrap(paned),TRUE,TRUE,0); gtk_box_pack_start(GTK_BOX(root),gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE,FALSE,0); gtk_box_pack_start(GTK_BOX(root),status_lbl,FALSE,FALSE,0); gtk_container_add(GTK_CONTAINER(win),root); }
     g_signal_connect(win,"delete-event",G_CALLBACK(on_delete),NULL); g_signal_connect(win,"focus-in-event",G_CALLBACK(clear_urgency),NULL); g_signal_connect(win,"key-press-event",G_CALLBACK(win_key),NULL); /* F10 opens the menu */
     setup_tray();
     gtk_widget_show_all(win); refresh_list(); refresh_chat(); if(getenv("LSM_TEST_UPDCHECK")) g_timeout_add(1500,upd_test_start,NULL);

@@ -283,7 +283,7 @@
                 <ComboBox x:Name="FilterBox" HorizontalAlignment="Stretch" ItemsSource="{x:Bind VM.FilterOptions}" SelectedItem="{x:Bind VM.ConvFilter, Mode=TwoWay}"
                           Visibility="{x:Bind VM.HasFilters, Mode=OneWay}" AutomationProperties.Name="会话分组" ToolTipService.ToolTip="按分组筛选会话；已归档的会话在“已归档”里" />
             </StackPanel>
-            <ListView x:Name="ConvList" Grid.Row="2" Padding="4,0" RightTapped="ConvList_RightTapped" ContainerContentChanging="ConvList_ContainerContentChanging" ItemsSource="{x:Bind VM.Conversations}" SelectionMode="Single"
+            <ListView x:Name="ConvList" Grid.Row="2" Padding="4,0" RightTapped="ConvList_RightTapped" Holding="ConvList_Holding" ContainerContentChanging="ConvList_ContainerContentChanging" ItemsSource="{x:Bind VM.Conversations}" SelectionMode="Single"
                       SelectionChanged="ConvList_SelectionChanged">
                 <ListView.ItemContainerStyle>
                     <Style TargetType="ListViewItem">

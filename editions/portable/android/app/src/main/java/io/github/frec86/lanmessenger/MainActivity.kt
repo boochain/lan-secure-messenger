@@ -156,6 +156,7 @@ fun App(pendingShare: MutableState<List<Uri>>, openConvExt: MutableState<String?
     when {
         page == "history" -> HistoryScreen(st, c, back = { page = "" }, jump = jump)
         page == "profile" -> MyProfileScreen(st) { page = "" }
+        page == "diag" -> DiagScreen { page = "" }
         page.startsWith("cprofile:") -> page.removePrefix("cprofile:").let { fp -> ContactProfileScreen(st, fp, back = { page = "" }, openChat = { page = ""; conv = "dm:$fp" }, history = { conv = "dm:$fp"; page = "history" }, jump = jump) }
         c == null -> Home(st, openPage = { page = it }) { conv = it }
         else -> Chat(st, c, openPage = { page = it }) { conv = null }
