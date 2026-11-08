@@ -18,7 +18,7 @@
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button Content="头像与个性签名…" Click="Avatar_Click" />
-                        <Button Content="我的二维码…" Click="Qr_Click" />
+                        <Button Content="我的二维码…" Click="Qr_Click" Tag="LSMF_qr_profile" />
                         <Button Style="{StaticResource AccentButtonStyle}" Content="保存" Command="{x:Bind VM.SaveSettingsCommand}" />
                     </StackPanel>
                 </StackPanel>

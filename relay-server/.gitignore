@@ -1,3 +1,4 @@
 target/
 c-client/relay_client
 c-client/*.exe
+relay-data/

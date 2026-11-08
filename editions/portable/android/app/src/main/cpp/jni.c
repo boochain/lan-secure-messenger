@@ -162,6 +162,17 @@ JNIEXPORT jstring JNICALL FN(myUri)(JNIEnv *e, jclass k){ char u[400]=""; (void)
 JNIEXPORT jstring JNICALL FN(qr)(JNIEnv *e, jclass k, jstring text){ static uint8_t q[177*177]; char *t=U(e,text), *o; int n=lsm_qr(t,q),i; jstring r; (void)k; free(t);
     o=(char*)malloc((size_t)n*n+16); if(!o) return J(e,""); i=snprintf(o,16,"%d:",n); { int x; for(x=0;x<n*n;x++) o[i+x]=q[x]?'1':'0'; o[i+n*n]=0; } r=J(e,o); free(o); return r; }
 JNIEXPORT jstring JNICALL FN(addUri)(JNIEnv *e, jclass k, jstring uri){ char *s=U(e,uri), err[256]=""; int rc=C?lsm_add_uri(C,s,err):1; (void)k; free(s); return J(e,rc?(err[0]?err:"failed"):""); }
+JNIEXPORT jstring JNICALL FN(applyUri)(JNIEnv *e, jclass k, jstring uri){ char *s=U(e,uri), err[256]=""; int rc=C?lsm_apply_uri(C,s,err):1; (void)k; free(s); return J(e,rc?(err[0]?err:"failed"):""); }
+JNIEXPORT jboolean JNICALL FN(firstRunDone)(JNIEnv *e, jclass k){ (void)e; (void)k; return (jboolean)(C && lsm_first_run_done(C)); }
+JNIEXPORT jstring JNICALL FN(accountMode)(JNIEnv *e, jclass k){ (void)k; return J(e, C?lsm_account_mode(C):"device"); }
+JNIEXPORT jstring JNICALL FN(completeFirstRun)(JNIEnv *e, jclass k, jstring name, jstring mode, jstring restore){
+    char *n=U(e,name), *m=U(e,mode), *r=restore?U(e,restore):NULL, err[256]=""; (void)k;
+    if(C) lsm_complete_first_run(C,n,m,r&&r[0]?r:NULL,err); free(n); free(m); free(r); return J(e,err); }
+JNIEXPORT jstring JNICALL FN(accountSetup)(JNIEnv *e, jclass k){ char rk[80]="", err[256]=""; (void)k; if(C) lsm_account_setup(C,rk,sizeof rk,err); return J(e,rk[0]?rk:err); }
+JNIEXPORT jstring JNICALL FN(setAccountMode)(JNIEnv *e, jclass k, jstring mode){ char *m=U(e,mode), rk[80]="", err[256]=""; (void)k; if(C) lsm_set_account_mode(C,m,rk,sizeof rk,err); free(m); return J(e,rk[0]?rk:err); }
+JNIEXPORT jstring JNICALL FN(revealRecoveryKey)(JNIEnv *e, jclass k){ char rk[80]=""; (void)k; if(C) lsm_reveal_recovery_key(C,rk,sizeof rk); return J(e,rk); }
+JNIEXPORT jstring JNICALL FN(relayUri)(JNIEnv *e, jclass k){ char u[400]=""; (void)k; if(C) lsm_relay_uri(C,u,sizeof u); return J(e,u); }
+JNIEXPORT jstring JNICALL FN(accountPairUri)(JNIEnv *e, jclass k){ char u[500]="", err[256]=""; (void)k; if(C && lsm_account_pair_uri(C,u,sizeof u,err)) return J(e,err[0]?err:"failed"); return J(e,u); }
 JNIEXPORT jstring JNICALL FN(resend)(JNIEnv *e, jclass k, jstring id){ char *s=U(e,id), err[256]="", nid[40]=""; int rc=C?lsm_resend(C,s,nid,err):1; (void)k; free(s); return J(e,rc?(err[0]?err:"failed"):""); }
 JNIEXPORT jstring JNICALL FN(filePreview)(JNIEnv *e, jclass k, jstring conv, jstring path){ char *c=U(e,conv), *p=U(e,path), o[700]=""; (void)k; if(C) lsm_file_preview(C,c,p,o,sizeof o); free(c); free(p); return J(e,o); }
 JNIEXPORT jstring JNICALL FN(lastEditable)(JNIEnv *e, jclass k, jstring conv){ char *c=U(e,conv), id[40]=""; (void)k; if(C){ lsm_lock(C); if(!lsm_last_editable(C,c,id)) id[0]=0; lsm_unlock(C); } free(c); return J(e,id); }

@@ -106,7 +106,10 @@ class MainActivity : ComponentActivity() {
             Intent.ACTION_SEND -> { val u = i.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
                 if (u != null) pendingShare.value = listOf(u) else i.getStringExtra(Intent.EXTRA_TEXT)?.takeIf { it.isNotBlank() }?.let { pendingText.value = it } }
             Intent.ACTION_SEND_MULTIPLE -> i.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)?.let { pendingShare.value = it }
-            Intent.ACTION_VIEW -> i.dataString?.takeIf { it.startsWith("lsm://add") }?.let { Ux.pendingUri.value = it }
+            Intent.ACTION_VIEW -> i.dataString?.takeIf { it.startsWith("lsm://") }?.let { uri ->
+                if (uri.startsWith("lsm://add")) Ux.pendingUri.value = uri
+                else { val e = Native.applyUri(uri); Repo.toast.value = if (e.isNotEmpty()) e else "已处理链接"; Repo.refresh() }
+            }
         }
     }
 }

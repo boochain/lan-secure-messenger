@@ -1,4 +1,4 @@
-# Four-surface feature parity table (v0.7.0).
+# Four-surface feature parity table (v0.7.1).
 # Platforms checked: winui, xp, gtk3, adw, android
 # (GTK3 and GTK4/libadwaita are listed separately so neither Linux UI can lag.)
 # CI: python3 tools/check_feature_parity.py
@@ -25,6 +25,7 @@ platforms:
       - editions/portable/src/xp_p2.inc
       - editions/portable/src/xp_v062.inc
       - editions/portable/src/xp_v070.inc
+      - editions/portable/src/xp_v071.inc
   gtk3:
     roots:
       - editions/portable/linux/gtk_gui.c
@@ -34,6 +35,7 @@ platforms:
       - editions/portable/linux/gtk_p2.inc
       - editions/portable/linux/gtk_v062.inc
       - editions/portable/linux/gtk_v070.inc
+      - editions/portable/linux/gtk_v071.inc
   adw:
     roots:
       - editions/portable/linux/adw_gui.c
@@ -43,6 +45,7 @@ platforms:
       - editions/portable/linux/adw_p2.inc
       - editions/portable/linux/adw_v062.inc
       - editions/portable/linux/adw_v070.inc
+      - editions/portable/linux/adw_v071.inc
   android:
     roots:
       - editions/portable/android/app/src/main
@@ -266,3 +269,79 @@ features:
       android: editions/portable/tests/android_chat_shots.py#conv-menu-swipe
     gui_verified:
       android: editions/portable/tests/android_chat_shots.py#conv-menu-swipe
+
+  - id: account_mode
+    title: 首次运行选择账号模式或设备模式，设置中可切换
+    hook: LSMF_account_mode
+    automated_test:
+      winui: lan-core/tests/engine.rs#v071_account_mode_local
+      xp: editions/portable/tests/c_unit_test.c#v071_account
+      gtk3: editions/portable/tests/c_unit_test.c#v071_account
+      adw: editions/portable/tests/c_unit_test.c#v071_account
+      android: editions/portable/tests/c_unit_test.c#v071_account
+    gui_verified:
+      winui: ui-winui/LanMessenger/Services/UiSmoke.cs#LSMF_account_mode
+      xp: editions/portable/tests/xp_ui_shots.sh#LSMF_account_mode
+      gtk3: editions/portable/tests/linux_gui_shots.py#LSMF_account_mode
+      adw: editions/portable/tests/adw_gui_shots.py#LSMF_account_mode
+      android: editions/portable/tests/android_chat_shots.py#LSMF_account_mode
+  - id: qr_profile
+    title: 个人资料页显示我的二维码
+    hook: LSMF_qr_profile
+    automated_test:
+      winui: lan-core/tests/engine.rs#v071_account_mode_local
+      xp: editions/portable/tests/c_unit_test.c#v071_account
+      gtk3: editions/portable/tests/c_unit_test.c#v071_account
+      adw: editions/portable/tests/c_unit_test.c#v071_account
+      android: editions/portable/tests/c_unit_test.c#v071_account
+    gui_verified:
+      winui: ui-winui/LanMessenger/Services/UiSmoke.cs#LSMF_qr_profile
+      xp: editions/portable/tests/xp_ui_shots.sh#LSMF_qr_profile
+      gtk3: editions/portable/tests/linux_gui_shots.py#LSMF_qr_profile
+      adw: editions/portable/tests/adw_gui_shots.py#LSMF_qr_profile
+      android: editions/portable/tests/android_chat_shots.py#LSMF_qr_profile
+  - id: qr_scan
+    title: 扫描或粘贴二维码/链接以添加联系人
+    hook: LSMF_qr_scan
+    automated_test:
+      winui: lan-core/tests/engine.rs#v071_account_mode_local
+      xp: editions/portable/tests/c_unit_test.c#v071_account
+      gtk3: editions/portable/tests/c_unit_test.c#v071_account
+      adw: editions/portable/tests/c_unit_test.c#v071_account
+      android: editions/portable/tests/c_unit_test.c#v071_account
+    gui_verified:
+      winui: ui-winui/LanMessenger/Services/UiSmoke.cs#LSMF_qr_scan
+      xp: editions/portable/tests/xp_ui_shots.sh#LSMF_qr_scan
+      gtk3: editions/portable/tests/linux_gui_shots.py#LSMF_qr_scan
+      adw: editions/portable/tests/adw_gui_shots.py#LSMF_qr_scan
+      android: editions/portable/tests/android_chat_shots.py#LSMF_qr_scan
+  - id: qr_server
+    title: 通过二维码连接中转服务器
+    hook: LSMF_qr_server
+    automated_test:
+      winui: lan-core/tests/engine.rs#v071_account_mode_local
+      xp: editions/portable/tests/c_unit_test.c#v071_account
+      gtk3: editions/portable/tests/c_unit_test.c#v071_account
+      adw: editions/portable/tests/c_unit_test.c#v071_account
+      android: editions/portable/tests/c_unit_test.c#v071_account
+    gui_verified:
+      winui: ui-winui/LanMessenger/Services/UiSmoke.cs#LSMF_qr_server
+      xp: editions/portable/tests/xp_ui_shots.sh#LSMF_qr_server
+      gtk3: editions/portable/tests/linux_gui_shots.py#LSMF_qr_server
+      adw: editions/portable/tests/adw_gui_shots.py#LSMF_qr_server
+      android: editions/portable/tests/android_chat_shots.py#LSMF_qr_server
+  - id: qr_pair
+    title: 通过二维码配对账号模式下的新设备
+    hook: LSMF_qr_pair
+    automated_test:
+      winui: lan-core/tests/engine.rs#v071_account_mode_local
+      xp: editions/portable/tests/c_unit_test.c#v071_account
+      gtk3: editions/portable/tests/c_unit_test.c#v071_account
+      adw: editions/portable/tests/c_unit_test.c#v071_account
+      android: editions/portable/tests/c_unit_test.c#v071_account
+    gui_verified:
+      winui: ui-winui/LanMessenger/Services/UiSmoke.cs#LSMF_qr_pair
+      xp: editions/portable/tests/xp_ui_shots.sh#LSMF_qr_pair
+      gtk3: editions/portable/tests/linux_gui_shots.py#LSMF_qr_pair
+      adw: editions/portable/tests/adw_gui_shots.py#LSMF_qr_pair
+      android: editions/portable/tests/android_chat_shots.py#LSMF_qr_pair

@@ -96,7 +96,11 @@ pub struct Settings {
     /// `lan` | `server_lan` — when relay is on, server_lan treats relay as equal parallel path.
     pub transport_mode: String,
     /// Optional relay account username (fingerprint restore). Empty = anonymous relay.
+    /// In account mode this is the lookup id derived from the recovery key.
     pub account_user: String,
+    /// `device` (standalone, LAN only) or `account` (server-bound encrypted backup).
+    #[serde(default = "default_account_mode")]
+    pub account_mode: String,
     /// Default retain policy for new messages: `ends_only` | `server_retain`.
     pub default_retain: String,
     /// Accept files from trusted peers automatically.
@@ -127,6 +131,10 @@ fn is_false(b: &bool) -> bool {
     !*b
 }
 
+fn default_account_mode() -> String {
+    "device".into()
+}
+
 impl Settings {
     /// The settings as shown over local IPC: the passphrase is replaced by `relay_has_passphrase`.
     pub fn for_ipc(&self) -> Settings {
@@ -153,6 +161,7 @@ impl Default for Settings {
             bind_lan_ip: String::new(),
             transport_mode: "lan".into(),
             account_user: String::new(),
+            account_mode: default_account_mode(),
             default_retain: "ends_only".into(),
             auto_accept_files: true,
             max_file_bytes: 4 * 1024 * 1024 * 1024,

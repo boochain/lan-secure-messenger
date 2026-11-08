@@ -713,3 +713,29 @@ async fn file_transfer_1gb_direct() {
         n, elapsed.as_secs_f64(), mbps, lan_core::wire::CHUNK, tid
     );
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn v071_account_mode_local() {
+    let a = node("Ada", json!({})).await;
+    let me = a.call("complete_first_run", json!({"name": "Ada", "mode": "device"})).await;
+    assert_eq!(me["first_run_done"], true);
+    assert_eq!(me["account_mode"], "device");
+    let setup = a.call("account_setup", json!({})).await;
+    assert!(setup["recovery_key"].as_str().unwrap().starts_with("RK1-"), "{setup}");
+    assert_eq!(setup["lookup"].as_str().unwrap().len(), 32);
+    assert_eq!(a.snap().await["me"]["account_mode"], "account");
+    assert_eq!(a.snap().await["me"]["has_recovery_key"], true);
+    let shown = a.call("reveal_recovery_key", json!({})).await;
+    assert_eq!(shown["recovery_key"], setup["recovery_key"]);
+    let uri = format!("lsm://relay?h=127.0.0.1&p=9443");
+    let r = a.call("apply_uri", json!({"uri": uri})).await;
+    assert_eq!(r["ok"], true);
+    assert_eq!(a.snap().await["settings"]["relay_host"], "127.0.0.1");
+    a.call("account_set_mode", json!({"mode": "device"})).await;
+    assert_eq!(a.snap().await["me"]["account_mode"], "device");
+    let add = lan_core::account::parse_lsm_uri("lsm://add?a=10.0.0.1:1&fp=FF&n=x").unwrap();
+    match add {
+        lan_core::account::LsmUri::Add { addr, .. } => assert_eq!(addr, "10.0.0.1:1"),
+        _ => panic!("add"),
+    }
+}

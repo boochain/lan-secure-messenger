@@ -6,7 +6,7 @@ static void ux_qr_draw(GtkDrawingArea *a, cairo_t *cr, int W, int H, gpointer p)
     for(y=0;y<ux_qrn;y++) for(x=0;x<ux_qrn;x++) if(ux_qrm[y*ux_qrn+x]) cairo_rectangle(cr,ox+(x+4)*sc,oy+(y+4)*sc,sc+0.3,sc+0.3); cairo_fill(cr); }
 static char ux_uri[400];
 static void ux_qr_resp(AdwAlertDialog *d, const char *r, gpointer p){ (void)d;(void)p; if(!strcmp(r,"copy")){ gdk_clipboard_set_text(gtk_widget_get_clipboard(win),ux_uri); toast("链接已复制"); } }
-static void ux_my_qr(void){ AdwDialog *d; GtkWidget *box,*da,*l;
+static void ux_my_qr(void){ AdwDialog *d; GtkWidget *box,*da,*l; /* LSMF_qr_profile */
     if(lsm_my_uri(C,ux_uri,sizeof ux_uri)){ info("无法生成二维码","未找到局域网地址。"); return; }
     ux_qrn=lsm_qr(ux_uri,ux_qrm);
     box=gtk_box_new(GTK_ORIENTATION_VERTICAL,8); da=gtk_drawing_area_new(); gtk_drawing_area_set_content_width(GTK_DRAWING_AREA(da),240); gtk_drawing_area_set_content_height(GTK_DRAWING_AREA(da),240);
@@ -19,7 +19,7 @@ static void ux_my_qr(void){ AdwDialog *d; GtkWidget *box,*da,*l;
     g_signal_connect(d,"response",G_CALLBACK(ux_qr_resp),NULL); adw_dialog_present(d,win); }
 /* add_contact_go(): lsm:// links go through the fingerprint-checked path */
 static int ux_try_uri(const char *s){ char err[256]=""; if(strncmp(s,"lsm://",6)) return 0;
-    if(lsm_add_uri(C,s,err)) info("无法添加",err); else { gtk_editable_set_text(GTK_EDITABLE(add_entry),""); gtk_popover_popdown(GTK_POPOVER(add_popover)); toast("正在连接…指纹一致后自动设为已信任"); } list_dirty=1; return 1; }
+    if(lsm_apply_uri(C,s,err)) info("无法处理链接",err); /* LSMF_qr_scan LSMF_qr_server LSMF_qr_pair */ else { gtk_editable_set_text(GTK_EDITABLE(add_entry),""); gtk_popover_popdown(GTK_POPOVER(add_popover)); toast("正在连接…指纹一致后自动设为已信任"); } list_dirty=1; return 1; }
 
 /* resend */
 static void ux_menu(GtkWidget *box, const char *id){ lsm_msg *m; int n,i,can=0; lsm_lock(C); n=lsm_messages(C,&m); for(i=0;i<n;i++) if(!strcmp(m[i].id,id)){ can=lsm_can_resend(&m[i]); break; } lsm_unlock(C);

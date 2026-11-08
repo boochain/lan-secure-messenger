@@ -21,6 +21,7 @@ pub enum Event {
     Error(u8, String),
     Pong(Vec<u8>),
     Closed,
+    Other(u8, Vec<u8>),
 }
 
 #[derive(Debug)]
@@ -145,7 +146,7 @@ impl Client {
                     t::ERROR => Event::Error(f.body.first().copied().unwrap_or(0), String::from_utf8_lossy(f.body.get(1..).unwrap_or(&[])).into()),
                     t::PONG => Event::Pong(f.body),
                     t::PING => continue,
-                    _ => continue,
+                    _ => Event::Other(f.ty, f.body),
                 };
                 if etx.send(ev).await.is_err() {
                     break;

@@ -318,6 +318,12 @@ pub struct Me {
     /// Bound relay account (empty = none).
     #[serde(default)]
     pub account_user: String,
+    /// `device` or `account`.
+    #[serde(default)]
+    pub account_mode: String,
+    /// Local sealed recovery key is present (never sent over IPC).
+    #[serde(default)]
+    pub has_recovery_key: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

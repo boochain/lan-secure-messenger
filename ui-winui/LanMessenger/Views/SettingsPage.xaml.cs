@@ -110,16 +110,28 @@ public sealed partial class SettingsPage : Page
         Services.UiPrefs.Current.CloseToTray = CloseToTraySwitch.IsOn; Services.UiPrefs.Current.Save();
     }
 
-    private string _accountPass = "";
-    private void AccountPass_Changed(object sender, RoutedEventArgs e)
+    private async void AccountModeOn_Click(object sender, RoutedEventArgs e) => await VM.SetAccountModeAsync("account");
+    private async void AccountModeOff_Click(object sender, RoutedEventArgs e) => await VM.SetAccountModeAsync("device");
+    private async void RevealRk_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is PasswordBox pb) _accountPass = pb.Password ?? "";
+        var rk = await VM.RevealRecoveryKeyAsync();
+        if (!string.IsNullOrEmpty(rk))
+        {
+            var dlg = Services.ThemeService.Prepare(new ContentDialog { XamlRoot = XamlRoot, Title = "恢复密钥", Content = new TextBlock { Text = rk, IsTextSelectionEnabled = true, TextWrapping = TextWrapping.Wrap }, CloseButtonText = "关闭" });
+            await dlg.ShowAsync();
+        }
     }
-
-    private async void AccountRegister_Click(object sender, RoutedEventArgs e) => await VM.AccountRegisterAsync(_accountPass);
-    private async void AccountLogin_Click(object sender, RoutedEventArgs e) => await VM.AccountLoginAsync(_accountPass);
-    private async void AccountBackupPut_Click(object sender, RoutedEventArgs e) => await VM.AccountBackupPutAsync(_accountPass);
-    private async void AccountBackupGet_Click(object sender, RoutedEventArgs e) => await VM.AccountBackupGetAsync(_accountPass);
-    private async void AccountRevoke_Click(object sender, RoutedEventArgs e) => await VM.AccountRevokeAsync(_accountPass);
+    private async void RestoreAccount_Click(object sender, RoutedEventArgs e) => await VM.RestoreAccountAsync(RestoreKeyBox.Text);
+    private async void ApplyUri_Click(object sender, RoutedEventArgs e) => await VM.AddByLinkAsync(PasteUriBox.Text);
+    private async void ServerQr_Click(object sender, RoutedEventArgs e)
+    {
+        var uri = await VM.RelayUriAsync();
+        VM.ShowStatus(string.IsNullOrEmpty(uri) ? "请先填写中转服务器" : uri);
+    }
+    private async void PairQr_Click(object sender, RoutedEventArgs e)
+    {
+        var uri = await VM.AccountPairStartAsync();
+        if (!string.IsNullOrEmpty(uri)) VM.ShowStatus(uri);
+    }
     private void Profile_Click(object sender, RoutedEventArgs e) => _ = P0Dialogs.ShowMyProfileAsync(XamlRoot);
 }

@@ -568,3 +568,69 @@ async fn interop_c_and_rust_clients() {
     let _ = recho.kill().await;
     s.stop().await;
 }
+
+
+#[tokio::test]
+async fn account_passwordless_and_pair() {
+    let dir = std::env::temp_dir().join(format!("lsm-acct-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut c = cfg(0);
+    c.server.data_dir = dir.to_string_lossy().into();
+    let s = start(c).await;
+    let addr = s.addr.to_string();
+    let mut a = conn(&addr, "alice").await;
+    let user = b"alicekeyid0123456789012345678901"; // 32 ascii
+    let mut body = (user.len() as u16).to_be_bytes().to_vec();
+    body.extend_from_slice(user);
+    body.extend_from_slice(&0u16.to_be_bytes());
+    a.raw(Frame::new(t::ACCOUNT_REGISTER, body.clone()).encode()).await.unwrap();
+    match a.wait_for(W, |e| matches!(e, Event::Other(ty, _) if *ty == t::ACCOUNT_OK || *ty == t::ACCOUNT_FAIL)).await.unwrap() {
+        Event::Other(ty, msg) => assert_eq!(ty, t::ACCOUNT_OK, "{}", String::from_utf8_lossy(&msg)),
+        e => panic!("{e:?}"),
+    }
+    // empty-pass login
+    a.raw(Frame::new(t::ACCOUNT_LOGIN, body).encode()).await.unwrap();
+    match a.wait_for(W, |e| matches!(e, Event::Other(ty, _) if *ty == t::ACCOUNT_OK || *ty == t::ACCOUNT_FAIL)).await.unwrap() {
+        Event::Other(ty, msg) => assert_eq!(ty, t::ACCOUNT_OK, "{}", String::from_utf8_lossy(&msg)),
+        e => panic!("{e:?}"),
+    }
+    let blob = b"LSMBAK02-ciphertext-demo";
+    let mut put = (user.len() as u16).to_be_bytes().to_vec();
+    put.extend_from_slice(user);
+    put.extend_from_slice(blob);
+    a.raw(Frame::new(t::ACCOUNT_PUT_BACKUP, put).encode()).await.unwrap();
+    match a.wait_for(W, |e| matches!(e, Event::Other(ty, _) if *ty == t::ACCOUNT_OK || *ty == t::ACCOUNT_FAIL)).await.unwrap() {
+        Event::Other(ty, msg) => assert_eq!(ty, t::ACCOUNT_OK, "{}", String::from_utf8_lossy(&msg)),
+        e => panic!("{e:?}"),
+    }
+    let mut get = (user.len() as u16).to_be_bytes().to_vec();
+    get.extend_from_slice(user);
+    a.raw(Frame::new(t::ACCOUNT_GET_BACKUP, get).encode()).await.unwrap();
+    match a.wait_for(W, |e| matches!(e, Event::Other(ty, _) if *ty == t::ACCOUNT_BACKUP || *ty == t::ACCOUNT_FAIL)).await.unwrap() {
+        Event::Other(ty, b) => { assert_eq!(ty, t::ACCOUNT_BACKUP); assert_eq!(b, blob); }
+        e => panic!("{e:?}"),
+    }
+    let token = [0x11u8; 32];
+    let wrapped = b"LSMPAIR1wrapped-rk";
+    let mut pb = token.to_vec();
+    pb.extend_from_slice(&600u32.to_be_bytes());
+    pb.extend_from_slice(wrapped);
+    a.raw(Frame::new(t::PAIR_PUT, pb).encode()).await.unwrap();
+    match a.wait_for(W, |e| matches!(e, Event::Other(ty, _) if *ty == t::PAIR_OK || *ty == t::ACCOUNT_FAIL)).await.unwrap() {
+        Event::Other(ty, _) => assert_eq!(ty, t::PAIR_OK),
+        e => panic!("{e:?}"),
+    }
+    let mut b = conn(&addr, "bob").await;
+    b.raw(Frame::new(t::PAIR_GET, token.to_vec()).encode()).await.unwrap();
+    match b.wait_for(W, |e| matches!(e, Event::Other(ty, _) if *ty == t::PAIR_DATA || *ty == t::PAIR_MISS)).await.unwrap() {
+        Event::Other(ty, d) => { assert_eq!(ty, t::PAIR_DATA); assert_eq!(d, wrapped); }
+        e => panic!("{e:?}"),
+    }
+    // one-time: second get misses
+    a.raw(Frame::new(t::PAIR_GET, token.to_vec()).encode()).await.unwrap();
+    match a.wait_for(W, |e| matches!(e, Event::Other(ty, _) if *ty == t::PAIR_DATA || *ty == t::PAIR_MISS)).await.unwrap() {
+        Event::Other(ty, _) => assert_eq!(ty, t::PAIR_MISS),
+        e => panic!("{e:?}"),
+    }
+    s.stop().await;
+}

@@ -7,8 +7,8 @@ android {
         applicationId = "io.github.frec86.lanmessenger"
         minSdk = 21
         targetSdk = 34
-        versionCode = 70099
-        versionName = "0.7.0"
+        versionCode = 70199
+        versionName = "0.7.1"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
         externalNativeBuild { cmake { arguments += listOf("-DANDROID_STL=none") } }
     }
@@ -32,4 +32,9 @@ dependencies {
     implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.camera:camera-camera2:1.3.4")
+    implementation("androidx.camera:camera-lifecycle:1.3.4")
+    implementation("androidx.camera:camera-view:1.3.4")
+    implementation("com.google.zxing:core:3.5.3")
 }
+

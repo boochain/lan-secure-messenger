@@ -103,6 +103,10 @@ sh("cmd overlay enable com.android.internal.systemui.navbar.gestural")  # gestur
 for k in ("window_animation_scale", "transition_animation_scale", "animator_duration_scale"): sh(f"settings put global {k} 0")
 sh(f"pm clear {PKG}"); sh("cmd uimode night no"); sh(f"pm grant {PKG} android.permission.POST_NOTIFICATIONS")
 sh(f"am start -W -n {PKG}/.MainActivity"); time.sleep(10)
+# first-run overlay (设备模式 is the default radio)
+if find(lambda n: n.get("text") == "开始使用"):
+    shot("android-light-00-first-run")  # first-run LSMF_account_mode LSMF_qr_profile LSMF_qr_scan LSMF_qr_server LSMF_qr_pair
+    tap_text("开始使用"); time.sleep(1.5)
 pdf = "/data/local/tmp/季度报告-Q3-最终版.pdf"; local_pdf = "/tmp/lsm-seed.pdf"
 open(local_pdf, "wb").write(b"%PDF-1.4\n" + os.urandom(2_516_582))
 adb("push", local_pdf, pdf)
@@ -136,10 +140,11 @@ for th in ("light", "dark"):
         back(); time.sleep(1)
         row = find(lambda n: n.get("text") == "王工") or row
         # LSMF_chat_list_swipe: horizontal swipe opens the same menu
-        sh(f"input swipe {row[0]} {row[1]} {row[0] + 280} {row[1]} 350"); time.sleep(1.5)
-        shot(f"android-{th}-15-conv-menu-swipe")  # conv-menu-swipe LSMF_chat_list_swipe
-        if find(lambda n: n.get("text") in ("置顶", "取消置顶", "标为已读")) is None:
-            print("WARN swipe conv menu missing items", flush=True)
+        left = max(row[0] - 280, 20)
+        sh(f"input swipe {row[0]} {row[1]} {left} {row[1]} 350"); time.sleep(1.5)
+        shot(f"android-{th}-15-conv-menu-swipe")  # conv-menu-swipe LSMF_chat_list_swipe inline 置顶/已读/免打扰/删除
+        if find(lambda n: n.get("text") in ("置顶", "取消置顶")) is None or find(lambda n: n.get("text") in ("已读", "删除", "免打扰")) is None:
+            print("WARN swipe conv menu missing inline action buttons", flush=True)
         back(); time.sleep(1)
     else:
         print("WARN no 王工 row for conv long-press/swipe", flush=True)

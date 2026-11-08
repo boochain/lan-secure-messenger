@@ -54,6 +54,11 @@ const T_STORE_DEL: u8 = 0x75;
 const T_LIST_RETAIN: u8 = 0x76;
 const T_LIST_RETAIN_DATA: u8 = 0x77;
 const T_ACCOUNT_REVOKE: u8 = 0x67;
+const T_PAIR_PUT: u8 = 0x68;
+const T_PAIR_GET: u8 = 0x69;
+const T_PAIR_DATA: u8 = 0x6A;
+const T_PAIR_MISS: u8 = 0x6B;
+const T_PAIR_OK: u8 = 0x6C;
 const T_BYE: u8 = 0x7F;
 
 const K_DATA: u8 = 0;
@@ -92,6 +97,8 @@ pub enum RelayCmd {
     StoreDel { id: Vec<u8> },
     ListRetain { reply: ListReply },
     AccountRevoke { user: String, pass: String, reply: AccountReply },
+    PairPut { token: [u8; 32], ttl: u32, blob: Vec<u8>, reply: AccountReply },
+    PairGet { token: [u8; 32], reply: BackupReply },
     /// Drop the current relay TCP session (if any) and reconnect immediately.
     Reconnect,
 }
@@ -146,6 +153,8 @@ async fn run(shared: Arc<Shared>, mut cmd: mpsc::UnboundedReceiver<RelayCmd>, tx
                     Some(RelayCmd::Fetch { reply, .. }) => { let _ = reply.send(Err("relay offline".into())); }
                     Some(RelayCmd::ListRetain { reply }) => { let _ = reply.send(Err("relay offline".into())); }
                     Some(RelayCmd::AccountRevoke { reply, .. }) => { let _ = reply.send(Err("relay offline".into())); }
+                    Some(RelayCmd::PairPut { reply, .. }) => { let _ = reply.send(Err("relay offline".into())); }
+                    Some(RelayCmd::PairGet { reply, .. }) => { let _ = reply.send(Err("relay offline".into())); }
                     Some(RelayCmd::StoreDel { .. }) | Some(RelayCmd::Open(_)) | Some(RelayCmd::Rename) | Some(RelayCmd::Reconnect) => {}
                 }
             }
@@ -191,6 +200,8 @@ async fn run(shared: Arc<Shared>, mut cmd: mpsc::UnboundedReceiver<RelayCmd>, tx
                     Some(RelayCmd::Fetch { reply, .. }) => { let _ = reply.send(Err("relay offline".into())); }
                     Some(RelayCmd::ListRetain { reply }) => { let _ = reply.send(Err("relay offline".into())); }
                     Some(RelayCmd::AccountRevoke { reply, .. }) => { let _ = reply.send(Err("relay offline".into())); }
+                    Some(RelayCmd::PairPut { reply, .. }) => { let _ = reply.send(Err("relay offline".into())); }
+                    Some(RelayCmd::PairGet { reply, .. }) => { let _ = reply.send(Err("relay offline".into())); }
                     Some(RelayCmd::Reconnect) => { fails = 0; break; }
                     Some(RelayCmd::StoreDel { .. }) | Some(RelayCmd::Open(_)) | Some(RelayCmd::Rename) => {}
                 }
@@ -408,6 +419,7 @@ async fn session(
             }
             let mf = u32::from_be_bytes(b[32..36].try_into().unwrap()) as usize;
             let hb = u16::from_be_bytes(b[36..38].try_into().unwrap()).max(5) as u64;
+            let _caps = if b.len() >= 42 { u32::from_le_bytes(b[38..42].try_into().unwrap()) } else { 0 };
             // same clamp as the C core: a server cannot make us buffer more than the protocol's 16 MiB ceiling
             (mf.clamp(4096, 16 * 1024 * 1024), hb)
         }
@@ -573,6 +585,15 @@ async fn session(
                     T_ACCOUNT_BACKUP => {
                         if let Some(r) = pend_bak.take() { let _ = r.send(Ok(b)); }
                     }
+                    T_PAIR_OK => {
+                        if let Some(r) = pend_acct.take() { let _ = r.send(Ok(())); }
+                    }
+                    T_PAIR_DATA => {
+                        if let Some(r) = pend_bak.take() { let _ = r.send(Ok(b)); }
+                    }
+                    T_PAIR_MISS => {
+                        if let Some(r) = pend_bak.take() { let _ = r.send(Err("配对已过期或不存在".into())); }
+                    }
                     T_STORE_OK => {
                         if let Some((_id, r)) = pend_store.take() { let _ = r.send(Ok(())); }
                     }
@@ -716,6 +737,17 @@ async fn session(
                 Some(RelayCmd::AccountRevoke { user, pass, reply }) => {
                     pend_acct = Some(reply);
                     send!(frame(T_ACCOUNT_REVOKE, &user_pass_body(&user, &pass)));
+                }
+                Some(RelayCmd::PairPut { token, ttl, blob, reply }) => {
+                    pend_acct = Some(reply);
+                    let mut body = token.to_vec();
+                    body.extend_from_slice(&ttl.to_be_bytes());
+                    body.extend_from_slice(&blob);
+                    send!(frame(T_PAIR_PUT, &body));
+                }
+                Some(RelayCmd::PairGet { token, reply }) => {
+                    pend_bak = Some(reply);
+                    send!(frame(T_PAIR_GET, &token));
                 }
             },
             _ = ping.tick() => {

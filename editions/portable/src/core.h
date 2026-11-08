@@ -5,7 +5,7 @@
 #include <stddef.h>
 
 #ifndef LSM_APP_VERSION
-#define LSM_APP_VERSION "0.7.0" /* set by tools/set-version.py from VERSION */
+#define LSM_APP_VERSION "0.7.1" /* set by tools/set-version.py from VERSION */
 #endif
 #define FP_LEN 20 /* "XXXX-XXXX-XXXX-XXXX" + NUL */
 
@@ -278,5 +278,19 @@ int lsm_last_editable(lsm_core *c, const char *conv, char *id_out);     /* lock 
 int lsm_fuzzy(const char *hay, const char *q);
 int lsm_my_uri(lsm_core *c, char *out, size_t n);                       /* takes the lock */
 int lsm_add_uri(lsm_core *c, const char *uri, char *err);               /* takes the lock */
+int lsm_apply_uri(lsm_core *c, const char *uri, char *err);             /* add / relay / pair */
+int lsm_acct_normalize_rk(const char *in, char *out, size_t n);
+void lsm_acct_generate_rk(char *out, size_t n);
+int lsm_acct_lookup(const char *rk, char *out, size_t n);
+int lsm_acct_parse_kind(const char *uri); /* 1=add 2=relay 3=pair */
+int lsm_first_run_done(lsm_core *c);
+const char *lsm_account_mode(lsm_core *c);
+int lsm_has_recovery_key(lsm_core *c);
+int lsm_reveal_recovery_key(lsm_core *c, char *out, size_t n);
+int lsm_complete_first_run(lsm_core *c, const char *name, const char *mode, const char *restore_key, char *err);
+int lsm_account_setup(lsm_core *c, char *rk_out, size_t n, char *err);
+int lsm_set_account_mode(lsm_core *c, const char *mode, char *rk_out, size_t n, char *err);
+int lsm_relay_uri(lsm_core *c, char *out, size_t n);
+int lsm_account_pair_uri(lsm_core *c, char *uri_out, size_t n, char *err);
 int lsm_qr(const char *text, uint8_t *out);                             /* out[177*177]; returns side, 0 = error */
 #endif

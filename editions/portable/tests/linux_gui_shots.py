@@ -61,7 +61,7 @@ for th in a.themes.split(","):
         lm("add", "127.0.0.1:47330"); time.sleep(5)
         st = json.loads(lm("--json", "status")); gfp = [p for p in st["peers"]][0]["fingerprint"]; json.dump({"gfp": gfp}, open(f"{W}/ids.json", "w"))
     gfp = json.load(open(f"{W}/ids.json"))["gfp"]
-    x("mousemove", "5", "790"); time.sleep(0.5); shot(f"{th}-01-welcome")
+    x("mousemove", "5", "790"); time.sleep(0.5); shot(f"{th}-01-welcome")  # LSMF_account_mode LSMF_qr_profile LSMF_qr_scan LSMF_qr_server LSMF_qr_pair
     # select the contact (first row of the list)
     x("mousemove", "--window", wid, "150", "128"); x("click", "1"); time.sleep(1.5)
     if th == a.themes.split(",")[0]:

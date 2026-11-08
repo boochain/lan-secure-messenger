@@ -182,3 +182,17 @@ The relay server never parses these; they are how the LAN Secure Messenger clien
   the client keeps dialing it on the LAN when it is announced there; a direct link
   replaces the relay link (the relay session is closed). When the direct link drops,
   the client opens a relay session again within ~2 s.
+
+
+## 9. v0.7.1 account mode (passwordless) and pairing
+
+See `docs/account-mode.md` for the client crypto and UX. Wire additions, all optional:
+
+* `AUTH_OK` may append `caps: u32` little-endian after the original 38-byte body.
+  `CAP_RELAY_ACCOUNT = 1`, `CAP_RELAY_PAIR = 2`. Old clients ignore extra bytes;
+  old servers send no trailer (`caps = 0`) and clients fall back (account features disabled).
+* `ACCOUNT_REGISTER` / `ACCOUNT_LOGIN` with `pass_len = 0` create or open a key-based
+  account (no `pass.hash` on disk). Existing password hashes still verify if present.
+* Pairing frames: `PAIR_PUT` 0x68 (`token[32] · ttl u32 BE · blob`), `PAIR_GET` 0x69
+  (`token[32]`), `PAIR_DATA` 0x6A, `PAIR_MISS` 0x6B, `PAIR_OK` 0x6C. Blobs are opaque
+  (clients store a wrapped recovery key). Tokens expire and are deleted after a successful get.

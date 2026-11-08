@@ -24,6 +24,7 @@ mod ux;
 mod files;
 pub use files::{sanitize_filename, test_force_sha_fail};
 mod relay;
+mod acct;
 pub use relay::RelayConfig;
 use files::{TransferEvt, TransferRt};
 use crate::wire::{Frame, Hello, Payload, PROTO_VERSION};
@@ -1835,6 +1836,8 @@ impl Engine {
             signature: self.settings.signature.clone(),
             avatar_path: Some(self.paths.base.join("avatar.img")).filter(|p| p.exists()).map(|p| p.display().to_string()),
             account_user: self.settings.account_user.clone(),
+            account_mode: self.settings.account_mode.clone(),
+            has_recovery_key: crate::account::load_recovery_key(&self.paths).is_some(),
         }
     }
 
@@ -1951,6 +1954,44 @@ impl Engine {
                 });
                 return;
             }
+            "account_setup" | "account_set_mode" | "reveal_recovery_key" | "relay_uri" => {
+                return match self.rpc_acct(method, params) {
+                    Some(r) => { let _ = reply.send(r); }
+                    None => { let _ = reply.send(Err(RpcError::invalid(method))); }
+                };
+            }
+            "account_restore" => { self.begin_account_restore(params, reply); return; }
+            "account_pair_start" => { self.begin_account_pair_start(reply); return; }
+            "account_pair_accept" => { self.begin_account_pair_accept(params, reply); return; }
+            "apply_uri" => {
+                #[derive(Deserialize)]
+                struct P { uri: String }
+                let a: P = match serde_json::from_value(params.clone()) {
+                    Ok(v) => v,
+                    Err(e) => { let _ = reply.send(Err(RpcError::invalid(e.to_string()))); return; }
+                };
+                match crate::account::parse_lsm_uri(a.uri.trim()) {
+                    Ok(crate::account::LsmUri::Add { .. }) => {
+                        let r = self.rpc_ux("add_uri", params);
+                        let _ = reply.send(r.unwrap_or_else(|| Err(RpcError::invalid("add_uri"))));
+                    }
+                    Ok(crate::account::LsmUri::Relay { host, port }) => {
+                        self.settings.relay_enabled = true;
+                        self.settings.relay_host = host;
+                        self.settings.relay_port = port;
+                        if let Err(e) = self.settings.save(&self.paths) {
+                            let _ = reply.send(Err(RpcError::new(-32000, e.to_string())));
+                            return;
+                        }
+                        let _ = self.relay.send(relay::RelayCmd::Configure(relay_cfg(&self.settings)));
+                        self.emit(Event::SettingsUpdated { settings: self.settings.for_ipc() });
+                        let _ = reply.send(Ok(json!({"ok": true, "kind": "relay"})));
+                    }
+                    Ok(crate::account::LsmUri::Pair { .. }) => { self.begin_account_pair_accept(params, reply); return; }
+                    Err(e) => { let _ = reply.send(Err(RpcError::invalid(e.to_string()))); }
+                }
+                return;
+            }
             "account_register" | "account_login" => {
                 #[derive(Deserialize)]
                 struct P { user: String, password: String }
@@ -1958,8 +1999,8 @@ impl Engine {
                     Ok(v) => v,
                     Err(e) => { let _ = reply.send(Err(RpcError::invalid(e.to_string()))); return; }
                 };
-                if a.user.trim().is_empty() || a.password.chars().count() < 6 {
-                    let _ = reply.send(Err(RpcError::invalid("用户名与密码（至少 6 字符）必填")));
+                if a.user.trim().is_empty() || (!a.password.is_empty() && a.password.chars().count() < 6) {
+                    let _ = reply.send(Err(RpcError::invalid("用户名必填；若使用旧版口令账户则密码至少 6 字符")));
                     return;
                 }
                 let (tx, rx) = oneshot::channel();
@@ -2456,6 +2497,14 @@ impl Engine {
                 #[derive(Deserialize)]
                 struct P {
                     name: Option<String>,
+                    #[serde(default)]
+                    mode: Option<String>,
+                    #[serde(default)]
+                    restore_key: Option<String>,
+                    #[serde(default)]
+                    relay_host: Option<String>,
+                    #[serde(default)]
+                    relay_port: Option<u16>,
                 }
                 let a: P = p(params)?;
                 if let Some(n) = a.name {
@@ -2470,10 +2519,53 @@ impl Engine {
                 }
                 if method == "complete_first_run" {
                     self.settings.first_run_done = true;
+                    let mode = a.mode.as_deref().unwrap_or("device");
+                    if mode == "account" {
+                        if let (Some(h), p) = (a.relay_host.as_deref().filter(|s| !s.is_empty()), a.relay_port.unwrap_or(9443)) {
+                            self.settings.relay_enabled = true;
+                            self.settings.relay_host = h.to_string();
+                            self.settings.relay_port = p;
+                            let _ = self.relay.send(relay::RelayCmd::Configure(relay_cfg(&self.settings)));
+                        }
+                        if let Some(rk) = a.restore_key.as_deref().filter(|s| !s.is_empty()) {
+                            let rk = crate::account::normalize_recovery_key(rk).map_err(|e| RpcError::invalid(e.to_string()))?;
+                            crate::account::save_recovery_key(&self.paths, &rk).map_err(|e| RpcError::new(-32021, format!("{e:#}")))?;
+                            let lookup = crate::account::account_lookup(&rk).map_err(|e| RpcError::invalid(e.to_string()))?;
+                            self.settings.account_mode = "account".into();
+                            self.settings.account_user = lookup.clone();
+                            self.settings.save(&self.paths)?;
+                            self.emit(Event::MeUpdated { me: self.me_view() });
+                            let mut v = serde_json::to_value(self.me_view()).unwrap_or(json!({}));
+                            if let Some(obj) = v.as_object_mut() {
+                                obj.insert("recovery_key".into(), json!(rk));
+                                obj.insert("lookup".into(), json!(lookup));
+                                obj.insert("need_restore".into(), json!(true));
+                            }
+                            return ok(v);
+                        }
+                        let extra = self.rpc_acct("account_setup", json!({"relay_host": a.relay_host.clone().unwrap_or_default(), "relay_port": a.relay_port.unwrap_or(0)})).transpose()?;
+                        self.settings.first_run_done = true;
+                        self.settings.save(&self.paths)?;
+                        self.emit(Event::MeUpdated { me: self.me_view() });
+                        let mut v = serde_json::to_value(self.me_view()).unwrap_or(json!({}));
+                        if let Some(ex) = extra {
+                            if let Some(obj) = v.as_object_mut() {
+                                if let Some(rk) = ex.get("recovery_key") { obj.insert("recovery_key".into(), rk.clone()); }
+                                if let Some(lk) = ex.get("lookup") { obj.insert("lookup".into(), lk.clone()); }
+                            }
+                        }
+                        ok(v)
+                    } else {
+                        self.settings.account_mode = "device".into();
+                        self.settings.save(&self.paths)?;
+                        self.emit(Event::MeUpdated { me: self.me_view() });
+                        ok(self.me_view())
+                    }
+                } else {
+                    self.settings.save(&self.paths)?;
+                    self.emit(Event::MeUpdated { me: self.me_view() });
+                    ok(self.me_view())
                 }
-                self.settings.save(&self.paths)?;
-                self.emit(Event::MeUpdated { me: self.me_view() });
-                ok(self.me_view())
             }
             "set_muted" => {
                 #[derive(Deserialize)]

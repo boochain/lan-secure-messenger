@@ -76,7 +76,23 @@ enum Cmd {
     Raw { method: String, params: Option<String> },
     /// Stop the daemon
     Shutdown,
+    /// Enter account mode and print the recovery key (no server password)
+    AccountSetup {
+        #[arg(long)]
+        relay_host: Option<String>,
+        #[arg(long)]
+        relay_port: Option<u16>,
+    },
+    /// Restore identity from a recovery key (requires relay)
+    AccountRestore { recovery_key: String },
+    /// Show a one-time pairing URI for a new device
+    AccountPairStart,
+    /// Accept a pairing or add/relay URI
+    ApplyUri { uri: String },
+    /// Show the stored recovery key
+    RevealRecoveryKey,
 }
+
 
 struct Ctx {
     c: IpcClient,
@@ -313,6 +329,18 @@ async fn main() -> Result<()> {
             x.out(&r)
         }
         Cmd::Shutdown => { let r = x.call("shutdown", json!({})).await?; x.out(&r) }
+        Cmd::AccountSetup { relay_host, relay_port } => {
+            let mut p = json!({});
+            if let Some(h) = relay_host { p["relay_host"] = json!(h); }
+            if let Some(n) = relay_port { p["relay_port"] = json!(n); }
+            let r = x.call("account_setup", p).await?; x.out(&r)
+        }
+        Cmd::AccountRestore { recovery_key } => {
+            let r = x.call("account_restore", json!({"recovery_key": recovery_key})).await?; x.out(&r)
+        }
+        Cmd::AccountPairStart => { let r = x.call("account_pair_start", json!({})).await?; x.out(&r) }
+        Cmd::ApplyUri { uri } => { let r = x.call("apply_uri", json!({"uri": uri})).await?; x.out(&r) }
+        Cmd::RevealRecoveryKey => { let r = x.call("reveal_recovery_key", json!({})).await?; x.out(&r) }
     }
     Ok(())
 }

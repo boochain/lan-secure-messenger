@@ -1,6 +1,7 @@
 //! LAN Secure Messenger core (v0.5): connection-manager engine, discovery, Noise links,
 //! encrypted storage and the local JSON-RPC IPC server used by UIs and the CLI.
 
+pub mod account;
 pub mod api;
 pub mod backup;
 pub mod config;

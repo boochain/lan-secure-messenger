@@ -60,6 +60,15 @@ object Native {
     @JvmStatic external fun myUri(): String
     @JvmStatic external fun qr(text: String): String
     @JvmStatic external fun addUri(uri: String): String
+    @JvmStatic external fun applyUri(uri: String): String
+    @JvmStatic external fun firstRunDone(): Boolean
+    @JvmStatic external fun accountMode(): String
+    @JvmStatic external fun completeFirstRun(name: String, mode: String, restore: String): String
+    @JvmStatic external fun accountSetup(): String
+    @JvmStatic external fun setAccountMode(mode: String): String
+    @JvmStatic external fun revealRecoveryKey(): String
+    @JvmStatic external fun relayUri(): String
+    @JvmStatic external fun accountPairUri(): String
     @JvmStatic external fun resend(id: String): String
     @JvmStatic external fun filePreview(conv: String, path: String): String
     @JvmStatic external fun lastEditable(conv: String): String

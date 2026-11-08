@@ -14,6 +14,7 @@ impl AccountStore {
         let root = root.into();
         let _ = fs::create_dir_all(root.join("users"));
         let _ = fs::create_dir_all(root.join("retain"));
+        let _ = fs::create_dir_all(root.join("pairs"));
         Self { root }
     }
 
@@ -28,11 +29,17 @@ impl AccountStore {
             return Err("user exists");
         }
         fs::create_dir_all(&dir).map_err(|_| "io")?;
-        let mut salt = [0u8; 16];
-        rand::thread_rng().fill_bytes(&mut salt);
-        let hash = hash_pass(pass, &salt);
-        fs::write(dir.join("salt"), salt).map_err(|_| "io")?;
-        fs::write(dir.join("pass.hash"), hash).map_err(|_| "io")?;
+        if pass.is_empty() {
+            // v0.7.1 key-based account: no server-side password. Ownership = recovery key
+            // (client-side) or a pairing token. See docs/account-mode.md.
+            fs::write(dir.join("auth.v"), b"2").map_err(|_| "io")?;
+        } else {
+            let mut salt = [0u8; 16];
+            rand::thread_rng().fill_bytes(&mut salt);
+            let hash = hash_pass(pass, &salt);
+            fs::write(dir.join("salt"), salt).map_err(|_| "io")?;
+            fs::write(dir.join("pass.hash"), hash).map_err(|_| "io")?;
+        }
         if device_fp.len() == 32 {
             let _ = fs::write(dir.join("device.fp"), device_fp);
         }
@@ -41,17 +48,26 @@ impl AccountStore {
 
     pub fn login(&self, user: &str, pass: &str, device_fp: &[u8]) -> Result<(), &'static str> {
         let dir = self.user_dir(user).ok_or("bad user")?;
-        let salt = fs::read(dir.join("salt")).map_err(|_| "no user")?;
-        let want = fs::read(dir.join("pass.hash")).map_err(|_| "no user")?;
-        if salt.len() != 16 {
-            return Err("corrupt");
+        if !dir.exists() {
+            return Err("no user");
         }
-        let mut s = [0u8; 16];
-        s.copy_from_slice(&salt);
-        let got = hash_pass(pass, &s);
-        if !proto::ct_eq(&got, &want) {
-            return Err("bad pass");
+        if dir.join("pass.hash").exists() {
+            let salt = fs::read(dir.join("salt")).map_err(|_| "no user")?;
+            let want = fs::read(dir.join("pass.hash")).map_err(|_| "no user")?;
+            if salt.len() != 16 {
+                return Err("corrupt");
+            }
+            let mut s = [0u8; 16];
+            s.copy_from_slice(&salt);
+            let got = hash_pass(pass, &s);
+            if !proto::ct_eq(&got, &want) {
+                return Err("bad pass");
+            }
+        } else if !dir.join("auth.v").exists() {
+            return Err("no user");
         }
+        // passwordless (auth.v): presence of the directory is enough; ciphertext backup
+        // is decrypted client-side with the recovery key.
         if device_fp.len() == 32 {
             let _ = fs::write(dir.join("device.fp"), device_fp);
         }
@@ -154,15 +170,49 @@ impl AccountStore {
     /// Clear stored device fingerprint for an account (re-login required on that device).
     pub fn revoke_devices(&self, user: &str, pass: &str) -> Result<(), &'static str> {
         let dir = self.user_dir(user).ok_or("bad user")?;
-        let salt = fs::read(dir.join("salt")).map_err(|_| "no user")?;
-        let want = fs::read(dir.join("pass.hash")).map_err(|_| "no user")?;
-        if salt.len() != 16 { return Err("corrupt"); }
-        let mut s = [0u8; 16];
-        s.copy_from_slice(&salt);
-        let got = hash_pass(pass, &s);
-        if !proto::ct_eq(&got, &want) { return Err("bad pass"); }
+        if dir.join("pass.hash").exists() {
+            let salt = fs::read(dir.join("salt")).map_err(|_| "no user")?;
+            let want = fs::read(dir.join("pass.hash")).map_err(|_| "no user")?;
+            if salt.len() != 16 { return Err("corrupt"); }
+            let mut s = [0u8; 16];
+            s.copy_from_slice(&salt);
+            let got = hash_pass(pass, &s);
+            if !proto::ct_eq(&got, &want) { return Err("bad pass"); }
+        } else if !dir.exists() {
+            return Err("no user");
+        }
         let _ = fs::remove_file(dir.join("device.fp"));
         Ok(())
+    }
+
+    fn pair_path(&self, token: &[u8]) -> Option<PathBuf> {
+        if token.len() != 32 { return None; }
+        Some(self.root.join("pairs").join(hex(token)))
+    }
+
+    /// One-time pairing blob (encrypted recovery key). Deleted after a successful get or when expired.
+    pub fn pair_put(&self, token: &[u8], ttl_secs: u32, blob: &[u8]) -> Result<(), &'static str> {
+        if token.len() != 32 || blob.is_empty() || blob.len() > 2 * 1024 * 1024 {
+            return Err("bad args");
+        }
+        let ttl = ttl_secs.clamp(30, 3600);
+        fs::create_dir_all(self.root.join("pairs")).map_err(|_| "io")?;
+        let path = self.pair_path(token).ok_or("bad args")?;
+        let exp = now() + ttl as u64;
+        let mut out = exp.to_be_bytes().to_vec();
+        out.extend_from_slice(blob);
+        fs::write(path, out).map_err(|_| "io")
+    }
+
+    pub fn pair_get(&self, token: &[u8]) -> Result<Vec<u8>, &'static str> {
+        let path = self.pair_path(token).ok_or("bad args")?;
+        let raw = fs::read(&path).map_err(|_| "miss")?;
+        let _ = fs::remove_file(&path);
+        if raw.len() < 8 { return Err("corrupt"); }
+        let mut expb = [0u8; 8];
+        expb.copy_from_slice(&raw[..8]);
+        if now() > u64::from_be_bytes(expb) { return Err("expired"); }
+        Ok(raw[8..].to_vec())
     }
 
 }
@@ -221,6 +271,12 @@ mod tests {
         assert!(store.register("alice", "secret12", &me).is_err());
         store.login("alice", "secret12", &me).unwrap();
         assert!(store.login("alice", "wrong", &me).is_err());
+        store.register("bob-key", "", &me).unwrap();
+        store.login("bob-key", "", &me).unwrap();
+        let mut tok = [3u8; 32];
+        store.pair_put(&tok, 60, b"LSMPAIR1blob").unwrap();
+        assert_eq!(store.pair_get(&tok).unwrap(), b"LSMPAIR1blob");
+        assert!(store.pair_get(&tok).is_err());
         store.put_backup("alice", b"LSMBAK02demo").unwrap();
         assert_eq!(store.get_backup("alice").unwrap(), b"LSMBAK02demo");
         let dest = [7u8; 32];

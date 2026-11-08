@@ -10,6 +10,10 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 pub const MAGIC: &[u8; 4] = b"LSMR";
 pub const PROTO_VERSION: u8 = 1;
+/// AUTH_OK optional trailer (u32 LE) after the 38-byte v1 body.
+pub const CAP_RELAY_ACCOUNT: u32 = 1;
+pub const CAP_RELAY_PAIR: u32 = 2;
+pub const RELAY_CAPS: u32 = CAP_RELAY_ACCOUNT | CAP_RELAY_PAIR;
 pub const ID_LEN: usize = 32;
 pub const NONCE_LEN: usize = 32;
 pub const SALT_LEN: usize = 16;
@@ -57,6 +61,11 @@ pub mod t {
     pub const LIST_RETAIN: u8 = 0x76;
     pub const LIST_RETAIN_DATA: u8 = 0x77;
     pub const ACCOUNT_REVOKE: u8 = 0x67;
+    pub const PAIR_PUT: u8 = 0x68;
+    pub const PAIR_GET: u8 = 0x69;
+    pub const PAIR_DATA: u8 = 0x6A;
+    pub const PAIR_MISS: u8 = 0x6B;
+    pub const PAIR_OK: u8 = 0x6C;
     // both directions
     pub const PING: u8 = 0x20;
     pub const PONG: u8 = 0x21;

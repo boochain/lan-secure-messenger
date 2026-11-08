@@ -227,6 +227,8 @@ public sealed class Me
     public string Signature { get; set; } = "";
     public string? AvatarPath { get; set; }
     public string AccountUser { get; set; } = "";
+    public string AccountMode { get; set; } = "device";
+    public bool HasRecoveryKey { get; set; }
 }
 
 public sealed class Settings

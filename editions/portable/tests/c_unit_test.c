@@ -118,6 +118,20 @@ static int v070_conv_actions(void){
     return bad;
 }
 
+static int v071_account(void){
+    char rk[80], look[40], n2[80]; int bad=0;
+    lsm_acct_generate_rk(rk,sizeof rk);
+    if(strncmp(rk,"RK1-",4)) { printf("v071 bad rk %s\n",rk); bad++; }
+    if(lsm_acct_normalize_rk(rk,n2,sizeof n2) || strcmp(rk,n2)) { printf("v071 normalize fail\n"); bad++; }
+    if(lsm_acct_lookup(rk,look,sizeof look) || strlen(look)!=32) { printf("v071 lookup fail\n"); bad++; }
+    if(lsm_acct_parse_kind("lsm://add?a=1.2.3.4:1")!=1) bad++;
+    if(lsm_acct_parse_kind("lsm://relay?h=h&p=9")!=2) bad++;
+    if(lsm_acct_parse_kind("lsm://pair?r=h:1&t=aa&k=bb")!=3) bad++;
+    if(bad) printf("v071_account: %d failures\n",bad); else printf("v071_account OK\n");
+    return bad;
+}
+
+
 int main(int argc, char **argv){ FILE *f; static char buf[1<<20]; size_t len; const char *p; int n=0, bad=0;
     if(argc<2){ fprintf(stderr,"usage: %s filename_vectors.json\n",argv[0]); return 2; }
     f=fopen(argv[1],"rb"); if(!f){ perror(argv[1]); return 2; } len=fread(buf,1,sizeof buf-1,f); buf[len]=0; fclose(f);
@@ -131,5 +145,5 @@ int main(int argc, char **argv){ FILE *f; static char buf[1<<20]; size_t len; co
         if(strcmp(got,want)){ bad++; printf("MISMATCH sanitize_filename(\"%s\")\n   C:    \"%s\"\n   Rust: \"%s\"\n",in,got,want); }
         p=q; }
     printf("sanitize_filename: %d vectors, %d mismatches\n",n,bad);
-    bad+=hist_tests(); bad+=ext_tests(); bad+=v070_conv_actions();
+    bad+=hist_tests(); bad+=ext_tests(); bad+=v070_conv_actions(); bad+=v071_account();
     return (n<10||bad)?1:0; }

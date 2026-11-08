@@ -76,7 +76,7 @@ Ed25519 key from Hello (stored in the contact, used to verify group signatures).
 
 **Capabilities.** After the bincode `Hello` a peer may append `caps: u32` (little-endian).
 Older peers ignore trailing bytes (bincode `allow_trailing_bytes`) and send no trailer, so a
-missing trailer means `caps = 0`. Bits: `CAP_RESUME = 1` (byte-offset file resume, §8.1).
+missing trailer means `caps = 0`. Bits: `CAP_RESUME = 1` (byte-offset file resume, §8.1); `CAP_PROFILE = 2`; `CAP_EXT = 4`; `CAP_ACCOUNT = 8` (v0.7.1 account-mode URIs / pairing — older peers ignore the bit and never receive new frames).
 A frame that needs a capability is only ever sent to a peer that announced it.
 
 ### Frames (all subsequent transport messages): `enum Frame`

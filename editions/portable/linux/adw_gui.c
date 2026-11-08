@@ -177,6 +177,7 @@ static void delete_do(gpointer id){ if(lsm_delete_message(C,(const char*)id)) to
 #include "adw_v070.inc"
 static void select_conv(const char *cv);
 #include "adw_ux.inc"
+#include "adw_v071.inc"
 static void bubble_action(GtkButton *b, gpointer p){ const char *what=g_object_get_data(G_OBJECT(b),"what"); GtkWidget *pop=gtk_widget_get_ancestor(GTK_WIDGET(b),GTK_TYPE_POPOVER);
     if(pop) gtk_popover_popdown(GTK_POPOVER(pop));
     if(p1_action(what,(const char*)p)||p2_action(what,(const char*)p)||v062_action(what,(const char*)p)||ux_action(what,(const char*)p)) return;
@@ -550,6 +551,11 @@ static void win_act(GSimpleAction *a, GVariant *v, gpointer p){ const char *n=g_
     else if(!strcmp(n,"multi-select")) p2_multi();
     else if(!strcmp(n,"new-poll")) v062_new_poll();
     else if(!strcmp(n,"my-qr")) ux_my_qr();
+    else if(!strcmp(n,"server-qr")) v071_show_server_qr();
+    else if(!strcmp(n,"pair-qr")) v071_show_pair_qr();
+    else if(!strcmp(n,"paste-uri")) v071_paste_uri();
+    else if(!strcmp(n,"acct-mode")) v071_switch_mode();
+    else if(!strcmp(n,"reveal-rk")) v071_reveal_rk();
     else if(!strcmp(n,"quick-switch")) ux_quick_switch();
     else if(!strcmp(n,"ttl")) v062_ttl();
     else if(!strcmp(n,"archive")) v062_archive();
@@ -655,7 +661,7 @@ static void adw_active(GObject *o, GParamSpec *ps, gpointer p){ (void)o;(void)ps
 static void activate(GtkApplication *a, gpointer p){
     GtkWidget *sidebar_tv, *sb_hdr, *sb_box, *sc, *content_tv, *ct_hdr, *tbox, *tv, *composer, *ov, *send, *attach, *chat_ov, *empty, *add_btn, *ab, *frame;
     lsm_opts o; char err[256]; GMenu *menu, *sec; (void)p;
-    static const char *acts[]={"search","add-contact","refresh","reconnect","view-last-image","next-conv","prev-conv","send-file","paste","clear-chat","details","trust","untrust","block","mute","diagnostics","check-update","pin-offer","relay","downloads","storage","emoji","menu","close","about","quit","history","profile","contact-profile","pin-conv","starred","pinned-msgs","multi-select","new-poll","ttl","archive","folders","filter","my-qr","quick-switch"};
+    static const char *acts[]={"search","add-contact","refresh","reconnect","view-last-image","next-conv","prev-conv","send-file","paste","clear-chat","details","trust","untrust","block","mute","diagnostics","check-update","pin-offer","relay","downloads","storage","emoji","menu","close","about","quit","history","profile","contact-profile","pin-conv","starred","pinned-msgs","multi-select","new-poll","ttl","archive","folders","filter","my-qr","quick-switch","server-qr","pair-qr","paste-uri","acct-mode","reveal-rk"};
     if(win){ gtk_window_present(GTK_WINDOW(win)); ui_wake(); return; }
     { const char *t=getenv("LSM_THEME"); AdwStyleManager *sm=adw_style_manager_get_default(); if(t&&!strcmp(t,"dark")) adw_style_manager_set_color_scheme(sm,ADW_COLOR_SCHEME_FORCE_DARK); else if(t&&!strcmp(t,"light")) adw_style_manager_set_color_scheme(sm,ADW_COLOR_SCHEME_FORCE_LIGHT);
       g_signal_connect(sm,"notify::dark",G_CALLBACK(on_dark),NULL); }
@@ -751,7 +757,7 @@ static void activate(GtkApplication *a, gpointer p){
       adw_breakpoint_add_setter(bp,G_OBJECT(split),"collapsed",&v); g_value_unset(&v); adw_application_window_add_breakpoint(ADW_APPLICATION_WINDOW(win),bp); }
     adw_application_window_set_content(ADW_APPLICATION_WINDOW(win),v070_wrap(split)); (void)ov;
     load_window(); g_signal_connect(win,"close-request",G_CALLBACK(on_close),NULL);
-    gtk_window_present(GTK_WINDOW(win)); refresh_list(); refresh_chat(); g_signal_connect(win,"notify::is-active",G_CALLBACK(adw_active),NULL); if(getenv("LSM_TEST_UPDCHECK")) g_timeout_add(1500,upd_test_start,NULL);
+    gtk_window_present(GTK_WINDOW(win)); v071_first_run(); refresh_list(); refresh_chat(); g_signal_connect(win,"notify::is-active",G_CALLBACK(adw_active),NULL); if(getenv("LSM_TEST_UPDCHECK")) g_timeout_add(1500,upd_test_start,NULL);
     { const char *oc=getenv("LSM_OPEN_CONV"); if(oc) select_conv(oc); }
     { const char *ws=getenv("LSM_WINDOW_SIZE"); int w,h; if(ws && sscanf(ws,"%dx%d",&w,&h)==2) gtk_window_set_default_size(GTK_WINDOW(win),w,h); }  /* tests: fixed size beats window.ini */
     g_timeout_add(200,poll_cb,NULL); }

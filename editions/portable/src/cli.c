@@ -66,6 +66,10 @@ static int run_cmd(char *line){
     if(!strcmp(cmd,"id")){ lsm_lock(C); outf("OK id %s %s port=%d version=%s\n",lsm_my_fp(C),lsm_my_name(C),lsm_listen_port(C),LSM_APP_VERSION); lsm_unlock(C); return 0; }
     if(!strcmp(cmd,"peers")){ lsm_contact *k; int n,i; lsm_lock(C); n=lsm_contacts(C,&k); for(i=0;i<n;i++) outf("PEER %s\t%s\t%s\t%s\trtt=%d\t%s",k[i].fp,k[i].online?"online":"offline",k[i].trust==1?"trusted":k[i].trust==2?"blocked":"unknown",k[i].name,k[i].rtt_ms,k[i].addr), outf("%s%s",k[i].muted?"\tmuted":"",k[i].online?(k[i].via_relay?"\tvia=relay\n":"\tvia=direct\n"):"\n"); lsm_unlock(C); outf("OK peers %d\n",n); return 0; }
     if(!strcmp(cmd,"add")){ if(lsm_add_addr(C,s,err)) outf("ERR %s\n",err); else outf("OK add %s\n",s); return 0; }
+    if(!strcmp(cmd,"apply-uri")||!strcmp(cmd,"add-uri")){ if(lsm_apply_uri(C,s,err)) outf("ERR %s\n",err); else outf("OK apply-uri\n"); return 0; }
+    if(!strcmp(cmd,"account-setup")){ char rk[80]=""; if(lsm_account_setup(C,rk,sizeof rk,err)) outf("ERR %s\n",err); else outf("OK account-setup %s\n",rk); return 0; }
+    if(!strcmp(cmd,"account-restore")){ if(lsm_complete_first_run(C,NULL,"account",s,err)) outf("ERR %s\n",err); else outf("OK account-restore\n"); return 0; }
+    if(!strcmp(cmd,"account-pair")){ char u[500]=""; if(lsm_account_pair_uri(C,u,sizeof u,err)) outf("ERR %s\n",err); else outf("OK pair %s\n",u); return 0; }
     if(!strcmp(cmd,"wake")){ lsm_wake(C); outf("OK wake\n"); return 0; }
     if(!strcmp(cmd,"reconnect")){ lsm_reconnect_server(C); outf("OK reconnect\n"); return 0; }
     if(!strcmp(cmd,"diag")){ size_t need=lsm_diagnostics(C,NULL,0); char *d=(char*)malloc(need+1); if(!d){ outf("ERR oom\n"); return 0; } lsm_diagnostics(C,d,need+1); { char *l=d, *e; while(*l){ e=strchr(l,'\n'); if(e) *e=0; outf("DIAG %s\n",l); if(!e) break; l=e+1; } } free(d); outf("OK diag\n"); return 0; }

@@ -61,7 +61,8 @@ typedef int sock_t;
 #define CAP_RESUME 1u  /* byte-offset file resume (frame 16 FileResume) */
 #define CAP_PROFILE 2u /* 个人主页 sync (frame 17 Profile) */
 #define CAP_EXT 4u /* Payload::Ext (reply/react/edit/recall) */
-#define MY_CAPS (CAP_RESUME|CAP_PROFILE|CAP_EXT)
+#define CAP_ACCOUNT 8u /* v0.7.1 account-mode URIs / pairing */
+#define MY_CAPS (CAP_RESUME|CAP_PROFILE|CAP_EXT|CAP_ACCOUNT)
 #define CHUNK (60*1024)
 #define WINDOW (16ull*1024*1024)
 #define PROGRESS_EVERY (256*1024)
@@ -227,6 +228,13 @@ struct lsm_core {
     char **events; int ev_head, ev_tail, ev_cap;
     int64_t last_announce;
     struct relay_cl *rl;     /* optional relay client (relay.c) */
+    char account_mode[16];
+    char account_lookup[40];
+    char recovery_key[80];
+    int first_run_done;
+    int pair_pending, pair_offer;
+    uint8_t pair_token[32], pair_wrap[32];
+    uint8_t *pair_blob; size_t pair_blob_n;
     volatile int stop;
 #ifdef _WIN32
     HANDLE th;
@@ -488,6 +496,9 @@ static void conn_writable(lsm_core *c, conn *k){
         if(n>0){ b_consume(&k->out,(size_t)n); continue; }
         if(n<0 && WOULDBLOCK(SOCKERR)) break; conn_close(c,k,"send error",0); return; } }
 
+static void acct_set_rk(lsm_core *c, const char *rk);
+static void acct_save(lsm_core *c);
+static void acct_load(lsm_core *c);
 #include "relay.c"
 
 /* ------------------------------------------------------------ discovery */
@@ -1057,7 +1068,7 @@ lsm_core *lsm_start(const lsm_opts *o, char *err, size_t errn){
     c->seen=(uint8_t(*)[16])xmalloc(16*20000);
     c->lsock=c->usock=c->ufallback=BADSOCK;
     if(load_identity(c)){ snprintf(err,errn,"cannot write identity in %s",c->data_dir); free(c); return NULL; }
-    load_contacts(c); load_profile(c); load_groups(c); load_history(c); load_outbox(c); rl_init(c); rs_restore(c);
+    load_contacts(c); load_profile(c); load_groups(c); load_history(c); load_outbox(c); rl_init(c); acct_load(c); rs_restore(c);
     { char *t=load_sealed(c,"manual.dat"), *l, *nx; for(l=t; l && *l; l=nx){ manual_rt m; nx=strchr(l,'\n'); if(nx) *nx++=0; memset(&m,0,sizeof m); if(resolve(l,41235,&m.sa)) continue; scpy(m.addr,l,sizeof m.addr);
         c->manual=(manual_rt*)xrealloc(c->manual,sizeof(manual_rt)*(c->nmanual+1)); c->manual[c->nmanual++]=m; } free(t); }
     { int i; for(i=0;i<c->ncontacts;i++){ c->contacts[i].online=0; c->contacts[i].rtt_ms=-1; } }
@@ -1437,6 +1448,7 @@ void lsm_initials(const char *name, char out[8]){
 #include "v062.c"
 #include "ux.c"
 #include "backup.c"
+#include "account.c"
 
 /* ------------------------------------------------------------ diagnostics (诊断) */
 size_t lsm_diagnostics(lsm_core *c, char *out, size_t n){ buf_t b={0}; int i, act=0; char det[300]; const char *rs; size_t len;

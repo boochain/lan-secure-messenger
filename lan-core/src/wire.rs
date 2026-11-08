@@ -15,7 +15,9 @@ pub const CAP_RESUME: u32 = 1;
 pub const CAP_PROFILE: u32 = 2;
 /// v0.6.1 P1: Payload::Ext (reply / react / edit / recall); peers without it get a plain-text fallback.
 pub const CAP_EXT: u32 = 4;
-pub const MY_CAPS: u32 = CAP_RESUME | CAP_PROFILE | CAP_EXT;
+/// v0.7.1: account-mode URIs / pairing. Older peers ignore the bit; no new frames are sent to them.
+pub const CAP_ACCOUNT: u32 = 8;
+pub const MY_CAPS: u32 = CAP_RESUME | CAP_PROFILE | CAP_EXT | CAP_ACCOUNT;
 /// Max avatar bytes carried in `Frame::Profile` (UIs downscale to ~96 px PNG/JPEG first).
 pub const MAX_AVATAR: usize = 48 * 1024;
 /// Max signature (个性签名) length in chars.

@@ -53,7 +53,16 @@ public sealed partial class FirstRunDialog : ContentDialog
     private async void Dialog_PrimaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
         var d = args.GetDeferral();
-        try { await App.VM.CompleteFirstRunAsync(NameBox.Text.Trim()); }
+        var mode = AccountModeRadio.IsChecked == true ? "account" : "device";
+        try
+        {
+            await App.VM.CompleteFirstRunAsync(NameBox.Text.Trim(), mode);
+            if (mode == "account")
+            {
+                var rk = await App.VM.RevealRecoveryKeyAsync();
+                if (!string.IsNullOrEmpty(rk)) App.VM.ShowStatus("请抄下恢复密钥：" + rk);
+            }
+        }
         finally { d.Complete(); }
     }
 }

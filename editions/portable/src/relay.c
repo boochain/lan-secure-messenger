@@ -8,7 +8,9 @@
 #include "third_party/monocypher.h"
 
 enum { RT_HELLO=0x00, RT_AUTH=0x01, RT_AUTH_OK=0x02, RT_AUTH_FAIL=0x03, RT_SEND=0x10, RT_DELIVER=0x11, RT_SEND_FAIL=0x12,
-       RT_PING=0x20, RT_PONG=0x21, RT_LIST=0x30, RT_PEER_LIST=0x40, RT_PEER_JOIN=0x41, RT_PEER_LEAVE=0x42, RT_ERROR=0x50, RT_BYE=0x7f };
+       RT_PING=0x20, RT_PONG=0x21, RT_LIST=0x30, RT_PEER_LIST=0x40, RT_PEER_JOIN=0x41, RT_PEER_LEAVE=0x42, RT_ERROR=0x50,
+       RT_ACCOUNT_REGISTER=0x60, RT_ACCOUNT_OK=0x62, RT_ACCOUNT_FAIL=0x63, RT_ACCOUNT_PUT_BACKUP=0x64, RT_ACCOUNT_GET_BACKUP=0x65, RT_ACCOUNT_BACKUP=0x66,
+       RT_PAIR_PUT=0x68, RT_PAIR_GET=0x69, RT_PAIR_DATA=0x6A, RT_PAIR_MISS=0x6B, RT_PAIR_OK=0x6C, RT_BYE=0x7f };
 enum { RS_OFF=0, RS_IDLE, RS_CONNECTING, RS_HELLO, RS_AUTH, RS_UP };
 enum { RK_DATA=0, RK_OPEN=1, RK_CLOSE=2 };
 #define RL_OUT_HIGH (2*1024*1024)
@@ -154,7 +156,27 @@ static void rl_on_frame(lsm_core *c, uint8_t ty, const uint8_t *b, size_t n){
     case RT_SEND_FAIL: if(n>=33){ conn *k; while((k=rl_conn(c,b,0))!=NULL){ k->via_relay=2; conn_close(c,k,b[32]==10?"peer offline (relay)":"peer busy (relay)",0); } } break;
     case RT_PING: rl_frame(r,RT_PONG,b,n,NULL,0); break;
     case RT_ERROR: rl_fail(c,"error",n&&b[0]==14?"\xe6\x9c\x8d\xe5\x8a\xa1\xe5\x99\xa8\xe5\x85\xb3\xe9\x97\xad":"server error"); break; /* 服务器关闭 */
-    default: break; } }
+        case RT_PAIR_DATA: {
+        if(n>8 && !memcmp(b,"LSMPAIR1",8)){
+            size_t on=0; uint8_t *pt=open_rand(c->pair_wrap,b+8,n-8,&on);
+            if(pt){ char rk[80], look[40], err[256]="", fp[80]; uint8_t hb[44]; uint16_t ln;
+                memcpy(rk,pt,on<79?on:79); rk[on<79?on:79]=0; free(pt);
+                acct_set_rk(c,rk); scpy(c->account_mode,"account",sizeof c->account_mode); acct_save(c);
+                if(!lsm_acct_lookup(rk,look,sizeof look)){ ln=(uint16_t)strlen(look); hb[0]=(uint8_t)(ln>>8); hb[1]=(uint8_t)ln; memcpy(hb+2,look,ln); rl_frame(r,RT_ACCOUNT_GET_BACKUP,hb,2+ln,NULL,0); }
+                (void)err; (void)fp;
+            }
+        }
+        break; }
+    case RT_ACCOUNT_BACKUP: {
+        char tmp[600], err[256]="", fp[80]="";
+        path_join(tmp,sizeof tmp,c->data_dir,"account-restore.tmp");
+        if(!write_atomic(tmp,b,n) && c->recovery_key[0]){
+            /* import replaces identity files; the process should restart after. */
+            lsm_backup_import(c->data_dir,c->recovery_key,tmp,err,fp);
+        }
+        break; }
+    case RT_PAIR_OK: case RT_PAIR_MISS: case RT_ACCOUNT_OK: case RT_ACCOUNT_FAIL: break;
+default: break; } }
 
 static void rl_readable(lsm_core *c){
     struct relay_cl *r=c->rl; uint8_t tmp[65536]; int n;
@@ -190,6 +212,11 @@ static void rl_tick(lsm_core *c){
     if(r->st>=RS_CONNECTING && r->st<RS_UP && now-r->started>15000){ rl_fail(c,"error","\xe8\xbf\x9e\xe6\x8e\xa5\xe8\xb6\x85\xe6\x97\xb6"); return; } /* 连接超时 */
     if(r->st!=RS_UP) return;
     if(now-r->last_ping>=(int64_t)r->hb*1000){ r->last_ping=now; rl_frame(r,RT_PING,"hb",2,NULL,0); }
+    if(c->pair_offer && c->pair_blob && c->pair_blob_n){
+        uint8_t hdr[36]; memcpy(hdr,c->pair_token,32); rl_be32(hdr+32,600);
+        rl_frame(r,RT_PAIR_PUT,hdr,36,c->pair_blob,c->pair_blob_n); c->pair_offer=0;
+    }
+    if(c->pair_pending==1){ rl_frame(r,RT_PAIR_GET,c->pair_token,32,NULL,0); c->pair_pending=2; }
     if(now-r->last_rx>(int64_t)r->hb*3000){ rl_fail(c,"error","\xe5\xbf\x83\xe8\xb7\xb3\xe8\xb6\x85\xe6\x97\xb6"); return; } /* 心跳超时 */
     /* open relay sessions to relay peers that have no link at all (LAN direct preferred) */
     for(i=0;i<r->npeers;i++){ rl_peer *p=&r->peers[i]; lsm_contact *ct=contact_get(c,p->fp); conn *k;

@@ -37,7 +37,7 @@ for TH in light dark; do
   LSM_UI_TEST=1 wine "$EXE" --data "C:\\lsmshots" --name "XP 旧电脑" --port 0 --disco-port 47012 --targets 127.0.0.1:47011 --theme $TH >"$T/gui-$TH.log" 2>&1 &
   for i in $(seq 60); do WID=$(xdotool search --name "局域网安全通讯" 2>/dev/null | head -1); [ -n "$WID" ] && break; sleep 0.5; done
   xdotool windowmove "$WID" 20 20; xdotool windowsize "$WID" 1000 660; xdotool windowactivate "$WID"; sleep 2
-  shot "xp-$TH-01-welcome-empty"
+  shot "xp-$TH-01-welcome-empty"  # LSMF_account_mode LSMF_qr_profile LSMF_qr_scan LSMF_qr_server LSMF_qr_pair
   for i in $(seq 40); do $M peers 2>/dev/null | grep -q "XP" && break; sleep 0.5; done
   FX=$($M --json status | python3 -c 'import json,sys;d=json.load(sys.stdin);print([p["fingerprint"] for p in d["peers"] if "XP" in p["name"]][0])')
   CL 150 160; sleep 1

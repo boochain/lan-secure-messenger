@@ -38,6 +38,8 @@ import androidx.compose.ui.unit.sp
 /* ---------------------------------------------------------------- home: app bar · chips · connection banner · chat list · FAB · navigation bar (spec §5.1, Android) */
 @Composable
 fun Home(st: AppState, openPage: (String) -> Unit = {}, open: (String) -> Unit) {
+    var showFr by remember { mutableStateOf(!Native.firstRunDone()) }
+    if (showFr) { FirstRunScreen { showFr = false }; return }
     val p = LocalPalette.current
     var tab by rememberSaveable { mutableIntStateOf(0) }; var filter by rememberSaveable { mutableIntStateOf(0) }; var folder by rememberSaveable { mutableStateOf("") }
     var menu by remember { mutableStateOf(false) }; var dlg by remember { mutableStateOf("") }
@@ -78,6 +80,7 @@ fun Home(st: AppState, openPage: (String) -> Unit = {}, open: (String) -> Unit) 
                     DropdownMenuItem({ Text("按 IP 添加") }, { menu = false; dlg = "add" }, leadingIcon = { Ic(R.drawable.ms_add_contact) })
                     DropdownMenuItem({ Text("我的二维码") }, { menu = false; dlg = "qr" }, leadingIcon = { Ic(R.drawable.ms_add_contact) })
                     DropdownMenuItem({ Text("通过链接添加") }, { menu = false; dlg = "link" }, leadingIcon = { Ic(R.drawable.ms_add_contact) })
+                    DropdownMenuItem({ Text("扫描二维码") }, { menu = false; dlg = "scan" }, leadingIcon = { Ic(R.drawable.ms_add_contact) })
                     DropdownMenuItem({ Text("切换会话") }, { menu = false; Ux.quickSwitch.value = true }, leadingIcon = { Ic(R.drawable.ms_search) })
                     DropdownMenuItem({ Text("刷新联系人") }, { menu = false; Native.refreshPeers(); Repo.refresh(); Repo.toast.value = "已刷新联系人" }, leadingIcon = { Ic(R.drawable.ms_network) })
                     DropdownMenuItem({ Text("重连服务器") }, { menu = false; Native.reconnectServer(); Repo.refresh(); Repo.toast.value = "正在重新连接服务器…" }, leadingIcon = { Ic(R.drawable.ms_network) })
@@ -146,7 +149,8 @@ fun Home(st: AppState, openPage: (String) -> Unit = {}, open: (String) -> Unit) 
     }
     when (dlg) {
         "add" -> TextDialog("按 IP 添加", "输入对方 IP 地址（可带端口，如 192.168.1.20 或 192.168.1.20:41235），或粘贴添加链接 lsm://…：", onOk = { if (it.trim().startsWith("lsm://")) Ux.addUri(it) else { val e = Native.addAddr(it); if (e.isNotEmpty()) Repo.toast.value = e } }, onDismiss = { dlg = "" })
-        "link" -> TextDialog("通过链接添加", "粘贴对方的添加链接（lsm://add?…）：", onOk = { Ux.addUri(it) }, onDismiss = { dlg = "" })
+        "link" -> TextDialog("通过链接添加", "粘贴 lsm://add、lsm://relay 或 lsm://pair 链接：", onOk = { Ux.applyUri(it) }, onDismiss = { dlg = "" })
+        "scan" -> QrScanScreen(onResult = { Ux.applyUri(it); dlg = "" }, onDismiss = { dlg = "" })
         "qr" -> QrDialog { dlg = "" }
         "name" -> TextDialog("修改昵称", "新的显示名称：", st.me.name, onOk = { Native.setName(it); Repo.refresh() }, onDismiss = { dlg = "" })
         "group" -> PickContacts(st, "创建群组", true, true, true, { fps, n -> val r = Native.groupCreate(n, fps.joinToString(",")); if (r.startsWith("!")) Repo.toast.value = r.drop(1); Repo.refresh() }, { dlg = "" })
@@ -214,20 +218,26 @@ fun ConvRow(c: Conv, click: () -> Unit) {
     fun read() { Native.markRead(c.id); Repo.refresh() }
     fun markItUnread() { Native.markUnread(c.id); Repo.refresh() }
     fun mute() { if (!c.group) { Native.setMuted(c.key, !Native.isMuted(c.key)); Repo.refresh() } }
-    val dismiss = rememberSwipeToDismissBoxState(confirmValueChange = {
-        if (it != SwipeToDismissBoxValue.Settled) menu = true
-        false
-    })
-    LaunchedEffect(menu) { dismiss.snapTo(SwipeToDismissBoxValue.Settled) }
-    // LSMF_chat_list_swipe LSMF_chat_list_menu
-    SwipeToDismissBox(state = dismiss, modifier = Modifier.testTag("LSMF_chat_list_swipe").semantics { contentDescription = "LSMF_chat_list_menu" },
-        backgroundContent = {
-            Row(Modifier.fillMaxSize().background(p.chip).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("删除 / 置顶 / 已读 / 未读 / 免打扰", color = p.fg2, fontSize = 13.sp)
+    var revealed by remember { mutableStateOf(false) }
+    // LSMF_chat_list_swipe: swipe left reveals inline pin/read/mute/delete (Telegram/WhatsApp style), not a popup
+    Box(Modifier.testTag("LSMF_chat_list_swipe").semantics { contentDescription = "LSMF_chat_list_menu" }
+        .pointerInput(c.id) {
+            detectHorizontalDragGestures { change, drag ->
+                change.consume()
+                if (drag < -16f) revealed = true
+                else if (drag > 16f) revealed = false
             }
         }) {
+        if (revealed) {
+            Row(Modifier.matchParentSize().background(p.chip), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.End) {
+                TextButton({ pin(); revealed = false }, Modifier.testTag("LSMF_chat_pin")) { Text(if (c.pinned) "取消置顶" else "置顶", color = p.fg, fontSize = 13.sp) }
+                TextButton({ read(); revealed = false }, Modifier.testTag("LSMF_chat_mark_read")) { Text("已读", color = p.fg, fontSize = 13.sp) }
+                if (!c.group) TextButton({ mute(); revealed = false }, Modifier.testTag("LSMF_chat_mute")) { Text(if (muted) "取消免打扰" else "免打扰", color = p.fg, fontSize = 13.sp) }
+                TextButton({ confirmDel = true; revealed = false }, Modifier.testTag("LSMF_chat_delete")) { Text("删除", color = p.error, fontSize = 13.sp) }
+            }
+        }
         Box {
-            Row(Modifier.fillMaxWidth().height(72.dp).background(p.window).combinedClickable(onClick = click, onLongClick = { menu = true }).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().height(72.dp).offset(x = if (revealed) (-220).dp else 0.dp).background(p.window).combinedClickable(onClick = { if (revealed) revealed = false else click() }, onLongClick = { menu = true }).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Avatar(c.name, c.key, 48.dp, c.online, p.window)
                 Spacer(Modifier.width(16.dp))
                 Column(Modifier.weight(1f)) {
@@ -353,6 +363,31 @@ fun Settings(st: AppState, dlg: (String) -> Unit, openPage: (String) -> Unit = {
         item { SettingRow(R.drawable.ms_add_contact, "按 IP 添加", "不在同一网段时手动添加") { dlg("add") } }
         item { SettingRow(R.drawable.ms_groups, "创建群组", "从已信任的联系人中选择") { dlg("group") } }
         item { SettingRow(R.drawable.ms_via_server, "中转服务器（可选）", if (st.relay.enabled) relayStateZh(st.relay.state) + (if (st.relay.host.isNotEmpty()) " · ${st.relay.host}" else "") else "未启用 · 局域网直连优先") { dlg("relay") } }
+        item {
+            val mode = Native.accountMode()
+            SettingRow(R.drawable.ms_lock, if (mode == "account") "账号模式（点按切换为设备模式）" else "设备模式（点按切换为账号模式）",
+                "账号模式把加密身份放在中转上；设备模式仅本机。不使用服务器密码。") {
+                val next = if (mode == "account") "device" else "account"
+                val r = Native.setAccountMode(next)
+                Repo.toast.value = when {
+                    next == "account" && r.startsWith("RK") -> "已切换到账号模式。请抄下恢复密钥：$r"
+                    r.isNotEmpty() && !r.startsWith("RK") -> r
+                    next == "account" -> "已切换到账号模式"
+                    else -> "已切换到设备模式"
+                }
+                Repo.refresh()
+            }
+        }
+        item { SettingRow(R.drawable.ms_lock, "显示恢复密钥", "仅本机可见，服务器看不到明文") {
+            val rk = Native.revealRecoveryKey(); Repo.toast.value = if (rk.isNotEmpty()) rk else "还没有恢复密钥（请先开启账号模式）"
+        } }
+        item { SettingRow(R.drawable.ms_add_contact, "扫描或粘贴链接", "添加联系人、连接服务器或配对新设备") { dlg("scan") } }
+        item { SettingRow(R.drawable.ms_via_server, "服务器二维码", "给另一台设备扫描以连接同一中转") {
+            val u = Native.relayUri(); Repo.toast.value = if (u.isNotEmpty()) u else "请先填写中转服务器"
+        } }
+        item { SettingRow(R.drawable.ms_lock, "配对新设备", "生成一次性配对二维码（需账号模式且已连中转）") {
+            val u = Native.accountPairUri(); Repo.toast.value = u.ifEmpty { "无法生成配对码" }
+        } }
         item { SettingRow(R.drawable.ms_network, "本机端口", "TCP ${st.me.port}", null) }
         item { SettingRow(R.drawable.ms_open_folder, "接收的文件", st.me.downloads, null) }
         item { SettingRow(R.drawable.ms_delete, "存储管理", storageSub) { storageAsk = true } }

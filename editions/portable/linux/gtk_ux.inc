@@ -10,7 +10,7 @@ static gboolean ux_qr_draw(GtkWidget *w, cairo_t *cr, gpointer p){ int W=gtk_wid
     cairo_set_source_rgb(cr,1,1,1); cairo_rectangle(cr,ox,oy,s,s); cairo_fill(cr); cairo_set_source_rgb(cr,0,0,0); /* QR needs dark-on-light in both themes */
     for(y=0;y<ux_qrn;y++) for(x=0;x<ux_qrn;x++) if(ux_qrm[y*ux_qrn+x]) cairo_rectangle(cr,ox+(x+4)*sc,oy+(y+4)*sc,sc+0.3,sc+0.3);
     cairo_fill(cr); return TRUE; }
-static void ux_my_qr(void){ char uri[400]; GtkWidget *d,*ca,*da,*l,*hint;
+static void ux_my_qr(void){ char uri[400]; /* LSMF_qr_profile */ GtkWidget *d,*ca,*da,*l,*hint;
     if(lsm_my_uri(C,uri,sizeof uri)){ msgbox(GTK_MESSAGE_WARNING,"未找到局域网地址，无法生成二维码。"); return; }
     ux_qrn=lsm_qr(uri,ux_qrm);
     d=gtk_dialog_new_with_buttons("我的二维码",GTK_WINDOW(win),GTK_DIALOG_MODAL|GTK_DIALOG_DESTROY_WITH_PARENT,"复制链接",1,"关闭",GTK_RESPONSE_CLOSE,NULL);
@@ -22,7 +22,7 @@ static void ux_my_qr(void){ char uri[400]; GtkWidget *d,*ca,*da,*l,*hint;
     while(gtk_dialog_run(GTK_DIALOG(d))==1) gtk_clipboard_set_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD),uri,-1);
     gtk_widget_destroy(d); }
 static void ux_add_uri(void){ char err[256]=""; gchar *u=ask_text("通过链接添加","粘贴对方的添加链接（lsm://add?…）：","");
-    if(!u) return; if(*g_strstrip(u) && lsm_add_uri(C,u,err)) msgbox(GTK_MESSAGE_WARNING,"%s",err); else if(*u) msgbox(GTK_MESSAGE_INFO,"正在连接对方……连接成功并核对指纹一致后会自动设为已信任。"); g_free(u); list_dirty=1; }
+    if(!u) return; if(*g_strstrip(u) && lsm_apply_uri(C,u,err)) /* LSMF_qr_scan LSMF_qr_server LSMF_qr_pair */ msgbox(GTK_MESSAGE_WARNING,"%s",err); else if(*u) msgbox(GTK_MESSAGE_INFO,"正在连接对方……连接成功并核对指纹一致后会自动设为已信任。"); g_free(u); list_dirty=1; }
 
 /* ---- resend */
 static gboolean ux_resend_idle(gpointer id){ char err[256]="",nid[40]; if(lsm_resend(C,(const char*)id,nid,err)) msgbox(GTK_MESSAGE_WARNING,"%s",err); g_free(id); chat_dirty=list_dirty=1; refresh_chat(); return G_SOURCE_REMOVE; }

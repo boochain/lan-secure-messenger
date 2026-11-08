@@ -1,4 +1,4 @@
-LAN Secure Messenger / 局域网安全通讯  v0.7.0
+LAN Secure Messenger / 局域网安全通讯  v0.7.1
 =====================================================
 
 使用方法（Windows 10 1809+ / Windows 11，64 位）

@@ -5,7 +5,7 @@ namespace LanMessenger.Core.ViewModels;
 /// <summary>v0.6.1 UX: my QR / lsm:// link, add by link, one-click resend, Ctrl+K quick switcher.</summary>
 public partial class MainViewModel
 {
-    public static bool IsAddLink(string s) => s.Trim().StartsWith("lsm://add?", StringComparison.OrdinalIgnoreCase);
+    public static bool IsAddLink(string s) { var t = s.Trim(); return t.StartsWith("lsm://add?", StringComparison.OrdinalIgnoreCase) || t.StartsWith("lsm://relay?", StringComparison.OrdinalIgnoreCase) || t.StartsWith("lsm://pair?", StringComparison.OrdinalIgnoreCase); }
 
     public async Task<UxUri?> MyUriAsync()
     {
@@ -13,7 +13,7 @@ public partial class MainViewModel
         try { return await c.MyUriAsync(); } catch (Exception e) { ShowStatus(e.Message); return null; }
     }
 
-    public Task AddByLinkAsync(string uri) => SafeCall(x => x.AddUriAsync(uri.Trim()), "已按链接添加，正在连接（指纹一致将自动信任）…");
+    public Task AddByLinkAsync(string uri) => SafeCall(x => x.ApplyUriAsync(uri.Trim()), "已处理链接");
 
     public Task ResendAsync(MessageItem m) => SafeCall(x => x.ResendAsync(m.Id), "已重新发送");
 

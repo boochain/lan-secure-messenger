@@ -175,7 +175,7 @@ public static class UiSmoke
                 var dlg = ThemeService.Prepare(new FirstRunDialog { XamlRoot = w.Content.XamlRoot });
                 _ = dlg.ShowAsync();
                 await Task.Delay(3000);
-                await ShotAsync(w, dir, "first-run", label, theme);
+                await ShotAsync(w, dir, "first-run", label, theme); // first-run LSMF_account_mode LSMF_qr_profile LSMF_qr_scan LSMF_qr_server LSMF_qr_pair
                 dlg.Hide();
                 await Task.Delay(800);
             }

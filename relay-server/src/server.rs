@@ -383,6 +383,7 @@ async fn handle_conn(sock: TcpStream, peer: SocketAddr, hub: &Arc<Hub>, mut shut
     let mut okb = smac.to_vec();
     okb.extend_from_slice(&max_frame.to_be_bytes());
     okb.extend_from_slice(&lim.heartbeat_secs.to_be_bytes());
+    okb.extend_from_slice(&proto::RELAY_CAPS.to_le_bytes());
     proto::write_frame(&mut wr, &Frame::new(t::AUTH_OK, okb)).await?;
 
     // ---- register ----
@@ -563,6 +564,31 @@ async fn handle_conn(sock: TcpStream, peer: SocketAddr, hub: &Arc<Hub>, mut shut
                     out.extend_from_slice(id);
                 }
                 let _ = ctx.try_send(Frame::new(t::LIST_RETAIN_DATA, out).encode());
+            }
+            t::PAIR_PUT => {
+                // token[32] | ttl u32 BE | blob
+                if f.body.len() < 36 {
+                    let _ = ctx.try_send(account::account_fail("malformed").encode());
+                    continue;
+                }
+                let token = &f.body[..32];
+                let ttl = u32::from_be_bytes(f.body[32..36].try_into().unwrap());
+                let blob = &f.body[36..];
+                match hub.accounts.pair_put(token, ttl, blob) {
+                    Ok(()) => { let _ = ctx.try_send(Frame::new(t::PAIR_OK, token.to_vec()).encode()); }
+                    Err(e) => { let _ = ctx.try_send(account::account_fail(e).encode()); }
+                }
+            }
+            t::PAIR_GET => {
+                if f.body.len() < 32 {
+                    let _ = ctx.try_send(Frame::new(t::PAIR_MISS, Vec::new()).encode());
+                    continue;
+                }
+                let token = &f.body[..32];
+                match hub.accounts.pair_get(token) {
+                    Ok(blob) => { let _ = ctx.try_send(Frame::new(t::PAIR_DATA, blob).encode()); }
+                    Err(_) => { let _ = ctx.try_send(Frame::new(t::PAIR_MISS, token.to_vec()).encode()); }
+                }
             }
             t::ACCOUNT_REVOKE => {
                 let body = &f.body;

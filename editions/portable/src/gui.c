@@ -791,6 +791,7 @@ static void relay_dialog_refresh(void){ wchar_t st[300]; if(!hRelayStatus) retur
 #include "xp_v062.inc"
 static void layout(int W_, int H_0);
 #include "xp_v070.inc"
+#include "xp_v071.inc"
 static void select_conv(int s);
 #include "xp_ux.inc"
 static void do_command(int id){
@@ -817,6 +818,10 @@ static void do_command(int id){
     case IDM_HISTORY: history_dialog(); break;
     case IDM_MYQR: ux_my_qr(); break;
     case IDM_ADDURI: ux_add_uri(); break;
+    case IDM_SERVERQR: v071_show_server_qr(); break;
+    case IDM_PAIRQR: v071_show_pair_qr(); break;
+    case IDM_ACCTMODE: v071_switch_mode(); break;
+    case IDM_REVEALRK: v071_reveal_rk(); break;
     case IDM_QUICK: ux_quick_switch(); break;
     case IDM_PINCONV: p2_toggle_conv_pin(); break;
     case IDM_STARRED: p2_flag_list(2,NULL); break;
@@ -994,7 +999,7 @@ static void open_menu(int i){ RECT r; GetWindowRect(hMenuBtn[i],&r); SendMessage
 static HMENU build_menu(void){
     HMENU m=CreateMenu(), f=CreatePopupMenu(), c=CreatePopupMenu(), g=CreatePopupMenu(), s=CreatePopupMenu(), h=CreatePopupMenu();
     AM(f,MF_STRING,IDM_HISTORY,L"消息历史(&H)…\tCtrl+Shift+F"); AM(f,MF_STRING,IDM_STARRED,L"收藏的消息(&V)…"); AM(f,MF_STRING,IDM_FILTER,L"筛选会话（分组 / 已归档）(&L)…"); AM(f,MF_STRING,IDM_DLDIR,L"打开接收文件夹(&D)"); AM(f,MF_STRING,IDM_STORAGE,L"存储管理(&S)…"); AM(f,MF_STRING,IDM_XFERS,L"文件传输(&T)…"); AM(f,MF_STRING,IDM_EMOJI,L"插入表情(&E)…"); AM(f,MF_STRING,IDM_STICKER,L"发送贴纸(&K)…"); AM(f,MF_STRING,IDM_FIREWALL,L"设置防火墙例外(&F)..."); AM(f,MF_SEPARATOR,0,NULL); AM(f,MF_STRING,IDM_EXIT,L"退出(&X)");
-    AM(c,MF_STRING,IDM_ADDIP,L"按 IP 添加(&A)..."); AM(c,MF_STRING,IDM_ADDURI,L"通过链接添加(&L)..."); AM(c,MF_STRING,IDM_MYQR,L"我的二维码(&Q)..."); AM(c,MF_STRING,IDM_QUICK,L"切换会话(&K)...\tCtrl+K"); AM(c,MF_STRING,IDM_REFRESH,L"刷新联系人(&R)"); AM(c,MF_STRING,IDM_RECONNECT,L"重连服务器(&E)"); AM(c,MF_STRING,IDM_CPROFILE,L"联系人资料 / 备注名(&N)…"); AM(c,MF_SEPARATOR,0,NULL); AM(c,MF_STRING,IDM_TRUST,L"信任(&T)"); AM(c,MF_STRING,IDM_UNTRUST,L"取消信任(&U)"); AM(c,MF_STRING,IDM_BLOCK,L"屏蔽(&B)"); AM(c,MF_STRING,IDM_MUTE,L"免打扰 开/关(&M)");
+    AM(c,MF_STRING,IDM_ADDIP,L"按 IP 添加(&A)..."); AM(c,MF_STRING,IDM_ADDURI,L"通过链接添加(&L)..."); AM(c,MF_STRING,IDM_MYQR,L"我的二维码(&Q)..."); AM(c,MF_STRING,IDM_SERVERQR,L"服务器二维码..."); AM(c,MF_STRING,IDM_PAIRQR,L"配对新设备..."); AM(c,MF_STRING,IDM_ACCTMODE,L"切换账号/设备模式..."); AM(c,MF_STRING,IDM_REVEALRK,L"显示恢复密钥..."); AM(c,MF_STRING,IDM_QUICK,L"切换会话(&K)...\tCtrl+K"); AM(c,MF_STRING,IDM_REFRESH,L"刷新联系人(&R)"); AM(c,MF_STRING,IDM_RECONNECT,L"重连服务器(&E)"); AM(c,MF_STRING,IDM_CPROFILE,L"联系人资料 / 备注名(&N)…"); AM(c,MF_SEPARATOR,0,NULL); AM(c,MF_STRING,IDM_TRUST,L"信任(&T)"); AM(c,MF_STRING,IDM_UNTRUST,L"取消信任(&U)"); AM(c,MF_STRING,IDM_BLOCK,L"屏蔽(&B)"); AM(c,MF_STRING,IDM_MUTE,L"免打扰 开/关(&M)");
     AM(c,MF_SEPARATOR,0,NULL); AM(c,MF_STRING,IDM_PINOFFER,L"生成 PIN（让对方输入）(&P)"); AM(c,MF_STRING,IDM_PINPAIR,L"输入 PIN 配对(&I)...");
     AM(g,MF_STRING,IDM_GCREATE,L"创建群组(&C)..."); AM(g,MF_STRING,IDM_GINVITE,L"邀请成员(&I)..."); AM(g,MF_STRING,IDM_GREMOVE,L"移除成员(&R)..."); AM(g,MF_STRING,IDM_GLEAVE,L"退出群组(&L)");
     AM(s,MF_STRING,IDM_PROFILE,L"个人资料(&P)…");
@@ -1179,7 +1184,7 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE prev, LPWSTR cmd, int show){
     memset(&nid,0,sizeof nid); nid.cbSize=NOTIFYICONDATAW_V2_SIZE; nid.hWnd=hMain; nid.uID=1; nid.uFlags=NIF_ICON|NIF_MESSAGE|NIF_TIP; nid.uCallbackMessage=WM_TRAY; nid.hIcon=wc.hIcon?wc.hIcon:LoadIcon(NULL,IDI_APPLICATION);
     { HICON ic2=LoadIconW(hi,MAKEINTRESOURCEW(1)); if(ic2) nid.hIcon=ic2; }
     wcscpy(nid.szTip,L"局域网安全通讯 XP 版"); WM_TASKBARCREATED=RegisterWindowMessageW(L"TaskbarCreated"); tray_add();
-    ShowWindow(hMain,show); UpdateWindow(hMain);
+    ShowWindow(hMain,show); UpdateWindow(hMain); v071_first_run();
     refresh_list(); refresh_chat();
     while(GetMessageW(&msg,NULL,0,0)>0){ if(hRelayDlg && IsDialogMessageW(hRelayDlg,&msg)) continue; if(app_key(&msg)) continue; if(IsDialogMessageW(hMain,&msg)) continue; /* Tab / Shift+Tab / Alt+mnemonics between controls */ TranslateMessage(&msg); DispatchMessageW(&msg); }
     lsm_stop(C);

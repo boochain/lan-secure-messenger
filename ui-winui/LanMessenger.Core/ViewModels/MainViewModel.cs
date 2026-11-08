@@ -80,6 +80,9 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _bindLanIp = "";
     [ObservableProperty] private string _transportMode = "lan";
     [ObservableProperty] private string _accountUser = "";
+    [ObservableProperty] private string _accountMode = "device";
+    public string AccountModeLabel => AccountMode == "account" ? "当前：账号模式" : "当前：设备模式";
+    partial void OnAccountModeChanged(string value) { OnPropertyChanged(nameof(AccountModeLabel)); }
     [ObservableProperty] private bool _serverRetainDefault;
     [ObservableProperty] private string _transfersSummary = "";
     [ObservableProperty] private int _onlineCount;
@@ -280,6 +283,7 @@ public partial class MainViewModel : ObservableObject
         DownloadDir = me.DownloadDir;
         PortsText = $"TCP {me.ListenPort} · UDP 发现 {me.DiscoveryPort}";
         FirstRunNeeded = !me.FirstRunDone && FirstRunNeeded;
+        if (!string.IsNullOrEmpty(me.AccountMode)) AccountMode = me.AccountMode;
     }
 
     private void ApplySettings(Settings s)
@@ -1029,14 +1033,63 @@ public partial class MainViewModel : ObservableObject
         if (d != null) EditDownloadDir = d;
     }
 
-    public async Task CompleteFirstRunAsync(string name)
+    public async Task CompleteFirstRunAsync(string name, string mode = "device")
     {
         await SafeCall(async x =>
         {
-            await x.CompleteFirstRunAsync(string.IsNullOrWhiteSpace(name) ? null : name.Trim());
-            _ui.Post(() => FirstRunNeeded = false);
+            await x.CompleteFirstRunAsync(string.IsNullOrWhiteSpace(name) ? null : name.Trim(), mode);
+            _ui.Post(() => { FirstRunNeeded = false; AccountMode = mode == "account" ? "account" : "device"; OnPropertyChanged(nameof(AccountModeLabel)); });
         });
     }
+
+    public async Task SetAccountModeAsync(string mode)
+    {
+        await SafeCall(async x =>
+        {
+            var el = await x.AccountSetModeAsync(mode);
+            string? rk = el.TryGetProperty("recovery_key", out var p) ? p.GetString() : null;
+            _ui.Post(() => { AccountMode = mode == "account" ? "account" : "device"; OnPropertyChanged(nameof(AccountModeLabel)); });
+            if (!string.IsNullOrEmpty(rk)) ShowStatus("请抄下恢复密钥：" + rk);
+            else ShowStatus(mode == "account" ? "已切换到账号模式" : "已切换到设备模式");
+        });
+    }
+
+    public async Task<string?> RevealRecoveryKeyAsync()
+    {
+        string? rk = null;
+        await SafeCall(async x =>
+        {
+            var el = await x.RevealRecoveryKeyAsync();
+            if (el.TryGetProperty("recovery_key", out var p)) rk = p.GetString();
+        });
+        if (string.IsNullOrEmpty(rk)) ShowStatus("还没有恢复密钥（请先开启账号模式）", true);
+        return rk;
+    }
+
+    public Task RestoreAccountAsync(string key) => SafeCall(x => x.AccountRestoreAsync(key?.Trim() ?? ""), "正在用恢复密钥恢复账号…");
+
+    public async Task<string?> RelayUriAsync()
+    {
+        string? uri = null;
+        await SafeCall(async x =>
+        {
+            var el = await x.RelayUriAsync();
+            if (el.TryGetProperty("uri", out var p)) uri = p.GetString();
+        });
+        return uri;
+    }
+
+    public async Task<string?> AccountPairStartAsync()
+    {
+        string? uri = null;
+        await SafeCall(async x =>
+        {
+            var el = await x.AccountPairStartAsync();
+            if (el.TryGetProperty("uri", out var p)) uri = p.GetString();
+        });
+        return uri;
+    }
+
 
     public async Task<bool> BackupAsync(string path, string password)
     {

@@ -183,7 +183,7 @@ for i, theme in enumerate(["light", "dark"]):
     xdo("mousemove", "160", "140", "click", "3")
     l = g.wait_for("UI conv-menu", 5, gl)
     check(l is not None, f"[{theme}] right-click on a chat-list row opens conv menu ({l})")
-    time.sleep(0.5); shot("popup-conv-menu", theme, g=g)  # LSMF_chat_list_menu LSMF_chat_pin LSMF_chat_mark_read LSMF_chat_mark_unread LSMF_chat_mute LSMF_chat_delete
+    time.sleep(0.5); shot("popup-conv-menu", theme, g=g)  # LSMF_chat_list_menu LSMF_chat_pin LSMF_chat_mark_read LSMF_chat_mark_unread LSMF_chat_mute LSMF_chat_delete LSMF_account_mode LSMF_qr_profile LSMF_qr_scan LSMF_qr_server LSMF_qr_pair
     xdo("key", "Escape"); time.sleep(0.4)
     # LSMF_nav_* rail pages (x≈40; buttons packed from the top of the window)
     # LSMF_nav_chats LSMF_nav_contacts LSMF_nav_groups LSMF_nav_transfers LSMF_nav_files LSMF_nav_settings LSMF_nav_profile LSMF_nav_diagnostics

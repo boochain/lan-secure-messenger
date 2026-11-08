@@ -320,6 +320,19 @@ for a, b in itertools.combinations_with_replacement(kinds, 2):
             if ok:
                 gt = f"群消息 {pair}"; A.send_group(gid, gt); ok = bool(wait(lambda: B.has_group(gid, gt), 20))
             checks["group create+msg"] = ok
+            # v0.7.1 passwordless account (recovery key; no server/account password)
+            try:
+                if a == "rust":
+                    out = A.m("account-setup", "--relay-host", RHOST, "--relay-port", str(RPORT))
+                    checks["account-setup"] = "recovery_key" in out or "RK1-" in out
+                    out2 = A.m("reveal-recovery-key")
+                    checks["reveal-recovery-key"] = "recovery_key" in out2 or "RK1-" in out2
+                else:
+                    r = A.cmd("account-setup")
+                    checks["account-setup"] = any("OK account-setup" in (l or "") for l in r)
+            except Exception as e:
+                checks["account-setup"] = False
+                details[f"{pair} account-setup"] = repr(e)[:200]
             # true resume: kill the relay server at ~40%, restart it, the transfer must continue
             ok, det = resume_check(A, B, lambda: restart_relay(), f"relay_{tg}")
             checks["resume (server killed at 40%)"] = ok; details[f"{pair} relay resume"] = det; print("   ", det, flush=True)

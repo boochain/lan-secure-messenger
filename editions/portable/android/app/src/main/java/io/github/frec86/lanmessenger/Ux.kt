@@ -35,7 +35,8 @@ object Ux {
     val quickSwitch = mutableStateOf(false)
     val openHistory = mutableStateOf(false)
     fun uriName(u: String) = Regex("[?&]n=([^&]*)").find(u)?.groupValues?.get(1)?.let { try { java.net.URLDecoder.decode(it, "UTF-8") } catch (e: Exception) { it } } ?: ""
-    fun addUri(u: String) { val e = Native.addUri(u.trim()); Repo.toast.value = if (e.isNotEmpty()) e else "正在连接…指纹一致后自动设为已信任"; Repo.refresh() }
+    fun applyUri(u: String) { val e = Native.applyUri(u.trim()); Repo.toast.value = if (e.isNotEmpty()) e else "已处理链接"; Repo.refresh() }
+    fun addUri(u: String) = applyUri(u)
 }
 
 fun fuzzy(hay: String, q: String): Int {
@@ -46,7 +47,7 @@ fun fuzzy(hay: String, q: String): Int {
 }
 
 @Composable
-fun QrDialog(onDismiss: () -> Unit) {
+fun QrDialog(onDismiss: () -> Unit) { /* LSMF_qr_profile */
     val uri = remember { Native.myUri() }
     val qr = remember(uri) { Native.qr(uri) }
     val n = qr.substringBefore(':').toIntOrNull() ?: 0; val bits = qr.substringAfter(':')
@@ -98,7 +99,7 @@ fun UxHost(st: AppState, open: (String) -> Unit) {
         val name = Ux.uriName(u)
         LsmAlertDialog(onDismissRequest = { Ux.pendingUri.value = null }, title = { Text("添加联系人？") },
             text = { Text((if (name.isNotEmpty()) "「$name」\n" else "") + "将连接对方并核对指纹，一致后自动设为已信任。") },
-            confirmButton = { TextButton({ Ux.addUri(u); Ux.pendingUri.value = null }) { Text("添加") } },
+            confirmButton = { TextButton({ Ux.applyUri(u); Ux.pendingUri.value = null }) { Text("添加") } },
             dismissButton = { TextButton({ Ux.pendingUri.value = null }) { Text("取消") } })
     }
     Ux.pendingFiles.value?.let { (conv, files) ->

@@ -60,7 +60,15 @@ public sealed class DaemonClient
     public Task<Peer> SetTrustAsync(string fingerprint, Trust trust) => Call<Peer>("set_trust", new { fingerprint, trust });
     public Task ForgetPeerAsync(string fingerprint) => Call("forget_peer", new { fingerprint });
     public Task<Me> SetDisplayNameAsync(string name) => Call<Me>("set_display_name", new { name });
-    public Task<Me> CompleteFirstRunAsync(string? name) => Call<Me>("complete_first_run", new { name });
+    public Task<Me> CompleteFirstRunAsync(string? name, string? mode = null) => Call<Me>("complete_first_run", new { name, mode });
+    public Task<JsonElement> AccountSetupAsync(string? relayHost = null, ushort relayPort = 0) => Call("account_setup", new { relay_host = relayHost ?? "", relay_port = relayPort });
+    public Task<JsonElement> AccountSetModeAsync(string mode) => Call("account_set_mode", new { mode });
+    public Task<JsonElement> RevealRecoveryKeyAsync() => Call("reveal_recovery_key", new { });
+    public Task<JsonElement> RelayUriAsync() => Call("relay_uri", new { });
+    public Task ApplyUriAsync(string uri) => Call("apply_uri", new { uri });
+    public Task AccountRestoreAsync(string recoveryKey) => Call("account_restore", new { recovery_key = recoveryKey });
+    public Task<JsonElement> AccountPairStartAsync() => Call("account_pair_start", new { });
+
     public Task SetMutedAsync(string conversation, bool muted) => Call("set_muted", new { conversation, muted });
     public Task MarkReadAsync(string conversation) => Call("mark_read", new { conversation });
     public Task MarkUnreadAsync(string conversation) => Call("mark_unread", new { conversation });
