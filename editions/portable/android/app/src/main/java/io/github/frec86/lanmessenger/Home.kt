@@ -66,8 +66,6 @@ fun Home(st: AppState, openPage: (String) -> Unit = {}, open: (String) -> Unit) 
                 if (tab == 5 && dlg == "relay") IconButton({ dlg = "" }) { Ic(R.drawable.ms_back, "返回", p.fg) }
                 Text(if (tab == 5 && dlg == "relay") "中转服务器（可选）" else when (tab) { 1 -> "联系人"; 2 -> "群组"; 3 -> "文件传输"; 4 -> "文件站"; 5 -> "设置"; else -> "局域网安全通讯" }, style = MaterialTheme.typography.titleLarge, color = p.fg, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (tab <= 2) {
-                    IconButton({ Native.refreshPeers(); Repo.refresh(); Repo.toast.value = "已刷新联系人" }) { Ic(R.drawable.ms_network, "刷新联系人", p.fg) }
-                    TextButton({ Native.reconnectServer(); Repo.refresh(); Repo.toast.value = "正在重新连接服务器…" }) { Text("重连", color = p.fg) }
                     IconButton({ searching = true }) { Ic(R.drawable.ms_search, "搜索", p.fg) }
                 }
             }
@@ -259,6 +257,7 @@ fun ConvRow(c: Conv, click: () -> Unit) {
                 DropdownMenuItem({ Text("标为已读") }, { menu = false; read() }, modifier = Modifier.testTag("LSMF_chat_mark_read"))
                 DropdownMenuItem({ Text("标为未读") }, { menu = false; markItUnread() }, modifier = Modifier.testTag("LSMF_chat_mark_unread"))
                 if (!c.group) DropdownMenuItem({ Text(if (muted) "取消免打扰" else "免打扰") }, { menu = false; mute() }, modifier = Modifier.testTag("LSMF_chat_mute"))
+                if (!c.group) DropdownMenuItem({ Text(if (c.trusted) "取消信任" else "信任") }, { menu = false; Native.setTrust(c.key, if (c.trusted) 0 else 1); Repo.refresh() })
                 DropdownMenuItem({ Text("删除会话…") }, { menu = false; confirmDel = true }, modifier = Modifier.testTag("LSMF_chat_delete"))
             }
         }

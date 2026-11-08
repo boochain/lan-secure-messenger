@@ -31,15 +31,20 @@ static void v070_popup(GtkWidget *row, const char *conv){
     if(getenv("LSM_UI_TEST")){ printf("UI conv-menu\n"); fflush(stdout); }
 }
 
-/* Open on released, not pressed: GtkPopover autohide treats the same
-   secondary-click's release as a click-outside and would dismiss instantly. */
+typedef struct { GtkWidget *row; char *conv; } V070PopIdle;
+static gboolean v070_popup_idle(gpointer data){
+    V070PopIdle *p=data; v070_popup(p->row,p->conv); g_free(p->conv); g_free(p); return G_SOURCE_REMOVE;
+}
+/* Open on released, then idle: even on release, GtkPopover autohide can still
+   see the same secondary-click as click-outside if popup() runs inside the handler. */
 static void v070_released(GtkGestureClick *g, gint n, gdouble x, gdouble y, gpointer p){
     GtkWidget *list=gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(g));
-    GtkListBoxRow *row; const char *conv; (void)n; (void)p;
+    GtkListBoxRow *row; const char *conv; V070PopIdle *idle; (void)n; (void)p;
     row=gtk_list_box_get_row_at_y(GTK_LIST_BOX(list),(int)y); if(!row) return;
     conv=g_object_get_data(G_OBJECT(row),"conv"); if(!conv) return;
     gtk_gesture_set_state(GTK_GESTURE(g), GTK_EVENT_SEQUENCE_CLAIMED);
-    v070_popup(GTK_WIDGET(row),conv);
+    idle=g_new0(V070PopIdle,1); idle->row=GTK_WIDGET(row); idle->conv=g_strdup(conv);
+    g_idle_add(v070_popup_idle, idle);
 }
 static GtkWidget *v070_page(const char *title, const char *hook, const char *body){
     GtkWidget *box=gtk_box_new(GTK_ORIENTATION_VERTICAL,8), *h=gtk_label_new(title), *t=gtk_label_new(body);

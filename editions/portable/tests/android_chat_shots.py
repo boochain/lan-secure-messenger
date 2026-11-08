@@ -56,14 +56,30 @@ def shot(name):
     json.dump(ign, open(path, "w"), ensure_ascii=False, indent=1)
 
 class App:
+    def _hit(label):
+        return find(lambda n: n.get("text") == label or n.get("content-desc") == label
+                    or (n.get("content-desc") or "").startswith(label))
     def trust(s, name):
-        tap_text(name); time.sleep(1)
-        # Chat header shows a 信任 action when the contact is untrusted; otherwise open 菜单.
-        if find(lambda n: n.get("text") == "信任" or n.get("content-desc") == "信任"):
-            tap_text("信任")
-        else:
-            tap_text("菜单"); tap_text("信任")
-        back()
+        row = ui_seed.wait(lambda: find(lambda n: n.get("text") == name), 90, 2)
+        if not row: raise RuntimeError("not found: " + name)
+        # Long-press the row: conv menu includes 信任 and does not leave the list.
+        sh(f"input swipe {row[0]} {row[1]} {row[0]} {row[1]} 900"); time.sleep(1.5)
+        r = _hit("信任")
+        if r:
+            tap(*r); time.sleep(1); return
+        back(); time.sleep(0.6)
+        tap(*row); time.sleep(1.5)
+        r = _hit("信任")
+        if r:
+            tap(*r); time.sleep(1); back(); return
+        r = _hit("菜单")
+        if r:
+            tap(*r); time.sleep(1.5)
+            r = _hit("信任")
+            if r: tap(*r); time.sleep(1)
+            back(); return
+        dump = [(n.get("text"), n.get("content-desc")) for n in nodes() if n.get("text") or n.get("content-desc")]
+        raise RuntimeError("not found: 菜单 after " + name + " dump=" + repr(dump[:60]))
     def send_text(s, name, text):
         sh("am start -W -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT " + shlex.quote(text) + f" -n {PKG}/.MainActivity")
         time.sleep(3); tap_text(name); time.sleep(1); back()

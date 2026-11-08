@@ -122,7 +122,7 @@ for th in a.themes.split(","):
     x("windowactivate", wid); time.sleep(0.2)
     # LSMF_chat_list_menu: right-click the selected chat-list row (x=150 is past the 72px rail)
     x("mousemove", "--window", wid, "150", "128"); x("click", "1"); time.sleep(0.35)
-    x("mousemove", "--window", wid, "150", "128"); x("click", "--window", wid, "3"); time.sleep(1.0)
+    x("mousemove", "--window", wid, "150", "128"); x("click", "3"); time.sleep(1.0)
     shot(f"{th}-15-conv-menu")  # conv-menu LSMF_chat_list_menu LSMF_chat_pin LSMF_chat_mark_read LSMF_chat_mark_unread LSMF_chat_mute LSMF_chat_delete
     x("key", "Escape"); time.sleep(0.4)
     # LSMF_nav_* pages via the left rail (x≈36; header ≈46px so first button is around y=66)

@@ -133,7 +133,6 @@ static GtkWidget *v070_wrap(GtkWidget *chats){
     GtkWidget *contacts,*groups,*xfers,*files,*settings,*profile,*diag;
     v070_stack=st; v070_rail=rail;
     gtk_widget_set_size_request(rail,72,-1);
-    gtk_style_context_add_class(gtk_widget_get_style_context(rail),"sidebar");
     gtk_style_context_add_class(gtk_widget_get_style_context(rail),"lsm-v070-rail");
     gtk_box_pack_start(GTK_BOX(rail),v070_nav_btn("聊天","chats","LSMF_nav_chats"),FALSE,FALSE,0);
     gtk_box_pack_start(GTK_BOX(rail),v070_nav_btn("联系人","contacts","LSMF_nav_contacts"),FALSE,FALSE,0);

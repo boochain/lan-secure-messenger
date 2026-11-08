@@ -100,6 +100,7 @@ menu menuitem, .csd menu menuitem { min-height: 22px; padding-top: 2px; padding-
 /* v0.7.0 rail + pages: rail shares the sidebar surface (no ghost divider);
    selected nav uses the same accent as a selected list row; page body matches window
    so scrolled lists / text views do not form a near-invisible card. */
+.lsm-v070-rail { background-color: #EEEEEE; border: none; }
 .lsm-v070-rail button { background-color: #EEEEEE; color: #1A1A1A; border: none; box-shadow: none; background-image: none; }
 .lsm-v070-rail button label { color: #1A1A1A; }
 .lsm-v070-rail button:hover { background-color: #EEEEEE; color: #1A1A1A; }
@@ -172,6 +173,7 @@ window.popup menu, .csd menu, menu { box-shadow: inset 0 0 0 1px #323232; border
 menu, .csd menu, window.popup menu { padding: 4px; margin: 0; }
 menu menuitem, .csd menu menuitem { min-height: 22px; padding-top: 2px; padding-bottom: 2px; }  /* GTK 3.24 skips the menu node border; the popup window's 1px border is only visible when items do not cover the edge */
 
+.lsm-v070-rail { background-color: #1C1C1C; border: none; }
 .lsm-v070-rail button { background-color: #1C1C1C; color: #FFFFFF; border: none; box-shadow: none; background-image: none; }
 .lsm-v070-rail button label { color: #FFFFFF; }
 .lsm-v070-rail button:hover { background-color: #1C1C1C; color: #FFFFFF; }
