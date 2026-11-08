@@ -985,7 +985,7 @@ static void layout(int W_, int H_0){   /* every length scales with the DPI (S = 
       MoveWindow(hFile,rx,bot-cb+(cb-S(30))/2-S(3),S(30),S(30),TRUE);
       MoveWindow(hInput,rx+S(36),bot-cb,rw-S(36)-S(98)-S(58),cb-S(6),TRUE); MoveWindow(hMic,rx+rw-S(92)-S(56),bot-cb+(cb-S(30))/2-S(3),S(52),S(30),TRUE);
       MoveWindow(hSend,rx+rw-S(92),bot-cb+(cb-S(30))/2-S(3),S(92),S(30),TRUE);
-      MoveWindow(hStatus,0,bot,W_,sb,TRUE); if(hChatSb){ sb_place(hChat,hChatSb); sb_place(hList,hListSb); } if(hV070Page && IsWindowVisible(hV070Page)) MoveWindow(hV070Page,S(6),T0+S(6),W_-S(12),H_-sb-S(6),TRUE); }
+      MoveWindow(hStatus,0,bot,W_,sb,TRUE); if(hV070Page && IsWindowVisible(hV070Page) && strcmp(v070_page,"chats")) v070_place_overlay(T0,W_,H_,sb); else { if(hChatSb){ sb_place(hChat,hChatSb); sb_place(hList,hListSb); } v070_place_overlay(T0,W_,H_,sb); } }
 #undef S
 }
 static void open_menu(int i){ RECT r; GetWindowRect(hMenuBtn[i],&r); SendMessageW(hMenuBtn[i],BM_SETSTATE,TRUE,0);

@@ -6,6 +6,8 @@ static void v070_nav_cb(GtkButton *b, gpointer name){ (void)b; v070_show_page((c
 static void v070_clear_do(gpointer conv){ /* LSMF_chat_delete */ lsm_clear_conversation(C,(const char*)conv); chat_dirty=list_dirty=1; }
 static void v070_conv_act(GtkButton *b, gpointer conv){
     const char *act=g_object_get_data(G_OBJECT(b),"act"); char err[256]="";
+    GtkWidget *pop=gtk_widget_get_ancestor(GTK_WIDGET(b), GTK_TYPE_POPOVER);
+    if(pop) gtk_popover_popdown(GTK_POPOVER(pop));
     if(!act||!conv) return;
     if(!strcmp(act,"delete")) confirm("删除会话？","将删除本机上与此会话的全部聊天记录（对方仍保留）。此操作无法撤销。","删除",1,v070_clear_do,g_strdup((const char*)conv),g_free);
     else if(!strcmp(act,"pin")){ int on; lsm_lock(C); on=!lsm_conv_pinned(C,(const char*)conv); lsm_unlock(C); lsm_set_conv_pinned(C,(const char*)conv,on); list_dirty=1; }
@@ -14,6 +16,7 @@ static void v070_conv_act(GtkButton *b, gpointer conv){
     else if(!strcmp(act,"mute") && !strncmp((const char*)conv,"dm:",3)){ const char *fp=(const char*)conv+3; lsm_set_muted(C,fp,!peer_muted(fp),err); list_dirty=1; }
 }
 static void v070_pop_closed(GtkPopover *p, gpointer u){ (void)u; gtk_widget_unparent(GTK_WIDGET(p)); }
+static gboolean v070_enable_autohide(gpointer pop);
 static void v070_popup(GtkWidget *row, const char *conv){
     GtkWidget *pop=gtk_popover_new(), *box=gtk_box_new(GTK_ORIENTATION_VERTICAL,0), *btn;
     const char *acts[][2]={{"置顶 / 取消置顶","pin"},{"标为已读","read"},{"标为未读","unread"},{"免打扰","mute"},{"删除会话…","delete"}};
@@ -27,8 +30,16 @@ static void v070_popup(GtkWidget *row, const char *conv){
     gtk_popover_set_child(GTK_POPOVER(pop),box);
     gtk_widget_set_parent(pop,row);
     g_signal_connect(pop,"closed",G_CALLBACK(v070_pop_closed),NULL);
+    /* Autohide would treat the opening secondary-click (still in the GDK queue
+       after idle) as click-outside. Show first without it, then re-enable. */
+    gtk_popover_set_autohide(GTK_POPOVER(pop), FALSE);
     gtk_popover_popup(GTK_POPOVER(pop));
+    g_timeout_add(200, v070_enable_autohide, pop);
     if(getenv("LSM_UI_TEST")){ printf("UI conv-menu\n"); fflush(stdout); }
+}
+static gboolean v070_enable_autohide(gpointer pop){
+    if(GTK_IS_POPOVER(pop)) gtk_popover_set_autohide(GTK_POPOVER(pop), TRUE);
+    return G_SOURCE_REMOVE;
 }
 
 typedef struct { GtkWidget *row; char *conv; } V070PopIdle;

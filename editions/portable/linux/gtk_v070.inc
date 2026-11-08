@@ -116,8 +116,11 @@ static GtkWidget *v070_nav_btn(const char *label, const char *page, const char *
     return b;
 }
 static void v070_sync_nav(const char *page){
-    GList *ch,*l;
+    GList *ch,*l; GtkStyleContext *rsc;
     if(!v070_rail) return;
+    rsc=gtk_widget_get_style_context(v070_rail);
+    if(page && strcmp(page,"chats")) gtk_style_context_add_class(rsc,"lsm-v070-rail-on-page");
+    else gtk_style_context_remove_class(rsc,"lsm-v070-rail-on-page");
     ch=gtk_container_get_children(GTK_CONTAINER(v070_rail));
     for(l=ch;l;l=l->next){
         GtkWidget *b=l->data; const char *p=g_object_get_data(G_OBJECT(b),"page");

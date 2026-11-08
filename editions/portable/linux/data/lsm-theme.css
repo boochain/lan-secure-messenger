@@ -109,6 +109,11 @@ menu menuitem, .csd menu menuitem { min-height: 22px; padding-top: 2px; padding-
   background-color: #005FB8; color: #FFFFFF; border: none;
 }
 .lsm-v070-rail button.lsm-nav-current label, .lsm-v070-rail button.lsm-nav-current:hover label { color: #FFFFFF; }
+.lsm-v070-rail.lsm-v070-rail-on-page { background-color: #F3F3F3; }
+.lsm-v070-rail.lsm-v070-rail-on-page button { background-color: #F3F3F3; }
+.lsm-v070-rail.lsm-v070-rail-on-page button:hover { background-color: #F3F3F3; }
+.lsm-v070-rail.lsm-v070-rail-on-page button.lsm-nav-current,
+.lsm-v070-rail.lsm-v070-rail-on-page button.lsm-nav-current:hover { background-color: #005FB8; color: #FFFFFF; }
 .lsm-v070-page, .lsm-v070-page scrolledwindow, .lsm-v070-page viewport,
 .lsm-v070-page list, .lsm-v070-page list row, .lsm-v070-page textview, .lsm-v070-page textview text {
   background-color: #F3F3F3; color: #1A1A1A;
@@ -138,7 +143,7 @@ button:hover { background-color: #333333; color: #FFFFFF; }
 button:hover label { color: #FFFFFF; }
 button.suggested-action, button.default { background-color: #60CDFF; color: #000000; border-color: #60CDFF; }
 button.suggested-action label, button.default label { color: #000000; }
-menu, .menu, menuitem, .context-menu { background-color: #2B2B2B; color: #FFFFFF; }
+menu, .menu, menuitem, .context-menu { background-color: #202020; color: #FFFFFF; }
 menuitem label { color: #FFFFFF; }
 entry image { color: #FFFFFF; -gtk-icon-style: symbolic; }
 menuitem:hover { background-color: #60CDFF; color: #000000; }
@@ -182,6 +187,11 @@ menu menuitem, .csd menu menuitem { min-height: 22px; padding-top: 2px; padding-
   background-color: #60CDFF; color: #000000; border: none;
 }
 .lsm-v070-rail button.lsm-nav-current label, .lsm-v070-rail button.lsm-nav-current:hover label { color: #000000; }
+.lsm-v070-rail.lsm-v070-rail-on-page { background-color: #202020; }
+.lsm-v070-rail.lsm-v070-rail-on-page button { background-color: #202020; }
+.lsm-v070-rail.lsm-v070-rail-on-page button:hover { background-color: #202020; }
+.lsm-v070-rail.lsm-v070-rail-on-page button.lsm-nav-current,
+.lsm-v070-rail.lsm-v070-rail-on-page button.lsm-nav-current:hover { background-color: #60CDFF; color: #000000; }
 .lsm-v070-page, .lsm-v070-page scrolledwindow, .lsm-v070-page viewport,
 .lsm-v070-page list, .lsm-v070-page list row, .lsm-v070-page textview, .lsm-v070-page textview text {
   background-color: #202020; color: #FFFFFF;

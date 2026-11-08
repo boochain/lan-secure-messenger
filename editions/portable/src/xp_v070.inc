@@ -37,11 +37,26 @@ static void v070_page_text(wchar_t *out, int n){
     MultiByteToWideChar(CP_UTF8,0,"聊天",-1,out,n); /* LSMF_nav_chats */
 }
 static void v070_relayout(void){ RECT rc; if(!hMain) return; GetClientRect(hMain,&rc); layout(rc.right,rc.bottom); }
+/* Raise the page over owner-draw chrome (MoveWindow does not change z-order, and
+   wine may paint later-moved siblings on top). Hide those controls so the chat
+   header / composer / 重连 cannot peek through. */
+static void v070_place_overlay(int T0, int W_, int H_, int sb){
+    HWND chrome[]={hReconnect,hAdd,hSearch,hList,hTitle,hHdrSearch,hChat,hFile,hInput,hMic,hSend,hChatSb,hListSb};
+    HWND show[]={hReconnect,hAdd,hSearch,hList,hTitle,hChat,hFile,hInput,hMic,hSend};
+    int i, on=hV070Page && IsWindowVisible(hV070Page) && strcmp(v070_page,"chats");
+    if(on){
+        for(i=0;i<(int)(sizeof chrome/sizeof chrome[0]);i++) if(chrome[i]) ShowWindow(chrome[i],SW_HIDE);
+        SetWindowPos(hV070Page,HWND_TOP,0,T0,W_,H_-sb,SWP_SHOWWINDOW);
+        ShowScrollBar(hV070Page,SB_BOTH,FALSE);
+    }else{
+        for(i=0;i<(int)(sizeof show/sizeof show[0]);i++) if(show[i]) ShowWindow(show[i],SW_SHOW);
+    }
+}
 static void v070_show_page(const char *name){
     wchar_t w[4000]; snprintf(v070_page,sizeof v070_page,"%s",name);
     if(!strcmp(name,"chats")){ if(hV070Page) ShowWindow(hV070Page,SW_HIDE); v070_relayout(); return; }
     if(!hV070Page) return;
-    v070_page_text(w,4000); SetWindowTextW(hV070Page,w); ShowWindow(hV070Page,SW_SHOW); BringWindowToTop(hV070Page); v070_relayout();
+    v070_page_text(w,4000); SetWindowTextW(hV070Page,w); ShowWindow(hV070Page,SW_SHOW); ShowScrollBar(hV070Page,SB_BOTH,FALSE); BringWindowToTop(hV070Page); v070_relayout();
 }
 static void v070_on_command(int id){
     if(id==IDM_V070_CHATS){ if(hV070Page) ShowWindow(hV070Page,SW_HIDE); snprintf(v070_page,sizeof v070_page,"chats"); v070_relayout(); }

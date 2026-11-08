@@ -55,10 +55,10 @@ def shot(name):
     if boxes: ign[name + ".png"] = boxes
     json.dump(ign, open(path, "w"), ensure_ascii=False, indent=1)
 
+def _hit(label):
+    return find(lambda n: n.get("text") == label or n.get("content-desc") == label
+                or (n.get("content-desc") or "").startswith(label))
 class App:
-    def _hit(label):
-        return find(lambda n: n.get("text") == label or n.get("content-desc") == label
-                    or (n.get("content-desc") or "").startswith(label))
     def trust(s, name):
         row = ui_seed.wait(lambda: find(lambda n: n.get("text") == name), 90, 2)
         if not row: raise RuntimeError("not found: " + name)
