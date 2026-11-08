@@ -110,14 +110,19 @@ for th in a.themes.split(","):
     menu_up(6); shot(f"{th}-05-transfers")
     x("key", "Escape"); time.sleep(0.8)
     menu_up(2); shot(f"{th}-06-about"); x("key", "Return"); time.sleep(0.8)
-    # PIN offer dialog: F10, Down x4 → 生成 PIN
+    # PIN offer dialog: F10 highlights 「按 IP 添加」; 生成 PIN is the 8th item → Down x7
     x("key", "F10"); time.sleep(0.8)
-    for _ in range(4): x("key", "Down"); time.sleep(0.05)
+    for _ in range(7): x("key", "Down"); time.sleep(0.08)
     x("key", "Return"); time.sleep(1.5); shot(f"{th}-07-pin"); x("key", "Return"); time.sleep(0.8)
     # drag-drop hint is only visible during a drag; tray shown top-right in stalonetray
     subprocess.run(["import", "-window", "root", "-crop", "200x40+1080+0", "-scale", "300%", f"{a.out}/{th}-08-tray-crop.png"], env=env)
-    # LSMF_chat_list_menu: right-click a chat-list row (list starts after the 72px rail, below the header)
-    x("mousemove", "--window", wid, "150", "128"); x("click", "3"); time.sleep(0.8)
+    # Dismiss any leftover modal (add-by-IP / PIN / about) so it cannot cover the conv menu
+    for _ in range(4):
+        x("key", "Escape"); time.sleep(0.12)
+    x("windowactivate", wid); time.sleep(0.2)
+    # LSMF_chat_list_menu: right-click the selected chat-list row (x=150 is past the 72px rail)
+    x("mousemove", "--window", wid, "150", "128"); x("click", "1"); time.sleep(0.35)
+    x("mousemove", "--window", wid, "150", "128"); x("click", "--window", wid, "3"); time.sleep(1.0)
     shot(f"{th}-15-conv-menu")  # conv-menu LSMF_chat_list_menu LSMF_chat_pin LSMF_chat_mark_read LSMF_chat_mark_unread LSMF_chat_mute LSMF_chat_delete
     x("key", "Escape"); time.sleep(0.4)
     # LSMF_nav_* pages via the left rail (x≈36; header ≈46px so first button is around y=66)

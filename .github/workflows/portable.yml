@@ -139,8 +139,13 @@ jobs:
       - name: Audit (fails the job on any violation)
         run: |
           ls shots/linux/*.png shots/xp/*.png
-          python3 tools/ui_color_audit.py --content /tmp/lsm-gui/截图.png --content /tmp/lsm-gui/会议白板.png --content stickers/thumb.png --ignore-file shots/linux/audit_ignore.json --out ui-audit/linux shots/linux/*.png
-          python3 tools/ui_color_audit.py --palette tools/palettes/xp.json --content stickers/thumb.png --content shots/xp/content-photo.png --ignore-file shots/xp/audit_ignore.json --out ui-audit/xp shots/xp/xp-*.png
+          linux_rc=0; xp_rc=0
+          python3 tools/ui_color_audit.py --content /tmp/lsm-gui/截图.png --content /tmp/lsm-gui/会议白板.png --content stickers/thumb.png --ignore-file shots/linux/audit_ignore.json --out ui-audit/linux shots/linux/*.png || linux_rc=$?
+          python3 tools/ui_color_audit.py --palette tools/palettes/xp.json --content stickers/thumb.png --content shots/xp/content-photo.png --ignore-file shots/xp/audit_ignore.json --out ui-audit/xp shots/xp/xp-*.png || xp_rc=$?
+          if [ "$linux_rc" != 0 ] || [ "$xp_rc" != 0 ]; then
+            echo "colour audit failed: linux=$linux_rc xp=$xp_rc"
+            exit 1
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: ui-audit-linux-xp, path: "editions/portable/ui-audit\neditions/portable/shots" }

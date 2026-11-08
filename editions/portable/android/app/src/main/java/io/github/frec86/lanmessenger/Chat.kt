@@ -141,9 +141,13 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
                         } else if (group != null) Text("${group.members.size} 位成员 · 密钥版本 ${group.epoch}", style = s, color = p.fg2, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
+                if (contact != null && contact.trust != 1) {
+                    TextButton({ Native.setTrust(contact.fp, 1); Repo.refresh() },
+                        Modifier.semantics { contentDescription = "信任" }) { Text("信任", color = p.accent) }
+                }
                 IconButton({ searching = true }) { Ic(R.drawable.ms_search, "搜索聊天记录", p.fg) }
                 Box {
-                    IconButton({ menu = true }) { Ic(R.drawable.ms_more, "菜单", p.fg) }
+                    IconButton({ menu = true }, Modifier.semantics { contentDescription = "菜单" }) { Ic(R.drawable.ms_more, "菜单", p.fg) }
                     DropdownMenu(menu, { menu = false }) {
                         val cpinned = contact?.pinned ?: group?.pinned ?: false
                         DropdownMenuItem({ Text(if (cpinned) "取消置顶会话" else "置顶会话") }, { menu = false; Native.setConvPinned(conv, !cpinned); Repo.refresh() }, leadingIcon = { Text("📌") })

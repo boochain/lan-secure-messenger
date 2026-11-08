@@ -88,3 +88,15 @@ progressbar.xfer.paused > trough > progress { background-color: @lsm_fg2; }
 
 .meta.read { color: @lsm_read; }
 .bubble.mine .meta.read { color: @lsm_read; }
+
+/* v0.7.0 rail + pages */
+.lsm-v070-rail { background-color: @lsm_window; border-right: 1px solid @lsm_divider; }
+.lsm-v070-rail button { background-color: transparent; color: @lsm_fg; box-shadow: none; border: none; border-radius: 6px; }
+.lsm-v070-rail button:hover { background-color: @lsm_rowhover; color: @lsm_fg; }
+.lsm-v070-rail button.lsm-nav-current, .lsm-v070-rail button.lsm-nav-current:hover {
+  background-color: @lsm_rowsel; color: @lsm_fg;
+}
+.lsm-v070-page, .lsm-v070-page scrolledwindow, .lsm-v070-page viewport,
+.lsm-v070-page list, .lsm-v070-page list row, .lsm-v070-page textview, .lsm-v070-page textview text {
+  background-color: @lsm_window; color: @lsm_fg;
+}

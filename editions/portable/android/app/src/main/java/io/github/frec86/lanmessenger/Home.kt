@@ -73,7 +73,7 @@ fun Home(st: AppState, openPage: (String) -> Unit = {}, open: (String) -> Unit) 
             }
             IconButton({ openPage("profile") }, Modifier.testTag("LSMF_nav_profile")) { Ic(R.drawable.ms_edit, "个人资料", p.fg) }
             Box {
-                IconButton({ menu = true }) { Ic(R.drawable.ms_more, "菜单", p.fg) }
+                IconButton({ menu = true }, Modifier.semantics { contentDescription = "菜单" }) { Ic(R.drawable.ms_more, "菜单", p.fg) }
                 DropdownMenu(menu, { menu = false }) {
                     DropdownMenuItem({ Text("按 IP 添加") }, { menu = false; dlg = "add" }, leadingIcon = { Ic(R.drawable.ms_add_contact) })
                     DropdownMenuItem({ Text("我的二维码") }, { menu = false; dlg = "qr" }, leadingIcon = { Ic(R.drawable.ms_add_contact) })

@@ -1,7 +1,8 @@
 /* v0.7.0 (GTK4 / libadwaita): Telegram-like pages + chat-list right-click menu. */
 static GtkWidget *v070_stack, *v070_rail;
 static void v070_show_page(const char *name){ if(v070_stack) gtk_stack_set_visible_child_name(GTK_STACK(v070_stack), name); }
-static void v070_nav_cb(GtkButton *b, gpointer name){ (void)b; v070_show_page((const char*)name); }
+static void v070_sync_nav(const char *page);
+static void v070_nav_cb(GtkButton *b, gpointer name){ (void)b; v070_show_page((const char*)name); v070_sync_nav((const char*)name); }
 static void v070_clear_do(gpointer conv){ /* LSMF_chat_delete */ lsm_clear_conversation(C,(const char*)conv); chat_dirty=list_dirty=1; }
 static void v070_conv_act(GtkButton *b, gpointer conv){
     const char *act=g_object_get_data(G_OBJECT(b),"act"); char err[256]="";
@@ -30,16 +31,20 @@ static void v070_popup(GtkWidget *row, const char *conv){
     if(getenv("LSM_UI_TEST")){ printf("UI conv-menu\n"); fflush(stdout); }
 }
 
-static void v070_pressed(GtkGestureClick *g, gint n, gdouble x, gdouble y, gpointer p){
+/* Open on released, not pressed: GtkPopover autohide treats the same
+   secondary-click's release as a click-outside and would dismiss instantly. */
+static void v070_released(GtkGestureClick *g, gint n, gdouble x, gdouble y, gpointer p){
     GtkWidget *list=gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(g));
     GtkListBoxRow *row; const char *conv; (void)n; (void)p;
     row=gtk_list_box_get_row_at_y(GTK_LIST_BOX(list),(int)y); if(!row) return;
     conv=g_object_get_data(G_OBJECT(row),"conv"); if(!conv) return;
+    gtk_gesture_set_state(GTK_GESTURE(g), GTK_EVENT_SEQUENCE_CLAIMED);
     v070_popup(GTK_WIDGET(row),conv);
 }
 static GtkWidget *v070_page(const char *title, const char *hook, const char *body){
     GtkWidget *box=gtk_box_new(GTK_ORIENTATION_VERTICAL,8), *h=gtk_label_new(title), *t=gtk_label_new(body);
-    gtk_widget_set_name(box,hook); gtk_label_set_xalign(GTK_LABEL(h),0); gtk_label_set_xalign(GTK_LABEL(t),0); gtk_label_set_wrap(GTK_LABEL(t),TRUE);
+    gtk_widget_set_name(box,hook); gtk_widget_add_css_class(box,"lsm-v070-page");
+    gtk_label_set_xalign(GTK_LABEL(h),0); gtk_label_set_xalign(GTK_LABEL(t),0); gtk_label_set_wrap(GTK_LABEL(t),TRUE);
     gtk_widget_set_margin_start(box,16); gtk_widget_set_margin_end(box,16); gtk_widget_set_margin_top(box,12);
     { char *m=g_markup_printf_escaped("<span size='16000' weight='600'>%s</span>",title); gtk_label_set_markup(GTK_LABEL(h),m); g_free(m); }
     gtk_box_append(GTK_BOX(box),h); gtk_box_append(GTK_BOX(box),t); return box;
@@ -64,12 +69,23 @@ static void v070_fill_diag(GtkWidget *box){
 static GtkWidget *v070_nav_btn(const char *label, const char *page, const char *hook){
     GtkWidget *b=gtk_button_new_with_label(label);
     gtk_widget_set_name(b,hook); gtk_widget_set_tooltip_text(b,label); gtk_button_set_has_frame(GTK_BUTTON(b),FALSE);
+    g_object_set_data(G_OBJECT(b),"page",(gpointer)page);
     g_signal_connect(b,"clicked",G_CALLBACK(v070_nav_cb),(gpointer)page); return b;
+}
+static void v070_sync_nav(const char *page){
+    GtkWidget *b;
+    if(!v070_rail) return;
+    for(b=gtk_widget_get_first_child(v070_rail); b; b=gtk_widget_get_next_sibling(b)){
+        const char *p=g_object_get_data(G_OBJECT(b),"page");
+        if(p && page && !strcmp(p,page)) gtk_widget_add_css_class(b,"lsm-nav-current");
+        else gtk_widget_remove_css_class(b,"lsm-nav-current");
+    }
 }
 static GtkWidget *v070_wrap(GtkWidget *chats){
     GtkWidget *outer=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,0), *rail=gtk_box_new(GTK_ORIENTATION_VERTICAL,2), *st=gtk_stack_new();
     GtkWidget *contacts,*groups,*xfers,*files,*settings,*profile,*diag; GtkGesture *g;
     v070_stack=st; v070_rail=rail; gtk_widget_set_size_request(rail,80,-1);
+    gtk_widget_add_css_class(rail,"lsm-v070-rail");
     gtk_box_append(GTK_BOX(rail),v070_nav_btn("聊天","chats","LSMF_nav_chats"));
     gtk_box_append(GTK_BOX(rail),v070_nav_btn("联系人","contacts","LSMF_nav_contacts"));
     gtk_box_append(GTK_BOX(rail),v070_nav_btn("群组","groups","LSMF_nav_groups"));
@@ -91,6 +107,7 @@ static GtkWidget *v070_wrap(GtkWidget *chats){
     gtk_stack_add_named(GTK_STACK(st),profile,"profile"); gtk_stack_add_named(GTK_STACK(st),diag,"diagnostics");
     gtk_widget_set_hexpand(st,TRUE); gtk_box_append(GTK_BOX(outer),rail); gtk_box_append(GTK_BOX(outer),st);
     if(conv_list){ g=gtk_gesture_click_new(); gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(g),GDK_BUTTON_SECONDARY);
-        g_signal_connect(g,"pressed",G_CALLBACK(v070_pressed),NULL); gtk_widget_add_controller(conv_list,GTK_EVENT_CONTROLLER(g)); }
+        g_signal_connect(g,"released",G_CALLBACK(v070_released),NULL); gtk_widget_add_controller(conv_list,GTK_EVENT_CONTROLLER(g)); }
+    v070_sync_nav("chats");
     return outer;
 }

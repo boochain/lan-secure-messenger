@@ -57,7 +57,13 @@ def shot(name):
 
 class App:
     def trust(s, name):
-        tap_text(name); tap_text("菜单"); tap_text("信任"); back()
+        tap_text(name); time.sleep(1)
+        # Chat header shows a 信任 action when the contact is untrusted; otherwise open 菜单.
+        if find(lambda n: n.get("text") == "信任" or n.get("content-desc") == "信任"):
+            tap_text("信任")
+        else:
+            tap_text("菜单"); tap_text("信任")
+        back()
     def send_text(s, name, text):
         sh("am start -W -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT " + shlex.quote(text) + f" -n {PKG}/.MainActivity")
         time.sleep(3); tap_text(name); time.sleep(1); back()

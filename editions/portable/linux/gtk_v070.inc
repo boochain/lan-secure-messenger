@@ -3,7 +3,8 @@ static GtkWidget *v070_stack, *v070_rail;
 static void v070_show_page(const char *name){
     if(v070_stack) gtk_stack_set_visible_child_name(GTK_STACK(v070_stack), name);
 }
-static void v070_nav_cb(GtkButton *b, gpointer name){ (void)b; v070_show_page((const char*)name); }
+static void v070_sync_nav(const char *page);
+static void v070_nav_cb(GtkButton *b, gpointer name){ (void)b; v070_show_page((const char*)name); v070_sync_nav((const char*)name); }
 
 static void v070_conv_act(GtkMenuItem *it, gpointer conv){
     const char *act=g_object_get_data(G_OBJECT(it),"act"); char err[256]="";
@@ -23,30 +24,58 @@ static void v070_conv_act(GtkMenuItem *it, gpointer conv){
           lsm_set_muted(C,fp,!muted,err); refresh_list(); }
     }
 }
+static gint64 v070_last_pop;
 static void v070_popup(GtkWidget *anchor, GdkEventButton *ev, const char *conv){
+    gint64 now=g_get_monotonic_time();
+    if(now - v070_last_pop < 300000) return; /* gesture + button-press can both fire */
+    v070_last_pop=now;
     GtkWidget *menu=gtk_menu_new(), *it; const char *acts[][2]={{"置顶 / 取消置顶","pin"},{"标为已读","read"},{"标为未读","unread"},{"免打扰","mute"},{"删除会话…","delete"}};
     const char *hooks[]={"LSMF_chat_pin","LSMF_chat_mark_read","LSMF_chat_mark_unread","LSMF_chat_mute","LSMF_chat_delete"};
-    int i; (void)anchor;
+    int i;
     /* LSMF_chat_list_menu */
     gtk_widget_set_name(menu,"LSMF_chat_list_menu");
     for(i=0;i<5;i++){ it=gtk_menu_item_new_with_label(acts[i][0]); gtk_widget_set_name(it,hooks[i]);
         g_object_set_data(G_OBJECT(it),"act",(gpointer)acts[i][1]);
         g_signal_connect_data(it,"activate",G_CALLBACK(v070_conv_act),g_strdup(conv),(GClosureNotify)g_free,0);
         gtk_menu_shell_append(GTK_MENU_SHELL(menu),it); }
-    gtk_widget_show_all(menu); gtk_menu_popup_at_pointer(GTK_MENU(menu),(GdkEvent*)ev);
+    gtk_widget_show_all(menu);
+    /* Anchor to the row (not only the pointer) so the menu stays on the list even if
+       the GdkEvent coordinates belong to a child widget. */
+    gtk_menu_popup_at_widget(GTK_MENU(menu), GTK_WIDGET(anchor), GDK_GRAVITY_SOUTH_EAST, GDK_GRAVITY_NORTH_WEST, (GdkEvent*)ev);
+    g_signal_connect(menu, "selection-done", G_CALLBACK(gtk_widget_destroy), NULL);
     if(getenv("LSM_UI_TEST")){ printf("UI conv-menu\n"); fflush(stdout); }
 }
 
+static GtkListBoxRow *v070_row_from_xy(GtkWidget *list, GtkWidget *orig, gdouble x, gdouble y){
+    GtkWidget *w; GtkListBoxRow *row=NULL; gint ly=(gint)y;
+    for(w=orig; w; w=gtk_widget_get_parent(w)){
+        if(GTK_IS_LIST_BOX_ROW(w)){ row=GTK_LIST_BOX_ROW(w); break; }
+    }
+    if(!row){
+        if(orig && orig!=list){ gint xx,yy; if(gtk_widget_translate_coordinates(orig,list,(gint)x,(gint)y,&xx,&yy)) ly=yy; }
+        row=gtk_list_box_get_row_at_y(GTK_LIST_BOX(list), ly);
+    }
+    return row;
+}
 static gboolean v070_list_button(GtkWidget *list, GdkEventButton *ev, gpointer p){
     GtkListBoxRow *row; const char *conv; (void)p;
     if(ev->type!=GDK_BUTTON_PRESS || ev->button!=3) return FALSE;
-    row=gtk_list_box_get_row_at_y(GTK_LIST_BOX(list),(gint)ev->y); if(!row) return FALSE;
+    row=v070_row_from_xy(list, gtk_get_event_widget((GdkEvent*)ev), ev->x, ev->y); if(!row) return FALSE;
     conv=g_object_get_data(G_OBJECT(row),"conv"); if(!conv) return FALSE;
     v070_popup(GTK_WIDGET(row),ev,conv); return TRUE;
 }
+/* Gesture gets widget-space coordinates even when a child consumes the GdkEvent. */
+static void v070_row_pressed(GtkGestureMultiPress *g, gint n, gdouble x, gdouble y, gpointer p){
+    GtkWidget *list=gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(g));
+    GtkListBoxRow *row; const char *conv; (void)n; (void)p;
+    row=gtk_list_box_get_row_at_y(GTK_LIST_BOX(list),(gint)y); if(!row) return;
+    conv=g_object_get_data(G_OBJECT(row),"conv"); if(!conv) return;
+    v070_popup(GTK_WIDGET(row),NULL,conv);
+}
 static GtkWidget *v070_page(const char *title, const char *hook, const char *body){
     GtkWidget *box=gtk_box_new(GTK_ORIENTATION_VERTICAL,8), *h=gtk_label_new(title), *t=gtk_label_new(body);
-    gtk_widget_set_name(box,hook); gtk_label_set_xalign(GTK_LABEL(h),0); gtk_label_set_xalign(GTK_LABEL(t),0);
+    gtk_widget_set_name(box,hook); gtk_style_context_add_class(gtk_widget_get_style_context(box),"lsm-v070-page");
+    gtk_label_set_xalign(GTK_LABEL(h),0); gtk_label_set_xalign(GTK_LABEL(t),0);
     gtk_label_set_line_wrap(GTK_LABEL(t),TRUE); gtk_widget_set_margin_start(box,16); gtk_widget_set_margin_end(box,16); gtk_widget_set_margin_top(box,12);
     { gchar *m=g_markup_printf_escaped("<span size='16000' weight='600'>%s</span>",title); gtk_label_set_markup(GTK_LABEL(h),m); g_free(m); }
     gtk_box_pack_start(GTK_BOX(box),h,FALSE,FALSE,0); gtk_box_pack_start(GTK_BOX(box),t,FALSE,FALSE,0);
@@ -82,8 +111,21 @@ static void v070_fill_diag(GtkWidget *box){
 static GtkWidget *v070_nav_btn(const char *label, const char *page, const char *hook){
     GtkWidget *b=gtk_button_new_with_label(label);
     gtk_widget_set_name(b,hook); gtk_widget_set_tooltip_text(b,label); gtk_button_set_relief(GTK_BUTTON(b),GTK_RELIEF_NONE);
+    g_object_set_data(G_OBJECT(b),"page",(gpointer)page);
     g_signal_connect(b,"clicked",G_CALLBACK(v070_nav_cb),(gpointer)page);
     return b;
+}
+static void v070_sync_nav(const char *page){
+    GList *ch,*l;
+    if(!v070_rail) return;
+    ch=gtk_container_get_children(GTK_CONTAINER(v070_rail));
+    for(l=ch;l;l=l->next){
+        GtkWidget *b=l->data; const char *p=g_object_get_data(G_OBJECT(b),"page");
+        GtkStyleContext *sc=gtk_widget_get_style_context(b);
+        if(p && page && !strcmp(p,page)) gtk_style_context_add_class(sc,"lsm-nav-current");
+        else gtk_style_context_remove_class(sc,"lsm-nav-current");
+    }
+    g_list_free(ch);
 }
 static GtkWidget *v070_wrap(GtkWidget *chats){
     GtkWidget *outer=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,0), *rail=gtk_box_new(GTK_ORIENTATION_VERTICAL,2);
@@ -91,6 +133,8 @@ static GtkWidget *v070_wrap(GtkWidget *chats){
     GtkWidget *contacts,*groups,*xfers,*files,*settings,*profile,*diag;
     v070_stack=st; v070_rail=rail;
     gtk_widget_set_size_request(rail,72,-1);
+    gtk_style_context_add_class(gtk_widget_get_style_context(rail),"sidebar");
+    gtk_style_context_add_class(gtk_widget_get_style_context(rail),"lsm-v070-rail");
     gtk_box_pack_start(GTK_BOX(rail),v070_nav_btn("聊天","chats","LSMF_nav_chats"),FALSE,FALSE,0);
     gtk_box_pack_start(GTK_BOX(rail),v070_nav_btn("联系人","contacts","LSMF_nav_contacts"),FALSE,FALSE,0);
     gtk_box_pack_start(GTK_BOX(rail),v070_nav_btn("群组","groups","LSMF_nav_groups"),FALSE,FALSE,0);
@@ -115,8 +159,20 @@ static GtkWidget *v070_wrap(GtkWidget *chats){
     gtk_stack_add_named(GTK_STACK(st),profile,"profile");
     gtk_stack_add_named(GTK_STACK(st),diag,"diagnostics");
     gtk_box_pack_start(GTK_BOX(outer),rail,FALSE,FALSE,0);
-    gtk_box_pack_start(GTK_BOX(outer),gtk_separator_new(GTK_ORIENTATION_VERTICAL),FALSE,FALSE,0);
+    /* No extra separator: a 1px divider next to the #EEEEEE sidebar joins the
+       border network and fails the colour audit (indistinct #E5E5E5 vs #EEEEEE).
+       The rail uses the sidebar colour so it merges with the chat list. */
     gtk_box_pack_start(GTK_BOX(outer),st,TRUE,TRUE,0);
-    if(peer_list){ gtk_widget_add_events(peer_list,GDK_BUTTON_PRESS_MASK); g_signal_connect(peer_list,"button-press-event",G_CALLBACK(v070_list_button),NULL); }
+    if(peer_list){
+        GtkGesture *g;
+        gtk_widget_add_events(peer_list,GDK_BUTTON_PRESS_MASK);
+        g_signal_connect(peer_list,"button-press-event",G_CALLBACK(v070_list_button),NULL);
+        g=gtk_gesture_multi_press_new(peer_list);
+        gtk_event_controller_set_propagation_phase(GTK_EVENT_CONTROLLER(g), GTK_PHASE_BUBBLE);
+        gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(g),GDK_BUTTON_SECONDARY);
+        g_signal_connect(g,"pressed",G_CALLBACK(v070_row_pressed),NULL);
+        g_object_set_data(G_OBJECT(peer_list),"v070-gesture",g);
+    }
+    v070_sync_nav("chats");
     return outer;
 }
