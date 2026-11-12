@@ -8,7 +8,7 @@
     DefaultButton="Primary"
     PrimaryButtonClick="Dialog_PrimaryButtonClick">
     <!-- Scroll the intro; pin the firewall hint so it is never clipped above 开始使用. -->
-    <Grid MaxWidth="480" MaxHeight="460">
+    <Grid MaxWidth="480" MaxHeight="520">
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
@@ -31,11 +31,11 @@
                         <Button Grid.Column="1" Content="复制" Click="CopyFp_Click" />
                     </Grid>
                 </StackPanel>
-                <InfoBar x:Name="FwInfo" IsOpen="True" IsClosable="False" Severity="Warning" Title="Windows 防火墙"
-                         Message="为了让其他电脑能发现并连接到你，需要允许本程序通过防火墙（专用网络）。点击下方按钮，系统会弹出一次管理员确认。" />
             </StackPanel>
         </ScrollViewer>
         <StackPanel Grid.Row="1" Spacing="8" Margin="0,12,0,0">
+            <InfoBar x:Name="FwInfo" IsOpen="True" IsClosable="False" Severity="Warning" Title="Windows 防火墙"
+                     Message="为了让其他电脑能发现并连接到你，需要允许本程序通过防火墙（专用网络）。点击下方按钮，系统会弹出一次管理员确认。" />
             <StackPanel Orientation="Horizontal" Spacing="8">
                 <Button x:Name="FwButton" Style="{StaticResource AccentButtonStyle}" Content="一键配置防火墙" Click="Firewall_Click" />
                 <ProgressRing x:Name="FwRing" Width="20" Height="20" IsActive="False" />
