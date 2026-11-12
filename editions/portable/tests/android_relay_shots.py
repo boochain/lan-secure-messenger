@@ -75,7 +75,7 @@ try:
     if fp: P.cmd(f"trust {fp}"); P.cmd(f"send {fp} 我在外地，经服务器联系你")
     back(); check(has("中转服务器（可选）") and not has("保存并连接"), "Back: relay screen -> 设置")
     tap_text("聊天")
-    tap_text(PEER, 90); tap_text("菜单"); tap_text("信任"); back()
+    tap_text(PEER, 90); tap_text("信任"); back()  # header 信任 (⋯ now uses 联系人 ▸ 信任)
     check(ui_seed.wait(lambda: has("经服务器中转"), 30, 2) is not None, "relay peer in the list has the 经服务器 badge (icon + text)")
     for th in ("light", "dark"):
         sh("cmd uimode night " + ("yes" if th == "dark" else "no")); time.sleep(6)
