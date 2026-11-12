@@ -46,7 +46,6 @@ fun fuzzy(hay: String, q: String): Int {
     return if (j == q.length) score else 0
 }
 
-@Composable
 fun lsmUiTest(): Boolean = File("/data/local/tmp/lsm-ui-test").exists()
 fun lsmTestRelayUri() = "lsm://relay?h=ci.example.invalid&p=9443"
 fun lsmTestPairUri() = "lsm://pair?r=ci.example.invalid:9443&t=" + "0".repeat(64) + "&k=" + "1".repeat(64)
@@ -59,9 +58,9 @@ fun QrDialog(title: String, uri: String, onDismiss: () -> Unit) {
     val qr = remember(uri) { Native.qr(uri) }
     val n = qr.substringBefore(':').toIntOrNull() ?: 0; val bits = qr.substringAfter(':')
     val clip = LocalClipboardManager.current
-    LsmAlertDialog(onDismissRequest = onDismiss, title = { Text("我的二维码") },
+    LsmAlertDialog(onDismissRequest = onDismiss, title = { Text(title) },
         text = { Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-            if (n > 0 && uri.contains("a=") && !uri.contains("a=:")) {
+            if (n > 0 && uri.startsWith("lsm://")) {
                 // dark modules on white in both themes: scanners need it
                 Canvas(Modifier.size(232.dp).background(Color.White).semantics { contentDescription = "添加我的二维码" }) {
                     val cell = size.minDimension / (n + 8)
