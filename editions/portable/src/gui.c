@@ -463,7 +463,7 @@ static void refresh_chat(void){
     if(!cur_conv[0]) hdr_on=0; SetWindowTextW(hTitle,cur_conv[0]?title:L""); InvalidateRect(hTitle,NULL,FALSE); ShowWindow(hHdrSearch,hdr_on?SW_SHOW:SW_HIDE);
     for(i=0;i<nrows;i++) SendMessageW(hChat,LB_ADDSTRING,0,(LPARAM)i);
     if(nrows){ RECT cr; int top=nrows-1, acc; GetClientRect(hChat,&cr); acc=rows[top].h; while(top>0 && acc+rows[top-1].h<=cr.bottom){ top--; acc+=rows[top].h; } SendMessageW(hChat,LB_SETCURSEL,nrows-1,0); SendMessageW(hChat,LB_SETTOPINDEX,top,0); } /* SETCURSEL scrolls the last row into view (selection itself is not drawn) */ /* newest at the bottom, scrolled to the end */
-    SendMessageW(hChat,WM_SETREDRAW,TRUE,0); if(nrows) PostMessageW(hChat,WM_VSCROLL,SB_BOTTOM,0); /* after redraw is back on: the listbox recomputes its page first */ InvalidateRect(hChat,NULL,TRUE); InvalidateRect(hMain,NULL,FALSE); }
+    SendMessageW(hChat,WM_SETREDRAW,TRUE,0); if(nrows) PostMessageW(hChat,WM_VSCROLL,SB_BOTTOM,0); /* after redraw is back on: the listbox recomputes its page first */ InvalidateRect(hChat,NULL,TRUE); InvalidateRect(hMain,NULL,FALSE); refresh_caption(); }
 
 static void copy_text(const wchar_t *t){ size_t n=(wcslen(t)+1)*sizeof(wchar_t); HGLOBAL g; if(!OpenClipboard(hMain)) return; EmptyClipboard(); g=GlobalAlloc(GMEM_MOVEABLE,n); if(g){ memcpy(GlobalLock(g),t,n); GlobalUnlock(g); SetClipboardData(CF_UNICODETEXT,g); } CloseClipboard(); }
 static void save_file_as(const char *path){ /* 另存为 */
@@ -798,6 +798,7 @@ static void relay_dialog_refresh(void){ wchar_t st[300]; if(!hRelayStatus) retur
 #include "xp_p2.inc"
 #include "xp_v062.inc"
 static void layout(int W_, int H_0);
+static void refresh_caption(void);
 #include "xp_v070.inc"
 #include "xp_v071.inc"
 #include "xp_v072.inc"
@@ -1098,8 +1099,58 @@ static void test_drop(HWND h){ static int done; wchar_t p[MAX_PATH]; DWORD n; HG
     n=GetEnvironmentVariableW(L"LSM_UI_TEST_DROP",p,MAX_PATH); if(!n || n>=MAX_PATH) { done=1; return; } done=1;
     g=GlobalAlloc(GMEM_MOVEABLE|GMEM_ZEROINIT,sizeof(DROPFILES)+(n+2)*sizeof(wchar_t)); if(!g) return; df=(DROPFILES*)GlobalLock(g); df->pFiles=sizeof(DROPFILES); df->fWide=TRUE;
     memcpy((char*)df+sizeof(DROPFILES),p,n*sizeof(wchar_t)); GlobalUnlock(g); SendMessageW(h,WM_DROPFILES,(WPARAM)g,0); }
+/* Visible caption shows the bubble icon (system) plus the current context
+ * (contact / page). The window text stays "局域网安全通讯 XP 版" so the
+ * taskbar, tray, and xdotool --name keep the app title. */
+static void caption_context(wchar_t *out, int n){
+    out[0]=0;
+    if(hV070Page && IsWindowVisible(hV070Page) && strcmp(v070_page,"chats")){
+        wchar_t w[4000], *nl; v070_page_text(w,4000);
+        nl=wcschr(w,L'\r'); if(!nl) nl=wcschr(w,L'\n'); if(nl) *nl=0;
+        wcsncpy(out,w,n-1); out[n-1]=0; return;
+    }
+    if(hdr_on && hdr_name[0]){ wcsncpy(out,hdr_name,n-1); out[n-1]=0; }
+}
+static void paint_caption_context(HWND h){
+    RECT wr; POINT tl={0,0}; HDC dc; int cap_h, frame, cap_w, x, active, icon_x, btn_w;
+    wchar_t ctx[160]; NONCLIENTMETRICSW ncm; HFONT f=NULL, of;
+    if(!h || !IsWindowVisible(h) || IsIconic(h)) return;
+    GetWindowRect(h,&wr); ClientToScreen(h,&tl);
+    cap_h=tl.y-wr.top; frame=tl.x-wr.left; cap_w=wr.right-wr.left;
+    if(cap_h<=frame+2 || cap_w<=0) return;
+    caption_context(ctx,160);
+    icon_x=frame+GetSystemMetrics(SM_CXSMICON)+4;
+    btn_w=GetSystemMetrics(SM_CXSIZE)*3+GetSystemMetrics(SM_CXFRAME)+2;
+    if(icon_x>=cap_w-btn_w-8) return;
+    dc=GetWindowDC(h); if(!dc) return;
+    active=(GetForegroundWindow()==h);
+    { COLORREF a=GetSysColor(active?COLOR_ACTIVECAPTION:COLOR_INACTIVECAPTION);
+      COLORREF b=GetSysColor(active?COLOR_GRADIENTACTIVECAPTION:COLOR_GRADIENTINACTIVECAPTION);
+      for(x=icon_x;x<cap_w-btn_w;x++){
+        int t=cap_w>1?(x*1024)/(cap_w-1):0; COLORREF c;
+        c=RGB((GetRValue(a)*(1024-t)+GetRValue(b)*t)/1024,
+              (GetGValue(a)*(1024-t)+GetGValue(b)*t)/1024,
+              (GetBValue(a)*(1024-t)+GetBValue(b)*t)/1024);
+        { HPEN pe=CreatePen(PS_SOLID,1,c); HGDIOBJ op=SelectObject(dc,pe);
+          MoveToEx(dc,x,0,NULL); LineTo(dc,x,cap_h); SelectObject(dc,op); DeleteObject(pe); }
+      } }
+    memset(&ncm,0,sizeof ncm); ncm.cbSize=sizeof ncm;
+    if(SystemParametersInfoW(SPI_GETNONCLIENTMETRICS,sizeof ncm,&ncm,0))
+        f=CreateFontIndirectW(&ncm.lfCaptionFont);
+    of=(HFONT)SelectObject(dc,f?f:GetStockObject(DEFAULT_GUI_FONT));
+    SetBkMode(dc,TRANSPARENT);
+    SetTextColor(dc,GetSysColor(active?COLOR_CAPTIONTEXT:COLOR_INACTIVECAPTIONTEXT));
+    { RECT tr; tr.left=icon_x; tr.top=0; tr.right=cap_w-btn_w; tr.bottom=cap_h;
+      DrawTextW(dc,ctx,-1,&tr,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX|DT_END_ELLIPSIS); }
+    SelectObject(dc,of); if(f) DeleteObject(f); ReleaseDC(h,dc);
+}
+static void refresh_caption(void){
+    if(hMain) RedrawWindow(hMain,NULL,NULL,RDW_FRAME|RDW_INVALIDATE);
+}
 static LRESULT CALLBACK MainProc(HWND h, UINT m, WPARAM w, LPARAM l){
     switch(m){
+    case WM_NCPAINT: case WM_NCACTIVATE: {
+        LRESULT r=DefWindowProcW(h,m,w,l); paint_caption_context(h); return r; }
     case WM_CREATE: {
         DWORD es=0; /* flat: 1px divider frame painted in WM_PAINT */
         { static const wchar_t *mt[5]={L"文件(&F)",L"联系人(&C)",L"群组(&G)",L"设置(&S)",L"帮助(&H)"}; int i;

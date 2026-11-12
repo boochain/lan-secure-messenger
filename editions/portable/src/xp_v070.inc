@@ -36,7 +36,7 @@ static void v070_page_text(wchar_t *out, int n){
     if(!strcmp(v070_page,"settings")){ MultiByteToWideChar(CP_UTF8,0,"设置\r\n\r\n外观、中转服务器、个人资料等仍可从顶部「设置」菜单打开。",-1,out,n); return; } /* LSMF_nav_settings */
     MultiByteToWideChar(CP_UTF8,0,"聊天",-1,out,n); /* LSMF_nav_chats */
 }
-static void v070_relayout(void){ RECT rc; if(!hMain) return; GetClientRect(hMain,&rc); layout(rc.right,rc.bottom); }
+static void v070_relayout(void){ RECT rc; if(!hMain) return; GetClientRect(hMain,&rc); layout(rc.right,rc.bottom); refresh_caption(); }
 /* Raise the page over owner-draw chrome (MoveWindow does not change z-order, and
    wine may paint later-moved siblings on top). Hide those controls so the chat
    header / composer / 重连 cannot peek through. */

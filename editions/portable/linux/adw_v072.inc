@@ -2,6 +2,14 @@
 static GtkWidget *v072_rk_win, *v072_rk_ok, *v072_rk_check;
 static int v072_rk_force, v072_rk_acked;
 static char v072_rk_text[80];
+static gboolean v072_rk_unselect_idle(gpointer w){
+    if(GTK_IS_LABEL(w)) gtk_label_select_region(GTK_LABEL(w),0,0);
+    return G_SOURCE_REMOVE;
+}
+static void v072_rk_unselect_on_map(GtkWidget *w, gpointer){
+    gtk_label_select_region(GTK_LABEL(w),0,0);
+    g_idle_add(v072_rk_unselect_idle,w);
+}
 static int v072_load_key(char *rk, size_t n){
     char err[256]="", tmp[80]="";
     if(rk) rk[0]=0;
@@ -109,7 +117,12 @@ static void v072_show_recovery(int force, const char *preset){
        selection colour #BED6F4 was a stray dE 5.29 from 'mine' #D7E6FA). */
     { GtkWidget *card=gtk_box_new(GTK_ORIENTATION_VERTICAL,0); gtk_widget_add_css_class(card,"bubble"); gtk_widget_add_css_class(card,"mine");
       gtk_widget_set_margin_top(k,6); gtk_widget_set_margin_bottom(k,6); gtk_widget_set_margin_start(k,8); gtk_widget_set_margin_end(k,8);
-      gtk_box_append(GTK_BOX(card),k); gtk_box_append(GTK_BOX(box),card); gtk_label_select_region(GTK_LABEL(k),0,0); }
+      gtk_box_append(GTK_BOX(card),k); gtk_box_append(GTK_BOX(box),card);
+      /* Do not leave the key selected: GTK's selection fill (#A6C8F3 / #2A578E)
+         is off-palette and the light pairing is 0.4 short of the APCA gate. */
+      gtk_widget_set_can_focus(k,FALSE);
+      gtk_label_select_region(GTK_LABEL(k),0,0);
+      g_signal_connect(k,"map",G_CALLBACK(v072_rk_unselect_on_map),NULL); }
     row=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,8);
     copy=gtk_button_new_with_label("复制"); exp=gtk_button_new_with_label("导出到文件…");
     g_signal_connect(copy,"clicked",G_CALLBACK(v072_rk_copy),NULL);
@@ -125,5 +138,8 @@ static void v072_show_recovery(int force, const char *preset){
     kc=gtk_event_controller_key_new(); g_signal_connect(kc,"key-pressed",G_CALLBACK(v072_rk_key),NULL);
     gtk_widget_add_controller(v072_rk_win,kc);
     gtk_window_present(GTK_WINDOW(v072_rk_win));
+    gtk_label_select_region(GTK_LABEL(k),0,0);
+    gtk_widget_grab_focus(copy);
+    g_idle_add(v072_rk_unselect_idle,k);
 }
 static void v072_shot_recovery(void){ if(!getenv("LSM_UI_TEST")) return; v072_show_recovery(0,NULL); }
