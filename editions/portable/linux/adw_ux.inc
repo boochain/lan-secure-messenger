@@ -3,7 +3,8 @@
 static uint8_t ux_qrm[177*177]; static int ux_qrn;
 static void ux_qr_draw(GtkDrawingArea *a, cairo_t *cr, int W, int H, gpointer p){ int s=W<H?W:H,x,y,m=ux_qrn+8; double sc,ox,oy; (void)a;(void)p; if(!ux_qrn) return;
     sc=(double)s/m; ox=(W-s)/2.0; oy=(H-s)/2.0; cairo_set_source_rgb(cr,1,1,1); cairo_rectangle(cr,ox,oy,s,s); cairo_fill(cr); cairo_set_source_rgb(cr,0,0,0);
-    for(y=0;y<ux_qrn;y++) for(x=0;x<ux_qrn;x++) if(ux_qrm[y*ux_qrn+x]) cairo_rectangle(cr,ox+(x+4)*sc,oy+(y+4)*sc,sc+0.3,sc+0.3); cairo_fill(cr); }
+    for(y=0;y<ux_qrn;y++) for(x=0;x<ux_qrn;x++) if(ux_qrm[y*ux_qrn+x]) cairo_rectangle(cr,ox+(x+4)*sc,oy+(y+4)*sc,sc+0.3,sc+0.3); cairo_fill(cr);
+    cairo_set_line_width(cr,1); cairo_set_source_rgb(cr,0.55,0.55,0.55); cairo_rectangle(cr,ox+0.5,oy+0.5,s-1,s-1); cairo_stroke(cr); }
 static char ux_uri[400];
 static void ux_qr_resp(AdwAlertDialog *d, const char *r, gpointer p){ (void)d;(void)p; if(!strcmp(r,"copy")){ gdk_clipboard_set_text(gtk_widget_get_clipboard(win),ux_uri); toast("链接已复制"); } }
 static void ux_my_qr(void){ AdwDialog *d; GtkWidget *box,*da,*l; /* LSMF_qr_profile */

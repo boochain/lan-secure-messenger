@@ -201,6 +201,27 @@ def emoji_boxes(png):
     n, _, stt, _ = cv2.connectedComponentsWithStats(m, connectivity=8)
     return [[int(stt[i, 0]) - 4, int(stt[i, 1]) - 4, int(stt[i, 2]) + 8, int(stt[i, 3]) + 8] for i in range(1, n) if 20 <= stt[i, cv2.CC_STAT_AREA] <= 5000]
 
+
+def qr_canvas_ignore(png):
+    """Ignore the black-on-white QR graphic (a machine-readable picture, not UI text)."""
+    from PIL import Image
+    im = Image.open(png).convert("RGB")
+    w, h = im.size
+    px = im.load()
+    xs, ys = [], []
+    for y in range(h):
+        for x in range(w):
+            r, g, b = px[x, y]
+            if r < 40 and g < 40 and b < 40:
+                xs.append(x); ys.append(y)
+    if len(xs) < 80:
+        return []
+    # quiet zone is ~4 modules; pad enough to cover the whole white canvas
+    pad = max(36, (max(xs) - min(xs)) // 8)
+    x0 = max(0, min(xs) - pad); y0 = max(0, min(ys) - pad)
+    x1 = min(w, max(xs) + pad + 1); y1 = min(h, max(ys) + pad + 1)
+    return [[x0, y0, x1 - x0, y1 - y0]]
+
 ign_path = f"{a.out}/audit_ignore.json"
 ign = {"_reasons": {
     "*-04-add-by-ip emoji": "colour emoji glyph inside a chat bubble behind the modal is a picture, not UI text",
@@ -221,6 +242,18 @@ for th in a.themes.split(","):
         if os.path.exists(vp):
             ign[f"{th}-{kind}.png"] = hint_bar_ignore(vp)
             ign["_reasons"][f"{th}-{kind}.png"] = "user-sent image in the viewer (fit/zoom interpolates colours); the hint bar under the picture is still audited"
+    for kind, reason in (
+        ("25-my-qr", "QR code is a machine-readable graphic (black-on-white for scanners), not UI text"),
+        ("26-server-qr", "QR code is a machine-readable graphic (black-on-white for scanners), not UI text"),
+        ("27-pair-qr", "QR code is a machine-readable graphic (black-on-white for scanners), not UI text"),
+        ("29-scan-image", "decoded QR image is a picture of a code, not UI chrome"),
+    ):
+        qp = f"{a.out}/{th}-{kind}.png"
+        if os.path.exists(qp):
+            box = qr_canvas_ignore(qp)
+            if box:
+                ign[f"{th}-{kind}.png"] = box
+                ign["_reasons"][f"{th}-{kind}.png"] = reason
 json.dump(ign, open(ign_path, "w"), ensure_ascii=False, indent=1); print("wrote", ign_path, flush=True)
 
 # release gate: live update check (GitHub releases API) with this build's version must say "up to date"

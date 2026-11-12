@@ -34,7 +34,7 @@ static void v071_show_scan_result(const char *path, const char *uri){
     if(path && path[0] && g_file_test(path,G_FILE_TEST_EXISTS)){ GtkWidget *im=gtk_image_new_from_file(path); gtk_box_pack_start(GTK_BOX(ca),im,FALSE,FALSE,4); }
     if(uri && uri[0]) l=gtk_label_new(uri);
     else { snprintf(miss,sizeof miss,"无法从该文件识别二维码，请改为粘贴 lsm:// 链接（安装 zbarimg 后可从图片识别）。"); l=gtk_label_new(miss); }
-    gtk_label_set_selectable(GTK_LABEL(l),TRUE); gtk_label_set_line_wrap(GTK_LABEL(l),TRUE);
+    gtk_label_set_selectable(GTK_LABEL(l),TRUE); gtk_label_set_line_wrap(GTK_LABEL(l),TRUE); gtk_label_set_line_wrap_mode(GTK_LABEL(l),PANGO_WRAP_CHAR); gtk_label_set_max_width_chars(GTK_LABEL(l),40);
     gtk_widget_set_name(GTK_WIDGET(d),"LSMF_qr_scan"); gtk_box_pack_start(GTK_BOX(ca),l,FALSE,FALSE,4);
     gtk_widget_show_all(d); gtk_dialog_run(GTK_DIALOG(d)); gtk_widget_destroy(d);
 }
@@ -60,8 +60,8 @@ static void v071_show_uri_qr(const char *title, const char *uri){
     GtkWidget *d,*ca,*da,*l; ux_qrn=lsm_qr(uri,ux_qrm);
     d=gtk_dialog_new_with_buttons(title,GTK_WINDOW(win),GTK_DIALOG_MODAL,"复制链接",1,"关闭",GTK_RESPONSE_CLOSE,NULL);
     ca=gtk_dialog_get_content_area(GTK_DIALOG(d)); gtk_container_set_border_width(GTK_CONTAINER(ca),12);
-    da=gtk_drawing_area_new(); gtk_widget_set_size_request(da,260,260); g_signal_connect(da,"draw",G_CALLBACK(ux_qr_draw),NULL); gtk_box_pack_start(GTK_BOX(ca),da,FALSE,FALSE,0);
-    l=gtk_label_new(uri); gtk_label_set_selectable(GTK_LABEL(l),TRUE); gtk_label_set_line_wrap(GTK_LABEL(l),TRUE); gtk_box_pack_start(GTK_BOX(ca),l,FALSE,FALSE,0);
+    da=gtk_drawing_area_new(); gtk_widget_set_size_request(da,260,260); g_signal_connect(da,"draw",G_CALLBACK(ux_qr_draw),NULL); gtk_widget_set_halign(da,GTK_ALIGN_CENTER); gtk_box_pack_start(GTK_BOX(ca),da,FALSE,FALSE,0);
+    l=gtk_label_new(uri); gtk_label_set_selectable(GTK_LABEL(l),TRUE); gtk_label_set_line_wrap(GTK_LABEL(l),TRUE); gtk_label_set_line_wrap_mode(GTK_LABEL(l),PANGO_WRAP_CHAR); gtk_label_set_max_width_chars(GTK_LABEL(l),40); gtk_box_pack_start(GTK_BOX(ca),l,FALSE,FALSE,0);
     gtk_widget_set_name(GTK_WIDGET(d), !strcmp(title,"服务器二维码")?"LSMF_qr_server":"LSMF_qr_pair");
     gtk_widget_show_all(d); while(gtk_dialog_run(GTK_DIALOG(d))==1) gtk_clipboard_set_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD),uri,-1); gtk_widget_destroy(d);
 }

@@ -36,7 +36,7 @@ static void v071_show_uri_qr(const char *title, const char *uri){
     box=gtk_box_new(GTK_ORIENTATION_VERTICAL,8);
     da=gtk_drawing_area_new(); gtk_drawing_area_set_content_width(GTK_DRAWING_AREA(da),240); gtk_drawing_area_set_content_height(GTK_DRAWING_AREA(da),240);
     gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(da),ux_qr_draw,NULL,NULL); gtk_widget_set_halign(da,GTK_ALIGN_CENTER); gtk_box_append(GTK_BOX(box),da);
-    l=gtk_label_new(uri); gtk_label_set_selectable(GTK_LABEL(l),TRUE); gtk_label_set_wrap(GTK_LABEL(l),TRUE); gtk_box_append(GTK_BOX(box),l);
+    l=gtk_label_new(uri); gtk_label_set_selectable(GTK_LABEL(l),TRUE); gtk_label_set_wrap(GTK_LABEL(l),TRUE); gtk_label_set_wrap_mode(GTK_LABEL(l),PANGO_WRAP_CHAR); gtk_label_set_max_width_chars(GTK_LABEL(l),36); gtk_box_append(GTK_BOX(box),l);
     gtk_widget_set_name(box, !strcmp(title,"服务器二维码")?"LSMF_qr_server":!strcmp(title,"我的二维码")?"LSMF_qr_profile":"LSMF_qr_pair");
     d=adw_alert_dialog_new(title,"用另一台设备扫描，或复制下面的链接粘贴。");
     adw_alert_dialog_add_responses(ADW_ALERT_DIALOG(d),"close","关闭","copy","复制链接",NULL);

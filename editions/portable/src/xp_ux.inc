@@ -6,21 +6,29 @@
 #define IDM_QUICK 265
 static uint8_t ux_qrm[177*177]; static int ux_qrn; static wchar_t ux_wuri[400];
 static LRESULT CALLBACK ux_qr_proc(HWND h, UINT m, WPARAM w, LPARAM l){
-    if(m==WM_PAINT){ PAINTSTRUCT ps; HDC dc=BeginPaint(h,&ps); RECT r; int s,x,y,q,ox,oy; HBRUSH wb=(HBRUSH)GetStockObject(WHITE_BRUSH), bb=(HBRUSH)GetStockObject(BLACK_BRUSH);
-        GetClientRect(h,&r); FillRect(dc,&r,wb); s=scale_px(240); q=ux_qrn?s/(ux_qrn+8):1; ox=(r.right-q*(ux_qrn+8))/2+4*q; oy=scale_px(10)+4*q; /* dark on white in both themes: scanners need it */
+    if(m==WM_PAINT){ PAINTSTRUCT ps; HDC dc=BeginPaint(h,&ps); RECT r,tr; int s,x,y,q,ox,oy,th=scale_px(TITLE_H); HBRUSH wb=(HBRUSH)GetStockObject(WHITE_BRUSH), bb=(HBRUSH)GetStockObject(BLACK_BRUSH);
+        GetClientRect(h,&r); FillRect(dc,&r,brWin);
+        { HBRUSH dv=CreateSolidBrush(T.divider);
+          tr=r; tr.bottom=th; FillRect(dc,&tr,brCard); tr.top=th-1; FillRect(dc,&tr,dv); FrameRect(dc,&r,dv);
+          { wchar_t cap[128]; GetWindowTextW(h,cap,128); tr=r; tr.left=scale_px(12); tr.bottom=th; SetBkMode(dc,TRANSPARENT); SetTextColor(dc,T.text_primary); SelectObject(dc,fBodyStrong); DrawTextW(dc,cap,-1,&tr,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX); }
+          s=scale_px(240); q=ux_qrn?s/(ux_qrn+8):1; ox=(r.right-q*(ux_qrn+8))/2+4*q; oy=th+scale_px(10)+4*q;
+          { RECT z={ox-4*q, oy-4*q, ox-4*q+q*(ux_qrn+8), oy-4*q+q*(ux_qrn+8)}; FillRect(dc,&z,wb); FrameRect(dc,&z,dv); }
+          DeleteObject(dv); }
         for(y=0;y<ux_qrn;y++) for(x=0;x<ux_qrn;x++) if(ux_qrm[y*ux_qrn+x]){ RECT c={ox+x*q,oy+y*q,ox+x*q+q,oy+y*q+q}; FillRect(dc,&c,bb); }
-        { RECT t={scale_px(12),scale_px(10)+q*(ux_qrn+8)+scale_px(6),r.right-scale_px(12),r.bottom-scale_px(8)}; SetBkMode(dc,TRANSPARENT); SetTextColor(dc,RGB(0,0,0)); SelectObject(dc,fBody);
+        { RECT tx={scale_px(12),th+scale_px(10)+q*(ux_qrn+8)+scale_px(6),r.right-scale_px(12),r.bottom-scale_px(8)}; SetBkMode(dc,TRANSPARENT); SetTextColor(dc,T.text_primary); SelectObject(dc,fBody);
           wchar_t t2[700]; _snwprintf(t2,700,L"%s\n\n链接已复制到剪贴板。让对方用手机版扫描，或把链接发给对方在「通过链接添加」中粘贴；指纹一致会自动设为已信任。单击或按 Esc 关闭。",ux_wuri); t2[699]=0;
-          DrawTextW(dc,t2,-1,&t,DT_WORDBREAK|DT_EDITCONTROL|DT_NOPREFIX); }
+          DrawTextW(dc,t2,-1,&tx,DT_WORDBREAK|DT_EDITCONTROL|DT_NOPREFIX); }
         EndPaint(h,&ps); return 0; }
     if(m==WM_LBUTTONUP || (m==WM_KEYDOWN && w==VK_ESCAPE)){ DestroyWindow(h); return 0; }
+    if(m==WM_ERASEBKGND){ RECT r; GetClientRect(h,&r); FillRect((HDC)w,&r,brWin); return 1; }
+    if(m==WM_NCHITTEST){ POINT pt={(short)LOWORD(l),(short)HIWORD(l)}; ScreenToClient(h,&pt); if(pt.y<scale_px(TITLE_H)) return HTCAPTION; }
     return DefWindowProcW(h,m,w,l); }
 static void ux_show_qr(const wchar_t *title, const char *uri){ static int reg; RECT r; HWND h;
     if(!uri||!uri[0]){ msgbox("无法生成二维码。",MB_ICONWARNING); return; }
     ux_qrn=lsm_qr(uri,ux_qrm); wcsncpy(ux_wuri,W(uri),399); ux_wuri[399]=0; copy_text(ux_wuri);
-    if(!reg){ WNDCLASSW wc; memset(&wc,0,sizeof wc); wc.lpfnWndProc=ux_qr_proc; wc.hInstance=hInst; wc.lpszClassName=L"LsmQr"; wc.hCursor=LoadCursor(NULL,IDC_ARROW); wc.hbrBackground=(HBRUSH)GetStockObject(WHITE_BRUSH); RegisterClassW(&wc); reg=1; }
+    if(!reg){ WNDCLASSEXW wc; memset(&wc,0,sizeof wc); wc.cbSize=sizeof wc; wc.lpfnWndProc=ux_qr_proc; wc.hInstance=hInst; wc.lpszClassName=L"LsmQr"; wc.hCursor=LoadCursor(NULL,IDC_ARROW); wc.hbrBackground=brWin; wc.style=0x00020000; RegisterClassExW(&wc); reg=1; }
     GetWindowRect(hMain,&r);
-    h=CreateWindowExW(WS_EX_TOOLWINDOW,L"LsmQr",title?title:L"二维码",WS_POPUP|WS_CAPTION|WS_SYSMENU,r.left+scale_px(120),r.top+scale_px(60),scale_px(300),scale_px(440),hMain,NULL,hInst,NULL);
+    h=CreateWindowExW(WS_EX_TOOLWINDOW,L"LsmQr",title?title:L"二维码",WS_POPUP,r.left+scale_px(120),r.top+scale_px(60),scale_px(300),scale_px(472),hMain,NULL,hInst,NULL);
     ShowWindow(h,SW_SHOW); SetFocus(h); }
 static void ux_my_qr(void){ char uri[400]; /* LSMF_qr_profile */
     if(lsm_my_uri(C,uri,sizeof uri)){ msgbox("未找到局域网地址，无法生成二维码。",MB_ICONWARNING); return; }

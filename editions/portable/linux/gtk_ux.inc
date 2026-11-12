@@ -9,7 +9,9 @@ static gboolean ux_qr_draw(GtkWidget *w, cairo_t *cr, gpointer p){ int W=gtk_wid
     if(!ux_qrn) return FALSE; s=W<H?W:H; m=ux_qrn+8; sc=(double)s/m; ox=(W-s)/2.0; oy=(H-s)/2.0;
     cairo_set_source_rgb(cr,1,1,1); cairo_rectangle(cr,ox,oy,s,s); cairo_fill(cr); cairo_set_source_rgb(cr,0,0,0); /* QR needs dark-on-light in both themes */
     for(y=0;y<ux_qrn;y++) for(x=0;x<ux_qrn;x++) if(ux_qrm[y*ux_qrn+x]) cairo_rectangle(cr,ox+(x+4)*sc,oy+(y+4)*sc,sc+0.3,sc+0.3);
-    cairo_fill(cr); return TRUE; }
+    cairo_fill(cr);
+    cairo_set_line_width(cr,1); cairo_set_source_rgb(cr,0.55,0.55,0.55); cairo_rectangle(cr,ox+0.5,oy+0.5,s-1,s-1); cairo_stroke(cr);
+    return TRUE; }
 static void ux_my_qr(void){ char uri[400]; /* LSMF_qr_profile */ GtkWidget *d,*ca,*da,*l,*hint;
     if(lsm_my_uri(C,uri,sizeof uri)){ msgbox(GTK_MESSAGE_WARNING,"未找到局域网地址，无法生成二维码。"); return; }
     ux_qrn=lsm_qr(uri,ux_qrm);

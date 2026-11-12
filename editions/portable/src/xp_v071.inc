@@ -11,18 +11,21 @@ static int v071_fr_reshoot, v071_fr_picked;
 #define ID_FR_OK  4003
 static LRESULT CALLBACK v071_fr_proc(HWND h, UINT m, WPARAM w, LPARAM l){
     if(m==WM_CREATE){
-        int sp=scale_px(12), w0=scale_px(500)-sp*2; HWND s,b;
+        int sp=scale_px(12), y=scale_px(TITLE_H)+sp, w0=scale_px(516)-sp*2; HWND s,b;
         s=CreateWindowW(L"STATIC",L"请选择身份方式（之后可在设置里更改，不使用服务器密码）。添加联系人、连接服务器、配对新设备都可以通过扫描或粘贴 lsm:// 链接完成。",
-            WS_CHILD|WS_VISIBLE, sp,sp,w0,scale_px(70),h,NULL,hInst,NULL);
+            WS_CHILD|WS_VISIBLE, sp,y,w0,scale_px(70),h,NULL,hInst,NULL);
         if(fBody) SendMessageW(s,WM_SETFONT,(WPARAM)fBody,TRUE);
+        y+=scale_px(78);
         b=CreateWindowW(L"BUTTON",L"设备模式 — 仅本机，局域网直连，不把身份放到服务器",
-            WS_CHILD|WS_VISIBLE|BS_AUTORADIOBUTTON|WS_GROUP, sp,scale_px(90),w0,scale_px(28),h,(HMENU)(INT_PTR)ID_FR_DEV,hInst,NULL);
+            WS_CHILD|WS_VISIBLE|BS_AUTORADIOBUTTON|WS_GROUP, sp,y,w0,scale_px(28),h,(HMENU)(INT_PTR)ID_FR_DEV,hInst,NULL);
         if(fBody) SendMessageW(b,WM_SETFONT,(WPARAM)fBody,TRUE);
         SendMessageW(b,BM_SETCHECK,BST_CHECKED,0);
+        y+=scale_px(36);
         b=CreateWindowW(L"BUTTON",L"账号模式 — 身份加密备份在中转上，换机可用恢复密钥或配对二维码恢复",
-            WS_CHILD|WS_VISIBLE|BS_AUTORADIOBUTTON, sp,scale_px(126),w0,scale_px(44),h,(HMENU)(INT_PTR)ID_FR_ACC,hInst,NULL);
+            WS_CHILD|WS_VISIBLE|BS_AUTORADIOBUTTON, sp,y,w0,scale_px(44),h,(HMENU)(INT_PTR)ID_FR_ACC,hInst,NULL);
         if(fBody) SendMessageW(b,WM_SETFONT,(WPARAM)fBody,TRUE);
-        b=CreateWindowW(L"BUTTON",L"开始使用",WS_CHILD|WS_VISIBLE|BS_DEFPUSHBUTTON, scale_px(360),scale_px(200),scale_px(120),scale_px(32),h,(HMENU)(INT_PTR)ID_FR_OK,hInst,NULL);
+        y+=scale_px(52);
+        b=CreateWindowW(L"BUTTON",L"开始使用",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_OWNERDRAW, scale_px(384),y,scale_px(120),scale_px(32),h,(HMENU)IDOK,hInst,NULL);
         if(fBody) SendMessageW(b,WM_SETFONT,(WPARAM)fBody,TRUE);
         return 0;
     }
@@ -31,7 +34,15 @@ static LRESULT CALLBACK v071_fr_proc(HWND h, UINT m, WPARAM w, LPARAM l){
         DestroyWindow(h); return 0;
     }
     if(m==WM_CLOSE){ v071_fr_picked=0; DestroyWindow(h); return 0; }
-    if(m==WM_CTLCOLORSTATIC){ SetBkMode((HDC)w,TRANSPARENT); SetTextColor((HDC)w,GetSysColor(COLOR_BTNTEXT)); return (LRESULT)GetSysColorBrush(COLOR_BTNFACE); }
+    if(m==WM_CTLCOLORSTATIC || m==WM_CTLCOLORBTN || m==WM_CTLCOLORDLG) return ctl_color((HDC)w,(HWND)l,0);
+    if(m==WM_ERASEBKGND){ RECT r; GetClientRect(h,&r); FillRect((HDC)w,&r,brWin); return 1; }
+    if(m==WM_PAINT){ PAINTSTRUCT ps; HDC dc=BeginPaint(h,&ps); RECT cr,tr; wchar_t t[128]; HBRUSH dv=CreateSolidBrush(T.divider);
+        GetClientRect(h,&cr);
+        tr=cr; tr.bottom=scale_px(TITLE_H); FillRect(dc,&tr,brCard); tr.top=scale_px(TITLE_H)-1; FillRect(dc,&tr,dv); FrameRect(dc,&cr,dv); DeleteObject(dv);
+        GetWindowTextW(h,t,128); tr=cr; tr.left=scale_px(12); tr.bottom=scale_px(TITLE_H); SetBkMode(dc,TRANSPARENT); SetTextColor(dc,T.text_primary); SelectObject(dc,fBodyStrong); DrawTextW(dc,t,-1,&tr,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX);
+        EndPaint(h,&ps); return 0; }
+    if(m==WM_NCHITTEST){ POINT pt={(short)LOWORD(l),(short)HIWORD(l)}; ScreenToClient(h,&pt); if(pt.y<scale_px(TITLE_H)) return HTCAPTION; }
+    if(m==WM_DRAWITEM){ DRAWITEMSTRUCT *d=(DRAWITEMSTRUCT*)l; if(d->CtlType==ODT_BUTTON){ draw_button(d); return TRUE; } }
     return DefWindowProcW(h,m,w,l);
 }
 static void v071_first_run(void){
@@ -39,11 +50,11 @@ static void v071_first_run(void){
     int shot=v071_fr_reshoot; v071_fr_reshoot=0;
     if(lsm_first_run_done(C) && !shot) return;
     if(!shot && getenv("LSM_UI_TEST") && !getenv("LSM_SHOT_FIRST_RUN")){ lsm_complete_first_run(C,NULL,"device",NULL,err); return; }
-    if(!reg){ WNDCLASSW wc; memset(&wc,0,sizeof wc); wc.lpfnWndProc=v071_fr_proc; wc.hInstance=hInst; wc.lpszClassName=L"LsmFirstRun"; wc.hCursor=LoadCursor(NULL,IDC_ARROW); wc.hbrBackground=(HBRUSH)(COLOR_BTNFACE+1); RegisterClassW(&wc); reg=1; }
+    if(!reg){ WNDCLASSEXW wc; memset(&wc,0,sizeof wc); wc.cbSize=sizeof wc; wc.lpfnWndProc=v071_fr_proc; wc.hInstance=hInst; wc.lpszClassName=L"LsmFirstRun"; wc.hCursor=LoadCursor(NULL,IDC_ARROW); wc.hbrBackground=brWin; wc.style=0x00020000; /* CS_DROPSHADOW */ RegisterClassExW(&wc); reg=1; }
     GetWindowRect(hMain,&r);
     v071_fr_picked=0;
-    h=CreateWindowExW(WS_EX_DLGMODALFRAME,L"LsmFirstRun",L"欢迎使用局域网安全通讯",WS_POPUP|WS_CAPTION|WS_SYSMENU,
-        r.left+scale_px(80),r.top+scale_px(80),scale_px(540),scale_px(280),hMain,NULL,hInst,NULL);
+    h=CreateWindowExW(WS_EX_TOOLWINDOW,L"LsmFirstRun",L"欢迎使用局域网安全通讯",WS_POPUP,
+        r.left+scale_px(80),r.top+scale_px(80),scale_px(540),scale_px(320),hMain,NULL,hInst,NULL); /* no system caption: title bar drawn from the theme */
     EnableWindow(hMain,FALSE);
     ShowWindow(h,SW_SHOW); SetFocus(h);
     while(IsWindow(h) && GetMessage(&msg,NULL,0,0)){

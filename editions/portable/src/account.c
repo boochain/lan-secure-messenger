@@ -184,8 +184,13 @@ int lsm_uri_from_file(const char *path, char *out, size_t n){
     d=read_file(path,&fn);
     if(d){ lim=fn<8192?fn:8192;
         for(i=0;i+6<lim;i++) if(!memcmp(d+i,"lsm://",6)){
-            s=(char*)d+i; e=s; while((size_t)(e-(char*)d)<fn && *e && *e!=' ' && *e!='\n' && *e!='\r' && *e!='\t') e++;
-            if((size_t)(e-s)<n){ memcpy(out,s,(size_t)(e-s)); out[e-s]=0; free(d); return 0; } }
+            s=(char*)d+i; e=s;
+            /* stop at NUL, whitespace, or bytes that cannot appear in lsm:// (PNG tEXt is followed by a CRC) */
+            while((size_t)(e-(char*)d)<fn){ unsigned char c=(unsigned char)*e;
+                if(!c || c<=' ' || c>=0x7f) break;
+                if(!((c>='A'&&c<='Z')||(c>='a'&&c<='z')||(c>='0'&&c<='9')||c==':'||c=='/'||c=='?'||c=='&'||c=='='||c=='%'||c=='.'||c=='_'||c=='-'||c=='+'||c=='~'||c=='#'||c=='@')) break;
+                e++; }
+            if((size_t)(e-s)<n && (size_t)(e-s)>6){ memcpy(out,s,(size_t)(e-s)); out[e-s]=0; free(d); return 0; } }
         free(d); }
     { const char *q; for(q=path;*q;q++) if(*q=='\'' || *q=='"' || *q==';' || *q=='|' || *q=='&' || *q=='$' || *q=='`' || *q=='\n') return -1; }
 #ifdef _WIN32

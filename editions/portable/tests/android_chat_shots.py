@@ -23,6 +23,19 @@ def tap_text(t, timeout=90):
     if not r: raise RuntimeError("not found: " + t)
     tap(*r); time.sleep(2)
 def back(): sh("input keyevent 4"); time.sleep(2)
+def on_main_nav():
+    return find(lambda n: n.get("text") == "聊天" or n.get("content-desc") == "聊天") is not None and find(lambda n: n.get("text") == "设置" or n.get("content-desc") == "设置") is not None
+def on_scan_page():
+    return find(lambda n: n.get("text") == "扫描二维码") is not None and find(lambda n: n.get("text") in ("从图片识别", "应用链接")) is not None
+def back_to_main(tries=8):
+    """Leave a QR dialog or the scan page. The first Back often only hides the IME."""
+    sh("input keyevent 111"); time.sleep(0.3)  # KEYCODE_ESCAPE: dismiss IME if shown
+    for _ in range(tries):
+        if on_main_nav() and not on_scan_page():
+            return
+        sh("input keyevent 4"); time.sleep(1.0)
+    raise RuntimeError("could not leave qr/scan to main nav")
+
 IGN_PATH = None
 def emoji_boxes(png):
     """Colour-emoji glyphs (Noto Color Emoji, e.g. the yellow thumbs-up) are pictures, not UI text: OCR reads them as
@@ -204,18 +217,20 @@ for th in ("light", "dark"):
         tap_row("从图片识别")
         time.sleep(1)
         shot(f"android-{th}-18-scan-image")  # scan-image LSMF_qr_scan
-        back(); time.sleep(1)
+        back_to_main()
         tap_text("设置", timeout=15)
         time.sleep(0.6)
         tap_row("服务器二维码")
         shot(f"android-{th}-19-server-qr")  # server-qr LSMF_qr_server
         back(); time.sleep(0.8)
-        if find(lambda n: n.get("text") == "设置" or n.get("content-desc") == "设置"):
-            try: tap_text("设置", timeout=8)
-            except Exception: pass
+        if not find(lambda n: n.get("text") == "配对新设备"):
+            if find(lambda n: n.get("text") == "设置" or n.get("content-desc") == "设置"):
+                try: tap_text("设置", timeout=8)
+                except Exception: pass
+            sh("input swipe 540 1500 540 400 400"); time.sleep(0.7)
         tap_row("配对新设备")
         shot(f"android-{th}-20-pair-qr")  # pair-qr LSMF_qr_pair
-        back(); time.sleep(0.8)
+        back_to_main()
     except Exception as e:
         raise RuntimeError("qr/scan shots failed: " + str(e))
     if find(lambda n: n.get("text") == "聊天" or n.get("content-desc") == "聊天"):
