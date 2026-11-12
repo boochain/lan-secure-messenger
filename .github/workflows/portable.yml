@@ -120,7 +120,10 @@ jobs:
             tesseract-ocr tesseract-ocr-chi-sim python3-numpy python3-opencv python3-pil
           pip install --break-system-packages -q pytesseract
       - name: Checker self-test (must fail synthetic black-on-#202020 etc.)
-        run: python3 tools/ui_color_audit.py --self-test --out ui-audit/self-test
+        run: |
+          python3 tools/ui_color_audit.py --self-test --out ui-audit/self-test
+          python3 tools/ui_overflow_audit.py --self-test --out ui-audit/overflow-self
+          python3 tools/ui_menu_limits.py --self-test
       - name: Build GTK GUI, XP exe, v0.5 daemon
         run: |
           sh linux/build.sh || test -x build/linux-rel/lan-messenger-gtk
@@ -142,8 +145,13 @@ jobs:
           linux_rc=0; xp_rc=0
           python3 tools/ui_color_audit.py --content /tmp/lsm-gui/截图.png --content /tmp/lsm-gui/会议白板.png --content stickers/thumb.png --ignore-file shots/linux/audit_ignore.json --out ui-audit/linux shots/linux/*.png || linux_rc=$?
           python3 tools/ui_color_audit.py --palette tools/palettes/xp.json --content stickers/thumb.png --content shots/xp/content-photo.png --ignore-file shots/xp/audit_ignore.json --out ui-audit/xp shots/xp/xp-*.png || xp_rc=$?
-          if [ "$linux_rc" != 0 ] || [ "$xp_rc" != 0 ]; then
-            echo "colour audit failed: linux=$linux_rc xp=$xp_rc"
+          ov_rc=0
+          python3 tools/ui_menu_limits.py --self-test && python3 tools/ui_menu_limits.py --root $GITHUB_WORKSPACE || ov_rc=$?
+          python3 tools/ui_overflow_audit.py --self-test --out ui-audit/overflow-self || ov_rc=$?
+          python3 tools/ui_overflow_audit.py --ignore-file shots/linux/audit_ignore.json --out ui-audit/overflow/linux shots/linux/*.png || ov_rc=$?
+          python3 tools/ui_overflow_audit.py --ignore-file shots/xp/audit_ignore.json --out ui-audit/overflow/xp shots/xp/xp-*.png || ov_rc=$?
+          if [ "$linux_rc" != 0 ] || [ "$xp_rc" != 0 ] || [ "$ov_rc" != 0 ]; then
+            echo "audit failed: linux=$linux_rc xp=$xp_rc overflow/menus=$ov_rc"
             exit 1
           fi
       - uses: actions/upload-artifact@v4
@@ -217,7 +225,9 @@ jobs:
       - name: Audit Android screenshots (light + dark)
         run: |
           python3 tools/ui_color_audit.py --self-test --out ui-audit/self-test
+          python3 tools/ui_overflow_audit.py --self-test --out ui-audit/overflow-self
           python3 tools/ui_color_audit.py --palette tools/palettes/android.json --content stickers/thumb.png --content tests/assets/ui-photo.jpg --ignore-file shots/android/audit_ignore.json --out ui-audit/android shots/android/*.png
+          python3 tools/ui_overflow_audit.py --ignore-file shots/android/audit_ignore.json --out ui-audit/overflow/android shots/android/*.png
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -246,7 +256,9 @@ jobs:
         run: python3 tests/adw_basics.py build/linux-adw/lan-messenger-adw build/linux-adw/lanmsg-cli shots/adw-basics
       - name: Colour audit (gnome palette)
         # dialog-* shots are left out: the modal scrim dims the page behind on purpose
-        run: python3 tools/ui_color_audit.py --palette tools/palettes/gnome.json --content stickers/thumb.png --content shots/adw/content-design.png --ignore-file shots/adw/audit_ignore.json --out ui-audit/adw shots/adw/page-*.png shots/adw/popup-*.png
+        run: |
+          python3 tools/ui_color_audit.py --palette tools/palettes/gnome.json --content stickers/thumb.png --content shots/adw/content-design.png --ignore-file shots/adw/audit_ignore.json --out ui-audit/adw shots/adw/page-*.png shots/adw/popup-*.png
+          python3 tools/ui_overflow_audit.py --ignore-file shots/adw/audit_ignore.json --out ui-audit/overflow/adw shots/adw/page-*.png shots/adw/popup-*.png shots/adw/dialog-recovery-*.png
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: linux-adw-screenshots, path: "editions/portable/shots/adw\neditions/portable/shots/adw-basics\neditions/portable/ui-audit/adw" }

@@ -156,6 +156,8 @@ for th in a.themes.split(","):
         x("key", "Escape"); time.sleep(0.25); x("key", "Return"); time.sleep(0.25); x("windowactivate", wid); time.sleep(0.15)
     x("key", "F7"); time.sleep(1.2); shot_title(f"{th}-24-first-run", "欢迎使用局域网安全通讯")  # first-run LSMF_account_mode
     close_dlg()
+    x("key", "shift+F7"); time.sleep(1.2); shot_title(f"{th}-24b-recovery", "恢复密钥")  # recovery LSMF_recovery_key
+    close_dlg()
     x("key", "F8"); time.sleep(1.2); shot_title(f"{th}-25-my-qr", "我的二维码")  # my-qr LSMF_qr_profile
     close_dlg()
     x("key", "shift+F8"); time.sleep(1.2); shot_title(f"{th}-26-server-qr", "服务器二维码")  # server-qr LSMF_qr_server

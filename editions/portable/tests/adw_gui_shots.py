@@ -200,6 +200,8 @@ for i, theme in enumerate(["light", "dark"]):
         xdo("key", "Escape"); time.sleep(0.25); xdo("key", "Return"); time.sleep(0.2)
     xdo("key", "F7"); time.sleep(1.2); shot("dialog-first-run", theme, g=g)  # first-run LSMF_account_mode
     close_dlg()
+    xdo("key", "shift+F7"); time.sleep(1.2); shot_title("dialog-recovery", theme, "恢复密钥", g=g)  # recovery LSMF_recovery_key
+    close_dlg()
     xdo("key", "F8"); time.sleep(1.2); shot("dialog-my-qr", theme, g=g)  # my-qr LSMF_qr_profile
     close_dlg()
     xdo("key", "shift+F8"); time.sleep(1.2); shot("dialog-server-qr", theme, g=g)  # server-qr LSMF_qr_server

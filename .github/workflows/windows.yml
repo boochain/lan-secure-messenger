@@ -279,7 +279,10 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tesseract-ocr tesseract-ocr-chi-sim fonts-noto-cjk python3-numpy python3-opencv python3-pil
           pip install --break-system-packages -q pytesseract
       - name: Checker self-test (must fail synthetic black-on-#202020 etc.)
-        run: python3 tools/ui_color_audit.py --self-test --out ui-audit/self-test
+        run: |
+          python3 tools/ui_color_audit.py --self-test --out ui-audit/self-test
+          python3 tools/ui_overflow_audit.py --self-test --out ui-audit/overflow-self
+          python3 tools/ui_menu_limits.py --self-test && python3 tools/ui_menu_limits.py
       - name: Audit every app screenshot (desktop-*.png is the whole runner desktop, not app UI)
         run: |
           find ui-smoke -name '*.png' ! -name 'desktop*' | sort > shots.txt; cat shots.txt
@@ -287,6 +290,7 @@ jobs:
           # merge the static ignore file with the app-reported hints (decorative icons, open dialog rectangles)
           python3 -c "import json,glob; m=json.load(open('tools/ui_audit_ignore.json')); r=m.setdefault('_reasons',{}); [ (r.update(d.pop('_reasons',{})), m.update(d)) for d in (json.load(open(f, encoding='utf-8-sig')) for f in glob.glob('ui-smoke/**/audit_ignore.json', recursive=True)) ]; json.dump(m, open('ui-audit-ignore.json','w'), ensure_ascii=False, indent=1); print(len(m)-1, 'ignore entries')"
           python3 tools/ui_color_audit.py --palette tools/palettes/winui.json --ignore-file ui-audit-ignore.json --content ui-winui/LanMessenger/Assets/app.png --content ui-winui/LanMessenger/Assets/stickers/thumb.png --out ui-audit $(cat shots.txt)
+          python3 tools/ui_overflow_audit.py --ignore-file ui-audit-ignore.json --out ui-audit/overflow $(cat shots.txt)
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: ui-audit, path: ui-audit }

@@ -1,4 +1,4 @@
-# Four-surface feature parity table (v0.7.1).
+# Five-surface feature parity table (v0.7.2).
 # Platforms checked: winui, xp, gtk3, adw, android
 # (GTK3 and GTK4/libadwaita are listed separately so neither Linux UI can lag.)
 # CI: python3 tools/check_feature_parity.py
@@ -26,6 +26,7 @@ platforms:
       - editions/portable/src/xp_v062.inc
       - editions/portable/src/xp_v070.inc
       - editions/portable/src/xp_v071.inc
+      - editions/portable/src/xp_v072.inc
   gtk3:
     roots:
       - editions/portable/linux/gtk_gui.c
@@ -36,6 +37,7 @@ platforms:
       - editions/portable/linux/gtk_v062.inc
       - editions/portable/linux/gtk_v070.inc
       - editions/portable/linux/gtk_v071.inc
+      - editions/portable/linux/gtk_v072.inc
   adw:
     roots:
       - editions/portable/linux/adw_gui.c
@@ -46,6 +48,7 @@ platforms:
       - editions/portable/linux/adw_v062.inc
       - editions/portable/linux/adw_v070.inc
       - editions/portable/linux/adw_v071.inc
+      - editions/portable/linux/adw_v072.inc
   android:
     roots:
       - editions/portable/android/app/src/main
@@ -345,3 +348,18 @@ features:
       gtk3: editions/portable/tests/linux_gui_shots.py#LSMF_qr_pair
       adw: editions/portable/tests/adw_gui_shots.py#LSMF_qr_pair
       android: editions/portable/tests/android_chat_shots.py#LSMF_qr_pair
+  - id: recovery_key
+    title: 恢复密钥专用页（抄写、复制、导出、确认）
+    hook: LSMF_recovery_key
+    automated_test:
+      winui: ui-winui/LanMessenger/Services/UiSmoke.cs#LSMF_recovery_key
+      xp: editions/portable/tests/xp_ui_shots.sh#LSMF_recovery_key
+      gtk3: editions/portable/tests/linux_gui_shots.py#LSMF_recovery_key
+      adw: editions/portable/tests/adw_gui_shots.py#LSMF_recovery_key
+      android: editions/portable/tests/android_chat_shots.py#LSMF_recovery_key
+    gui_verified:
+      winui: ui-winui/LanMessenger/Services/UiSmoke.cs#page-recovery
+      xp: editions/portable/tests/xp_ui_shots.sh#LSMF_recovery_key
+      gtk3: editions/portable/tests/linux_gui_shots.py#LSMF_recovery_key
+      adw: editions/portable/tests/adw_gui_shots.py#LSMF_recovery_key
+      android: editions/portable/tests/android_chat_shots.py#LSMF_recovery_key

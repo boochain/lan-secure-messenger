@@ -94,14 +94,16 @@ for TH in light dark; do
   fill_search; menu c; shot "xp-$TH-04-menu-contacts"; xdotool key Escape Escape; clear_search
   fill_search; menu g; shot "xp-$TH-05-menu-groups"; xdotool key Escape Escape; clear_search
   fill_search; menu s; shot "xp-$TH-06-menu-settings"; xdotool key Escape Escape; clear_search
-  menu c; xdotool key a; sleep 1.5; xdotool type "192.168.1.20"; sleep 0.5; shot "xp-$TH-07-dialog-add-ip"
+  menu c; xdotool key a; sleep 0.4; xdotool key a; sleep 1.5; xdotool type "192.168.1.20"; sleep 0.5; shot "xp-$TH-07-dialog-add-ip"
   xdotool key ctrl+a; xdotool type "bad address"; xdotool key Return; sleep 1.5; shot "xp-$TH-08-error"; xdotool key Return; sleep 0.8
-  menu c; xdotool key p; sleep 1.5; shot "xp-$TH-09-pin"; xdotool key Return; sleep 0.8
+  menu c; xdotool key p; sleep 0.4; xdotool key p; sleep 1.5; shot "xp-$TH-09-pin"; xdotool key Return; sleep 0.8
   menu g; xdotool key c; sleep 1.5; shot "xp-$TH-10-dialog-group-picker"; xdotool key Escape; sleep 0.8
   menu h; xdotool key a; sleep 1.5; shot "xp-$TH-11-about"; xdotool key Return; sleep 0.8
   xdotool windowactivate "$WID"; sleep 0.2
   xdotool key F7; sleep 1.2; shot_named "xp-$TH-13-first-run" "欢迎使用局域网安全通讯"  # first-run LSMF_account_mode
   xdotool key Return; sleep 0.6
+  xdotool key shift+F7; sleep 1.2; shot_named "xp-$TH-13b-recovery" "恢复密钥"  # recovery LSMF_recovery_key
+  xdotool key Escape; sleep 0.6
   xdotool key F8; sleep 1.2; shot_named "xp-$TH-14-my-qr" "我的二维码"  # my-qr LSMF_qr_profile
   xdotool key Escape; sleep 0.5
   xdotool key shift+F8; sleep 1.2; shot_named "xp-$TH-15-server-qr" "服务器二维码"  # server-qr LSMF_qr_server

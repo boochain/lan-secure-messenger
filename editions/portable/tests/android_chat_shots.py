@@ -265,19 +265,29 @@ for th in ("light", "dark"):
     nav_shot("文件站", "LSMF_nav_files")
     nav_shot("设置", "LSMF_nav_settings")
     try:
+        if not find(lambda n: n.get("text") == "恢复密钥"):
+            try: tap_text("设置", timeout=10)
+            except Exception: pass
+            time.sleep(0.5)
+        tap_text("恢复密钥", timeout=15)
+        shot(f"android-{th}-page-recovery")  # LSMF_recovery_key
+        back(); time.sleep(1)
+    except Exception as e:
+        print("WARN recovery page", e, flush=True)
+    try:
         if not find(lambda n: n.get("text") == "个人资料"):
             try: tap_text("设置", timeout=10)
             except Exception: pass
             time.sleep(0.5)
         tap_text("个人资料", timeout=15)
-        shot(f"android-{th}-page-profile")
+        shot(f"android-{th}-page-profile")  # LSMF_nav_profile
         back(); time.sleep(1)
         if not find(lambda n: n.get("text") == "诊断信息"):
             try: tap_text("设置", timeout=10)
             except Exception: pass
             time.sleep(0.5)
         tap_text("诊断信息", timeout=15)
-        shot(f"android-{th}-page-diagnostics")
+        shot(f"android-{th}-page-diagnostics")  # LSMF_nav_diagnostics
         back(); time.sleep(1)
     except Exception as e:
         print("WARN profile/diag pages", e, flush=True)
