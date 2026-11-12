@@ -19,7 +19,9 @@ public sealed partial class FirstRunDialog : ContentDialog
 
     private void UpdateFirewall()
     {
-        FwResult.Text = App.VM.FirewallSummary + (string.IsNullOrEmpty(App.VM.FirewallAdvice) ? "" : "\n" + App.VM.FirewallAdvice);
+        // Status only. Long advice already lives in the pinned InfoBar; duplicating it
+        // here was clipping the fingerprint row mid-glyph at the scroll viewport bottom.
+        FwResult.Text = App.VM.FirewallSummary ?? "";
         if (App.VM.FirewallOk)
         {
             FwInfo.Severity = InfoBarSeverity.Success;
