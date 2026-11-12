@@ -83,19 +83,22 @@ static gboolean v072_rk_key(GtkEventControllerKey *c, guint keyval, guint kc, Gd
 }
 static void v072_rk_toggle(GtkCheckButton *t, gpointer p){ (void)p; v072_rk_acked=gtk_check_button_get_active(t); if(v072_rk_ok) gtk_widget_set_sensitive(v072_rk_ok, !v072_rk_force || v072_rk_acked); }
 static void v072_show_recovery(int force, const char *preset){
-    /* LSMF_recovery_key */
-    char rk[80]=""; GtkWidget *box,*l,*k,*row,*copy,*exp,*chk,*ok;
+    /* LSMF_recovery_key: a dedicated AdwWindow with a header bar and an in-content heading,
+       so the title is visible (plain GtkWindow had no CSD header; the title was clipped). */
+    char rk[80]=""; GtkWidget *tv,*hb,*box,*h,*l,*k,*row,*copy,*exp,*chk,*ok; GtkEventController *kc;
     if(preset && preset[0]) snprintf(rk,sizeof rk,"%s",preset);
     else if(v072_load_key(rk,sizeof rk)){ toast("还没有恢复密钥（请先开启账号模式）"); return; }
     snprintf(v072_rk_text,sizeof v072_rk_text,"%s",rk);
     v072_rk_force=force; v072_rk_acked=0;
     if(v072_rk_win) gtk_window_destroy(GTK_WINDOW(v072_rk_win));
-    v072_rk_win=gtk_window_new(); gtk_window_set_title(GTK_WINDOW(v072_rk_win),"恢复密钥");
+    v072_rk_win=adw_window_new(); gtk_window_set_title(GTK_WINDOW(v072_rk_win),"恢复密钥");
     gtk_window_set_transient_for(GTK_WINDOW(v072_rk_win),GTK_WINDOW(win));
-    gtk_window_set_modal(GTK_WINDOW(v072_rk_win),TRUE); gtk_window_set_default_size(GTK_WINDOW(v072_rk_win),520,420);
+    gtk_window_set_modal(GTK_WINDOW(v072_rk_win),TRUE); gtk_window_set_default_size(GTK_WINDOW(v072_rk_win),560,480);
     gtk_widget_set_name(v072_rk_win,"LSMF_recovery_key");
-    box=gtk_box_new(GTK_ORIENTATION_VERTICAL,10); gtk_widget_set_margin_top(box,16); gtk_widget_set_margin_bottom(box,16);
-    gtk_widget_set_margin_start(box,20); gtk_widget_set_margin_end(box,20);
+    tv=adw_toolbar_view_new(); hb=adw_header_bar_new(); adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(tv),hb);
+    box=gtk_box_new(GTK_ORIENTATION_VERTICAL,12); gtk_widget_set_margin_top(box,20); gtk_widget_set_margin_bottom(box,20);
+    gtk_widget_set_margin_start(box,24); gtk_widget_set_margin_end(box,24);
+    h=gtk_label_new("恢复密钥"); gtk_widget_add_css_class(h,"title-1"); gtk_label_set_xalign(GTK_LABEL(h),0); gtk_box_append(GTK_BOX(box),h);
     l=gtk_label_new("这是你的账号恢复密钥。请把它抄到离线的安全地方。任何拿到这串密钥的人都能恢复你的身份。服务器看不到明文。");
     gtk_label_set_wrap(GTK_LABEL(l),TRUE); gtk_label_set_xalign(GTK_LABEL(l),0); gtk_box_append(GTK_BOX(box),l);
     k=gtk_label_new(rk); gtk_label_set_selectable(GTK_LABEL(k),TRUE); gtk_label_set_wrap(GTK_LABEL(k),TRUE);
@@ -112,8 +115,10 @@ static void v072_show_recovery(int force, const char *preset){
     ok=gtk_button_new_with_label(force?"我已抄好":"完成"); v072_rk_ok=ok;
     gtk_widget_add_css_class(ok,"suggested-action"); gtk_widget_set_sensitive(ok,!force);
     g_signal_connect(ok,"clicked",G_CALLBACK(v072_rk_done),NULL); gtk_box_append(GTK_BOX(box),ok);
-    gtk_window_set_child(GTK_WINDOW(v072_rk_win),box);
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(tv),box); adw_window_set_content(ADW_WINDOW(v072_rk_win),tv);
     g_signal_connect(v072_rk_win,"close-request",G_CALLBACK(v072_rk_close_req),NULL);
+    kc=gtk_event_controller_key_new(); g_signal_connect(kc,"key-pressed",G_CALLBACK(v072_rk_key),NULL);
+    gtk_widget_add_controller(v072_rk_win,kc);
     gtk_window_present(GTK_WINDOW(v072_rk_win));
 }
 static void v072_shot_recovery(void){ if(!getenv("LSM_UI_TEST")) return; v072_show_recovery(0,NULL); }

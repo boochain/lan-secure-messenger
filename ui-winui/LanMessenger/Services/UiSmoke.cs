@@ -504,9 +504,17 @@ public static class UiSmoke
 
     private static List<string> OpenMenuItems(MainWindow w)
     {
+        // Hierarchical v0.7.2 menus put pin/mute/trust under MenuFlyoutSubItem.
+        // Those child items are not in the visual tree until the submenu opens, so
+        // walk SubItem.Items as well as realized MenuFlyoutItem descendants.
         var items = new List<string>();
         foreach (var pop in VisualTreeHelper.GetOpenPopupsForXamlRoot(w.Content.XamlRoot))
-            if (pop.Child != null) items.AddRange(Descendants(pop.Child).OfType<MenuFlyoutItem>().Select(i => i.Text));
+        {
+            if (pop.Child == null) continue;
+            items.AddRange(Descendants(pop.Child).OfType<MenuFlyoutItem>().Select(i => i.Text));
+            foreach (var sub in Descendants(pop.Child).OfType<MenuFlyoutSubItem>())
+                items.AddRange(sub.Items.OfType<MenuFlyoutItem>().Select(i => i.Text));
+        }
         return items;
     }
 

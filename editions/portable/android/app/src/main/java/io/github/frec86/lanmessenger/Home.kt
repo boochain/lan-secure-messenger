@@ -387,8 +387,7 @@ fun Settings(st: AppState, dlg: (String) -> Unit, openPage: (String) -> Unit = {
             }
         }
         item { SettingRow(R.drawable.ms_lock, "恢复密钥", "查看、复制或导出；仅本机可见，服务器看不到明文") {
-            val rk = Native.revealRecoveryKey()
-            if (rk.isEmpty()) Repo.toast.value = "还没有恢复密钥（请先开启账号模式）" else onRecovery()
+            onRecovery()  // the page itself explains when no key exists yet
         } }
         item { SettingRow(R.drawable.ms_add_contact, "扫描或粘贴链接", "添加联系人、连接服务器或配对新设备") { dlg("scan") } }
         item { SettingRow(R.drawable.ms_via_server, "服务器二维码", "给另一台设备扫描以连接同一中转") {

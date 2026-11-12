@@ -31,6 +31,7 @@ static void v072_show_recovery(int force, const char *preset){
     d=gtk_dialog_new_with_buttons("恢复密钥",GTK_WINDOW(win),GTK_DIALOG_MODAL,NULL);
     gtk_window_set_default_size(GTK_WINDOW(d),520,420); gtk_widget_set_name(d,"LSMF_recovery_key");
     box=gtk_dialog_get_content_area(GTK_DIALOG(d)); gtk_container_set_border_width(GTK_CONTAINER(box),16); gtk_box_set_spacing(GTK_BOX(box),10);
+    { GtkWidget *h=gtk_label_new(NULL); gtk_label_set_markup(GTK_LABEL(h),"<span size='x-large' weight='bold'>恢复密钥</span>"); gtk_label_set_xalign(GTK_LABEL(h),0); gtk_box_pack_start(GTK_BOX(box),h,FALSE,FALSE,0); }
     l=gtk_label_new("这是你的账号恢复密钥。请把它抄到离线的安全地方。任何拿到这串密钥的人都能恢复你的身份。服务器看不到明文。");
     gtk_label_set_line_wrap(GTK_LABEL(l),TRUE); gtk_label_set_xalign(GTK_LABEL(l),0); gtk_box_pack_start(GTK_BOX(box),l,FALSE,FALSE,0);
     k=gtk_label_new(rk); gtk_label_set_selectable(GTK_LABEL(k),TRUE); gtk_label_set_line_wrap(GTK_LABEL(k),TRUE);

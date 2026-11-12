@@ -42,15 +42,34 @@ def peer(tag, name, port):
 def xdo(*a): subprocess.run(["xdotool", *a], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 ignore = {"_reasons": {}}
 def icon_rects(lines):
-    """ICON lines printed by the GUI right before its latest 'UI ' line: decorative GtkImage icons (no text)."""
-    k = max((i for i, l in enumerate(lines) if l.startswith("UI ")), default=-1); out = []
-    i = k - 1
-    while i >= 0 and lines[i].startswith("ICON"):
-        f = lines[i].split()
-        if f[0] == "ICON": out.append([int(v) for v in f[2].split(",")])
-        elif f[0] == "ICONPOP":  # bounds inside a popover surface: find that X window (same size) for its screen origin
-            o = popup_origin(int(f[1]), int(f[2]))
-            if o: x, y, w, h = [int(v) for v in f[3].split(",")]; out.append([x + o[0], y + o[1], w, h])
+    """ICON lines printed by the GUI immediately before a 'UI ' line.
+
+    Use the most recent UI block that actually reported icons. A later UI
+    event with no ICON lines (page-nav-chats after a nav switch) used to
+    drop the header shield/online-dot, and colour-audit OCR'd the 6x6
+    badge as 'e，' (WCAG 3.89 on #6D4FC2 / #BFD7CD).
+    """
+    out = []
+    i = len(lines) - 1
+    while i >= 0:
+        while i >= 0 and not lines[i].startswith("UI "):
+            i -= 1
+        if i < 0:
+            break
+        j = i - 1
+        block = []
+        while j >= 0 and lines[j].startswith("ICON"):
+            f = lines[j].split()
+            if f[0] == "ICON":
+                block.append([int(v) for v in f[2].split(",")])
+            elif f[0] == "ICONPOP":
+                o = popup_origin(int(f[1]), int(f[2]))
+                if o:
+                    x, y, w, h = [int(v) for v in f[3].split(",")]
+                    block.append([x + o[0], y + o[1], w, h])
+            j -= 1
+        if block:
+            return block
         i -= 1
     return out
 def popup_origin(w, h):
@@ -128,6 +147,16 @@ def shot_title(name, theme, title, g=None):
             print("shot", path, "title", title, "wid", wids[-1], flush=True)
             return path
     return shot(name, theme, g=g)
+def close_named(title, timeout=2.0):
+    """Dismiss a titled transient (recovery, QR, first-run) so it cannot cover the next shot."""
+    end = time.time() + timeout
+    while time.time() < end:
+        wids = subprocess.run(["xdotool", "search", "--onlyvisible", "--name", title], env=env, capture_output=True, text=True).stdout.split()
+        if not wids:
+            return
+        xdo("windowactivate", "--sync", wids[-1]); xdo("key", "Escape"); time.sleep(0.2)
+    for w in subprocess.run(["xdotool", "search", "--onlyvisible", "--name", title], env=env, capture_output=True, text=True).stdout.split():
+        subprocess.run(["xdotool", "windowclose", w], env=env)
 img = f"{W}/设计稿-v3.png"
 subprocess.run(["convert", "-size", "960x660", "gradient:#7aa7d8-#2b4f7e", "-fill", "#ffffff", "-draw", "roundrectangle 120,120 840,540 24,24", img])
 pdf = f"{W}/需求说明-v2.pdf"; open(pdf, "wb").write(os.urandom(1024 * 1300))
@@ -197,7 +226,14 @@ for i, theme in enumerate(["light", "dark"]):
         shot(f"page-{name}" if name != "chats" else "page-nav-chats", theme, g=g)
     xdo("mousemove", "40", "20", "click", "1"); time.sleep(0.3)
     def close_dlg():
-        xdo("key", "Escape"); time.sleep(0.25); xdo("key", "Return"); time.sleep(0.2)
+        close_named("恢复密钥")
+        close_named("欢迎使用局域网安全通讯")
+        close_named("我的二维码")
+        close_named("服务器二维码")
+        close_named("配对新设备")
+        close_named("扫描或粘贴链接")
+        close_named("从图片识别")
+        xdo("key", "Escape"); time.sleep(0.2)
     xdo("key", "F7"); time.sleep(1.2); shot("dialog-first-run", theme, g=g)  # first-run LSMF_account_mode
     close_dlg()
     xdo("key", "shift+F7"); time.sleep(1.2); shot_title("dialog-recovery", theme, "恢复密钥", g=g)  # recovery LSMF_recovery_key

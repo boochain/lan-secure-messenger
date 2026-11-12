@@ -135,20 +135,32 @@ for TH in light dark; do
   menu g; xdotool key c; sleep 1.5; shot "xp-$TH-10-dialog-group-picker"; xdotool key Escape; sleep 0.8
   menu h; xdotool key a; sleep 1.5; shot "xp-$TH-11-about"; xdotool key Return; sleep 0.8
   xdotool windowactivate "$WID"; sleep 0.2
+  close_named() {
+    local title="$1" i rid
+    for i in 1 2 3 4 5 6; do
+      rid=$(xdotool search --onlyvisible --name "$title" 2>/dev/null | tail -1 || true)
+      if [ -z "$rid" ]; then break; fi
+      xdotool windowactivate --sync "$rid" key Escape || true
+      sleep 0.25
+    done
+    xdotool windowactivate "$WID" >/dev/null 2>&1 || true
+    sleep 0.15
+  }
   xdotool key F7; sleep 1.2; shot_named "xp-$TH-13-first-run" "欢迎使用局域网安全通讯"  # first-run LSMF_account_mode
   xdotool key Return; sleep 0.6
+  close_named "欢迎使用局域网安全通讯"
   xdotool key shift+F7; sleep 1.2; shot_named "xp-$TH-13b-recovery" "恢复密钥"  # recovery LSMF_recovery_key
-  xdotool key Escape; sleep 0.6
+  close_named "恢复密钥"
   xdotool key F8; sleep 1.2; shot_named "xp-$TH-14-my-qr" "我的二维码"  # my-qr LSMF_qr_profile
-  xdotool key Escape; sleep 0.5
+  close_named "我的二维码"
   xdotool key shift+F8; sleep 1.2; shot_named "xp-$TH-15-server-qr" "服务器二维码"  # server-qr LSMF_qr_server
-  xdotool key Escape; sleep 0.5
+  close_named "服务器二维码"
   xdotool key ctrl+F8; sleep 1.2; shot_named "xp-$TH-16-pair-qr" "配对新设备"  # pair-qr LSMF_qr_pair
-  xdotool key Escape; sleep 0.5
+  close_named "配对新设备"
   xdotool key F9; sleep 1.2; shot_named "xp-$TH-17-scan-paste" "扫描或粘贴链接"  # scan LSMF_qr_scan
-  xdotool key Escape; sleep 0.5
+  close_named "扫描或粘贴链接"
   xdotool key shift+F9; sleep 1.2; shot_named "xp-$TH-18-scan-image" "从图片识别"  # scan-image LSMF_qr_scan
-  xdotool key Escape; sleep 0.5
+  close_named "从图片识别"
   wineserver -k; sleep 2
 done
 # app-reported decorative icon rects (online dots, shields) -> ignore file for the colour audit

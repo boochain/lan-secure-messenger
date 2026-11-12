@@ -264,12 +264,20 @@ for th in ("light", "dark"):
     nav_shot("传输", "LSMF_nav_transfers")
     nav_shot("文件站", "LSMF_nav_files")
     nav_shot("设置", "LSMF_nav_settings")
+    def on_recovery_page():
+        return find(lambda n: n.get("text") in ("复制", "导出到文件", "我已抄下并妥善保管")) is not None
     try:
-        if not find(lambda n: n.get("text") == "恢复密钥"):
-            try: tap_text("设置", timeout=10)
-            except Exception: pass
-            time.sleep(0.5)
-        tap_text("恢复密钥", timeout=15)
+        try: tap_text("设置", timeout=10)
+        except Exception: pass
+        time.sleep(0.5)
+        # Device-mode installs have no key yet; switching to account mode generates one and opens the page.
+        if find(lambda n: (n.get("text") or "").startswith("设备模式")):
+            tap_text("设备模式（点按切换为账号模式）", timeout=15)
+        elif not on_recovery_page():
+            tap_text("恢复密钥", timeout=15)
+        if not ui_seed.wait(on_recovery_page, 15, 1):
+            raise RuntimeError("recovery page did not open (no 复制 / 导出到文件)")
+        time.sleep(0.4)
         shot(f"android-{th}-page-recovery")  # LSMF_recovery_key
         back(); time.sleep(1)
     except Exception as e:
@@ -377,8 +385,8 @@ time.sleep(2); check(okm and not has("这是最新的数据，第 4 页有改动
 back()
 check(open_chat("王工") and has("输入消息"), "open chat")
 back(); check(has("局域网安全通讯") and not has("输入消息") and resumed(), "Back from chat returns to the list (app stays open)")
-open_chat("王工"); tap_text("菜单"); check(has("查看指纹"), "chat menu open")
-back(); check(not has("查看指纹") and has("输入消息"), "Back closes the menu, stays in the chat")
+open_chat("王工"); tap_text("菜单"); check(has("会话") and has("清空聊天记录"), "chat menu open")
+back(); check(not has("清空聊天记录") and has("输入消息"), "Back closes the menu, stays in the chat")
 sh("settings put system accelerometer_rotation 0"); sh("settings put system user_rotation 1"); time.sleep(4)
 check(has("输入消息"), "rotation keeps the open chat")
 sh("settings put system user_rotation 0"); time.sleep(4)

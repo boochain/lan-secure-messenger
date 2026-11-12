@@ -152,8 +152,19 @@ for th in a.themes.split(","):
         shot(f"{th}-{name}")  # hook captured above
     x("mousemove", "--window", wid, "36", "66"); x("click", "1"); time.sleep(0.4)
     # CI/test shortcuts re-open the real first-run dialog and QR / scan views
+    def close_named(title, timeout=2.0):
+        end = time.time() + timeout
+        while time.time() < end:
+            wids = subprocess.run(["xdotool", "search", "--onlyvisible", "--name", title], env=env, capture_output=True, text=True).stdout.split()
+            if not wids:
+                return
+            x("windowactivate", "--sync", wids[-1]); x("key", "Escape"); time.sleep(0.2)
+        for w in subprocess.run(["xdotool", "search", "--onlyvisible", "--name", title], env=env, capture_output=True, text=True).stdout.split():
+            subprocess.run(["xdotool", "windowclose", w], env=env)
     def close_dlg():
-        x("key", "Escape"); time.sleep(0.25); x("key", "Return"); time.sleep(0.25); x("windowactivate", wid); time.sleep(0.15)
+        for title in ("恢复密钥", "欢迎使用局域网安全通讯", "我的二维码", "服务器二维码", "配对新设备", "扫描或粘贴链接", "从图片识别"):
+            close_named(title)
+        x("key", "Escape"); time.sleep(0.2); x("windowactivate", wid); time.sleep(0.15)
     x("key", "F7"); time.sleep(1.2); shot_title(f"{th}-24-first-run", "欢迎使用局域网安全通讯")  # first-run LSMF_account_mode
     close_dlg()
     x("key", "shift+F7"); time.sleep(1.2); shot_title(f"{th}-24b-recovery", "恢复密钥")  # recovery LSMF_recovery_key

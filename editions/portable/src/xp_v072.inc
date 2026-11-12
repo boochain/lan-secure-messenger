@@ -31,6 +31,9 @@ static void v072_rk_enable(void){ if(v072_rk_ok) EnableWindow(v072_rk_ok, !v072_
 static LRESULT CALLBACK v072_rk_proc(HWND h, UINT m, WPARAM w, LPARAM l){
     if(m==WM_CREATE){
         int sp=scale_px(16), y=scale_px(TITLE_H)+sp, w0=scale_px(520)-sp*2; HWND s,b,e;
+        s=CreateWindowW(L"STATIC",L"恢复密钥",WS_CHILD|WS_VISIBLE, sp,y,w0,scale_px(28),h,NULL,hInst,NULL);
+        if(fBodyStrong) SendMessageW(s,WM_SETFONT,(WPARAM)fBodyStrong,TRUE);
+        y+=scale_px(32);
         s=CreateWindowW(L"STATIC",L"这是你的账号恢复密钥。请把它抄到离线的安全地方。任何拿到这串密钥的人都能恢复你的身份。服务器看不到明文。",
             WS_CHILD|WS_VISIBLE, sp,y,w0,scale_px(64),h,NULL,hInst,NULL);
         if(fBody) SendMessageW(s,WM_SETFONT,(WPARAM)fBody,TRUE);
@@ -57,8 +60,11 @@ static LRESULT CALLBACK v072_rk_proc(HWND h, UINT m, WPARAM w, LPARAM l){
         if(id==ID_RK_COPY){ copy_text(W(v072_rk_text)); return 0; }
         if(id==ID_RK_EXPORT){ v072_rk_export(); return 0; }
         if(id==ID_RK_ACK){ v072_rk_acked=(SendDlgItemMessageW(h,ID_RK_ACK,BM_GETCHECK,0,0)==BST_CHECKED); v072_rk_enable(); return 0; }
-        if(id==IDOK){ if(v072_rk_force && !v072_rk_acked && !getenv("LSM_UI_TEST")) return 0; v072_rk_done=1; DestroyWindow(h); return 0; }
+        if(id==IDOK || id==IDCANCEL){ if(id==IDCANCEL && v072_rk_force && !v072_rk_acked && !getenv("LSM_UI_TEST")) return 0;
+            if(id==IDOK && v072_rk_force && !v072_rk_acked && !getenv("LSM_UI_TEST")) return 0;
+            v072_rk_done=1; DestroyWindow(h); return 0; }
     }
+    if(m==WM_KEYDOWN && w==VK_ESCAPE){ if(v072_rk_force && !v072_rk_acked && !getenv("LSM_UI_TEST")) return 0; v072_rk_done=1; DestroyWindow(h); return 0; }
     if(m==WM_CLOSE){ if(v072_rk_force && !v072_rk_acked && !getenv("LSM_UI_TEST")) return 0; v072_rk_done=1; DestroyWindow(h); return 0; }
     if(m==WM_CTLCOLORSTATIC || m==WM_CTLCOLORBTN || m==WM_CTLCOLORDLG) return ctl_color((HDC)w,(HWND)l,0);
     if(m==WM_ERASEBKGND){ RECT r; GetClientRect(h,&r); FillRect((HDC)w,&r,brWin); return 1; }
@@ -79,7 +85,7 @@ static void v072_show_recovery(int force, const char *preset){ /* LSMF_recovery_
     if(!reg){ WNDCLASSEXW wc; memset(&wc,0,sizeof wc); wc.cbSize=sizeof wc; wc.lpfnWndProc=v072_rk_proc; wc.hInstance=hInst; wc.lpszClassName=L"LsmRecovery"; wc.hCursor=LoadCursor(NULL,IDC_ARROW); wc.hbrBackground=brWin; wc.style=0x00020000; RegisterClassExW(&wc); reg=1; }
     GetWindowRect(hMain,&r);
     h=CreateWindowExW(WS_EX_TOOLWINDOW,L"LsmRecovery",L"恢复密钥",WS_POPUP,
-        r.left+scale_px(60),r.top+scale_px(50),scale_px(540),scale_px(420),hMain,NULL,hInst,NULL);
+        r.left+scale_px(60),r.top+scale_px(40),scale_px(540),scale_px(480),hMain,NULL,hInst,NULL);
     v072_rk_win=h; EnableWindow(hMain,FALSE); ShowWindow(h,SW_SHOW); SetFocus(h);
     while(IsWindow(h) && GetMessage(&msg,NULL,0,0)){
         if(msg.message==WM_QUIT){ PostQuitMessage((int)msg.wParam); break; }

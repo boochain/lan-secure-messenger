@@ -257,7 +257,7 @@ jobs:
       - name: Colour audit (gnome palette)
         # dialog-* shots are left out: the modal scrim dims the page behind on purpose
         run: |
-          python3 tools/ui_color_audit.py --palette tools/palettes/gnome.json --content stickers/thumb.png --content shots/adw/content-design.png --ignore-file shots/adw/audit_ignore.json --out ui-audit/adw shots/adw/page-*.png shots/adw/popup-*.png
+          python3 tools/ui_color_audit.py --palette tools/palettes/gnome.json --content stickers/thumb.png --content shots/adw/content-design.png --ignore-file shots/adw/audit_ignore.json --out ui-audit/adw shots/adw/page-*.png shots/adw/popup-*.png shots/adw/dialog-recovery-*.png
           python3 tools/ui_overflow_audit.py --ignore-file shots/adw/audit_ignore.json --out ui-audit/overflow/adw shots/adw/page-*.png shots/adw/popup-*.png shots/adw/dialog-recovery-*.png
       - uses: actions/upload-artifact@v4
         if: always()
