@@ -1,3 +1,4 @@
+static void v072_show_recovery(int force, const char *preset);
 /* v0.7.1: first-run account/device choice + QR URI apply.
  * Hooks: LSMF_account_mode LSMF_qr_scan LSMF_qr_server LSMF_qr_pair LSMF_qr_profile */
 #define IDM_SERVERQR 267
@@ -64,8 +65,7 @@ static void v071_first_run(void){
     EnableWindow(hMain,TRUE); SetForegroundWindow(hMain);
     if(!lsm_first_run_done(C)){
         lsm_complete_first_run(C,NULL, v071_fr_picked?"account":"device", NULL, err);
-        if(v071_fr_picked){ char rk[80]=""; if(!lsm_reveal_recovery_key(C,rk,sizeof rk) && rk[0]){
-            char m[256]; snprintf(m,sizeof m,"请抄下恢复密钥并妥善保管：\r\n%s", rk); msgbox(m,MB_ICONINFORMATION); } }
+        if(v071_fr_picked){ char rk[80]=""; if(!lsm_reveal_recovery_key(C,rk,sizeof rk) && rk[0]) v072_show_recovery(1,rk); }
     }
 }
 static void v071_shot_first_run(void){ if(!getenv("LSM_UI_TEST")) return; v071_fr_reshoot=1; v071_first_run(); }
@@ -77,10 +77,10 @@ static void v071_paste_uri(void){ prompt_t p; char u8[1600]; memset(&p,0,sizeof 
 static void v071_switch_mode(void){
     char rk[80]="", err[256]=""; const char *cur=lsm_account_mode(C); int to_acc=strcmp(cur,"account")!=0;
     if(lsm_set_account_mode(C, to_acc?"account":"device", rk, sizeof rk, err)) msgbox(err[0]?err:"切换失败",MB_ICONWARNING);
-    else if(to_acc && rk[0]){ char m[256]; snprintf(m,sizeof m,"已切换到账号模式。请抄下恢复密钥：\r\n%s",rk); msgbox(m,MB_ICONINFORMATION); }
+    else if(to_acc && rk[0]) v072_show_recovery(1,rk);
     else msgbox(to_acc?"已切换到账号模式":"已切换到设备模式",MB_ICONINFORMATION);
 }
-static void v071_reveal_rk(void){ char rk[80]=""; if(lsm_reveal_recovery_key(C,rk,sizeof rk)||!rk[0]) msgbox("还没有恢复密钥（请先开启账号模式）",MB_ICONINFORMATION); else { char m[256]; snprintf(m,sizeof m,"恢复密钥（请妥善保管，服务器看不到明文）：\r\n%s",rk); msgbox(m,MB_ICONINFORMATION); } }
+static void v071_reveal_rk(void){ v072_show_recovery(0,NULL); }
 
 static void v071_scan_image(void){ /* LSMF_qr_scan — image file or text containing lsm://; zbarimg if present */
     OPENFILENAMEW of; wchar_t path[MAX_PATH]; char u8[1200], uri[800]="";

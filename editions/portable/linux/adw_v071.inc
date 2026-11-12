@@ -1,3 +1,4 @@
+static void v072_show_recovery(int force, const char *preset);
 /* v0.7.1: first-run account/device choice + QR URI apply. Hooks: LSMF_account_mode LSMF_qr_scan LSMF_qr_server LSMF_qr_pair LSMF_qr_profile */
 static GtkWidget *v071_acc_btn;
 static int v071_fr_reshoot;
@@ -8,7 +9,7 @@ static void v071_fr_done(AdwAlertDialog *d, const char *r, gpointer p){
     if(lsm_first_run_done(C)) return;
     acc = v071_acc_btn && gtk_check_button_get_active(GTK_CHECK_BUTTON(v071_acc_btn));
     lsm_complete_first_run(C,NULL,acc?"account":"device",NULL,err);
-    if(acc && !lsm_reveal_recovery_key(C,rk,sizeof rk) && rk[0]) info("请抄下恢复密钥", rk);
+    if(acc && !lsm_reveal_recovery_key(C,rk,sizeof rk) && rk[0]) v072_show_recovery(1,rk);
 }
 static void v071_first_run(void){
     GtkWidget *box,*b1,*b2; AdwDialog *d; char err[256]="";
@@ -87,7 +88,7 @@ static void v071_paste_uri(void){
 static void v071_switch_mode(void){
     char rk[80]="", err[256]=""; const char *cur=lsm_account_mode(C); int to_acc=strcmp(cur,"account")!=0;
     if(lsm_set_account_mode(C, to_acc?"account":"device", rk, sizeof rk, err)) toast(err[0]?err:"切换失败");
-    else if(to_acc && rk[0]) info("请抄下恢复密钥", rk);
+    else if(to_acc && rk[0]) v072_show_recovery(1,rk);
     else toast(to_acc?"已切换到账号模式":"已切换到设备模式");
 }
-static void v071_reveal_rk(void){ char rk[80]=""; if(lsm_reveal_recovery_key(C,rk,sizeof rk)||!rk[0]) toast("还没有恢复密钥（请先开启账号模式）"); else info("恢复密钥", rk); }
+static void v071_reveal_rk(void){ v072_show_recovery(0,NULL); }

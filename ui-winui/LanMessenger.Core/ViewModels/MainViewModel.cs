@@ -1049,8 +1049,7 @@ public partial class MainViewModel : ObservableObject
             var el = await x.AccountSetModeAsync(mode);
             string? rk = el.TryGetProperty("recovery_key", out var p) ? p.GetString() : null;
             _ui.Post(() => { AccountMode = mode == "account" ? "account" : "device"; OnPropertyChanged(nameof(AccountModeLabel)); });
-            if (!string.IsNullOrEmpty(rk)) ShowStatus("请抄下恢复密钥：" + rk);
-            else ShowStatus(mode == "account" ? "已切换到账号模式" : "已切换到设备模式");
+            if (string.IsNullOrEmpty(rk)) ShowStatus(mode == "account" ? "已切换到账号模式" : "已切换到设备模式");
         });
     }
 

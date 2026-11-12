@@ -111,16 +111,17 @@ public sealed partial class SettingsPage : Page
         Services.UiPrefs.Current.CloseToTray = CloseToTraySwitch.IsOn; Services.UiPrefs.Current.Save();
     }
 
-    private async void AccountModeOn_Click(object sender, RoutedEventArgs e) => await VM.SetAccountModeAsync("account");
-    private async void AccountModeOff_Click(object sender, RoutedEventArgs e) => await VM.SetAccountModeAsync("device");
-    private async void RevealRk_Click(object sender, RoutedEventArgs e)
+    private async void AccountModeOn_Click(object sender, RoutedEventArgs e)
     {
-        var rk = await VM.RevealRecoveryKeyAsync();
-        if (!string.IsNullOrEmpty(rk))
-        {
-            var dlg = Services.ThemeService.Prepare(new ContentDialog { XamlRoot = XamlRoot, Title = "恢复密钥", Content = new TextBlock { Text = rk, IsTextSelectionEnabled = true, TextWrapping = TextWrapping.Wrap }, CloseButtonText = "关闭" });
-            await dlg.ShowAsync();
-        }
+        await VM.SetAccountModeAsync("account");
+        RecoveryPage.ForceConfirm = true;
+        App.MainWin?.NavigateTo("recovery");
+    }
+    private async void AccountModeOff_Click(object sender, RoutedEventArgs e) => await VM.SetAccountModeAsync("device");
+    private void RevealRk_Click(object sender, RoutedEventArgs e)
+    {
+        RecoveryPage.ForceConfirm = false;
+        App.MainWin?.NavigateTo("recovery");
     }
     private async void RestoreAccount_Click(object sender, RoutedEventArgs e) => await VM.RestoreAccountAsync(RestoreKeyBox.Text);
     private async void ApplyUri_Click(object sender, RoutedEventArgs e) => await VM.AddByLinkAsync(PasteUriBox.Text);

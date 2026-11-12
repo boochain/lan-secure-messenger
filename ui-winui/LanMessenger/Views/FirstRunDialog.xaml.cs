@@ -59,11 +59,7 @@ public sealed partial class FirstRunDialog : ContentDialog
         try
         {
             await App.VM.CompleteFirstRunAsync(NameBox.Text.Trim(), mode);
-            if (mode == "account")
-            {
-                var rk = await App.VM.RevealRecoveryKeyAsync();
-                if (!string.IsNullOrEmpty(rk)) App.VM.ShowStatus("请抄下恢复密钥：" + rk);
-            }
+            if (mode == "account") RecoveryPage.ForceConfirm = true;
         }
         finally { d.Complete(); }
     }

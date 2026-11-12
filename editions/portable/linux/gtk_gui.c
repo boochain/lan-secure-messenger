@@ -233,6 +233,7 @@ static char jump_id[40]; static gboolean jump_later(gpointer p);
 #include "gtk_v070.inc"
 #include "gtk_ux.inc"
 #include "gtk_v071.inc"
+#include "gtk_v072.inc"
 static gboolean delete_msg_idle(gpointer id){
     if(confirm("删除这条消息？","只会从本机删除，对方仍保留这条消息。此操作无法撤销。","删除")){ if(lsm_delete_message(C,(const char*)id)) msgbox(GTK_MESSAGE_WARNING,"删除失败：消息不存在。"); refresh_chat(); }
     g_free(id); return G_SOURCE_REMOVE; }
@@ -256,7 +257,7 @@ static gboolean scroll_later(gpointer p){ (void)p; scroll_bottom(); return G_SOU
 static void refresh_chat(void){
     GList *ch=gtk_container_get_children(GTK_CONTAINER(chat_box)), *it; lsm_msg *m; int n,i; char title[600]="", sub[600]="";
     for(it=ch;it;it=it->next) gtk_widget_destroy(GTK_WIDGET(it->data)); g_list_free(ch);
-    if(!cur_conv[0]){ gtk_stack_set_visible_child_name(GTK_STACK(stack),"empty"); gtk_label_set_text(GTK_LABEL(title_lbl),"局域网安全通讯"); gtk_label_set_text(GTK_LABEL(sub_lbl),"从左侧选择联系人或群组"); return; }
+    if(!cur_conv[0]){ gtk_stack_set_visible_child_name(GTK_STACK(stack),"empty"); gtk_label_set_text(GTK_LABEL(title_lbl),""); gtk_label_set_text(GTK_LABEL(sub_lbl),"从左侧选择联系人或群组"); return; }
     gtk_stack_set_visible_child_name(GTK_STACK(stack),"chat");
     lsm_lock(C);
     if(!strncmp(cur_conv,"dm:",3)){ lsm_contact *k; int nk=lsm_contacts(C,&k),j; for(j=0;j<nk;j++) if(!strcmp(k[j].fp,cur_conv+3)){ snprintf(title,sizeof title,"%s",lsm_display_name(&k[j])); snprintf(sub,sizeof sub,"%s · %s%s%s · %s",k[j].fp,k[j].online?"在线":"离线",k[j].app_version[0]?" · ":"",k[j].app_version,k[j].trust==TRUST_TRUSTED?"已信任":k[j].trust==TRUST_BLOCKED?"已屏蔽":"未信任（可在菜单中信任或 PIN 配对）"); } }
@@ -542,7 +543,7 @@ static gboolean win_key(GtkWidget *w, GdkEventKey *ev, gpointer p){ (void)w; (vo
     if(ev->keyval==GDK_KEY_F10){ gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(menu_btn),TRUE); return TRUE; }
     if(getenv("LSM_UI_TEST")){
         if(ev->keyval==GDK_KEY_F6){ test_open_last_image(); return TRUE; }
-        if(ev->keyval==GDK_KEY_F7){ v071_shot_first_run(); return TRUE; }
+        if(ev->keyval==GDK_KEY_F7){ if(ev->state&GDK_SHIFT_MASK) v072_shot_recovery(); else v071_shot_first_run(); return TRUE; }
         if(ev->keyval==GDK_KEY_F8){
             if(ev->state&GDK_CONTROL_MASK) v071_show_pair_qr();
             else if(ev->state&GDK_SHIFT_MASK) v071_show_server_qr();
@@ -570,20 +571,27 @@ static void activate(GtkApplication *a, gpointer p){
     gtk_box_pack_start(GTK_BOX(vb),title_lbl,FALSE,FALSE,0); gtk_box_pack_start(GTK_BOX(vb),sub_lbl,FALSE,FALSE,0); gtk_header_bar_set_custom_title(GTK_HEADER_BAR(hb),vb);
     mb=gtk_menu_button_new(); gtk_button_set_image(GTK_BUTTON(mb),gtk_image_new_from_icon_name("open-menu-symbolic",GTK_ICON_SIZE_BUTTON)); gtk_widget_set_tooltip_text(mb,"菜单");
     menu=gtk_menu_new();
-    mi(menu,"按 IP 添加…",A_ADDIP); mi(menu,"通过链接添加…",A_ADDURI); mi(menu,"我的二维码…",A_MYQR); mi(menu,"切换会话… (Ctrl+K)",A_QUICK); sep(menu); mi(menu,"信任当前联系人",A_TRUST); mi(menu,"取消信任",A_UNTRUST); mi(menu,"屏蔽",A_BLOCK); sep(menu);
-    mi(menu,"生成 PIN（让对方输入）",A_PINOFFER); mi(menu,"输入 PIN 配对…",A_PINPAIR); sep(menu);
-    { GtkWidget *am=gtk_menu_new(),*ai=gtk_menu_item_new_with_label("账号与二维码"); mi(am,"服务器二维码…",A_SERVERQR); mi(am,"配对新设备…",A_PAIRQR); mi(am,"从图片识别二维码…",A_ADDURI); mi(am,"切换账号/设备模式…",A_ACCTMODE); mi(am,"显示恢复密钥…",A_REVEALRK); gtk_menu_item_set_submenu(GTK_MENU_ITEM(ai),am); gtk_menu_shell_append(GTK_MENU_SHELL(menu),ai); } /* extras in a submenu so the main menu stays shorter than the window */
-    { GtkWidget *gm=gtk_menu_new(),*gi=gtk_menu_item_new_with_label("群组"); mi(gm,"创建群组…",A_GCREATE); mi(gm,"邀请成员…",A_GINVITE); mi(gm,"移除成员…",A_GREMOVE); mi(gm,"退出群组",A_GLEAVE); gtk_menu_item_set_submenu(GTK_MENU_ITEM(gi),gm); gtk_menu_shell_append(GTK_MENU_SHELL(menu),gi); } /* submenus keep the main menu shorter than the window */
-    
-    { GtkWidget *cm=gtk_menu_new(),*ci=gtk_menu_item_new_with_label("当前会话");
-      mi(cm,"置顶 / 取消置顶当前会话",A_PINCONV); mi(cm,"本会话的置顶消息…",A_PINNED); mi(cm,"多选消息…",A_MULTI); sep(cm);
-      mi(cm,"发起投票…",A_POLL); mi(cm,"定时删除…",A_TTL); mi(cm,"归档 / 取消归档当前会话",A_ARCHIVE); mi(cm,"会话分组…",A_FOLDERS); sep(cm); mi(cm,"清空聊天记录…",A_CLEAR);
-      gtk_menu_item_set_submenu(GTK_MENU_ITEM(ci),cm); gtk_menu_shell_append(GTK_MENU_SHELL(menu),ci); }
-    { GtkWidget *tm=gtk_menu_new(),*ti=gtk_menu_item_new_with_label("工具与资料"); mi(tm,"收藏的消息…",A_STARRED); mi(tm,"筛选会话（分组 / 已归档）…",A_FILTER); mi(tm,"文件传输",A_XFERS); mi(tm,"打开接收文件夹",A_DLDIR); mi(tm,"个人资料…",A_PROFILE); mi(tm,"设置防火墙（ufw / firewalld）…",A_FIREWALL); gtk_menu_item_set_submenu(GTK_MENU_ITEM(ti),tm); gtk_menu_shell_append(GTK_MENU_SHELL(menu),ti); } sep(menu); mi(menu,"关于",A_ABOUT); mi(menu,"退出",A_QUIT);
-    gtk_widget_show_all(menu); gtk_widget_set_halign(menu,GTK_ALIGN_END); /* open leftwards, inside the window */ gtk_menu_button_set_popup(GTK_MENU_BUTTON(mb),menu); gtk_header_bar_pack_end(GTK_HEADER_BAR(hb),mb); menu_btn=mb;
+    { GtkWidget *s=v072_msub(menu,"添加");
+      mi(s,"按 IP 添加…",A_ADDIP); mi(s,"通过链接添加…",A_ADDURI); mi(s,"我的二维码…",A_MYQR); mi(s,"从图片识别二维码…",A_ADDURI); mi(s,"切换会话… (Ctrl+K)",A_QUICK); }
+    { GtkWidget *s=v072_msub(menu,"当前联系人");
+      mi(s,"信任当前联系人",A_TRUST); mi(s,"取消信任",A_UNTRUST); mi(s,"屏蔽",A_BLOCK); mi(s,"生成 PIN（让对方输入）",A_PINOFFER); mi(s,"输入 PIN 配对…",A_PINPAIR); }
+    { GtkWidget *s=v072_msub(menu,"账号与二维码");
+      mi(s,"服务器二维码…",A_SERVERQR); mi(s,"配对新设备…",A_PAIRQR); mi(s,"切换账号/设备模式…",A_ACCTMODE); mi(s,"显示恢复密钥…",A_REVEALRK); mi(s,"重连服务器",A_RECONNECT); }
+    { GtkWidget *s=v072_msub(menu,"群组");
+      mi(s,"创建群组…",A_GCREATE); mi(s,"邀请成员…",A_GINVITE); mi(s,"移除成员…",A_GREMOVE); mi(s,"退出群组",A_GLEAVE); }
+    { GtkWidget *more=v072_msub(menu,"更多");
+      GtkWidget *sess=v072_msub(more,"当前会话");
+      mi(sess,"置顶 / 取消置顶当前会话",A_PINCONV); mi(sess,"归档 / 取消归档当前会话",A_ARCHIVE); mi(sess,"会话分组…",A_FOLDERS); mi(sess,"清空聊天记录…",A_CLEAR);
+      { GtkWidget *msg=v072_msub(sess,"消息工具"); mi(msg,"本会话的置顶消息…",A_PINNED); mi(msg,"多选消息…",A_MULTI); mi(msg,"发起投票…",A_POLL); mi(msg,"定时删除…",A_TTL); }
+      GtkWidget *tools=v072_msub(more,"资料");
+      mi(tools,"个人资料…",A_PROFILE); mi(tools,"收藏的消息…",A_STARRED); mi(tools,"筛选会话（分组 / 已归档）…",A_FILTER);
+      GtkWidget *files=v072_msub(more,"文件与系统");
+      mi(files,"文件传输",A_XFERS); mi(files,"打开接收文件夹",A_DLDIR); mi(files,"设置防火墙（ufw / firewalld）…",A_FIREWALL);
+      mi(more,"关于",A_ABOUT); mi(more,"退出",A_QUIT); }
+        gtk_widget_show_all(menu); gtk_widget_set_halign(menu,GTK_ALIGN_END); /* open leftwards, inside the window */ gtk_menu_button_set_popup(GTK_MENU_BUTTON(mb),menu); gtk_header_bar_pack_end(GTK_HEADER_BAR(hb),mb); menu_btn=mb;
+    if(icon_path[0]){ GdkPixbuf *pb=gdk_pixbuf_new_from_file_at_size(icon_path,24,24,NULL); if(pb){ GtkWidget *ic=gtk_image_new_from_pixbuf(pb); g_object_unref(pb); gtk_widget_set_valign(ic,GTK_ALIGN_CENTER); gtk_widget_set_margin_end(ic,4); gtk_header_bar_pack_start(GTK_HEADER_BAR(hb),ic); } }
     { GtkWidget *add=gtk_button_new_from_icon_name("list-add-symbolic",GTK_ICON_SIZE_BUTTON); gtk_widget_set_tooltip_text(add,"按 IP 添加"); g_signal_connect(add,"clicked",G_CALLBACK(act),GINT_TO_POINTER(A_ADDIP)); gtk_header_bar_pack_start(GTK_HEADER_BAR(hb),add); }
     { GtkWidget *rf=gtk_button_new_from_icon_name("view-refresh-symbolic",GTK_ICON_SIZE_BUTTON); gtk_widget_set_tooltip_text(rf,"刷新联系人"); g_signal_connect(rf,"clicked",G_CALLBACK(act),GINT_TO_POINTER(A_REFRESH)); gtk_header_bar_pack_start(GTK_HEADER_BAR(hb),rf); }
-    { GtkWidget *rc=gtk_button_new_with_label("重连"); gtk_widget_set_tooltip_text(rc,"重新连接服务器并拉取消息"); g_signal_connect(rc,"clicked",G_CALLBACK(act),GINT_TO_POINTER(A_RECONNECT)); gtk_header_bar_pack_start(GTK_HEADER_BAR(hb),rc); }
     { GtkWidget *hs=gtk_button_new_from_icon_name("edit-find-symbolic",GTK_ICON_SIZE_BUTTON); gtk_widget_set_tooltip_text(hs,"消息历史 (Ctrl+Shift+F)"); g_signal_connect(hs,"clicked",G_CALLBACK(act),GINT_TO_POINTER(A_HISTORY)); gtk_header_bar_pack_end(GTK_HEADER_BAR(hb),hs);
       hs=gtk_button_new_from_icon_name("avatar-default-symbolic",GTK_ICON_SIZE_BUTTON); gtk_widget_set_tooltip_text(hs,"联系人资料 / 备注名"); g_signal_connect(hs,"clicked",G_CALLBACK(act),GINT_TO_POINTER(A_CPROFILE)); gtk_header_bar_pack_end(GTK_HEADER_BAR(hb),hs); }
     gtk_window_set_titlebar(GTK_WINDOW(win),hb);

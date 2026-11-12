@@ -399,61 +399,67 @@
                         <FontIcon Glyph="&#xE712;" FontSize="16" />
                         <Button.Flyout>
                             <MenuFlyout Placement="BottomEdgeAlignedRight">
-                                <MenuFlyoutItem Text="联系人资料 / 备注名…" Click="ContactProfile_Click" Visibility="{x:Bind VM.SelectedIsDm, Mode=OneWay}">
-                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE77B;" /></MenuFlyoutItem.Icon>
-                                </MenuFlyoutItem>
-                                <MenuFlyoutItem Text="消息历史…" Click="History_Click">
-                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE81C;" /></MenuFlyoutItem.Icon>
-                                    <MenuFlyoutItem.KeyboardAccelerators><KeyboardAccelerator Modifiers="Control,Shift" Key="F" /></MenuFlyoutItem.KeyboardAccelerators>
-                                </MenuFlyoutItem>
+                                <MenuFlyoutSubItem Text="会话">
+                                    <MenuFlyoutItem Text="置顶 / 取消置顶会话" Click="PinConv_Click">
+                                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE718;" /></MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem Text="归档 / 取消归档" Click="Archive_Click">
+                                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE7B8;" /></MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem Text="会话分组…" Click="Folders_Click">
+                                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8B7;" /></MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem Text="消息历史…" Click="History_Click">
+                                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE81C;" /></MenuFlyoutItem.Icon>
+                                        <MenuFlyoutItem.KeyboardAccelerators><KeyboardAccelerator Modifiers="Control,Shift" Key="F" /></MenuFlyoutItem.KeyboardAccelerators>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem Text="清空聊天记录…" Click="ClearChat_Click" />
+                                </MenuFlyoutSubItem>
+                                <MenuFlyoutSubItem Text="消息">
+                                    <MenuFlyoutItem Text="发起投票…" Click="NewPoll_Click">
+                                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE9D2;" /></MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem Text="定时删除…" Click="Ttl_Click">
+                                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE916;" /></MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem Text="置顶消息…" Click="PinnedList_Click">
+                                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE840;" /></MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem Text="收藏的消息…" Click="StarredList_Click">
+                                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE734;" /></MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem Text="多选消息" Click="MultiSelect_Click">
+                                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE762;" /></MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                </MenuFlyoutSubItem>
+                                <MenuFlyoutSubItem Text="联系人">
+                                    <MenuFlyoutItem Text="联系人资料 / 备注名…" Click="ContactProfile_Click" Visibility="{x:Bind VM.SelectedIsDm, Mode=OneWay}">
+                                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE77B;" /></MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem Text="联系人详情" Click="Details_Click">
+                                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE946;" /></MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem Text="信任（核对指纹后）" Command="{x:Bind VM.TrustSelectedCommand}" Visibility="{x:Bind VM.SelectedIsDm, Mode=OneWay}">
+                                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8FB;" /></MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem Text="PIN 配对" Click="Pin_Click" Visibility="{x:Bind VM.SelectedIsDm, Mode=OneWay}">
+                                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8D7;" /></MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutSubItem Text="更多">
+                                        <MenuFlyoutItem Text="免打扰" Command="{x:Bind VM.ToggleMuteCommand}">
+                                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE7ED;" /></MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                        <MenuFlyoutItem Text="复制对方指纹" Click="CopyPeerFp_Click">
+                                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8C8;" /></MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                        <MenuFlyoutItem Text="取消信任" Command="{x:Bind VM.UntrustSelectedCommand}" />
+                                        <MenuFlyoutItem Text="屏蔽" Command="{x:Bind VM.BlockSelectedCommand}" />
+                                        <MenuFlyoutItem Text="忘记此联系人" Click="Forget_Click" />
+                                    </MenuFlyoutSubItem>
+                                </MenuFlyoutSubItem>
                                 <MenuFlyoutItem Text="我的二维码 / 添加链接…" Click="MyQr_Click">
                                     <MenuFlyoutItem.Icon><FontIcon Glyph="&#xED14;" /></MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
-                                <MenuFlyoutItem Text="发起投票…" Click="NewPoll_Click">
-                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE9D2;" /></MenuFlyoutItem.Icon>
-                                </MenuFlyoutItem>
-                                <MenuFlyoutItem Text="定时删除…" Click="Ttl_Click">
-                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE916;" /></MenuFlyoutItem.Icon>
-                                </MenuFlyoutItem>
-                                <MenuFlyoutItem Text="归档 / 取消归档" Click="Archive_Click">
-                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE7B8;" /></MenuFlyoutItem.Icon>
-                                </MenuFlyoutItem>
-                                <MenuFlyoutItem Text="会话分组…" Click="Folders_Click">
-                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8B7;" /></MenuFlyoutItem.Icon>
-                                </MenuFlyoutItem>
-                                <MenuFlyoutItem Text="置顶 / 取消置顶会话" Click="PinConv_Click">
-                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE718;" /></MenuFlyoutItem.Icon>
-                                </MenuFlyoutItem>
-                                <MenuFlyoutItem Text="置顶消息…" Click="PinnedList_Click">
-                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE840;" /></MenuFlyoutItem.Icon>
-                                </MenuFlyoutItem>
-                                <MenuFlyoutItem Text="收藏的消息…" Click="StarredList_Click">
-                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE734;" /></MenuFlyoutItem.Icon>
-                                </MenuFlyoutItem>
-                                <MenuFlyoutItem Text="多选消息" Click="MultiSelect_Click">
-                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE762;" /></MenuFlyoutItem.Icon>
-                                </MenuFlyoutItem>
-                                <MenuFlyoutItem Text="联系人详情" Click="Details_Click">
-                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE946;" /></MenuFlyoutItem.Icon>
-                                </MenuFlyoutItem>
-                                <MenuFlyoutSeparator />
-                                <MenuFlyoutItem Text="信任（核对指纹后）" Command="{x:Bind VM.TrustSelectedCommand}" Visibility="{x:Bind VM.SelectedIsDm, Mode=OneWay}">
-                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8FB;" /></MenuFlyoutItem.Icon>
-                                </MenuFlyoutItem>
-                                <MenuFlyoutItem Text="PIN 配对" Click="Pin_Click" Visibility="{x:Bind VM.SelectedIsDm, Mode=OneWay}">
-                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8D7;" /></MenuFlyoutItem.Icon>
-                                </MenuFlyoutItem>
-                                <MenuFlyoutItem Text="免打扰" Command="{x:Bind VM.ToggleMuteCommand}">
-                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE7ED;" /></MenuFlyoutItem.Icon>
-                                </MenuFlyoutItem>
-                                <MenuFlyoutItem Text="复制对方指纹" Click="CopyPeerFp_Click">
-                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8C8;" /></MenuFlyoutItem.Icon>
-                                </MenuFlyoutItem>
-                                <MenuFlyoutSeparator />
-                                <MenuFlyoutItem Text="取消信任" Command="{x:Bind VM.UntrustSelectedCommand}" />
-                                <MenuFlyoutItem Text="屏蔽" Command="{x:Bind VM.BlockSelectedCommand}" />
-                                <MenuFlyoutItem Text="清空聊天记录…" Click="ClearChat_Click" />
-                                <MenuFlyoutItem Text="忘记此联系人" Click="Forget_Click" />
                             </MenuFlyout>
                         </Button.Flyout>
                     </Button>

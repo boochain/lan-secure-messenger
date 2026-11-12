@@ -70,13 +70,5 @@ static void v070_on_command(int id){
     else if(id==IDM_V070_MARKREAD && cur_conv[0]){ lsm_mark_read(C,cur_conv); refresh_list(); refresh_chat(); } /* LSMF_chat_mark_read */
     else if(id==IDM_V070_MARKUNREAD && cur_conv[0]){ lsm_mark_unread(C,cur_conv); refresh_list(); } /* LSMF_chat_mark_unread */
 }
-static void v070_extend_contact_menu(HMENU pm){
-    /* LSMF_chat_list_menu LSMF_chat_pin (IDM_PINCONV) LSMF_chat_delete (IDM_CLEAR) LSMF_chat_mute (IDM_MUTE) */
-    InsertMenuW(pm,0,MF_BYPOSITION|MF_STRING,IDM_V070_MARKUNREAD,L"标为未读");
-    InsertMenuW(pm,0,MF_BYPOSITION|MF_STRING,IDM_V070_MARKREAD,L"标为已读");
-}
-static void v070_extend_menus(HMENU filem, HMENU contactsm, HMENU settingsm){
-    if(filem){ AM(filem,MF_STRING,IDM_V070_FILES,L"文件站"); AM(filem,MF_STRING,IDM_V070_TRANSFERS,L"传输页"); AM(filem,MF_STRING,IDM_V070_CHATS,L"聊天页"); }
-    if(contactsm){ AM(contactsm,MF_STRING,IDM_V070_CONTACTS,L"联系人页"); AM(contactsm,MF_STRING,IDM_V070_GROUPS,L"群组页"); }
-    if(settingsm){ AM(settingsm,MF_STRING,IDM_V070_PROFILE,L"个人资料页"); AM(settingsm,MF_STRING,IDM_V070_SETTINGS,L"设置页"); AM(settingsm,MF_STRING,IDM_V070_DIAG,L"诊断页"); }
-}
+static void v070_extend_contact_menu(HMENU pm){ (void)pm; /* mark-read/unread nested in contact_menu (v0.7.2 ≤5) LSMF_chat_mark_read LSMF_chat_mark_unread */ }
+static void v070_extend_menus(HMENU filem, HMENU contactsm, HMENU settingsm){ (void)filem;(void)contactsm;(void)settingsm; /* pages now nested in build_menu (v0.7.2 ≤5) */ }

@@ -254,6 +254,7 @@ public sealed partial class MainWindow : Window
             "profile" => typeof(ProfilePage),
             "settings" => typeof(SettingsPage),
             "diag" => typeof(DiagnosticsPage),
+            "recovery" => typeof(RecoveryPage),
             _ => typeof(ChatPage),
         };
         foreach (var item in Nav.MenuItems.Concat(Nav.FooterMenuItems).OfType<NavigationViewItem>())
@@ -283,6 +284,11 @@ public sealed partial class MainWindow : Window
         if (Environment.GetEnvironmentVariable("LSM_UI_SMOKE") is { Length: > 0 }) return;
         var dlg = ThemeService.Prepare(new FirstRunDialog { XamlRoot = Content.XamlRoot });
         await dlg.ShowAsync();
+        if (VM.AccountMode == "account")
+        {
+            RecoveryPage.ForceConfirm = true;
+            NavigateTo("recovery");
+        }
     }
 
     [DllImport("user32.dll")]

@@ -126,9 +126,9 @@ public static class UiSmoke
             catch (Exception e) { Fail("qr/scan dialogs: " + e.Message); }
 
             if (App.VM.Conversations.Count > 0) App.VM.SelectedConversation = App.VM.Conversations[0];
-            // GUI verified page shots (not unit tests): page-chat page-contacts page-groups page-transfers page-files page-profile page-settings page-diag
-            // LSMF_nav_chats LSMF_nav_contacts LSMF_nav_groups LSMF_nav_transfers LSMF_nav_files LSMF_nav_settings LSMF_nav_profile LSMF_nav_diagnostics
-            foreach (var tag in new[] { "chat", "contacts", "groups", "transfers", "files", "profile", "settings", "diag" })
+            // GUI verified page shots (not unit tests): page-chat page-contacts page-groups page-transfers page-files page-profile page-settings page-diag page-recovery
+            // LSMF_nav_chats LSMF_nav_contacts LSMF_nav_groups LSMF_nav_transfers LSMF_nav_files LSMF_nav_settings LSMF_nav_profile LSMF_nav_diagnostics LSMF_recovery_key
+            foreach (var tag in new[] { "chat", "contacts", "groups", "transfers", "files", "profile", "settings", "diag", "recovery" })
             {
                 w.NavigateTo(tag);
                 if (tag == "diag") await App.VM.RefreshDiagnosticsAsync(false);
