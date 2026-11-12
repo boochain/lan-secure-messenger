@@ -104,7 +104,12 @@ static void v072_show_recovery(int force, const char *preset){
     k=gtk_label_new(rk); gtk_label_set_selectable(GTK_LABEL(k),TRUE); gtk_label_set_wrap(GTK_LABEL(k),TRUE);
     gtk_label_set_wrap_mode(GTK_LABEL(k),PANGO_WRAP_CHAR);
     { PangoAttrList *a=pango_attr_list_new(); pango_attr_list_insert(a,pango_attr_family_new("monospace")); pango_attr_list_insert(a,pango_attr_scale_new(1.35)); gtk_label_set_attributes(GTK_LABEL(k),a); pango_attr_list_unref(a); }
-    gtk_widget_set_name(k,"LSMF_recovery_key"); gtk_label_set_xalign(GTK_LABEL(k),0); gtk_box_append(GTK_BOX(box),k);
+    gtk_widget_set_name(k,"LSMF_recovery_key"); gtk_label_set_xalign(GTK_LABEL(k),0);
+    /* Wrap in .bubble.mine so the key uses the approved palette (GTK's selectable
+       selection colour #BED6F4 was a stray dE 5.29 from 'mine' #D7E6FA). */
+    { GtkWidget *card=gtk_box_new(GTK_ORIENTATION_VERTICAL,0); gtk_widget_add_css_class(card,"bubble"); gtk_widget_add_css_class(card,"mine");
+      gtk_widget_set_margin_top(k,6); gtk_widget_set_margin_bottom(k,6); gtk_widget_set_margin_start(k,8); gtk_widget_set_margin_end(k,8);
+      gtk_box_append(GTK_BOX(card),k); gtk_box_append(GTK_BOX(box),card); gtk_label_select_region(GTK_LABEL(k),0,0); }
     row=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,8);
     copy=gtk_button_new_with_label("复制"); exp=gtk_button_new_with_label("导出到文件…");
     g_signal_connect(copy,"clicked",G_CALLBACK(v072_rk_copy),NULL);
