@@ -6,7 +6,7 @@ static gboolean v072_rk_unselect_idle(gpointer w){
     if(GTK_IS_LABEL(w)) gtk_label_select_region(GTK_LABEL(w),0,0);
     return G_SOURCE_REMOVE;
 }
-static void v072_rk_unselect_on_map(GtkWidget *w, gpointer){
+static void v072_rk_unselect_on_map(GtkWidget *w, gpointer unused){ (void)unused;
     gtk_label_select_region(GTK_LABEL(w),0,0);
     g_idle_add(v072_rk_unselect_idle,w);
 }

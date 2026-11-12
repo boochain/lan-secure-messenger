@@ -1113,7 +1113,7 @@ static void caption_context(wchar_t *out, int n){
 }
 static void paint_caption_context(HWND h){
     RECT wr; POINT tl={0,0}; HDC dc; int cap_h, frame, cap_w, x, active, icon_x, btn_w;
-    wchar_t ctx[160]; NONCLIENTMETRICSW ncm; HFONT f=NULL, of;
+    wchar_t ctx[160]; HFONT of;
     if(!h || !IsWindowVisible(h) || IsIconic(h)) return;
     GetWindowRect(h,&wr); ClientToScreen(h,&tl);
     cap_h=tl.y-wr.top; frame=tl.x-wr.left; cap_w=wr.right-wr.left;
@@ -1127,22 +1127,19 @@ static void paint_caption_context(HWND h){
     { COLORREF a=GetSysColor(active?COLOR_ACTIVECAPTION:COLOR_INACTIVECAPTION);
       COLORREF b=GetSysColor(active?COLOR_GRADIENTACTIVECAPTION:COLOR_GRADIENTINACTIVECAPTION);
       for(x=icon_x;x<cap_w-btn_w;x++){
-        int t=cap_w>1?(x*1024)/(cap_w-1):0; COLORREF c;
-        c=RGB((GetRValue(a)*(1024-t)+GetRValue(b)*t)/1024,
-              (GetGValue(a)*(1024-t)+GetGValue(b)*t)/1024,
-              (GetBValue(a)*(1024-t)+GetBValue(b)*t)/1024);
+        int g=cap_w>1?(x*1024)/(cap_w-1):0; COLORREF c;
+        c=RGB((GetRValue(a)*(1024-g)+GetRValue(b)*g)/1024,
+              (GetGValue(a)*(1024-g)+GetGValue(b)*g)/1024,
+              (GetBValue(a)*(1024-g)+GetBValue(b)*g)/1024);
         { HPEN pe=CreatePen(PS_SOLID,1,c); HGDIOBJ op=SelectObject(dc,pe);
           MoveToEx(dc,x,0,NULL); LineTo(dc,x,cap_h); SelectObject(dc,op); DeleteObject(pe); }
       } }
-    memset(&ncm,0,sizeof ncm); ncm.cbSize=sizeof ncm;
-    if(SystemParametersInfoW(SPI_GETNONCLIENTMETRICS,sizeof ncm,&ncm,0))
-        f=CreateFontIndirectW(&ncm.lfCaptionFont);
-    of=(HFONT)SelectObject(dc,f?f:GetStockObject(DEFAULT_GUI_FONT));
+    of=(HFONT)SelectObject(dc,GetStockObject(DEFAULT_GUI_FONT));
     SetBkMode(dc,TRANSPARENT);
     SetTextColor(dc,GetSysColor(active?COLOR_CAPTIONTEXT:COLOR_INACTIVECAPTIONTEXT));
-    { RECT tr; tr.left=icon_x; tr.top=0; tr.right=cap_w-btn_w; tr.bottom=cap_h;
-      DrawTextW(dc,ctx,-1,&tr,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX|DT_END_ELLIPSIS); }
-    SelectObject(dc,of); if(f) DeleteObject(f); ReleaseDC(h,dc);
+    { RECT text_r; text_r.left=icon_x; text_r.top=0; text_r.right=cap_w-btn_w; text_r.bottom=cap_h;
+      DrawTextW(dc,ctx,-1,&text_r,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX|DT_END_ELLIPSIS); }
+    SelectObject(dc,of); ReleaseDC(h,dc);
 }
 static void refresh_caption(void){
     if(hMain) RedrawWindow(hMain,NULL,NULL,RDW_FRAME|RDW_INVALIDATE);
