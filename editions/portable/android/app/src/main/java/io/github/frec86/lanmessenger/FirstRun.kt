@@ -16,7 +16,7 @@ import androidx.compose.ui.unit.dp
 
 /** First-run: pick 账号模式 (server-bound, E2E history) or 设备模式 (LAN only). LSMF_account_mode */
 @Composable
-fun FirstRunScreen(onDone: () -> Unit) {
+fun FirstRunScreen(onDone: (account: Boolean) -> Unit) {
     val p = LocalPalette.current
     var mode by remember { mutableStateOf("device") }
     Column(
@@ -38,12 +38,8 @@ fun FirstRunScreen(onDone: () -> Unit) {
         Button({
             val e = Native.completeFirstRun("", mode, "")
             if (e.isNotEmpty()) Repo.toast.value = e
-            if (mode == "account") {
-                val rk = Native.revealRecoveryKey()
-                if (rk.isNotEmpty()) Repo.toast.value = "请抄下恢复密钥：$rk"
-            }
-            Repo.refresh(); onDone()
-        }, Modifier.fillMaxWidth()) { Text("开始使用") }
+            Repo.refresh(); onDone(mode == "account")
+        }, Modifier.fillMaxWidth()) { Text(if (mode == "account") "下一步" else "开始使用") }
     }
 }
 

@@ -248,27 +248,43 @@ for th in ("light", "dark"):
         back(); time.sleep(1)
     else:
         print("WARN no 王工 row for conv long-press/swipe", flush=True)
-    # LSMF_nav_* bottom tabs + overflow pages
-    # LSMF_nav_chats LSMF_nav_contacts LSMF_nav_groups LSMF_nav_transfers LSMF_nav_files LSMF_nav_settings LSMF_nav_profile LSMF_nav_diagnostics
-    for label, hook in (("联系人", "LSMF_nav_contacts"), ("群组", "LSMF_nav_groups"),
-                        ("传输", "LSMF_nav_transfers"), ("文件站", "LSMF_nav_files"),
-                        ("设置", "LSMF_nav_settings"), ("聊天", "LSMF_nav_chats")):
+    # LSMF_nav_* : 4 bottom tabs (聊天/联系人/文件/设置). 群组 is a chat-list chip;
+    # 传输/文件站 are sub-pages of 文件; 个人资料/诊断信息 live under 设置.
+    def nav_shot(label, hook, timeout=20):
         try:
-            tap_text(label, timeout=20)
+            tap_text(label, timeout=timeout)
+            time.sleep(0.6)
             shot(f"android-{th}-page-{hook.split('_')[-1]}")
         except Exception as e:
             print("WARN nav", label, e, flush=True)
+    nav_shot("聊天", "LSMF_nav_chats")
+    nav_shot("群组", "LSMF_nav_groups")
+    nav_shot("联系人", "LSMF_nav_contacts")
+    nav_shot("文件", "LSMF_nav_files_tab")
+    nav_shot("传输", "LSMF_nav_transfers")
+    nav_shot("文件站", "LSMF_nav_files")
+    nav_shot("设置", "LSMF_nav_settings")
     try:
-        if find(lambda n: n.get("content-desc") == "个人资料"):
-            tap_text("个人资料", timeout=15)
-            shot(f"android-{th}-page-profile")
-            back(); time.sleep(1)
-        tap_text("菜单", timeout=15)
+        if not find(lambda n: n.get("text") == "个人资料"):
+            try: tap_text("设置", timeout=10)
+            except Exception: pass
+            time.sleep(0.5)
+        tap_text("个人资料", timeout=15)
+        shot(f"android-{th}-page-profile")
+        back(); time.sleep(1)
+        if not find(lambda n: n.get("text") == "诊断信息"):
+            try: tap_text("设置", timeout=10)
+            except Exception: pass
+            time.sleep(0.5)
         tap_text("诊断信息", timeout=15)
         shot(f"android-{th}-page-diagnostics")
         back(); time.sleep(1)
     except Exception as e:
         print("WARN profile/diag pages", e, flush=True)
+    try:
+        tap_text("聊天", timeout=10)
+    except Exception:
+        pass
     # opened QR + scan view (fake camera) + scan-from-image + server/pair QR
     if find(lambda n: n.get("text") == "聊天" or n.get("content-desc") == "聊天"):
         try: tap_text("聊天", timeout=10)
