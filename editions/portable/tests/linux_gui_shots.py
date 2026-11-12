@@ -203,23 +203,44 @@ def emoji_boxes(png):
 
 
 def qr_canvas_ignore(png):
-    """Ignore the black-on-white QR graphic (a machine-readable picture, not UI text)."""
+    """Ignore only the white QR canvas (a machine-readable picture). Leave the URI and buttons audited.
+
+    Do not union every dark pixel: URI text is also near-black, and a large pad then covers the
+    whole dialog, which makes the colour audit see a blank strip and fail NO_TEXT.
+    """
     from PIL import Image
+    import numpy as np
+    try:
+        import cv2
+    except ImportError:
+        return []
     im = Image.open(png).convert("RGB")
     w, h = im.size
-    px = im.load()
-    xs, ys = [], []
-    for y in range(h):
-        for x in range(w):
-            r, g, b = px[x, y]
-            if r < 40 and g < 40 and b < 40:
-                xs.append(x); ys.append(y)
-    if len(xs) < 80:
+    a = np.asarray(im)
+    white = ((a[..., 0] > 245) & (a[..., 1] > 245) & (a[..., 2] > 245)).astype("uint8")
+    k = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    white = cv2.morphologyEx(white, cv2.MORPH_CLOSE, k, iterations=2)
+    n, _, stt, _ = cv2.connectedComponentsWithStats(white, connectivity=8)
+    best = None
+    for i in range(1, n):
+        x, y, bw, bh, area = map(int, stt[i])
+        if area < 80 * 80:
+            continue
+        ratio = max(bw, bh) / max(1, min(bw, bh))
+        if ratio > 1.25:
+            continue
+        roi = a[y:y + bh, x:x + bw]
+        dark = int(((roi[..., 0] < 40) & (roi[..., 1] < 40) & (roi[..., 2] < 40)).sum())
+        if dark < 200:
+            continue
+        if best is None or area > best[-1]:
+            best = (x, y, bw, bh, area)
+    if not best:
         return []
-    # quiet zone is ~4 modules; pad enough to cover the whole white canvas
-    pad = max(36, (max(xs) - min(xs)) // 8)
-    x0 = max(0, min(xs) - pad); y0 = max(0, min(ys) - pad)
-    x1 = min(w, max(xs) + pad + 1); y1 = min(h, max(ys) + pad + 1)
+    x, y, bw, bh, _ = best
+    pad = 4  # include the 1px card border, not the dialog chrome
+    x0, y0 = max(0, x - pad), max(0, y - pad)
+    x1, y1 = min(w, x + bw + pad), min(h, y + bh + pad)
     return [[x0, y0, x1 - x0, y1 - y0]]
 
 ign_path = f"{a.out}/audit_ignore.json"

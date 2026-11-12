@@ -211,13 +211,7 @@ for th in ("light", "dark"):
         tap_text("我的二维码", timeout=15)
         shot(f"android-{th}-16-my-qr")  # my-qr LSMF_qr_profile
         back(); time.sleep(1)
-        tap_text("菜单", timeout=15)
-        tap_text("扫描二维码", timeout=15)
-        shot(f"android-{th}-17-scan")  # scan LSMF_qr_scan
-        tap_row("从图片识别")
-        time.sleep(1)
-        shot(f"android-{th}-18-scan-image")  # scan-image LSMF_qr_scan
-        back_to_main()
+        # settings QR first: system Back on the scan page used to toast 再按一次退出 / exit the app
         tap_text("设置", timeout=15)
         time.sleep(0.6)
         tap_row("服务器二维码")
@@ -230,7 +224,22 @@ for th in ("light", "dark"):
             sh("input swipe 540 1500 540 400 400"); time.sleep(0.7)
         tap_row("配对新设备")
         shot(f"android-{th}-20-pair-qr")  # pair-qr LSMF_qr_pair
-        back_to_main()
+        back(); time.sleep(0.8)
+        if find(lambda n: n.get("text") == "聊天" or n.get("content-desc") == "聊天"):
+            try: tap_text("聊天", timeout=8)
+            except Exception: pass
+        tap_text("菜单", timeout=15)
+        tap_text("扫描二维码", timeout=15)
+        shot(f"android-{th}-17-scan")  # scan LSMF_qr_scan
+        tap_row("从图片识别")
+        time.sleep(1)
+        shot(f"android-{th}-18-scan-image")  # scan-image LSMF_qr_scan
+        # the toolbar 返回 button dismisses the scan overlay; system Back also should, after BackHandler
+        if find(lambda n: n.get("text") == "返回" or n.get("content-desc") == "返回"):
+            tap_text("返回", timeout=8)
+        else:
+            back_to_main()
+        time.sleep(0.8)
     except Exception as e:
         raise RuntimeError("qr/scan shots failed: " + str(e))
     if find(lambda n: n.get("text") == "聊天" or n.get("content-desc") == "聊天"):

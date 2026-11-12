@@ -2,6 +2,7 @@ package io.github.frec86.lanmessenger
 
 import android.Manifest
 import android.content.pm.PackageManager
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
@@ -46,6 +47,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 /** CameraX + ZXing QR scan (no ML Kit). Paste fallback: LSMF_qr_scan LSMF_qr_server LSMF_qr_pair */
 @Composable
 fun QrScanScreen(onResult: (String) -> Unit, onDismiss: () -> Unit) {
+    BackHandler { onDismiss() }
     val ctx = LocalContext.current
     val owner = LocalLifecycleOwner.current
     val p = LocalPalette.current
