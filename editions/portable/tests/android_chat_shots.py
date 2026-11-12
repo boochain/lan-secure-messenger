@@ -138,13 +138,23 @@ for th in ("light", "dark"):
         if find(lambda n: n.get("text") in ("置顶", "取消置顶")) is None:
             print("WARN long-press conv menu missing 置顶", flush=True)
         back(); time.sleep(1)
-        row = find(lambda n: n.get("text") == "王工") or row
-        # LSMF_chat_list_swipe: horizontal swipe opens the same menu
-        left = max(row[0] - 280, 20)
-        sh(f"input swipe {row[0]} {row[1]} {left} {row[1]} 350"); time.sleep(1.5)
+        # LSMF_chat_list_swipe: swipe left from the right side of the row (Telegram style)
+        def swipe_open():
+            hit = find(lambda n: n.get("text") == "王工")
+            if not hit:
+                return False
+            # start to the right of the name so the gesture crosses the row, duration 700ms
+            x1, y = min(hit[0] + 320, 760), hit[1]
+            x2 = max(hit[0] - 200, 40)
+            sh(f"input swipe {x1} {y} {x2} {y} 700"); time.sleep(1.2)
+            return find(lambda n: n.get("text") in ("置顶", "取消置顶")) is not None and find(lambda n: n.get("text") in ("已读", "删除", "免打扰")) is not None
+        ok_swipe = swipe_open()
+        if not ok_swipe:
+            back(); time.sleep(0.4)
+            ok_swipe = swipe_open()
         shot(f"android-{th}-15-conv-menu-swipe")  # conv-menu-swipe LSMF_chat_list_swipe inline 置顶/已读/免打扰/删除
-        if find(lambda n: n.get("text") in ("置顶", "取消置顶")) is None or find(lambda n: n.get("text") in ("已读", "删除", "免打扰")) is None:
-            print("WARN swipe conv menu missing inline action buttons", flush=True)
+        if not ok_swipe:
+            raise RuntimeError("swipe conv menu missing inline 置顶/已读/免打扰/删除")
         back(); time.sleep(1)
     else:
         print("WARN no 王工 row for conv long-press/swipe", flush=True)

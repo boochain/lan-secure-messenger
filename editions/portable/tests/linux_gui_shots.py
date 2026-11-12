@@ -66,8 +66,6 @@ for th in a.themes.split(","):
     x("mousemove", "--window", wid, "150", "128"); x("click", "1"); time.sleep(1.5)
     if th == a.themes.split(",")[0]:
         # trust from the GUI menu: 信任当前联系人 is the 5th item (separators skipped)
-        x("key", "F10"); time.sleep(1)
-        shot(f"{th}-03-menu"); x("key", "Escape"); time.sleep(0.5)
         x("key", "F10"); time.sleep(0.8)
         for _ in range(4):
             x("key", "Down"); time.sleep(0.08)
@@ -75,9 +73,11 @@ for th in a.themes.split(","):
         lm("send", gfp, "李明你好，下午三点的评审会改到 302 会议室。"); time.sleep(1.5)
         x("mousemove", "--window", wid, "560", "640"); x("click", "1"); time.sleep(0.5); x("type", "--delay", "40", "OK, thanks!"); x("key", "Return"); time.sleep(1.5)
         lm("send", gfp, "顺便把白板照片和季度报告发你，请查收 📎"); lm("send-file", gfp, f"{W}/会议白板.png"); lm("send-file", gfp, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "stickers", "thumb.png")); lm("send-file", gfp, f"{W}/季度报告.txt"); time.sleep(6)
-    else:
-        x("key", "F10"); time.sleep(1); shot(f"{th}-03-menu"); x("key", "Escape"); time.sleep(0.5)
     x("mousemove", "--window", wid, "150", "128"); x("click", "1"); time.sleep(2)
+    # shoot the hamburger after a chat is open so the empty pane does not form
+    # a huge near-white region against the sidebar (colour-audit indistinct),
+    # and so the menu is measured over a normal composer.
+    x("key", "F10"); time.sleep(1); shot(f"{th}-03-menu"); x("key", "Escape"); time.sleep(0.5)
     if True:
         # GUI -> v0.5 file via the core (drag-drop path is the same lsm_send_file call), image preview on the sender side too
         shot_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "ui-photo.jpg")

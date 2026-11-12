@@ -224,11 +224,16 @@ fun ConvRow(c: Conv, click: () -> Unit) {
     // LSMF_chat_list_swipe: swipe left reveals inline pin/read/mute/delete (Telegram/WhatsApp style), not a popup
     Box(Modifier.testTag("LSMF_chat_list_swipe").semantics { contentDescription = "LSMF_chat_list_menu" }
         .pointerInput(c.id) {
-            detectHorizontalDragGestures { change, drag ->
-                change.consume()
-                if (drag < -16f) revealed = true
-                else if (drag > 16f) revealed = false
-            }
+            var acc = 0f
+            detectHorizontalDragGestures(
+                onDragStart = { acc = 0f },
+                onHorizontalDrag = { change, drag ->
+                    change.consume()
+                    acc += drag
+                    if (acc < -16f) revealed = true
+                    else if (acc > 16f) revealed = false
+                }
+            )
         }) {
         if (revealed) {
             Row(Modifier.matchParentSize().background(p.chip), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.End) {
