@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using LanMessenger.ViewModels;
+using LanMessenger.Core.ViewModels;
 
 namespace LanMessenger.Views;
 
