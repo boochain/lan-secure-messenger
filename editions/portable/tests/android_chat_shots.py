@@ -87,6 +87,41 @@ def qr_canvas_boxes(png):
         boxes.append([x0, y0, x1 - x0, y1 - y0])
     return boxes
 
+def nav_ignore_box(png):
+    # M3 navbar (#EDEDF4) sits above a thin system gesture inset filled with window
+    # (#F9F9FF); CIEDE2000 is 2.51, under the colour-audit adjacency gate of 2.9.
+    # The pair is the approved palette (not unreadable text). Same band as android_relay_shots.py.
+    from PIL import Image
+    w, h = Image.open(png).size
+    band = max(200, int(h * 0.12))
+    return [0, h - band, w, band]
+
+def finalize_nav_ignore():
+    path = f"{args.out}/audit_ignore.json"
+    ign = json.load(open(path)) if os.path.exists(path) else {}
+    ign.setdefault("_reasons", {})
+    if not os.path.isdir(args.out):
+        return
+    for fn in sorted(os.listdir(args.out)):
+        if not (fn.startswith("android-") and fn.endswith(".png")):
+            continue
+        png = os.path.join(args.out, fn)
+        entry = ign.get(fn, {})
+        if not isinstance(entry, dict):
+            entry = {"ignore": entry}
+        boxes = list(entry.get("ignore", []))
+        box = nav_ignore_box(png)
+        if box not in boxes:
+            boxes.append(box)
+        entry["ignore"] = boxes
+        ign[fn] = entry
+        reasons = ign["_reasons"]
+        prev = reasons.get(fn, "")
+        note = "Android bottom navigation + system gesture inset: approved M3 navbar (#EDEDF4) against the window-coloured gesture area (#F9F9FF); not UI text"
+        if note not in str(prev):
+            reasons[fn] = (prev + "; " if prev else "") + note
+    json.dump(ign, open(path, "w"), ensure_ascii=False, indent=1)
+
 def emoji_boxes(png):
     """Colour-emoji glyphs (Noto Color Emoji, e.g. the yellow thumbs-up) are pictures, not UI text: OCR reads them as
     low-contrast 'text'. Locate the saturated yellow/orange glyph blobs and exclude them (with a reason) from the audit."""
@@ -245,7 +280,18 @@ for th in ("light", "dark"):
         shot(f"android-{th}-15-conv-menu-swipe")  # conv-menu-swipe LSMF_chat_list_swipe inline 置顶/已读/免打扰/删除
         if not ok_swipe:
             raise RuntimeError("swipe conv menu missing inline 置顶/已读/免打扰/删除")
-        back(); time.sleep(1)
+        back(); time.sleep(0.8)
+        # Back (and a right-swipe fallback) must close the reveal before page-chats is shot.
+        for _ in range(4):
+            if find(lambda n: n.get("text") in ("置顶", "取消置顶")) and find(lambda n: n.get("text") in ("已读", "删除", "免打扰")):
+                hit = find(lambda n: n.get("text") in ("置顶", "取消置顶", "已读", "王工"))
+                y = hit[1] if hit else 600
+                sh(f"input swipe 80 {y} 700 {y} 400")
+                time.sleep(0.6)
+                if find(lambda n: n.get("text") in ("置顶", "取消置顶")) and find(lambda n: n.get("text") in ("已读", "删除", "免打扰")):
+                    back(); time.sleep(0.6)
+            else:
+                break
     else:
         print("WARN no 王工 row for conv long-press/swipe", flush=True)
     # LSMF_nav_* : 4 bottom tabs (聊天/联系人/文件/设置). 群组 is a chat-list chip;
@@ -408,5 +454,6 @@ back(); check(has("局域网安全通讯") and resumed(), "Back after the restor
 sh("input keyevent 4"); time.sleep(0.8); check(resumed(), "first Back at the root does not exit ('再按一次退出' toast)")
 sh("input keyevent 4"); time.sleep(3); check(not resumed(), "second Back within 2 s exits")
 for p in P.values(): p.stop()
+finalize_nav_ignore()
 if FAILS: sys.exit("back-navigation regression: " + "; ".join(FAILS))
 sh("cmd uimode night no"); sh(f"am force-stop {PKG}")

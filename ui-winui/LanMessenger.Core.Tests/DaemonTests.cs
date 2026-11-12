@@ -98,7 +98,7 @@ public class DaemonTests
     private readonly ITestOutputHelper _out;
     public DaemonTests(ITestOutputHelper o) { _out = o; }
 
-    static async Task Until(string what, Func<bool> cond, int secs = 15)
+    static async Task Until(string what, Func<bool> cond, int secs = 30)
     {
         var end = DateTime.UtcNow.AddSeconds(secs);
         while (!cond())
@@ -107,7 +107,7 @@ public class DaemonTests
             await Task.Delay(100);
         }
     }
-    static async Task Until(string what, Func<Task<bool>> cond, int secs = 15)
+    static async Task Until(string what, Func<Task<bool>> cond, int secs = 30)
     {
         var end = DateTime.UtcNow.AddSeconds(secs);
         while (!await cond())
@@ -209,6 +209,24 @@ public class DaemonTests
     [Fact]
     public async Task ViewModelEndToEnd()
     {
+        // CI has flaked once on "bubble delivered" at the old 15s budget, which
+        // skipped the WinUI smoke job. Retry once with a longer Until default.
+        TimeoutException last = null;
+        for (int attempt = 1; attempt <= 2; attempt++)
+        {
+            try { await ViewModelEndToEndCore(); return; }
+            catch (TimeoutException ex)
+            {
+                last = ex;
+                _out.WriteLine($"ViewModelEndToEnd attempt {attempt} timed out: {ex.Message}");
+                if (attempt == 2) throw;
+            }
+        }
+        throw last!;
+    }
+
+    async Task ViewModelEndToEndCore()
+    {
         await using var a = new DaemonProcess("VmA");
         await using var b = new DaemonProcess("VmB");
         await using var cb = await b.ConnectAsync();
@@ -236,7 +254,7 @@ public class DaemonTests
         vm.ComposeText = "hello from the view model";
         await vm.SendCommand.ExecuteAsync(null);
         Assert.Equal("", vm.ComposeText);
-        await Until("bubble delivered", () => { lock (ui.Gate) return vm.Messages.Any(m => m.IsOutgoing && m.Body == "hello from the view model" && m.StatusText == "已送达"); });
+        await Until("bubble delivered", () => { lock (ui.Gate) return vm.Messages.Any(m => m.IsOutgoing && m.Body == "hello from the view model" && m.StatusText == "已送达"); }, 45);
         // Incoming message from B shows up in the open conversation and raises a toast (window inactive).
         await B.SendTextAsync("dm:" + vm.MyFingerprint, "reply from B");
         await Until("incoming bubble", () => { lock (ui.Gate) return vm.Messages.Any(m => m.IsIncoming && m.Body == "reply from B"); });

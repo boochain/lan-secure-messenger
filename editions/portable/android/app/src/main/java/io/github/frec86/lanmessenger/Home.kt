@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
@@ -222,8 +223,11 @@ fun ConvRow(c: Conv, click: () -> Unit) {
     fun markItUnread() { Native.markUnread(c.id); Repo.refresh() }
     fun mute() { if (!c.group) { Native.setMuted(c.key, !Native.isMuted(c.key)); Repo.refresh() } }
     var revealed by remember { mutableStateOf(false) }
-    // LSMF_chat_list_swipe: swipe left reveals inline pin/read/mute/delete (Telegram/WhatsApp style), not a popup
+    // LSMF_chat_list_swipe: swipe left reveals inline pin/read/mute/delete (Telegram/WhatsApp style), not a popup.
+    // Slide the whole row off-screen so leftover preview text is not mid-glyph clipped at x=0.
+    BackHandler(enabled = revealed) { revealed = false }
     Box(Modifier.testTag("LSMF_chat_list_swipe").semantics { contentDescription = "LSMF_chat_list_menu" }
+        .clipToBounds()
         .pointerInput(c.id) {
             var acc = 0f
             detectHorizontalDragGestures(
@@ -237,15 +241,15 @@ fun ConvRow(c: Conv, click: () -> Unit) {
             )
         }) {
         if (revealed) {
-            Row(Modifier.matchParentSize().background(p.chip), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.End) {
+            Row(Modifier.matchParentSize().background(p.chip).clickable { revealed = false }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.End) {
                 TextButton({ pin(); revealed = false }, Modifier.testTag("LSMF_chat_pin")) { Text(if (c.pinned) "取消置顶" else "置顶", color = p.fg, fontSize = 13.sp) }
                 TextButton({ read(); revealed = false }, Modifier.testTag("LSMF_chat_mark_read")) { Text("已读", color = p.fg, fontSize = 13.sp) }
                 if (!c.group) TextButton({ mute(); revealed = false }, Modifier.testTag("LSMF_chat_mute")) { Text(if (muted) "取消免打扰" else "免打扰", color = p.fg, fontSize = 13.sp) }
                 TextButton({ confirmDel = true; revealed = false }, Modifier.testTag("LSMF_chat_delete")) { Text("删除", color = p.error, fontSize = 13.sp) }
             }
         }
-        Box {
-            Row(Modifier.fillMaxWidth().height(72.dp).offset(x = if (revealed) (-220).dp else 0.dp).background(p.window).combinedClickable(onClick = { if (revealed) revealed = false else click() }, onLongClick = { menu = true }).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+        BoxWithConstraints {
+            Row(Modifier.fillMaxWidth().height(72.dp).offset(x = if (revealed) -maxWidth else 0.dp).background(p.window).combinedClickable(onClick = { if (revealed) revealed = false else click() }, onLongClick = { menu = true }).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Avatar(c.name, c.key, 48.dp, c.online, p.window)
                 Spacer(Modifier.width(16.dp))
                 Column(Modifier.weight(1f)) {

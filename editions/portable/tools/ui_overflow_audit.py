@@ -42,6 +42,12 @@ def edge_cut_score(y, band=2):
             if s < 16 or e > length - 16:
                 continue
             if 2 <= run <= 40 and inward[s:e].mean() > 0.35:
+                # Full-width hairline dividers touch the left and right edges as
+                # 2px runs; they are chrome, not cut glyphs.
+                if axis_name in ("left", "right") and ink[s:e, :].mean() > 0.6:
+                    continue
+                if axis_name in ("top", "bottom") and ink[:, s:e].mean() > 0.6:
+                    continue
                 ncut += 1
         if ncut >= 2:
             hits.append(f"{axis_name}:{ncut}")
@@ -55,21 +61,27 @@ def edge_cut_score(y, band=2):
     return False, ""
 
 def android_nav_overlap(im, path):
-    """Bottom 14% of an Android page shot: large dark-ish icon blobs should be ≤4 and not overlap."""
+    """Navbar band (above the gesture inset): at most 4 items, no horizontal overlap.
+
+    Icon + label + badge of one tab are clustered into a single column. A loose
+    14% band also includes the last list row and was false-flagging its glyphs.
+    """
     import numpy as np, cv2
     name = Path(path).name.lower()
     if not (name.startswith("android-") and "page-" in name):
         return False, ""
-    if any(x in name for x in ("profile", "diagnostics", "scan", "qr")):
+    if any(x in name for x in ("profile", "diagnostics", "scan", "qr", "recovery")):
         # inner pages may hide the bottom nav
         return False, ""
     a = np.asarray(im.convert("RGB"))
     h, w = a.shape[:2]
-    y0 = int(h * 0.86)
-    band = a[y0:, :, :]
-    # icons are typically colored or dark on a light/dark bar; find connected components of non-bar pixels
+    gesture = 40
+    nav_h = 180
+    y0 = max(0, h - gesture - nav_h)
+    y1 = max(y0 + 1, h - gesture)
+    band = a[y0:y1, :, :]
     bar = np.median(band.reshape(-1, 3), axis=0)
-    dist = np.sqrt(((band.astype(np.int16) - bar.astype(np.int16)) ** 2).sum(-1))
+    dist = np.sqrt(((band.astype(np.int32) - bar.astype(np.int32)) ** 2).sum(-1))
     mask = (dist > 18).astype("uint8")
     k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, k)
@@ -79,22 +91,27 @@ def android_nav_overlap(im, path):
         x, y, bw, bh, area = (int(st[i, j]) for j in range(5))
         if area < 80 or bw < 8 or bh < 8:
             continue
-        if bw > w * 0.45:  # indicator pill spanning the bar
+        if bw > w * 0.45:  # indicator pill / selected-tab highlight spanning the bar
             continue
         boxes.append((x, y, x + bw, y + bh, area))
-    # keep the largest 8, then those in the icon size range
-    boxes.sort(key=lambda b: -b[4])
-    icons = boxes[:8]
-    # overlap?
-    for i, a_ in enumerate(icons):
-        for b in icons[i + 1:]:
-            ix = min(a_[2], b[2]) - max(a_[0], b[0])
-            iy = min(a_[3], b[3]) - max(a_[1], b[1])
-            if ix > 4 and iy > 4:
-                return True, f"bottom-nav icons overlap ({len(icons)} blobs)"
-    if len(icons) > 6:
-        # 4 icons + maybe labels as separate blobs; >6 is cramped
-        return True, f"bottom-nav looks cramped ({len(icons)} blobs, expected ≤4 icons + labels)"
+    # Cluster icon + label + badge of one tab into a column.
+    boxes.sort(key=lambda b: (b[0] + b[2]) / 2)
+    cols = []  # (x0, x1, blobs)
+    for b in boxes:
+        cx = (b[0] + b[2]) / 2
+        if cols and cx - cols[-1][1] < 24:
+            x0, x1, group = cols[-1]
+            group.append(b)
+            cols[-1] = (min(x0, b[0]), max(x1, b[2]), group)
+        else:
+            cols.append((b[0], b[2], [b]))
+    if len(cols) > 4:
+        return True, f"bottom-nav looks cramped ({len(cols)} items, expected ≤4)"
+    for i, a_ in enumerate(cols):
+        for b in cols[i + 1:]:
+            gap = b[0] - a_[1]
+            if gap < 8:
+                return True, f"bottom-nav icons overlap (gap {gap}px, {len(cols)} items)"
     return False, ""
 
 
