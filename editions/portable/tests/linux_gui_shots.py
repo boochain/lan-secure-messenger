@@ -217,7 +217,8 @@ def qr_canvas_ignore(png):
     im = Image.open(png).convert("RGB")
     w, h = im.size
     a = np.asarray(im)
-    white = ((a[..., 0] > 245) & (a[..., 1] > 245) & (a[..., 2] > 245)).astype("uint8")
+    # >=252: Android light page #F9F9FF is >245 and would merge with the quiet zone; GTK dialog #F3F3F3 stays out.
+    white = ((a[..., 0] >= 252) & (a[..., 1] >= 252) & (a[..., 2] >= 252)).astype("uint8")
     k = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
     white = cv2.morphologyEx(white, cv2.MORPH_CLOSE, k, iterations=2)
     n, _, stt, _ = cv2.connectedComponentsWithStats(white, connectivity=8)

@@ -37,6 +37,56 @@ def back_to_main(tries=8):
     raise RuntimeError("could not leave qr/scan to main nav")
 
 IGN_PATH = None
+
+def dialog_rect(png, th):
+    """Dialog card = bbox of the palette card_bg fill (the page behind it is darkened by the scrim).
+    Same helper as android_theme_shots.py (add-ip / pin / about)."""
+    from PIL import Image
+    import numpy as np, cv2
+    card = (0xED, 0xED, 0xF4) if th == "light" else (0x28, 0x2A, 0x2F)  # M3 dialog = surfaceContainerHigh
+    m = (np.array(Image.open(png).convert("RGB")) == card).all(-1).astype(np.uint8)
+    n, lab, st, _ = cv2.connectedComponentsWithStats(m, connectivity=4)
+    if n <= 1:
+        raise RuntimeError(f"no dialog card_bg in {png}")
+    k = 1 + int(np.argmax(st[1:, cv2.CC_STAT_AREA]))  # the dialog card is the largest card_bg blob
+    x0, y0, w0, h0 = (int(st[k, j]) for j in range(4))
+    xs = np.array([x0, x0 + w0 - 1]); ys = np.array([y0, y0 + h0 - 1])
+    i = 2 * 28  # inset past the 28 dp rounded corners (scrim shows in them)
+    rec = [int(xs.min()) + i, int(ys.min()) + i, int(xs.max() - xs.min()) - 2 * i, int(ys.max() - ys.min()) - 2 * i]
+    if rec[2] < 100 or rec[3] < 100:
+        raise RuntimeError(f"dialog card too small in {png}: {rec}")
+    return rec
+
+def qr_canvas_boxes(png):
+    """White QR canvas(es): machine-readable pictures, not UI text. Threshold 252 keeps Android light
+    page fill #F9F9FF from merging with the quiet zone (245 would cover the whole screen)."""
+    from PIL import Image
+    import numpy as np, cv2
+    im = Image.open(png).convert("RGB")
+    w, h = im.size
+    a = np.asarray(im)
+    white = ((a[..., 0] >= 252) & (a[..., 1] >= 252) & (a[..., 2] >= 252)).astype("uint8")
+    k = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    white = cv2.morphologyEx(white, cv2.MORPH_CLOSE, k, iterations=2)
+    n, _, stt, _ = cv2.connectedComponentsWithStats(white, connectivity=8)
+    boxes = []
+    for i in range(1, n):
+        x, y, bw, bh, area = map(int, stt[i])
+        if area < 80 * 80:
+            continue
+        ratio = max(bw, bh) / max(1, min(bw, bh))
+        if ratio > 1.25:
+            continue
+        roi = a[y:y + bh, x:x + bw]
+        dark = int(((roi[..., 0] < 40) & (roi[..., 1] < 40) & (roi[..., 2] < 40)).sum())
+        if dark < 200:
+            continue
+        pad = 4
+        x0, y0 = max(0, x - pad), max(0, y - pad)
+        x1, y1 = min(w, x + bw + pad), min(h, y + bh + pad)
+        boxes.append([x0, y0, x1 - x0, y1 - y0])
+    return boxes
+
 def emoji_boxes(png):
     """Colour-emoji glyphs (Noto Color Emoji, e.g. the yellow thumbs-up) are pictures, not UI text: OCR reads them as
     low-contrast 'text'. Locate the saturated yellow/orange glyph blobs and exclude them (with a reason) from the audit."""
@@ -65,7 +115,31 @@ def shot(name):
         # bubbles and the stroke scanner reports it as faint text (same tile in light and dark).
         boxes.append([720, 176, 48, 80])
         ign["_reasons"][name + ".png"] = "user-sent photo/sticker thumbnails, colour-emoji glyphs, and a doodle-wallpaper tile (spec §6.4, ~4% opacity; not UI text)"
-    if boxes: ign[name + ".png"] = boxes
+    modal_qr = bool(re.search(r"-(16-my-qr|19-server-qr|20-pair-qr)$", name))
+    scan_qr = bool(re.search(r"-(17-scan|18-scan-image)$", name))
+    if modal_qr:
+        th = "dark" if "-dark-" in name else "light"
+        entry = {"only": dialog_rect(png, th)}
+        qrs = qr_canvas_boxes(png)
+        if qrs:
+            entry["ignore"] = qrs
+        ign[name + ".png"] = entry
+        ign["_reasons"][name + ".png"] = (
+            "modal AlertDialog: the page behind the scrim is inactive (WCAG 1.4.3 exempts inactive UI); "
+            "only the dialog card is audited. The QR code is a machine-readable graphic "
+            "(black-on-white for scanners), not UI text"
+        )
+    elif scan_qr:
+        qrs = qr_canvas_boxes(png)
+        boxes.extend(qrs)
+        ign["_reasons"][name + ".png"] = (
+            "QR code in the camera preview or decoded image is a machine-readable graphic "
+            "(black-on-white for scanners), not UI text"
+        )
+        if boxes:
+            ign[name + ".png"] = boxes
+    elif boxes:
+        ign[name + ".png"] = boxes
     json.dump(ign, open(path, "w"), ensure_ascii=False, indent=1)
 
 def _hit(label):

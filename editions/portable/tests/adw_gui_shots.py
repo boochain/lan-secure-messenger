@@ -138,6 +138,9 @@ for i, theme in enumerate(["light", "dark"]):
              dict(env, LSM_THEME=theme, LSM_UI_TEST="1", LSM_QUIT_ON_CLOSE="1", LSM_WINDOW_SIZE="1024x694", LSM_SHOT_QR_FILE=f"{W}/lsm-qr-sample.png"))
     fp = (g.wait_for("LSM_FP", 20) or " ? ").split()[1]
     check(fp != "?", f"[{theme}] GUI started and reported its fingerprint")
+    wids = subprocess.run(["xdotool", "search", "--onlyvisible", "--name", "局域网安全通讯"], env=env, capture_output=True, text=True).stdout.split()
+    if wids:
+        xdo("windowactivate", "--sync", wids[-1])
     time.sleep(1.5); shot("page-empty", theme, g=g)   # empty state: no content-header title (libadwaita style)
     for p in (A, B): p.cmd(f"add 127.0.0.1:{port}")
     time.sleep(2); A.cmd(f"trust {fp[:12]}"); B.cmd(f"trust {fp[:12]}")
@@ -207,7 +210,12 @@ for i, theme in enumerate(["light", "dark"]):
     close_dlg()
     xdo("key", "shift+F9"); time.sleep(1.2); shot("dialog-scan-image", theme, g=g)  # scan-image LSMF_qr_scan
     close_dlg()
-    xdo("key", "ctrl+q"); g.p.wait(10) if g.p.poll() is None else None
+    xdo("key", "ctrl+q")
+    if g.p.poll() is None:
+        g.p.wait(10)
+    if g.p.poll() is None:
+        g.p.kill(); g.p.wait(5)
+    time.sleep(0.5)
     check(g.p.poll() is not None, f"[{theme}] shortcut Ctrl+Q quits")
     if g.p.poll() is None: g.p.kill()
     for p in (A, B): p.cmd("quit", 10); p.p.kill()
