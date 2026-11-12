@@ -16,8 +16,8 @@ cc $CF -I$OUT -o $OUT/lan-messenger-gtk linux/gtk_gui.c $CORE $(pkg-config --cfl
 if command -v musl-gcc >/dev/null 2>&1; then musl-gcc $CF -static -o $OUT/lanmsg-cli src/cli.c $CORE -lpthread; else cc $CF -o $OUT/lanmsg-cli src/cli.c $CORE -lpthread; fi
 strip $OUT/lan-messenger-gtk $OUT/lanmsg-cli
 # ---- tarball
-T=$OUT/lan-messenger-$VER-linux-$ARCH; mkdir -p $T/bin $T/share/applications $T/share/icons/hicolor/256x256/apps
-cp $OUT/lan-messenger-gtk $OUT/lanmsg-cli $T/bin/; cp linux/data/lan-messenger.png $T/share/icons/hicolor/256x256/apps/; cp linux/data/lan-messenger.png $T/bin/
+T=$OUT/lan-messenger-$VER-linux-$ARCH; mkdir -p $T/bin $T/share/applications $T/share/icons
+cp $OUT/lan-messenger-gtk $OUT/lanmsg-cli $T/bin/; cp -a linux/data/hicolor $T/share/icons/; cp linux/data/lan-messenger.png $T/bin/
 cp linux/data/lan-messenger.desktop $T/share/applications/; cp linux/data/README-zh.txt linux/data/install.sh linux/data/firewall-setup.sh $T/; chmod +x $T/install.sh $T/firewall-setup.sh
 tar -C $OUT -czf $DIST/lan-messenger-$VER-linux-$ARCH.tar.gz lan-messenger-$VER-linux-$ARCH
 # ---- AppImage
