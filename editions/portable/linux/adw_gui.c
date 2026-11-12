@@ -697,7 +697,9 @@ static void activate(GtkApplication *a, gpointer p){
       gtk_widget_add_controller(win,sc2); }
 
     /* sidebar */
-    sidebar_tv=adw_toolbar_view_new(); sb_hdr=adw_header_bar_new(); cls(sb_hdr,"lsm-hdr"); { GtkWidget *tb=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,8), *ic=v072_app_icon(22); gtk_widget_set_valign(ic,GTK_ALIGN_CENTER); gtk_box_append(GTK_BOX(tb),ic); adw_header_bar_set_title_widget(ADW_HEADER_BAR(sb_hdr),tb); }
+    sidebar_tv=adw_toolbar_view_new(); sb_hdr=adw_header_bar_new(); cls(sb_hdr,"lsm-hdr");
+    adw_header_bar_set_title_widget(ADW_HEADER_BAR(sb_hdr),gtk_label_new(NULL));
+    { GtkWidget *ic=v072_app_icon(28); gtk_widget_set_valign(ic,GTK_ALIGN_CENTER); adw_header_bar_pack_start(ADW_HEADER_BAR(sb_hdr),ic); }
     add_btn=gtk_menu_button_new(); gtk_menu_button_set_icon_name(GTK_MENU_BUTTON(add_btn),"contact-new-symbolic"); gtk_widget_set_tooltip_text(add_btn,"按 IP 添加联系人 (Ctrl+N)");
     add_popover=gtk_popover_new(); ab=gtk_box_new(GTK_ORIENTATION_VERTICAL,8); gtk_widget_set_size_request(ab,280,-1);
     { GtkWidget *t=label("按 IP 添加联系人","heading"), *d=label("对方不在自动发现列表时，输入对方电脑的 IP（可带端口），或粘贴对方的添加链接（lsm://…）。","sub"), *hb=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,6), *go=gtk_button_new_with_label("添加");
@@ -734,7 +736,7 @@ static void activate(GtkApplication *a, gpointer p){
       { GMenu *s=g_menu_new(); g_menu_append(s,"联系人资料 / 备注名…","win.contact-profile"); g_menu_append(s,"联系人详情 (Ctrl+I)","win.details"); g_menu_append(s,"信任（核对指纹后）","win.trust"); g_menu_append(s,"免打扰 开/关","win.mute");
         { GMenu *m=g_menu_new(); g_menu_append(m,"取消信任","win.untrust"); g_menu_append(m,"屏蔽…","win.block"); v072_append_sub(s,"更多",m); g_object_unref(m); }
         v072_append_sub(cm,"联系人",s); g_object_unref(s); }
-      { GMenu *s=g_menu_new(); g_menu_append(s,"我的二维码 / 添加链接…","win.my-qr"); v072_append_sub(cm,"二维码",s); g_object_unref(s); }
+      { GMenu *s=g_menu_new(); g_menu_append(s,"我的二维码","win.my-qr"); v072_append_sub(cm,"二维码",s); g_object_unref(s); }
       gtk_menu_button_set_icon_name(GTK_MENU_BUTTON(more),"view-more-symbolic"); gtk_widget_set_tooltip_text(more,"更多"); gtk_menu_button_set_menu_model(GTK_MENU_BUTTON(more),G_MENU_MODEL(cm)); g_object_unref(cm);
       hdr_more=more; adw_header_bar_pack_end(ADW_HEADER_BAR(ct_hdr),more); adw_header_bar_pack_end(ADW_HEADER_BAR(ct_hdr),icon_btn("system-search-symbolic","搜索 (Ctrl+F)","win.search")); adw_header_bar_pack_end(ADW_HEADER_BAR(ct_hdr),icon_btn("document-open-recent-symbolic","消息历史 (Ctrl+Shift+F)","win.history")); }
     adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(content_tv),ct_hdr);

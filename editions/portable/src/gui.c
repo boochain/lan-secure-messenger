@@ -552,7 +552,7 @@ static LRESULT CALLBACK ImgViewProc(HWND h, UINT m, WPARAM w, LPARAM l){
         if(w=='1' || w==VK_NUMPAD1){ RECT rc; GetClientRect(h,&rc); { double fit=imgv_fit_k(rc.right,rc.bottom); imgv_zoom=fit>1e-6?(1.0/fit):1.0; } imgv_offx=imgv_offy=0; InvalidateRect(h,NULL,TRUE); return 0; }
     }
     if(m==WM_CLOSE){ DestroyWindow(h); return 0; }
-    if(m==WM_DESTROY){ EnableWindow(hMain,TRUE); SetForegroundWindow(hMain); imgv_bm=NULL; imgv_drag=0; return 0; }
+    if(m==WM_DESTROY){ EnableWindow(hMain,TRUE); ShowWindow(hMain,SW_SHOW); SetForegroundWindow(hMain); InvalidateRect(hMain,NULL,TRUE); imgv_bm=NULL; imgv_drag=0; return 0; }
     return DefWindowProcW(h,m,w,l); }
 static void show_image_viewer(const char *path){
     HBITMAP bm; int w,h; WNDCLASSW wc; HWND hv; RECT r; int WW,HH;
@@ -1014,7 +1014,7 @@ static HMENU build_menu(void){
     pages=v072_mpopup(c,L"页面"); AM(pages,MF_STRING,IDM_V070_CONTACTS,L"联系人页"); AM(pages,MF_STRING,IDM_V070_GROUPS,L"群组页");
     AM(g,MF_STRING,IDM_GCREATE,L"创建群组(&C)..."); AM(g,MF_STRING,IDM_GINVITE,L"邀请成员(&I)..."); AM(g,MF_STRING,IDM_GREMOVE,L"移除成员(&R)..."); AM(g,MF_STRING,IDM_GLEAVE,L"退出群组(&L)"); AM(g,MF_STRING,IDM_V070_GROUPS,L"群组页");
     AM(s,MF_STRING,IDM_PROFILE,L"个人资料(&P)…");
-    acc=v072_mpopup(s,L"账号"); AM(acc,MF_STRING,IDM_NAME,L"修改昵称(&N)..."); AM(acc,MF_STRING,IDM_RELAY,L"中转服务器(&R)..."); AM(acc,MF_STRING,IDM_SERVERQR,L"服务器二维码..."); AM(acc,MF_STRING,IDM_PAIRQR,L"配对新设备...");
+    acc=v072_mpopup(s,L"账号(&A)"); AM(acc,MF_STRING,IDM_NAME,L"修改昵称(&N)..."); AM(acc,MF_STRING,IDM_RELAY,L"中转服务器(&R)..."); AM(acc,MF_STRING,IDM_SERVERQR,L"服务器二维码..."); AM(acc,MF_STRING,IDM_PAIRQR,L"配对新设备...");
     more=v072_mpopup(acc,L"更多"); AM(more,MF_STRING,IDM_ACCTMODE,L"切换账号/设备模式..."); AM(more,MF_STRING,IDM_REVEALRK,L"显示恢复密钥...");
     pages=v072_mpopup(s,L"页面"); AM(pages,MF_STRING,IDM_V070_SETTINGS,L"设置页"); AM(pages,MF_STRING,IDM_V070_DIAG,L"诊断页"); AM(pages,MF_STRING,IDM_V070_PROFILE,L"个人资料页");
     appearance=v072_mpopup(s,L"外观"); AM(appearance,MF_STRING|(theme_mode==0?MF_CHECKED:0),IDM_THEME_SYS,L"外观：跟随系统(&Y)"); AM(appearance,MF_STRING|(theme_mode==1?MF_CHECKED:0),IDM_THEME_LIGHT,L"外观：浅色(&L)"); AM(appearance,MF_STRING|(theme_mode==2?MF_CHECKED:0),IDM_THEME_DARK,L"外观：深色(&K)");

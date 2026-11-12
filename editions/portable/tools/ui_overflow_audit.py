@@ -37,6 +37,10 @@ def edge_cut_score(y, band=2):
         ncut = 0
         for s, e in zip(starts, ends):
             run = e - s
+            # Rounded window corners leave short AA runs at both ends of each
+            # edge; those are not clipped glyphs. Real cut text sits mid-edge.
+            if s < 16 or e > length - 16:
+                continue
             if 2 <= run <= 40 and inward[s:e].mean() > 0.35:
                 ncut += 1
         if ncut >= 2:
@@ -93,6 +97,202 @@ def android_nav_overlap(im, path):
         return True, f"bottom-nav looks cramped ({len(icons)} blobs, expected ≤4 icons + labels)"
     return False, ""
 
+
+def _text_font(size=28):
+    from PIL import ImageFont
+    from pathlib import Path as _P
+    font = ImageFont.load_default()
+    for fp in (
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+    ):
+        if _P(fp).exists():
+            try:
+                return ImageFont.truetype(fp, size)
+            except Exception:
+                pass
+    return font
+
+def _ellipsis_spans(ink_row):
+    """Start/end x of typographic ellipses (three tightly spaced short dots)."""
+    import numpy as np
+    sl = ink_row.astype(np.uint8)
+    pad = np.r_[0, sl, 0]
+    d = np.diff(pad.astype(np.int8))
+    starts = np.where(d == 1)[0]
+    ends = np.where(d == -1)[0]
+    runs = [(int(s), int(e) - int(s)) for s, e in zip(starts, ends)]
+    dots = [r for r in runs if 1 <= r[1] <= 6]
+    spans = []
+    for i in range(len(dots) - 2):
+        last = dots[i:i + 3]
+        # similarly sized dots, regular gaps
+        widths = [last[j][1] for j in range(3)]
+        if max(widths) > min(widths) * 3 + 2:
+            continue
+        gaps = [last[j + 1][0] - (last[j][0] + last[j][1]) for j in range(2)]
+        if all(0 <= g <= 8 for g in gaps) and abs(gaps[0] - gaps[1]) <= 4:
+            width = last[2][0] + last[2][1] - last[0][0]
+            if 6 <= width <= 28:
+                spans.append((last[0][0], last[2][0] + last[2][1]))
+    return spans
+
+def _label_left(ink_row, x_end, gap=80):
+    """Left edge of the label ending at x_end, allowing wide ' / ' gaps."""
+    i = x_end
+    left = x_end
+    while i >= 0:
+        empty = 0
+        while i >= 0 and not ink_row[i]:
+            empty += 1
+            i -= 1
+        if i < 0 or empty > gap:
+            break
+        while i >= 0 and ink_row[i]:
+            left = i
+            i -= 1
+    return left
+
+def _gutter_rows(ink, a, b):
+    """Row indices in [a, b) whose ink is low enough to be menu-card padding."""
+    return [i for i in range(a, b) if ink[i].mean() < 0.08]
+
+def _panel_pad(y, ink, y0, y1, h, w, x_end):
+    """Padding from x_end to the next vertical panel/card edge.
+
+    Only gutter rows (between menu items, or above/below the card's text)
+    are consulted, so the next item's label cannot look like a card border.
+    If no gutter is available, return a large pad (do not guess).
+    """
+    import numpy as np
+    gut = _gutter_rows(ink, max(0, y0 - 28), y0) + _gutter_rows(ink, y1, min(h, y1 + 28))
+    if len(gut) < 4:
+        return 48
+    x_int0, x_int1 = max(0, x_end - 16), max(1, x_end)
+    card_bg = float(np.median(y[np.array(gut), :][:, x_int0:x_int1]))
+    pad = 0
+    for x in range(x_end + 1, min(w, x_end + 48)):
+        col = y[np.array(gut), x]
+        rule = float(ink[np.array(gut), x].mean())
+        # A real vertical border inks the gutters on both sides of the item.
+        if rule > 0.35 or abs(float(np.median(col)) - card_bg) > 12:
+            return pad
+        pad += 1
+    return pad
+
+def ellipsis_in_menu(im, path):
+    """Flag a menu/popup item whose label is cut off with a trailing ellipsis.
+
+    Intentional short labels such as '导出到文件…' have padding after the dots
+    and stay under the long-label threshold, so they are not flagged. A long
+    combined label that WinUI/GTK ellipsizes is flagged even when the flyout
+    itself is wider than the text layout box.
+    """
+    import numpy as np
+    name = Path(path).name.lower()
+    if not any(h in name for h in ("menu", "flyout", "overflow")):
+        return False, ""
+    h_im = im.height if hasattr(im, "height") else im.size[1]
+    w = im.width if hasattr(im, "width") else im.size[0]
+    if h_im < 20 or w < 40:
+        return False, ""
+    y = luma(im)
+    h, w = y.shape
+    bg = float(np.median(y))
+    ink = np.abs(y - bg) > 28
+    flagged = 0
+    seen = set()
+    y0 = 0
+    while y0 < h:
+        if ink[y0].mean() < 0.02 or ink[y0].mean() > 0.85:
+            y0 += 1
+            continue
+        y1 = y0 + 1
+        while y1 < h and 0.02 <= ink[y1].mean() <= 0.85:
+            y1 += 1
+        band_h = y1 - y0
+        # Title bar / composer chrome on a full-window shot is not a menu item.
+        if y0 < 44 or y1 > h - 70:
+            y0 = max(y1, y0 + 1)
+            continue
+        if 6 <= band_h <= 40:
+            mid0, mid1 = y0 + max(1, band_h // 5), y1 - max(1, band_h // 6)
+            # Union of mid-glyph rows keeps thin CJK strokes that a mean
+            # threshold would drop.
+            union = ink[mid0:mid1].any(axis=0) if mid1 > mid0 else ink[y0]
+            votes = {}
+            for ry in range(mid0, max(mid0 + 1, mid1)):
+                for s, e in _ellipsis_spans(ink[ry]):
+                    key = (round(s / 3) * 3, round(e / 3) * 3)
+                    votes.setdefault(key, [0, s, e])
+                    votes[key][0] += 1
+                    votes[key][1] = min(votes[key][1], s)
+                    votes[key][2] = max(votes[key][2], e)
+            # Cluster overlapping/nearby spans so a single ellipsis that
+            # jittered across rows is counted once. Use the tightest
+            # typographic member (not the union) so the preceding CJK
+            # glyph is not absorbed into the dot columns.
+            items = sorted(votes.values(), key=lambda v: v[1])
+            clustered = []  # [votes, members]
+            for c, s, e in items:
+                if clustered and s <= max(m[1] for m in clustered[-1][1]) + 6:
+                    clustered[-1][0] += c
+                    clustered[-1][1].append((s, e))
+                else:
+                    clustered.append([c, [(s, e)]])
+            uniq = []
+            for c, members in clustered:
+                if c < 2:
+                    continue
+                typo = [(s, e) for s, e in members if 6 <= (e - s) <= 28]
+                if not typo:
+                    continue
+                typo.sort(key=lambda se: (se[1] - se[0], se[0]))
+                uniq.append(typo[0])  # shortest typographic span
+            for e0, e1 in uniq:
+                left = _label_left(union, e1)
+                width = e1 - left
+                # Sidebar/search text often merges to x=0; menu labels do not.
+                if e0 < left or left < 24 or width < 40 or width > 260:
+                    continue
+                if e1 >= w - 12:
+                    continue  # window-border AA, not a menu card
+                # Look past the last dot for more letters (ignore 1px AA).
+                tail = union[e1 + 1:min(w, e1 + 12)]
+                run = 0
+                more = False
+                for v in tail:
+                    run = run + 1 if v else 0
+                    if run >= 3:
+                        more = True
+                        break
+                if more:
+                    continue
+                # Typographic dots are short; emoji and icons are taller.
+                col = ink[y0:y1, e0:e1]
+                if col.size:
+                    rows = col.any(axis=1)
+                    if rows.any():
+                        ys = __import__("numpy").where(rows)[0]
+                        if int(ys[-1] - ys[0] + 1) > 12:
+                            continue
+                pad = _panel_pad(y, ink, y0, y1, h, w, e1)
+                long_label = width >= 150
+                flush = pad <= 8
+                if not (flush or long_label):
+                    continue
+                key = (y0, left // 8, e1 // 8)
+                if key in seen:
+                    continue
+                seen.add(key)
+                flagged += 1
+        y0 = max(y1, y0 + 1)
+    if flagged:
+        return True, f"ellipsized menu item x{flagged}"
+    return False, ""
+
 def load_ignore(path):
     if not path or not Path(path).exists():
         return {}
@@ -102,16 +302,25 @@ def audit_one(path, ignore):
     from PIL import Image
     im = Image.open(path).convert("RGB")
     name = Path(path).name
-    if name in ignore or ignore.get(name) == "*":
+    # Colour-audit ignore files list decorative rects in mixed formats; they
+    # are not a skip list for overflow. Only drop a shot when it is explicitly
+    # starred or is known OS chrome / a user-photo viewer.
+    if ignore.get(name) == "*" or ignore.get("*") == "*":
+        return None
+    low = name.lower()
+    if any(k in low for k in ("file-chooser", "send-image", "desktop-", "image-viewer")):
         return None
     y = luma(im)
     cut, why = edge_cut_score(y)
     nav, nwhy = android_nav_overlap(im, path)
+    ell, ewhy = ellipsis_in_menu(im, path)
     reasons = []
     if cut:
         reasons.append("edge-clipped text: " + why)
     if nav:
         reasons.append(nwhy)
+    if ell:
+        reasons.append(ewhy)
     return "; ".join(reasons) if reasons else None
 
 def self_test(out: Path) -> int:
@@ -148,6 +357,42 @@ def self_test(out: Path) -> int:
         return 1
     if not r_bad:
         print("SELFTEST FAIL: clipped image was not flagged")
+        return 1
+    # menu item ellipsis: a flyout card whose last item is flush-truncated
+    menu_font = _text_font(22)
+    def menu_shot(truncated, name):
+        canvas = Image.new("RGB", (640, 360), (240, 240, 245))
+        d = ImageDraw.Draw(canvas)
+        d.text((24, 16), "Chat page", fill=(40, 40, 50), font=menu_font)
+        box = (360, 40, 600, 240)
+        d.rectangle(box, fill=(255, 255, 255))
+        d.text((376, 56), "会话", fill=(30, 30, 40), font=menu_font)
+        d.text((376, 92), "消息", fill=(30, 30, 40), font=menu_font)
+        # Deterministic ink so the self-test does not depend on font shaping:
+        # a long bar (the label) plus three dots, either flush or padded.
+        if truncated:
+            # Long label flush to the card, plus three dots 4px from the edge.
+            d.rectangle((376, 134, 584, 150), fill=(30, 30, 40))
+            for i in range(3):
+                d.ellipse((586 + i * 4, 138, 588 + i * 4, 146), fill=(30, 30, 40))
+        else:
+            # Short label + typographic dots with ample padding to the card edge.
+            d.rectangle((376, 134, 500, 150), fill=(30, 30, 40))
+            for i in range(3):
+                d.ellipse((504 + i * 4, 138, 506 + i * 4, 146), fill=(30, 30, 40))
+        path = out / name
+        canvas.save(path)
+        return path
+    p_menu_ok = menu_shot(False, "popup-menu-ok.png")
+    p_menu_bad = menu_shot(True, "popup-menu-bad.png")
+    r_menu_ok = audit_one(p_menu_ok, {})
+    r_menu_bad = audit_one(p_menu_bad, {})
+    print("self-test menu padded:", r_menu_ok, "ellipsized:", r_menu_bad)
+    if r_menu_ok:
+        print("SELFTEST FAIL: padded menu item flagged:", r_menu_ok)
+        return 1
+    if not r_menu_bad or "ellipsized" not in r_menu_bad:
+        print("SELFTEST FAIL: ellipsized menu item was not flagged:", r_menu_bad)
         return 1
     print("SELFTEST OK")
     return 0

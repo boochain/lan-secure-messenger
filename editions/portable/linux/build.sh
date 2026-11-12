@@ -15,6 +15,7 @@ cc $CF -I$OUT -o $OUT/lan-messenger-gtk linux/gtk_gui.c $CORE $(pkg-config --cfl
 # CLI: fully static with musl when available (runs on any Linux incl. Alpine / NAS boxes), else glibc dynamic
 if command -v musl-gcc >/dev/null 2>&1; then musl-gcc $CF -static -o $OUT/lanmsg-cli src/cli.c $CORE -lpthread; else cc $CF -o $OUT/lanmsg-cli src/cli.c $CORE -lpthread; fi
 strip $OUT/lan-messenger-gtk $OUT/lanmsg-cli
+cp linux/data/lan-messenger.png $OUT/
 # ---- tarball
 T=$OUT/lan-messenger-$VER-linux-$ARCH; mkdir -p $T/bin $T/share/applications $T/share/icons
 cp $OUT/lan-messenger-gtk $OUT/lanmsg-cli $T/bin/; cp -a linux/data/hicolor $T/share/icons/; cp linux/data/lan-messenger.png $T/bin/

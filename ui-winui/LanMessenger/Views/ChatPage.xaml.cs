@@ -221,32 +221,36 @@ public sealed partial class ChatPage : Page
     internal void ShowConvListMenu(ConversationItem c, FrameworkElement target, Windows.Foundation.Point pt)
     {
         VM.SelectedConversation = c;
-        var f = new MenuFlyout();
-        void Add(string text, string glyph, System.Windows.Input.ICommand cmd) { var it = new MenuFlyoutItem { Text = text, Icon = new FontIcon { Glyph = glyph }, Command = cmd }; f.Items.Add(it); }
-        void AddAct(string text, string glyph, string hook, System.Action a)
+        var f = new MenuFlyout { MinWidth = 220 };
+        void AddTo(MenuFlyoutSubItem parent, string text, string glyph, System.Windows.Input.ICommand cmd)
+        {
+            parent.Items.Add(new MenuFlyoutItem { Text = text, Icon = new FontIcon { Glyph = glyph }, Command = cmd });
+        }
+        void AddActTo(MenuFlyoutSubItem parent, string text, string glyph, string hook, System.Action a)
         {
             var it = new MenuFlyoutItem { Text = text, Icon = new FontIcon { Glyph = glyph } };
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(it, hook);
             it.Click += (_, _) => a();
-            f.Items.Add(it);
+            parent.Items.Add(it);
         }
+        var sess = new MenuFlyoutSubItem { Text = "会话" };
         // LSMF_chat_pin LSMF_chat_mark_read LSMF_chat_mark_unread LSMF_chat_mute LSMF_chat_delete
-        AddAct(c.Pinned ? "取消置顶" : "置顶", "\uE840", "LSMF_chat_pin", () => _ = VM.PinConversationAsync(c));
-        AddAct("标为已读", "\uE8C3", "LSMF_chat_mark_read", () => _ = VM.MarkConversationReadAsync(c));
-        AddAct("标为未读", "\uE8BD", "LSMF_chat_mark_unread", () => _ = VM.MarkConversationUnreadAsync(c));
-        AddAct(c.Muted ? "取消免打扰" : "免打扰", "\uE7ED", "LSMF_chat_mute", () => _ = VM.MuteConversationAsync(c));
-        AddAct("删除会话…", "\uE74D", "LSMF_chat_delete", async () =>
+        AddActTo(sess, c.Pinned ? "取消置顶" : "置顶", "", "LSMF_chat_pin", () => _ = VM.PinConversationAsync(c));
+        AddActTo(sess, "标为已读", "", "LSMF_chat_mark_read", () => _ = VM.MarkConversationReadAsync(c));
+        AddActTo(sess, "标为未读", "", "LSMF_chat_mark_unread", () => _ = VM.MarkConversationUnreadAsync(c));
+        AddActTo(sess, c.Muted ? "取消免打扰" : "免打扰", "", "LSMF_chat_mute", () => _ = VM.MuteConversationAsync(c));
+        AddActTo(sess, "删除会话…", "", "LSMF_chat_delete", async () =>
         {
             var d = Services.ThemeService.Prepare(new ContentDialog { XamlRoot = XamlRoot, Title = $"删除与 {c.Title} 的聊天记录？", Content = "只会从本机删除，对方仍保留这些消息。此操作无法撤销。",
                 PrimaryButtonText = "删除", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close });
             if (await d.ShowAsync() == ContentDialogResult.Primary) await VM.DeleteConversationAsync(c);
         });
-        f.Items.Add(new MenuFlyoutSeparator());
+        f.Items.Add(sess);
         if (c.IsDm)
         {
-            if (VM.SelectedTrusted) Add("取消信任", "\uE8F8", VM.UntrustSelectedCommand); else Add("信任", "\uE8FB", VM.TrustSelectedCommand);
-            f.Items.Add(new MenuFlyoutSeparator());
-            var block = new MenuFlyoutItem { Text = VM.SelectedBlocked ? "取消屏蔽" : "屏蔽…", Icon = new FontIcon { Glyph = "\uE8F8" } };
+            var who = new MenuFlyoutSubItem { Text = "联系人" };
+            if (VM.SelectedTrusted) AddTo(who, "取消信任", "", VM.UntrustSelectedCommand); else AddTo(who, "信任", "", VM.TrustSelectedCommand);
+            var block = new MenuFlyoutItem { Text = VM.SelectedBlocked ? "取消屏蔽" : "屏蔽…", Icon = new FontIcon { Glyph = "" } };
             block.Click += async (_, _) =>
             {
                 if (VM.SelectedBlocked) { VM.UntrustSelectedCommand.Execute(null); return; }
@@ -254,11 +258,13 @@ public sealed partial class ChatPage : Page
                     PrimaryButtonText = "屏蔽", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close });
                 if (await d.ShowAsync() == ContentDialogResult.Primary) VM.BlockSelectedCommand.Execute(null);
             };
-            f.Items.Add(block);
+            who.Items.Add(block);
+            f.Items.Add(who);
         }
-        f.Items.Add(new MenuFlyoutSeparator());
-        { var a = new MenuFlyoutItem { Text = c.Archived ? "取消归档" : "归档", Icon = new FontIcon { Glyph = "\uE7B8" } }; a.Click += async (_, _) => await VM.ToggleArchiveAsync(c); f.Items.Add(a); }
-        { var a = new MenuFlyoutItem { Text = "会话分组…", Icon = new FontIcon { Glyph = "\uE8B7" } }; a.Click += async (_, _) => await V062Dialogs.FoldersAsync(XamlRoot, c); f.Items.Add(a); }
+        var more = new MenuFlyoutSubItem { Text = "更多" };
+        { var a = new MenuFlyoutItem { Text = c.Archived ? "取消归档" : "归档", Icon = new FontIcon { Glyph = "" } }; a.Click += async (_, _) => await VM.ToggleArchiveAsync(c); more.Items.Add(a); }
+        { var a = new MenuFlyoutItem { Text = "会话分组…", Icon = new FontIcon { Glyph = "" } }; a.Click += async (_, _) => await V062Dialogs.FoldersAsync(XamlRoot, c); more.Items.Add(a); }
+        f.Items.Add(more);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(f, "LSMF_chat_list_menu");
         f.ShowAt(target, pt);
     }

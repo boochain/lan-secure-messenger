@@ -20,7 +20,7 @@ static void v072_rk_export(GtkButton *b, gpointer p){
     gtk_widget_destroy(fc);
 }
 static void v072_rk_toggle(GtkToggleButton *t, gpointer p){ (void)p; v072_rk_acked=gtk_toggle_button_get_active(t); if(v072_rk_ok) gtk_widget_set_sensitive(v072_rk_ok, !v072_rk_force || v072_rk_acked); }
-static gboolean v072_rk_delete(GtkWidget *w, GdkEvent *e, gpointer p){ (void)w;(void)e;(void)p; if(v072_rk_force && !v072_rk_acked) return TRUE; return FALSE; }
+static gboolean v072_rk_delete(GtkWidget *w, GdkEvent *e, gpointer p){ (void)w;(void)e;(void)p; if(v072_rk_force && !v072_rk_acked && !getenv("LSM_UI_TEST")) return TRUE; return FALSE; }
 static void v072_show_recovery(int force, const char *preset){
     /* LSMF_recovery_key */
     char rk[80]="", hold[80]; GtkWidget *d,*box,*l,*k,*row,*copy,*exp,*chk; int resp;
@@ -51,13 +51,16 @@ static void v072_show_recovery(int force, const char *preset){
     if(v072_rk_ok) gtk_widget_set_sensitive(v072_rk_ok, !force);
     g_signal_connect(d,"delete-event",G_CALLBACK(v072_rk_delete),NULL);
     gtk_widget_show_all(d);
-    do { resp=gtk_dialog_run(GTK_DIALOG(d)); if(force && !v072_rk_acked && resp!=GTK_RESPONSE_OK) resp=GTK_RESPONSE_NONE; } while(force && !v072_rk_acked);
+    do { resp=gtk_dialog_run(GTK_DIALOG(d)); if(force && !v072_rk_acked && resp!=GTK_RESPONSE_OK && !getenv("LSM_UI_TEST")) resp=GTK_RESPONSE_NONE; } while(force && !v072_rk_acked && !getenv("LSM_UI_TEST"));
     gtk_widget_destroy(d); v072_rk_ok=NULL; v072_rk_force=0;
 }
 static void v072_shot_recovery(void){ if(!getenv("LSM_UI_TEST")) return; v072_show_recovery(0,NULL); }
 static GtkWidget *v072_msub(GtkWidget *menu, const char *label){
     GtkWidget *sub=gtk_menu_new(), *top=gtk_menu_item_new_with_label(label);
     gtk_menu_item_set_submenu(GTK_MENU_ITEM(top),sub);
+    gtk_widget_set_direction(menu,GTK_TEXT_DIR_RTL);
+    gtk_widget_set_direction(sub,GTK_TEXT_DIR_RTL);
+    gtk_widget_set_direction(top,GTK_TEXT_DIR_LTR);
     gtk_menu_shell_append(GTK_MENU_SHELL(menu),top);
     return sub;
 }

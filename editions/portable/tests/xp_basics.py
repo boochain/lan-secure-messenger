@@ -83,7 +83,7 @@ check(bool(off), f"X8 a dropped file (WM_DROPFILES, shell HDROP) is offered to t
 # X1 Esc closes dialogs: Ctrl+N prompt, 设置 > 中转服务器 dialog
 xdo("key", "ctrl+n"); d = wait(lambda: wins("按 IP 添加"), 5); xdo("key", "Escape"); gone = wait(lambda: not wins("按 IP 添加"), 5)
 check(bool(d) and bool(gone), "X1 Esc closes the 按 IP 添加 dialog (Ctrl+N)")
-click(260, 46); time.sleep(1); xdo("key", "r"); d = wait(lambda: wins("^中转服务器$"), 5); xdo("key", "Escape"); gone = wait(lambda: not wins("^中转服务器$"), 5)
+xdo("key", "alt+s"); time.sleep(0.8); xdo("key", "a"); time.sleep(0.4); xdo("key", "r"); d = wait(lambda: wins("^中转服务器$"), 5); xdo("key", "Escape"); gone = wait(lambda: not wins("^中转服务器$"), 5)
 check(bool(d) and bool(gone), "X1 Esc closes the 中转服务器 dialog")
 # X2 Enter sends, Shift+Enter new line (the peer receives one message with two lines)
 click(600, 640); time.sleep(0.5); xdo("type", "--delay", "30", "line-one"); xdo("key", "shift+Return"); xdo("type", "--delay", "30", "line-two")
@@ -143,7 +143,7 @@ check(bool(bfp) and hid and bool(opened), f"X17 balloon click shows the hidden w
 wid = (wins("局域网安全通讯 XP") or [wid])[0]
 # X6 window memory: move/resize, 文件 > 退出, restart at the same place
 xdo("windowmove", wid, "60", "50"); xdo("windowsize", wid, "900", "640"); time.sleep(1.5); want = geom(wid)
-click(30, 46); time.sleep(0.8); xdo("key", "x"); ex = wait(lambda: g.p.poll() is not None, 15); check(bool(ex), "文件 > 退出 exits")
+xdo("windowfocus", "--sync", wid); time.sleep(0.3); xdo("key", "alt+f"); time.sleep(0.8); xdo("key", "x"); ex = wait(lambda: g.p.poll() is not None, 15); check(bool(ex), "文件 > 退出 exits")
 try: subprocess.run(["wineserver", "-w"], env=env, timeout=20)
 except subprocess.TimeoutExpired: pass
 g, wid = start(); time.sleep(2); have = geom(wid) if wid else {}

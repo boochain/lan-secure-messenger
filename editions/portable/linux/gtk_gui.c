@@ -301,12 +301,34 @@ static void refresh_chat(void){
 typedef void *(*ai_new_t)(const char*,const char*,int); typedef void (*ai_set_status_t)(void*,int); typedef void (*ai_set_menu_t)(void*,GtkMenu*); typedef void (*ai_set_title_t)(void*,const char*);
 static const char *tray_kind="无";
 static char icon_path[1024];
-static void find_icon(void){ /* AppImage: $APPDIR/lan-messenger.png ; tarball: next to the binary ; system install: hicolor theme */
+static void find_icon(void){ /* AppImage: $APPDIR/lan-messenger.png ; tarball: next to the binary ; CI build dir; system install: hicolor theme */
     char exe[900]; ssize_t n=readlink("/proc/self/exe",exe,sizeof exe-1); const char *ad=getenv("APPDIR"); char *sl;
+    const char *rel[]={"lan-messenger.png","../share/icons/hicolor/256x256/apps/lan-messenger.png","../../linux/data/lan-messenger.png","../../linux/data/hicolor/256x256/apps/lan-messenger.png","../linux/data/lan-messenger.png",NULL}; int i;
     if(ad){ snprintf(icon_path,sizeof icon_path,"%s/lan-messenger.png",ad); if(access(icon_path,R_OK)==0) return; }
-    if(n>0){ exe[n]=0; sl=strrchr(exe,'/'); if(sl){ *sl=0; snprintf(icon_path,sizeof icon_path,"%s/lan-messenger.png",exe); if(access(icon_path,R_OK)==0) return;
-        snprintf(icon_path,sizeof icon_path,"%s/../share/icons/hicolor/256x256/apps/lan-messenger.png",exe); if(access(icon_path,R_OK)==0) return; } }
+    if(n>0){ exe[n]=0; sl=strrchr(exe,'/'); if(sl){ *sl=0; for(i=0;rel[i];i++){ snprintf(icon_path,sizeof icon_path,"%s/%s",exe,rel[i]); if(access(icon_path,R_OK)==0) return; } } }
     icon_path[0]=0; }
+static GdkPixbuf *v072_draw_bubble_pb(int px){
+    cairo_surface_t *s=cairo_image_surface_create(CAIRO_FORMAT_ARGB32,px,px); cairo_t *cr=cairo_create(s);
+    double u=px/32.0, x=3*u, y=3*u, w=26*u, h=20*u, r=5.2*u; GdkPixbuf *pb;
+    cairo_set_source_rgb(cr,63/255.0,95/255.0,144/255.0);
+    cairo_move_to(cr,x+r,y); cairo_line_to(cr,x+w-r,y); cairo_arc(cr,x+w-r,y+r,r,-G_PI/2,0);
+    cairo_line_to(cr,x+w,y+h-r); cairo_arc(cr,x+w-r,y+h-r,r,0,G_PI/2);
+    cairo_line_to(cr,x+r,y+h); cairo_arc(cr,x+r,y+h-r,r,G_PI/2,G_PI);
+    cairo_line_to(cr,x,y+r); cairo_arc(cr,x+r,y+r,r,G_PI,3*G_PI/2); cairo_close_path(cr);
+    cairo_move_to(cr,8*u,y+h-0.5*u); cairo_line_to(cr,6*u,29*u); cairo_line_to(cr,15*u,y+h-0.5*u);
+    cairo_fill(cr);
+    cairo_set_source_rgb(cr,249/255.0,249/255.0,255/255.0);
+    cairo_arc(cr,px/2.0,y+h*0.48,3.2*u,0,2*G_PI); cairo_fill(cr);
+    cairo_destroy(cr); pb=gdk_pixbuf_get_from_surface(s,0,0,px,px); cairo_surface_destroy(s); return pb;
+}
+static GtkWidget *v072_title_icon(int px){
+    GdkPixbuf *pb=NULL; GtkWidget *ic; if(px<24) px=28;
+    if(icon_path[0]) pb=gdk_pixbuf_new_from_file_at_size(icon_path,px,px,NULL);
+    if(!pb) pb=v072_draw_bubble_pb(px);
+    ic=gtk_image_new_from_pixbuf(pb); if(pb) g_object_unref(pb);
+    gtk_widget_set_valign(ic,GTK_ALIGN_CENTER); gtk_widget_set_margin_end(ic,4);
+    gtk_widget_set_size_request(ic,px,px); return ic;
+}
 static void ui_wake(void){ static gint64 last; gint64 n=g_get_monotonic_time(); if(n-last<2000*1000) return; last=n; lsm_wake(C); list_dirty=chat_dirty=1; }
 static void show_main(void){ gtk_widget_show(win); gtk_window_present(GTK_WINDOW(win)); ui_wake(); }
 static void quit_app(void){ p2_save_draft(); g_application_quit(G_APPLICATION(app)); }
@@ -509,7 +531,7 @@ static void act(GtkWidget *w, gpointer p){ int id=GPOINTER_TO_INT(p); char err[2
         r=gtk_dialog_run(GTK_DIALOG(d)); gtk_widget_destroy(d); if(r==1) act(NULL,GINT_TO_POINTER(A_DIAG)); else if(r==2) act(NULL,GINT_TO_POINTER(A_UPDATE)); else if(r==3) act(NULL,GINT_TO_POINTER(A_STORAGE)); break; }
     case A_QUIT: quit_app(); break; } }
 
-static GtkWidget *mi(GtkWidget *menu, const char *label, int id){ GtkWidget *i=gtk_menu_item_new_with_label(label); g_signal_connect(i,"activate",G_CALLBACK(act),GINT_TO_POINTER(id)); gtk_menu_shell_append(GTK_MENU_SHELL(menu),i); return i; }
+static GtkWidget *mi(GtkWidget *menu, const char *label, int id){ GtkWidget *i=gtk_menu_item_new_with_label(label); gtk_widget_set_direction(i,GTK_TEXT_DIR_LTR); g_signal_connect(i,"activate",G_CALLBACK(act),GINT_TO_POINTER(id)); gtk_menu_shell_append(GTK_MENU_SHELL(menu),i); return i; }
 static void sep(GtkWidget *m){ gtk_menu_shell_append(GTK_MENU_SHELL(m),gtk_separator_menu_item_new()); }
 
 /* ---------------------------------------------------------------- event pump (core thread -> GTK main loop) */
@@ -588,8 +610,8 @@ static void activate(GtkApplication *a, gpointer p){
       GtkWidget *files=v072_msub(more,"文件与系统");
       mi(files,"文件传输",A_XFERS); mi(files,"打开接收文件夹",A_DLDIR); mi(files,"设置防火墙（ufw / firewalld）…",A_FIREWALL);
       mi(more,"关于",A_ABOUT); mi(more,"退出",A_QUIT); }
-        gtk_widget_show_all(menu); gtk_widget_set_halign(menu,GTK_ALIGN_END); /* open leftwards, inside the window */ gtk_menu_button_set_popup(GTK_MENU_BUTTON(mb),menu); gtk_header_bar_pack_end(GTK_HEADER_BAR(hb),mb); menu_btn=mb;
-    if(icon_path[0]){ GdkPixbuf *pb=gdk_pixbuf_new_from_file_at_size(icon_path,24,24,NULL); if(pb){ GtkWidget *ic=gtk_image_new_from_pixbuf(pb); g_object_unref(pb); gtk_widget_set_valign(ic,GTK_ALIGN_CENTER); gtk_widget_set_margin_end(ic,4); gtk_header_bar_pack_start(GTK_HEADER_BAR(hb),ic); } }
+        gtk_widget_show_all(menu); gtk_widget_set_halign(menu,GTK_ALIGN_END); /* open leftwards, inside the window */ gtk_widget_set_direction(menu,GTK_TEXT_DIR_RTL); gtk_menu_button_set_popup(GTK_MENU_BUTTON(mb),menu); gtk_header_bar_pack_end(GTK_HEADER_BAR(hb),mb); menu_btn=mb;
+    gtk_header_bar_pack_start(GTK_HEADER_BAR(hb),v072_title_icon(28));
     { GtkWidget *add=gtk_button_new_from_icon_name("list-add-symbolic",GTK_ICON_SIZE_BUTTON); gtk_widget_set_tooltip_text(add,"按 IP 添加"); g_signal_connect(add,"clicked",G_CALLBACK(act),GINT_TO_POINTER(A_ADDIP)); gtk_header_bar_pack_start(GTK_HEADER_BAR(hb),add); }
     { GtkWidget *rf=gtk_button_new_from_icon_name("view-refresh-symbolic",GTK_ICON_SIZE_BUTTON); gtk_widget_set_tooltip_text(rf,"刷新联系人"); g_signal_connect(rf,"clicked",G_CALLBACK(act),GINT_TO_POINTER(A_REFRESH)); gtk_header_bar_pack_start(GTK_HEADER_BAR(hb),rf); }
     { GtkWidget *hs=gtk_button_new_from_icon_name("edit-find-symbolic",GTK_ICON_SIZE_BUTTON); gtk_widget_set_tooltip_text(hs,"消息历史 (Ctrl+Shift+F)"); g_signal_connect(hs,"clicked",G_CALLBACK(act),GINT_TO_POINTER(A_HISTORY)); gtk_header_bar_pack_end(GTK_HEADER_BAR(hb),hs);

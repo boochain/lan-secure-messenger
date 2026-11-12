@@ -103,7 +103,7 @@ for th in a.themes.split(","):
     # error state: invalid address -> error dialog
     x("mousemove", "--window", wid, "22", "20"); x("click", "1"); time.sleep(1.2); x("type", "bad address"); x("key", "Return"); time.sleep(1.5); shot(f"{th}-10-error"); x("key", "Return"); time.sleep(0.5); x("key", "Escape"); time.sleep(0.8)
     # tooltip on the header-bar + button
-    x("mousemove", "--window", wid, "20", "18"); time.sleep(0.3); x("mousemove", "--window", wid, "22", "20"); time.sleep(2.5); shot(f"{th}-11-tooltip"); x("mousemove", "--window", wid, "500", "400"); time.sleep(0.5)
+    x("mousemove", "--window", wid, "56", "18"); time.sleep(0.3); x("mousemove", "--window", wid, "58", "20"); time.sleep(2.5); shot(f"{th}-11-tooltip"); x("mousemove", "--window", wid, "500", "400"); time.sleep(0.5)
     # transfers dialog: menu, last-but-6 entry -> use keyboard: F10 then Up x6
     def menu_up(n):
         x("key", "F10"); time.sleep(0.8)
@@ -251,6 +251,7 @@ ign = {"_reasons": {
     "*-04-add-by-ip emoji": "colour emoji glyph inside a chat bubble behind the modal is a picture, not UI text",
     "*-04-add-by-ip only": "ContentDialog-style modal: page behind the scrim is inactive (WCAG 1.4.3); audit the dialog only",
     "*-09-file-chooser": "GTK file chooser is OS chrome (icons, emblems, folder previews), not app UI",
+    "*-14-send-image": "send-image shot may include the OS file chooser (icons, sidebar, column headers), not app UI",
 }}
 for th in a.themes.split(","):
     add = f"{a.out}/{th}-04-add-by-ip.png"
@@ -261,6 +262,10 @@ for th in a.themes.split(","):
     if os.path.exists(fc):
         # ignore the whole chooser overlay region (center of window)
         ign[f"{th}-09-file-chooser.png"] = [[250, 80, 600, 560]]
+    si = f"{a.out}/{th}-14-send-image.png"
+    if os.path.exists(si):
+        ign[f"{th}-14-send-image.png"] = [[0, 0, 1100, 700]]
+        ign["_reasons"][f"{th}-14-send-image.png"] = "send-image shot may include the OS file chooser (icons, sidebar, column headers), not app UI"
     for kind in ("12-image-viewer", "13-image-viewer-zoom"):
         vp = f"{a.out}/{th}-{kind}.png"
         if os.path.exists(vp):

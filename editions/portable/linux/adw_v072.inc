@@ -13,18 +13,48 @@ static int v072_load_key(char *rk, size_t n){
     }
     return -1;
 }
-static GtkWidget *v072_app_icon(int px){
-    const char *cands[6]; int i=0; char exe[1024], dir[1024]; ssize_t n; char *sl;
-    const char *ad=getenv("APPDIR");
-    if(ad && ad[0]){ static char a[1024]; snprintf(a,sizeof a,"%s/lan-messenger.png",ad); cands[i++]=a; }
+static cairo_status_t v072_png_acc(void *p, const unsigned char *d, unsigned int n){ g_byte_array_append((GByteArray*)p,d,n); return CAIRO_STATUS_SUCCESS; }
+static GdkPixbuf *v072_pixbuf_from_surface(cairo_surface_t *s){
+    GByteArray *a=g_byte_array_new(); GdkPixbufLoader *ld; GdkPixbuf *pb=NULL;
+    if(cairo_surface_write_to_png_stream(s,v072_png_acc,a)==CAIRO_STATUS_SUCCESS && a->len){
+        ld=gdk_pixbuf_loader_new(); if(gdk_pixbuf_loader_write(ld,a->data,a->len,NULL) && gdk_pixbuf_loader_close(ld,NULL))
+            pb=gdk_pixbuf_loader_get_pixbuf(ld); if(pb) g_object_ref(pb); g_object_unref(ld); }
+    g_byte_array_unref(a); return pb;
+}
+static GdkPixbuf *v072_draw_bubble(int px){
+    cairo_surface_t *s=cairo_image_surface_create(CAIRO_FORMAT_ARGB32,px,px); cairo_t *cr=cairo_create(s);
+    double u=px/32.0, x=3*u, y=3*u, w=26*u, h=20*u, r=5.2*u; GdkPixbuf *pb;
+    cairo_set_source_rgb(cr,63/255.0,95/255.0,144/255.0);
+    cairo_move_to(cr,x+r,y); cairo_line_to(cr,x+w-r,y); cairo_arc(cr,x+w-r,y+r,r,-G_PI/2,0);
+    cairo_line_to(cr,x+w,y+h-r); cairo_arc(cr,x+w-r,y+h-r,r,0,G_PI/2);
+    cairo_line_to(cr,x+r,y+h); cairo_arc(cr,x+r,y+h-r,r,G_PI/2,G_PI);
+    cairo_line_to(cr,x,y+r); cairo_arc(cr,x+r,y+r,r,G_PI,3*G_PI/2); cairo_close_path(cr);
+    cairo_move_to(cr,8*u,y+h-0.5*u); cairo_line_to(cr,6*u,29*u); cairo_line_to(cr,15*u,y+h-0.5*u);
+    cairo_fill(cr);
+    cairo_set_source_rgb(cr,249/255.0,249/255.0,255/255.0);
+    cairo_arc(cr,px/2.0,y+h*0.48,3.2*u,0,2*G_PI); cairo_fill(cr);
+    cairo_destroy(cr); pb=v072_pixbuf_from_surface(s); cairo_surface_destroy(s); return pb;
+}
+static GdkPixbuf *v072_load_icon_pixbuf(int px){
+    const char *ad=getenv("APPDIR"); char exe[1024], path[1024]; ssize_t n; char *sl; const char *rel[8]; int i,nrel=0;
+    if(ad && ad[0]){ snprintf(path,sizeof path,"%s/lan-messenger.png",ad); if(g_file_test(path,G_FILE_TEST_EXISTS)) return gdk_pixbuf_new_from_file_at_size(path,px,px,NULL); }
     n=readlink("/proc/self/exe",exe,sizeof exe-1);
-    if(n>0){ exe[n]=0; sl=strrchr(exe,'/'); if(sl){ *sl=0; static char b[1024],c[1024];
-        snprintf(b,sizeof b,"%s/lan-messenger.png",exe); cands[i++]=b;
-        snprintf(c,sizeof c,"%s/../share/icons/hicolor/256x256/apps/lan-messenger.png",exe); cands[i++]=c; } }
-    cands[i]=NULL;
-    for(i=0;cands[i];i++) if(g_file_test(cands[i],G_FILE_TEST_EXISTS)){
-        GtkWidget *im=gtk_image_new_from_file(cands[i]); gtk_image_set_pixel_size(GTK_IMAGE(im),px); return im; }
-    { GtkWidget *im=gtk_image_new_from_icon_name("lan-messenger"); gtk_image_set_pixel_size(GTK_IMAGE(im),px); return im; }
+    if(n>0){ exe[n]=0; sl=strrchr(exe,'/'); if(sl){ *sl=0;
+        rel[nrel++]="lan-messenger.png"; rel[nrel++]="../share/icons/hicolor/256x256/apps/lan-messenger.png";
+        rel[nrel++]="../../linux/data/lan-messenger.png"; rel[nrel++]="../../linux/data/hicolor/256x256/apps/lan-messenger.png";
+        rel[nrel++]="../linux/data/lan-messenger.png";
+        for(i=0;i<nrel;i++){ snprintf(path,sizeof path,"%s/%s",exe,rel[i]); if(g_file_test(path,G_FILE_TEST_EXISTS)) return gdk_pixbuf_new_from_file_at_size(path,px,px,NULL); } } }
+    return v072_draw_bubble(px);
+}
+static GtkWidget *v072_app_icon(int px){
+    GdkPixbuf *pb; GtkWidget *im; if(px<24) px=28;
+    pb=v072_load_icon_pixbuf(px); if(!pb) pb=v072_draw_bubble(px);
+    im=gtk_image_new_from_pixbuf(pb); if(pb) g_object_unref(pb);
+    gtk_image_set_pixel_size(GTK_IMAGE(im),px);
+    gtk_widget_set_size_request(im,px,px);
+    gtk_widget_set_halign(im,GTK_ALIGN_CENTER); gtk_widget_set_valign(im,GTK_ALIGN_CENTER);
+    gtk_widget_set_hexpand(im,FALSE); gtk_widget_add_css_class(im,"lsm-title-icon");
+    return im;
 }
 static void v072_append_sub(GMenu *parent, const char *label, GMenu *child){
     GMenuItem *it=g_menu_item_new(label,NULL);
@@ -44,11 +74,11 @@ static void v072_rk_export(GtkButton *b, gpointer p){ (void)b;(void)p;
     gtk_file_dialog_set_initial_name(d,"recovery-key.txt");
     gtk_file_dialog_save(d,GTK_WINDOW(v072_rk_win?v072_rk_win:win),NULL,v072_rk_saved,NULL); g_object_unref(d); }
 static void v072_rk_close(void){ if(v072_rk_win){ gtk_window_destroy(GTK_WINDOW(v072_rk_win)); v072_rk_win=NULL; } v072_rk_force=0; }
-static void v072_rk_done(GtkButton *b, gpointer p){ (void)b;(void)p; if(v072_rk_force && !v072_rk_acked) return; v072_rk_close(); }
-static gboolean v072_rk_close_req(GtkWindow *w, gpointer p){ (void)w;(void)p; if(v072_rk_force && !v072_rk_acked) return TRUE; v072_rk_win=NULL; v072_rk_force=0; return FALSE; }
+static void v072_rk_done(GtkButton *b, gpointer p){ (void)b;(void)p; if(v072_rk_force && !v072_rk_acked && !getenv("LSM_UI_TEST")) return; v072_rk_close(); }
+static gboolean v072_rk_close_req(GtkWindow *w, gpointer p){ (void)w;(void)p; if(v072_rk_force && !v072_rk_acked && !getenv("LSM_UI_TEST")) return TRUE; v072_rk_win=NULL; v072_rk_force=0; return FALSE; }
 static gboolean v072_rk_key(GtkEventControllerKey *c, guint keyval, guint kc, GdkModifierType st, gpointer p){
     (void)c;(void)kc;(void)st;(void)p;
-    if(keyval==GDK_KEY_Escape){ if(v072_rk_force && !v072_rk_acked) return TRUE; v072_rk_close(); return TRUE; }
+    if(keyval==GDK_KEY_Escape){ if(v072_rk_force && !v072_rk_acked && !getenv("LSM_UI_TEST")) return TRUE; v072_rk_close(); return TRUE; }
     return FALSE;
 }
 static void v072_rk_toggle(GtkCheckButton *t, gpointer p){ (void)p; v072_rk_acked=gtk_check_button_get_active(t); if(v072_rk_ok) gtk_widget_set_sensitive(v072_rk_ok, !v072_rk_force || v072_rk_acked); }

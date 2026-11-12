@@ -72,6 +72,7 @@ for TH in light dark; do
   for _ in 1 2 3 4 5; do xdotool key plus; sleep 0.12; done
   sleep 0.6; shot "xp-$TH-image-viewer-zoom"
   xdotool key Escape; sleep 0.5
+  xdotool windowactivate "$WID"; sleep 0.4
   # LSMF_chat_list_menu: right-click the selected conversation row
   CL 150 160; sleep 0.4
   eval $(xdotool getwindowgeometry --shell "$WID")

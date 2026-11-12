@@ -113,6 +113,7 @@ static GtkWidget *v070_nav_btn(const char *label, const char *page, const char *
     gtk_widget_set_name(b,hook); gtk_widget_set_tooltip_text(b,label); gtk_button_set_relief(GTK_BUTTON(b),GTK_RELIEF_NONE);
     g_object_set_data(G_OBJECT(b),"page",(gpointer)page);
     g_signal_connect(b,"clicked",G_CALLBACK(v070_nav_cb),(gpointer)page);
+    { GtkWidget *c=gtk_bin_get_child(GTK_BIN(b)); if(GTK_IS_LABEL(c)){ gtk_label_set_ellipsize(GTK_LABEL(c),PANGO_ELLIPSIZE_NONE); gtk_label_set_line_wrap(GTK_LABEL(c),FALSE); } }
     return b;
 }
 static void v070_sync_nav(const char *page){
@@ -135,7 +136,7 @@ static GtkWidget *v070_wrap(GtkWidget *chats){
     GtkWidget *st=gtk_stack_new();
     GtkWidget *contacts,*groups,*xfers,*files,*settings,*profile,*diag;
     v070_stack=st; v070_rail=rail;
-    gtk_widget_set_size_request(rail,72,-1);
+    gtk_widget_set_size_request(rail,112,-1);
     gtk_style_context_add_class(gtk_widget_get_style_context(rail),"lsm-v070-rail");
     gtk_box_pack_start(GTK_BOX(rail),v070_nav_btn("聊天","chats","LSMF_nav_chats"),FALSE,FALSE,0);
     gtk_box_pack_start(GTK_BOX(rail),v070_nav_btn("联系人","contacts","LSMF_nav_contacts"),FALSE,FALSE,0);
@@ -143,7 +144,7 @@ static GtkWidget *v070_wrap(GtkWidget *chats){
     gtk_box_pack_start(GTK_BOX(rail),v070_nav_btn("传输","transfers","LSMF_nav_transfers"),FALSE,FALSE,0);
     gtk_box_pack_start(GTK_BOX(rail),v070_nav_btn("文件站","files","LSMF_nav_files"),FALSE,FALSE,0);
     gtk_box_pack_start(GTK_BOX(rail),v070_nav_btn("设置","settings","LSMF_nav_settings"),FALSE,FALSE,0);
-    gtk_box_pack_start(GTK_BOX(rail),v070_nav_btn("我的","profile","LSMF_nav_profile"),FALSE,FALSE,0);
+    gtk_box_pack_start(GTK_BOX(rail),v070_nav_btn("个人资料","profile","LSMF_nav_profile"),FALSE,FALSE,0);
     gtk_box_pack_start(GTK_BOX(rail),v070_nav_btn("诊断","diagnostics","LSMF_nav_diagnostics"),FALSE,FALSE,0);
     contacts=v070_page("联系人","LSMF_nav_contacts","同一局域网内发现的设备。"); v070_fill_contacts(contacts);
     groups=v070_page("群组","LSMF_nav_groups","从菜单「群组」创建或管理群组，或从聊天列表选择一个群。");

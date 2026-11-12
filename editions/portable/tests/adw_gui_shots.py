@@ -214,7 +214,10 @@ for i, theme in enumerate(["light", "dark"]):
     close_dlg()
     xdo("key", "ctrl+q")
     if g.p.poll() is None:
-        g.p.wait(10)
+        try:
+            g.p.wait(10)
+        except subprocess.TimeoutExpired:
+            g.p.kill(); g.p.wait(5)
     if g.p.poll() is None:
         g.p.kill(); g.p.wait(5)
     time.sleep(0.5)

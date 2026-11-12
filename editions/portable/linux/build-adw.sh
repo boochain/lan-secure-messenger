@@ -10,4 +10,5 @@ sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/^/"/' -e 's/$/\\n"/' linux/data/lsm-ad
 RELAY=""; grep -q "lsm_relay_status" src/core.h && RELAY="-DLSM_HAVE_RELAY"
 cc $RELAY -O2 -std=gnu99 -Isrc -I$OUT -Wall -Wno-unused-function -Wno-misleading-indentation -Wno-stringop-truncation -Wno-format-truncation -DLSM_APP_VERSION="\"$VER\"" \
    -D_FORTIFY_SOURCE=2 -fstack-protector-strong -o $OUT/lan-messenger-adw linux/adw_gui.c $CORE $(pkg-config --cflags --libs libadwaita-1 gtk4) -lpthread -ldl -Wl,-z,relro,-z,now
+cp linux/data/lan-messenger.png $OUT/
 echo built $OUT/lan-messenger-adw

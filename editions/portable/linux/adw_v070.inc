@@ -100,7 +100,9 @@ static GtkWidget *v070_nav_btn(const char *label, const char *page, const char *
     GtkWidget *b=gtk_button_new_with_label(label);
     gtk_widget_set_name(b,hook); gtk_widget_set_tooltip_text(b,label); gtk_button_set_has_frame(GTK_BUTTON(b),FALSE);
     g_object_set_data(G_OBJECT(b),"page",(gpointer)page);
-    g_signal_connect(b,"clicked",G_CALLBACK(v070_nav_cb),(gpointer)page); return b;
+    g_signal_connect(b,"clicked",G_CALLBACK(v070_nav_cb),(gpointer)page);
+    { GtkWidget *c=gtk_button_get_child(GTK_BUTTON(b)); if(GTK_IS_LABEL(c)){ gtk_label_set_ellipsize(GTK_LABEL(c),PANGO_ELLIPSIZE_NONE); gtk_label_set_wrap(GTK_LABEL(c),FALSE); } }
+    return b;
 }
 static void v070_sync_nav(const char *page){
     GtkWidget *b;
@@ -114,7 +116,7 @@ static void v070_sync_nav(const char *page){
 static GtkWidget *v070_wrap(GtkWidget *chats){
     GtkWidget *outer=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,0), *rail=gtk_box_new(GTK_ORIENTATION_VERTICAL,2), *st=gtk_stack_new();
     GtkWidget *contacts,*groups,*xfers,*files,*settings,*profile,*diag; GtkGesture *g;
-    v070_stack=st; v070_rail=rail; gtk_widget_set_size_request(rail,80,-1);
+    v070_stack=st; v070_rail=rail; gtk_widget_set_size_request(rail,112,-1);
     gtk_widget_add_css_class(rail,"lsm-v070-rail");
     gtk_box_append(GTK_BOX(rail),v070_nav_btn("聊天","chats","LSMF_nav_chats"));
     gtk_box_append(GTK_BOX(rail),v070_nav_btn("联系人","contacts","LSMF_nav_contacts"));
@@ -122,7 +124,7 @@ static GtkWidget *v070_wrap(GtkWidget *chats){
     gtk_box_append(GTK_BOX(rail),v070_nav_btn("传输","transfers","LSMF_nav_transfers"));
     gtk_box_append(GTK_BOX(rail),v070_nav_btn("文件站","files","LSMF_nav_files"));
     gtk_box_append(GTK_BOX(rail),v070_nav_btn("设置","settings","LSMF_nav_settings"));
-    gtk_box_append(GTK_BOX(rail),v070_nav_btn("我的","profile","LSMF_nav_profile"));
+    gtk_box_append(GTK_BOX(rail),v070_nav_btn("个人资料","profile","LSMF_nav_profile"));
     gtk_box_append(GTK_BOX(rail),v070_nav_btn("诊断","diagnostics","LSMF_nav_diagnostics"));
     contacts=v070_page("联系人","LSMF_nav_contacts","同一局域网内发现的设备。"); v070_fill_contacts(contacts);
     groups=v070_page("群组","LSMF_nav_groups","从菜单创建或管理群组，或从聊天列表选择一个群。");
