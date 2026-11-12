@@ -11,11 +11,15 @@ def find(pred):
     if "<?xml" not in x: return None
     for n in ET.fromstring(x[x.index("<?xml"):]).iter("node"):
         if pred(n): b = list(map(int, re.findall(r"\d+", n.get("bounds")))); return ((b[0] + b[2]) // 2, (b[1] + b[3]) // 2)
-def tap_text(t, timeout=90):
+def swipe_up():
+    # Settings is a long list; swipe up (finger moves up) to reveal items below the fold.
+    adb("shell", "input", "swipe", "400", "1400", "400", "500", "300")
+def tap_text(t, timeout=90, scroll=False):
     end = time.time() + timeout
     while time.time() < end:
         r = find(lambda n: n.get("text") == t or n.get("content-desc") == t)
         if r: tap(*r); time.sleep(3); return
+        if scroll: swipe_up()
         time.sleep(2)
     raise RuntimeError("not found: " + t)
 import json
@@ -53,5 +57,5 @@ for th in ("light", "dark"):
     adb("shell", "input", "keyevent", "4"); time.sleep(1)  # close ⋯ (PIN/About now live under 设置, not in the 5-item overflow)
     tap_text("设置")
     tap_text("生成 PIN（让对方输入）"); shot(f"android-{th}-05-pin", True); tap_text("好")
-    tap_text("关于"); shot(f"android-{th}-06-about", True); tap_text("好")
+    tap_text("关于", scroll=True); shot(f"android-{th}-06-about", True); tap_text("好")
 adb("shell", "cmd", "uimode", "night", "no")

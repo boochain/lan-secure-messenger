@@ -552,7 +552,15 @@ static LRESULT CALLBACK ImgViewProc(HWND h, UINT m, WPARAM w, LPARAM l){
         if(w=='1' || w==VK_NUMPAD1){ RECT rc; GetClientRect(h,&rc); { double fit=imgv_fit_k(rc.right,rc.bottom); imgv_zoom=fit>1e-6?(1.0/fit):1.0; } imgv_offx=imgv_offy=0; InvalidateRect(h,NULL,TRUE); return 0; }
     }
     if(m==WM_CLOSE){ DestroyWindow(h); return 0; }
-    if(m==WM_DESTROY){ EnableWindow(hMain,TRUE); ShowWindow(hMain,SW_SHOW); SetForegroundWindow(hMain); InvalidateRect(hMain,NULL,TRUE); imgv_bm=NULL; imgv_drag=0; return 0; }
+    if(m==WM_DESTROY){
+        EnableWindow(hMain,TRUE);
+        ShowWindow(hMain,SW_RESTORE);
+        ShowWindow(hMain,SW_SHOW);
+        SetWindowPos(hMain,HWND_TOP,0,0,0,0,SWP_NOMOVE|SWP_NOSIZE|SWP_SHOWWINDOW);
+        SetForegroundWindow(hMain);
+        InvalidateRect(hMain,NULL,TRUE);
+        UpdateWindow(hMain);
+        imgv_bm=NULL; imgv_drag=0; return 0; }
     return DefWindowProcW(h,m,w,l); }
 static void show_image_viewer(const char *path){
     HBITMAP bm; int w,h; WNDCLASSW wc; HWND hv; RECT r; int WW,HH;

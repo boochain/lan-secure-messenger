@@ -21,9 +21,24 @@ wine reg add 'HKCU\Software\Wine\X11 Driver' /v Decorated /d N /f >/dev/null 2>&
   --set announce_interval_secs=1 --set multicast_enabled=false --set auto_trust=true --set "download_dir=\"$T/dl\"" >"$T/r.log" 2>&1 & RD=$!
 sleep 1; M="$RB/lan-msg --ipc $T/r.sock"
 ICONS="$WINEPREFIX/drive_c/lsmshots/ui_icons.txt"
-shot(){ xdotool mousemove 1095 755; sleep 0.7  # pointer off the window: no hover state / tooltip in the shot
-  [ -f "$ICONS" ] && cp "$ICONS" "$OUT/$1.icons"; local G; G=$(xwininfo -id "$WID"); local X=$(echo "$G"|awk '/Absolute upper-left X/{print $4}') Y=$(echo "$G"|awk '/Absolute upper-left Y/{print $4}') W=$(echo "$G"|awk '/Width:/{print $2}') H=$(echo "$G"|awk '/Height:/{print $2}')
-  import -window root -crop ${W}x${H}+${X}+${Y} +repage "$OUT/$1.png"; echo "shot $1 ${W}x${H}+${X}+${Y}"; }
+shot(){ local tries=0 mean
+  xdotool mousemove 1095 755; sleep 0.7  # pointer off the window: no hover state / tooltip in the shot
+  while true; do
+    [ -f "$ICONS" ] && cp "$ICONS" "$OUT/$1.icons"
+    local G; G=$(xwininfo -id "$WID" 2>/dev/null || true)
+    local X=$(echo "$G"|awk '/Absolute upper-left X/{print $4}') Y=$(echo "$G"|awk '/Absolute upper-left Y/{print $4}') W=$(echo "$G"|awk '/Width:/{print $2}') H=$(echo "$G"|awk '/Height:/{print $2}')
+    if [ -z "$W" ] || [ "$W" -lt 50 ]; then
+      ensure_main; tries=$((tries+1)); [ "$tries" -ge 4 ] && { echo "shot $1: no geometry" >&2; return; }; continue
+    fi
+    import -window root -crop ${W}x${H}+${X}+${Y} +repage "$OUT/$1.png"
+    mean=$(identify -format '%[fx:mean]' "$OUT/$1.png" 2>/dev/null || echo 0)
+    # nearly black 1000x660 crop (mean≈0.006) means the main window was unmapped
+    if awk -v m="$mean" 'BEGIN{exit !(m+0<0.04)}' && [ "$tries" -lt 3 ]; then
+      echo "shot $1 too dark (mean=$mean), remapping main window" >&2
+      ensure_main; tries=$((tries+1)); continue
+    fi
+    echo "shot $1 ${W}x${H}+${X}+${Y} mean=$mean"; break
+  done; }
 # crop to a named popup (first-run / QR) if it is visible, else fall back to the main window
 shot_named(){ local NAME=$2 ID G X Y W H
   ID=$(xdotool search --name "$NAME" 2>/dev/null | tail -1)
@@ -44,6 +59,24 @@ menu(){ xdotool key "alt+$1"; sleep 1.2; }
 # (xp-light-05-menu-groups: "(Ctrl" as #FEEFCB on #7F9DA6). Type into
 # search first so the hint is not painted, then restore after the shot.
 fill_search(){ xdotool key ctrl+f; sleep 0.25; xdotool type --delay 15 "x"; sleep 0.25; }
+# After the owned image-viewer popup is destroyed, Wine may leave the main
+# window unmapped. Re-find it, map it, and wait until X says it is viewable
+# so later crops are not a 1000x660 black rectangle.
+ensure_main(){
+  local i G
+  for i in 1 2 3 4 5 6 8 10; do
+    WID=$(xdotool search --name "局域网安全通讯" 2>/dev/null | head -1)
+    [ -n "$WID" ] || { sleep 0.3; continue; }
+    xdotool windowmap "$WID" 2>/dev/null || true
+    xdotool windowmove "$WID" 20 20 2>/dev/null || true
+    xdotool windowsize "$WID" 1000 660 2>/dev/null || true
+    xdotool windowactivate --sync "$WID" 2>/dev/null || true
+    sleep 0.3
+    G=$(xwininfo -id "$WID" 2>/dev/null || true)
+    echo "$G" | grep -q "Map State: IsViewable" && return 0
+  done
+  echo "ensure_main: window not viewable" >&2
+}
 clear_search(){ xdotool key ctrl+f; sleep 0.15; xdotool key ctrl+a BackSpace; sleep 0.2; }
 rm -rf "$WINEPREFIX/drive_c/lsmshots"
 mkdir -p "$WINEPREFIX/drive_c/lsmshots"
@@ -72,7 +105,7 @@ for TH in light dark; do
   for _ in 1 2 3 4 5; do xdotool key plus; sleep 0.12; done
   sleep 0.6; shot "xp-$TH-image-viewer-zoom"
   xdotool key Escape; sleep 0.5
-  xdotool windowactivate "$WID"; sleep 0.4
+  ensure_main
   # LSMF_chat_list_menu: right-click the selected conversation row
   CL 150 160; sleep 0.4
   eval $(xdotool getwindowgeometry --shell "$WID")
@@ -82,6 +115,7 @@ for TH in light dark; do
   xdotool key Escape; sleep 0.5
   # LSMF_nav_* pages via LSM_UI_TEST Ctrl+Shift+1..8 (no mnemonic clash with 生成 PIN)
   # LSMF_nav_chats LSMF_nav_contacts LSMF_nav_groups LSMF_nav_transfers LSMF_nav_files LSMF_nav_settings LSMF_nav_profile LSMF_nav_diagnostics
+  ensure_main
   xdotool key ctrl+shift+1; sleep 0.7; shot "xp-$TH-page-chats"
   xdotool key ctrl+shift+2; sleep 0.7; shot "xp-$TH-page-contacts"
   xdotool key ctrl+shift+3; sleep 0.7; shot "xp-$TH-page-groups"

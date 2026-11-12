@@ -221,7 +221,10 @@ public sealed partial class ChatPage : Page
     internal void ShowConvListMenu(ConversationItem c, FrameworkElement target, Windows.Foundation.Point pt)
     {
         VM.SelectedConversation = c;
-        var f = new MenuFlyout { MinWidth = 220 };
+        var f = new MenuFlyout();
+        var flyoutStyle = new Style(typeof(MenuFlyoutPresenter));
+        flyoutStyle.Setters.Add(new Setter(MinWidthProperty, 220.0));
+        f.MenuFlyoutPresenterStyle = flyoutStyle;
         void AddTo(MenuFlyoutSubItem parent, string text, string glyph, System.Windows.Input.ICommand cmd)
         {
             parent.Items.Add(new MenuFlyoutItem { Text = text, Icon = new FontIcon { Glyph = glyph }, Command = cmd });

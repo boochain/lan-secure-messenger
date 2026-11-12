@@ -55,12 +55,25 @@ static void v072_show_recovery(int force, const char *preset){
     gtk_widget_destroy(d); v072_rk_ok=NULL; v072_rk_force=0;
 }
 static void v072_shot_recovery(void){ if(!getenv("LSM_UI_TEST")) return; v072_show_recovery(0,NULL); }
+static void v072_submenu_left(GtkWidget *sub, gpointer top){
+    gint ix=0, iy=0; GtkAllocation ia, sa;
+    GdkWindow *iw=gtk_widget_get_window(GTK_WIDGET(top)), *mw=gtk_widget_get_window(sub);
+    if(!iw||!mw) return;
+    gdk_window_get_origin(iw,&ix,&iy);
+    gtk_widget_get_allocation(GTK_WIDGET(top),&ia);
+    gtk_widget_get_allocation(sub,&sa);
+    if(sa.width<8) return;
+    ix+=ia.x; iy+=ia.y;
+    if(ix-sa.width<0) ix=sa.width;
+    gdk_window_move(mw, ix-sa.width, iy);
+}
 static GtkWidget *v072_msub(GtkWidget *menu, const char *label){
     GtkWidget *sub=gtk_menu_new(), *top=gtk_menu_item_new_with_label(label);
     gtk_menu_item_set_submenu(GTK_MENU_ITEM(top),sub);
     gtk_widget_set_direction(menu,GTK_TEXT_DIR_RTL);
     gtk_widget_set_direction(sub,GTK_TEXT_DIR_RTL);
     gtk_widget_set_direction(top,GTK_TEXT_DIR_LTR);
+    g_signal_connect(sub,"map",G_CALLBACK(v072_submenu_left),top);
     gtk_menu_shell_append(GTK_MENU_SHELL(menu),top);
     return sub;
 }
