@@ -7,29 +7,40 @@
     PrimaryButtonText="开始使用"
     DefaultButton="Primary"
     PrimaryButtonClick="Dialog_PrimaryButtonClick">
-    <StackPanel Spacing="14" MaxWidth="480">
-        <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
-                   Text="同一局域网内打开本软件的电脑会自动互相发现，消息与文件全程端到端加密。请选择身份方式（之后可在设置里更改）。账号模式把加密后的身份与消息备份放在中转上，只有本机密钥能解密；设备模式仅本机、局域网直连。不使用服务器密码。" />
-        <RadioButton x:Name="DeviceModeRadio" GroupName="AcctMode" IsChecked="True" Content="设备模式 — 仅本机，局域网直连，不把身份放到服务器" Tag="LSMF_account_mode" />
-        <RadioButton x:Name="AccountModeRadio" GroupName="AcctMode" Content="账号模式 — 身份加密备份在中转上，换机可用恢复密钥或配对二维码恢复" />
-        <TextBox x:Name="NameBox" Header="你的显示名称（别人看到的名字）" MaxLength="40" />
-        <StackPanel Spacing="4">
-            <TextBlock Text="你的身份指纹（可让对方核对，防止冒充）" Style="{StaticResource BodyStrongTextBlockStyle}" />
-            <Grid ColumnSpacing="8">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <TextBlock x:Name="FpText" Grid.Column="0" FontFamily="Consolas" IsTextSelectionEnabled="True" TextWrapping="Wrap" VerticalAlignment="Center" />
-                <Button Grid.Column="1" Content="复制" Click="CopyFp_Click" />
-            </Grid>
+    <!-- Scroll the intro; pin the firewall hint so it is never clipped above 开始使用. -->
+    <Grid MaxWidth="480" MaxHeight="460">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="10">
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
+                           Text="同一局域网内打开本软件的电脑会自动互相发现，消息与文件全程端到端加密。请选择身份方式（之后可在设置里更改）。账号模式把加密后的身份与消息备份放在中转上，只有本机密钥能解密；设备模式仅本机、局域网直连。不使用服务器密码。" />
+                <RadioButton x:Name="DeviceModeRadio" GroupName="AcctMode" IsChecked="True" Content="设备模式 — 仅本机，局域网直连，不把身份放到服务器" Tag="LSMF_account_mode" />
+                <RadioButton x:Name="AccountModeRadio" GroupName="AcctMode" Content="账号模式 — 身份加密备份在中转上，换机可用恢复密钥或配对二维码恢复" />
+                <TextBox x:Name="NameBox" Header="你的显示名称（别人看到的名字）" MaxLength="40" />
+                <StackPanel Spacing="4">
+                    <TextBlock Text="你的身份指纹（可让对方核对，防止冒充）" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="FpText" Grid.Column="0" FontFamily="Consolas" IsTextSelectionEnabled="True" TextWrapping="Wrap" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Content="复制" Click="CopyFp_Click" />
+                    </Grid>
+                </StackPanel>
+                <InfoBar x:Name="FwInfo" IsOpen="True" IsClosable="False" Severity="Warning" Title="Windows 防火墙"
+                         Message="为了让其他电脑能发现并连接到你，需要允许本程序通过防火墙（专用网络）。点击下方按钮，系统会弹出一次管理员确认。" />
+            </StackPanel>
+        </ScrollViewer>
+        <StackPanel Grid.Row="1" Spacing="8" Margin="0,12,0,0">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button x:Name="FwButton" Style="{StaticResource AccentButtonStyle}" Content="一键配置防火墙" Click="Firewall_Click" />
+                <ProgressRing x:Name="FwRing" Width="20" Height="20" IsActive="False" />
+            </StackPanel>
+            <TextBlock x:Name="FwResult" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" />
         </StackPanel>
-        <InfoBar x:Name="FwInfo" IsOpen="True" IsClosable="False" Severity="Warning" Title="Windows 防火墙"
-                 Message="为了让其他电脑能发现并连接到你，需要允许本程序通过防火墙（专用网络）。点击下方按钮，系统会弹出一次管理员确认。" />
-        <StackPanel Orientation="Horizontal" Spacing="8">
-            <Button x:Name="FwButton" Style="{StaticResource AccentButtonStyle}" Content="一键配置防火墙" Click="Firewall_Click" />
-            <ProgressRing x:Name="FwRing" Width="20" Height="20" IsActive="False" />
-        </StackPanel>
-        <TextBlock x:Name="FwResult" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" />
-    </StackPanel>
+    </Grid>
 </ContentDialog>

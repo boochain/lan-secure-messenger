@@ -64,6 +64,7 @@ $problems = @()
 
 foreach ($theme in "light", "dark") {
   Write-Host "===================== UI smoke: $theme ====================="
+  try {
   Set-WindowsTheme $theme
   $dir = Join-Path $Out $theme
   New-Item -ItemType Directory -Force $dir | Out-Null
@@ -181,6 +182,10 @@ foreach ($theme in "light", "dark") {
   # keep the daemon/UI logs of this run
   foreach ($l in (Join-Path $env:LSM_DATA_DIR "logs"), (Join-Path $env:APPDATA "FREC86\lan-secure-messenger\logs")) {
     if (Test-Path $l) { Copy-Item $l (Join-Path $dir "logs") -Recurse -Force }
+  }
+  } catch {
+    $problems += "[$theme] $($_.Exception.Message)"
+    Write-Host "::error::[$theme] $($_.Exception.Message)"
   }
 }
 

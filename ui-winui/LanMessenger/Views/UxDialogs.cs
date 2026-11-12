@@ -55,7 +55,8 @@ internal static class UxDialogs
 
     public static ContentDialog BuildScanDialog(XamlRoot root, string? imagePath = null, string? decoded = null)
     {
-        var box = new TextBox { PlaceholderText = "lsm://add?… 或 lsm://relay?… 或 lsm://pair?…", Text = decoded ?? "", TextWrapping = TextWrapping.Wrap, Header = "粘贴链接" };
+        decoded = TakeLsmUri(decoded) ?? decoded;
+        var box = new TextBox { PlaceholderText = "lsm://add?… 或 lsm://relay?… 或 lsm://pair?…", Text = decoded ?? "", TextWrapping = TextWrapping.Wrap, Header = "粘贴链接", FontFamily = new FontFamily("Consolas"), IsSpellCheckEnabled = false };
         var sp = new StackPanel { Spacing = 12, MinWidth = 360 };
         sp.Children.Add(new TextBlock { Text = "粘贴 lsm:// 链接，或从图片识别（需安装 zbarimg；测试时可提供 LSM_SHOT_QR_FILE）。", TextWrapping = TextWrapping.Wrap });
         if (!string.IsNullOrEmpty(imagePath) && System.IO.File.Exists(imagePath))
@@ -65,7 +66,7 @@ internal static class UxDialogs
             sp.Children.Add(img);
         }
         if (!string.IsNullOrEmpty(decoded))
-            sp.Children.Add(new TextBlock { Text = "识别结果：" + decoded, TextWrapping = TextWrapping.Wrap });
+            sp.Children.Add(new TextBlock { Text = "识别结果：" + decoded, TextWrapping = TextWrapping.Wrap, FontFamily = new FontFamily("Consolas") });
         sp.Children.Add(box);
         return Services.ThemeService.Prepare(new ContentDialog { XamlRoot = root, Title = string.IsNullOrEmpty(imagePath) ? "扫描或粘贴链接" : "从图片识别", Content = new ScrollViewer { Content = sp }, PrimaryButtonText = "添加", CloseButtonText = "关闭", DefaultButton = ContentDialogButton.Close });
     }
@@ -95,4 +96,24 @@ internal static class UxDialogs
     }
 
     static void Open(object? o) { if (o is ConversationItem c) VM.SelectedConversation = c; }
+
+    /// <summary>
+    /// Take a well-formed lsm:// URI out of a larger string. Stops at the first character
+    /// that is not valid in these links, so binary PNG bytes after an embedded payload
+    /// are not shown as tofu in the paste box.
+    /// </summary>
+    public static string? TakeLsmUri(string? s)
+    {
+        if (string.IsNullOrEmpty(s)) return null;
+        var i = s.IndexOf("lsm://", StringComparison.OrdinalIgnoreCase);
+        if (i < 0) return null;
+        var end = i + 6;
+        while (end < s.Length && IsLsmUriChar(s[end])) end++;
+        var uri = s[i..end];
+        return uri.Length > "lsm://".Length ? uri : null;
+    }
+
+    static bool IsLsmUriChar(char c) =>
+        char.IsAsciiLetterOrDigit(c) || c is ':' or '/' or '?' or '&' or '=' or '.' or '_' or '%' or '~' or '+' or '-' or '#' or '@' or '[' or ']';
 }
+

@@ -67,6 +67,64 @@ public static class UiSmoke
             if (!string.IsNullOrWhiteSpace(expect) && !string.Equals(expect.Trim(), theme.ToString(), StringComparison.OrdinalIgnoreCase))
                 Fail($"expected theme {expect} but the window rendered {theme}");
 
+            // Capture first-run / QR before SendInput and tray checks. On windows-11-arm those
+            // checks often hang (smoke is continue-on-error); doing the dialogs first still gives evidence.
+            // First-run dialog (ContentDialog in the popup layer), shown non-modally just for the capture.
+            try
+            {
+                var dlg = ThemeService.Prepare(new FirstRunDialog { XamlRoot = w.Content.XamlRoot });
+                _ = dlg.ShowAsync();
+                await Task.Delay(3000);
+                await ShotAsync(w, dir, "first-run", label, theme); // first-run LSMF_account_mode
+                dlg.Hide();
+                await Task.Delay(800);
+            }
+            catch (Exception e) { Fail("first-run dialog: " + e.Message); }
+
+            async Task ShotDlg(ContentDialog d, string name)
+            {
+                _ = d.ShowAsync();
+                await Task.Delay(1200);
+                await ShotAsync(w, dir, name, label, theme);
+                d.Hide();
+                await Task.Delay(500);
+            }
+            try
+            {
+                var root = w.Content.XamlRoot;
+                var mine = await App.VM.MyUriAsync();
+                if (mine != null && mine.QrSize > 0)
+                    await ShotDlg(UxDialogs.BuildUriQr(root, "我的二维码", mine), "my-qr"); // my-qr LSMF_qr_profile
+                const string testRelay = "lsm://relay?h=ci.example.invalid&p=9443";
+                const string testPair = "lsm://pair?r=ci.example.invalid:9443&t=0000000000000000000000000000000000000000000000000000000000000000&k=1111111111111111111111111111111111111111111111111111111111111111";
+                var relay = await App.VM.RelayUriAsync();
+                if (string.IsNullOrEmpty(relay)) relay = testRelay;
+                var rq = await App.VM.QrAsync(relay);
+                if (rq != null && rq.QrSize > 0)
+                    await ShotDlg(UxDialogs.BuildUriQr(root, "服务器二维码", rq, "用另一台设备扫描，或复制下面的链接粘贴。"), "server-qr"); // server-qr LSMF_qr_server
+                var pair = await App.VM.AccountPairStartAsync();
+                if (string.IsNullOrEmpty(pair) || !pair.StartsWith("lsm://")) pair = testPair;
+                var pq = await App.VM.QrAsync(pair);
+                if (pq != null && pq.QrSize > 0)
+                    await ShotDlg(UxDialogs.BuildUriQr(root, "配对新设备", pq, "用另一台设备扫描，或复制下面的链接粘贴。"), "pair-qr"); // pair-qr LSMF_qr_pair
+                await ShotDlg(UxDialogs.BuildScanDialog(root), "scan-paste"); // scan LSMF_qr_scan
+                var qrFile = Environment.GetEnvironmentVariable("LSM_SHOT_QR_FILE");
+                string? decoded = null;
+                if (!string.IsNullOrEmpty(qrFile) && System.IO.File.Exists(qrFile))
+                {
+                    try
+                    {
+                        // The sample PNG stores the payload as a tEXt comment; take only a well-formed
+                        // lsm:// URI so trailing compressed bytes are not shown as tofu in the paste box.
+                        var ascii = System.Text.Encoding.Latin1.GetString(await System.IO.File.ReadAllBytesAsync(qrFile));
+                        decoded = UxDialogs.TakeLsmUri(ascii);
+                    }
+                    catch { }
+                }
+                await ShotDlg(UxDialogs.BuildScanDialog(root, qrFile, decoded), "scan-image"); // scan-image LSMF_qr_scan
+            }
+            catch (Exception e) { Fail("qr/scan dialogs: " + e.Message); }
+
             if (App.VM.Conversations.Count > 0) App.VM.SelectedConversation = App.VM.Conversations[0];
             // GUI verified page shots (not unit tests): page-chat page-contacts page-groups page-transfers page-files page-profile page-settings page-diag
             // LSMF_nav_chats LSMF_nav_contacts LSMF_nav_groups LSMF_nav_transfers LSMF_nav_files LSMF_nav_settings LSMF_nav_profile LSMF_nav_diagnostics
@@ -168,67 +226,6 @@ public static class UiSmoke
                     }
                 }
             }
-
-            // First-run dialog (ContentDialog in the popup layer), shown non-modally just for the capture.
-            try
-            {
-                var dlg = ThemeService.Prepare(new FirstRunDialog { XamlRoot = w.Content.XamlRoot });
-                _ = dlg.ShowAsync();
-                await Task.Delay(3000);
-                await ShotAsync(w, dir, "first-run", label, theme); // first-run LSMF_account_mode
-                dlg.Hide();
-                await Task.Delay(800);
-            }
-            catch (Exception e) { Fail("first-run dialog: " + e.Message); }
-
-            async Task ShotDlg(ContentDialog d, string name)
-            {
-                _ = d.ShowAsync();
-                await Task.Delay(1200);
-                await ShotAsync(w, dir, name, label, theme);
-                d.Hide();
-                await Task.Delay(500);
-            }
-            try
-            {
-                var root = w.Content.XamlRoot;
-                var mine = await App.VM.MyUriAsync();
-                if (mine != null && mine.QrSize > 0)
-                    await ShotDlg(UxDialogs.BuildUriQr(root, "我的二维码", mine), "my-qr"); // my-qr LSMF_qr_profile
-                const string testRelay = "lsm://relay?h=ci.example.invalid&p=9443";
-                const string testPair = "lsm://pair?r=ci.example.invalid:9443&t=0000000000000000000000000000000000000000000000000000000000000000&k=1111111111111111111111111111111111111111111111111111111111111111";
-                var relay = await App.VM.RelayUriAsync();
-                if (string.IsNullOrEmpty(relay)) relay = testRelay;
-                var rq = await App.VM.QrAsync(relay);
-                if (rq != null && rq.QrSize > 0)
-                    await ShotDlg(UxDialogs.BuildUriQr(root, "服务器二维码", rq, "用另一台设备扫描，或复制下面的链接粘贴。"), "server-qr"); // server-qr LSMF_qr_server
-                var pair = await App.VM.AccountPairStartAsync();
-                if (string.IsNullOrEmpty(pair) || !pair.StartsWith("lsm://")) pair = testPair;
-                var pq = await App.VM.QrAsync(pair);
-                if (pq != null && pq.QrSize > 0)
-                    await ShotDlg(UxDialogs.BuildUriQr(root, "配对新设备", pq, "用另一台设备扫描，或复制下面的链接粘贴。"), "pair-qr"); // pair-qr LSMF_qr_pair
-                await ShotDlg(UxDialogs.BuildScanDialog(root), "scan-paste"); // scan LSMF_qr_scan
-                var qrFile = Environment.GetEnvironmentVariable("LSM_SHOT_QR_FILE");
-                string? decoded = null;
-                if (!string.IsNullOrEmpty(qrFile) && System.IO.File.Exists(qrFile))
-                {
-                    try
-                    {
-                        var bytes = await System.IO.File.ReadAllBytesAsync(qrFile);
-                        var ascii = System.Text.Encoding.Latin1.GetString(bytes);
-                        var i = ascii.IndexOf("lsm://", StringComparison.Ordinal);
-                        if (i >= 0)
-                        {
-                            var end = i;
-                            while (end < ascii.Length && !char.IsWhiteSpace(ascii[end]) && ascii[end] != '\0') end++;
-                            decoded = ascii[i..end];
-                        }
-                    }
-                    catch { }
-                }
-                await ShotDlg(UxDialogs.BuildScanDialog(root, qrFile, decoded), "scan-image"); // scan-image LSMF_qr_scan
-            }
-            catch (Exception e) { Fail("qr/scan dialogs: " + e.Message); }
 
             if (Environment.GetEnvironmentVariable("LSM_UI_SMOKE_LIVE_FLIP") == "1")
                 await LiveFlipAsync(w, dir, theme);

@@ -132,12 +132,10 @@ public sealed partial class SettingsPage : Page
         try
         {
             var text = await System.IO.File.ReadAllTextAsync(path);
-            var i = text.IndexOf("lsm://", StringComparison.Ordinal);
-            if (i >= 0)
+            var uri = UxDialogs.TakeLsmUri(text);
+            if (!string.IsNullOrEmpty(uri))
             {
-                var end = i;
-                while (end < text.Length && !char.IsWhiteSpace(text[end])) end++;
-                await VM.AddByLinkAsync(text[i..end]);
+                await VM.AddByLinkAsync(uri);
                 return;
             }
         }

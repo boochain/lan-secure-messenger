@@ -245,8 +245,9 @@ jobs:
           Write-Host "LanMessenger.exe : $h"; if ("$h" -notmatch "ARM64") { throw "LanMessenger.exe is not ARM64" }
           "ZIP=LanMessenger-$ver-win-arm64.zip" >> $env:GITHUB_ENV
       - name: UI smoke in light + dark theme (arm64, with relay)
-        # Non-blocking: on windows-11-arm every SendInput-driven check and the tray icon fail although the runner has an
-        # active console session with explorer (diagnosed 2026-10-29); the x64 smoke (same app, same checks) stays blocking.
+        # Non-blocking: on windows-11-arm SendInput-driven checks and the tray icon fail (diagnosed 2026-10-29);
+        # the x64 smoke (same app, same checks) stays blocking. First-run/QR shots now run before those checks,
+        # and the script still attempts the dark theme if light throws, so the artifact should include both.
         continue-on-error: true
         shell: pwsh
         run: ./scripts/ui_smoke_windows.ps1 -Dist dist\LanMessenger -Out ui-smoke-arm64 -Relay target\release\relay-server.exe
