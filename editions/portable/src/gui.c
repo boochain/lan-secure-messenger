@@ -257,6 +257,7 @@ typedef struct { char id[64]; wchar_t name[160], preview[200], time[16]; wchar_t
 static void p2_list_sort(int *sel, const char *keep); /* xp_p2.inc */
 static void v062_list_filter(int *sel, const char *keep); static void v062_menu(HMENU pm, const char *id); static int v062_menu_cmd(int cmd, const char *id); /* xp_v062.inc */
 static void ux_menu(HMENU pm, const char *id); static int ux_menu_cmd(int cmd, const char *id); static wchar_t *ux_fail_text(wchar_t *t, const lsm_msg *m); static int ux_up_edit(void); static void ux_add_uri_text(const char *u); static void ux_show_qr(const wchar_t *title, const char *uri); /* xp_ux.inc */
+static void refresh_caption(void);
 static conv_t convs[512];
 static int line_h(HDC dc, HFONT f);
 static HWND hSearch;
