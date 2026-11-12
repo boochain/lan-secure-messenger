@@ -5,7 +5,7 @@ import os, sys, time, subprocess, re, xml.etree.ElementTree as ET
 OUT = sys.argv[sys.argv.index("--out") + 1]; os.makedirs(OUT, exist_ok=True)
 ADB = os.environ.get("ADB", "adb"); PKG = "io.github.frec86.lanmessenger"
 def adb(*a, t=180): return subprocess.run([ADB] + list(a), capture_output=True, text=True, timeout=t).stdout
-def tap(x, y): adb("shell", f"input touchscreen motionevent DOWN {x} {y}; input touchscreen motionevent UP {x} {y}")
+def tap(x, y): adb("shell", f"input tap {x} {y}")  # one-shot tap; split DOWN/UP across input(1) startups was a long-press on ConvRow
 def find(pred):
     adb("shell", "uiautomator", "dump", "/sdcard/ui.xml"); x = adb("shell", "cat", "/sdcard/ui.xml")
     if "<?xml" not in x: return None

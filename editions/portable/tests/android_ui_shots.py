@@ -46,8 +46,8 @@ def tap_text(t, exact=True, timeout=120):
     r = wait(lambda: find(lambda n: (n.get("text") == t or n.get("content-desc") == t) if exact else (t in (n.get("text") or ""))), timeout, 2)
     if not r: raise RuntimeError("not found: " + t)
     tap(r[0], r[1]); time.sleep(2); return r
-def tap(x, y):  # "input tap" gets lost on the software-emulated (TCG) emulator; explicit DOWN/UP works
-    adb("shell", f"input touchscreen motionevent DOWN {x} {y}; input touchscreen motionevent UP {x} {y}")
+def tap(x, y):  # one-shot tap; split DOWN/UP across input(1) startups was a long-press on ConvRow
+    adb("shell", f"input tap {x} {y}")
 def tap_edit(timeout=120):
     r = wait(lambda: find(lambda n: n.get("class") == "android.widget.EditText"), timeout, 2); tap(r[0], r[1]); time.sleep(2)
 def shot(name):
