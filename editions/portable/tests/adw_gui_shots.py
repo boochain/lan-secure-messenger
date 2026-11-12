@@ -4,6 +4,8 @@ usage: adw_gui_shots.py <lan-messenger-adw> <lanmsg-cli> <outdir>   (needs Xvfb,
 import os, subprocess, sys, threading, time, shutil
 gui, cli, out = [os.path.abspath(a) for a in sys.argv[1:4]]; os.makedirs(out, exist_ok=True)
 fails = []; W = f"/tmp/lsmadw-{os.getpid()}"; shutil.rmtree(W, True); os.makedirs(W)
+QR_PNG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "lsm-qr-sample.png")
+shutil.copyfile(QR_PNG, f"{W}/lsm-qr-sample.png")
 def check(ok, what): print(("PASS " if ok else "FAIL ") + what, flush=True); ok or fails.append(what)
 disp = ":%d" % (60 + os.getpid() % 30)
 xv = subprocess.Popen(["Xvfb", disp, "-screen", "0", "1280x860x24", "-nolisten", "tcp"], stderr=subprocess.DEVNULL); time.sleep(1.5)
@@ -133,7 +135,7 @@ for i, theme in enumerate(["light", "dark"]):
     port = base + i * 6 + 400
     A = peer(f"a{theme}", "王工", port + 2); B = peer(f"b{theme}", "Alice Chen", port + 4)
     g = Proc([gui, "--data", f"{W}/gui-{theme}", "--name", "Bill", "--no-discovery", "--port", str(port), "--disco-port", str(port + 1), "--auto-trust"],
-             dict(env, LSM_THEME=theme, LSM_UI_TEST="1", LSM_QUIT_ON_CLOSE="1", LSM_WINDOW_SIZE="1024x694"))
+             dict(env, LSM_THEME=theme, LSM_UI_TEST="1", LSM_QUIT_ON_CLOSE="1", LSM_WINDOW_SIZE="1024x694", LSM_SHOT_QR_FILE=f"{W}/lsm-qr-sample.png"))
     fp = (g.wait_for("LSM_FP", 20) or " ? ").split()[1]
     check(fp != "?", f"[{theme}] GUI started and reported its fingerprint")
     time.sleep(1.5); shot("page-empty", theme, g=g)   # empty state: no content-header title (libadwaita style)
@@ -183,7 +185,7 @@ for i, theme in enumerate(["light", "dark"]):
     xdo("mousemove", "160", "140", "click", "3")
     l = g.wait_for("UI conv-menu", 5, gl)
     check(l is not None, f"[{theme}] right-click on a chat-list row opens conv menu ({l})")
-    time.sleep(0.5); shot("popup-conv-menu", theme, g=g)  # LSMF_chat_list_menu LSMF_chat_pin LSMF_chat_mark_read LSMF_chat_mark_unread LSMF_chat_mute LSMF_chat_delete LSMF_account_mode LSMF_qr_profile LSMF_qr_scan LSMF_qr_server LSMF_qr_pair
+    time.sleep(0.5); shot("popup-conv-menu", theme, g=g)  # LSMF_chat_list_menu LSMF_chat_pin LSMF_chat_mark_read LSMF_chat_mark_unread LSMF_chat_mute LSMF_chat_delete
     xdo("key", "Escape"); time.sleep(0.4)
     # LSMF_nav_* rail pages (x≈40; buttons packed from the top of the window)
     # LSMF_nav_chats LSMF_nav_contacts LSMF_nav_groups LSMF_nav_transfers LSMF_nav_files LSMF_nav_settings LSMF_nav_profile LSMF_nav_diagnostics
@@ -191,6 +193,20 @@ for i, theme in enumerate(["light", "dark"]):
         xdo("mousemove", "40", str(20 + i * 36), "click", "1"); time.sleep(0.7)
         shot(f"page-{name}" if name != "chats" else "page-nav-chats", theme, g=g)
     xdo("mousemove", "40", "20", "click", "1"); time.sleep(0.3)
+    def close_dlg():
+        xdo("key", "Escape"); time.sleep(0.25); xdo("key", "Return"); time.sleep(0.2)
+    xdo("key", "F7"); time.sleep(1.2); shot("dialog-first-run", theme, g=g)  # first-run LSMF_account_mode
+    close_dlg()
+    xdo("key", "F8"); time.sleep(1.2); shot("dialog-my-qr", theme, g=g)  # my-qr LSMF_qr_profile
+    close_dlg()
+    xdo("key", "shift+F8"); time.sleep(1.2); shot("dialog-server-qr", theme, g=g)  # server-qr LSMF_qr_server
+    close_dlg()
+    xdo("key", "ctrl+F8"); time.sleep(1.2); shot("dialog-pair-qr", theme, g=g)  # pair-qr LSMF_qr_pair
+    close_dlg()
+    xdo("key", "F9"); time.sleep(1.2); shot("dialog-scan-paste", theme, g=g)  # scan LSMF_qr_scan
+    close_dlg()
+    xdo("key", "shift+F9"); time.sleep(1.2); shot("dialog-scan-image", theme, g=g)  # scan-image LSMF_qr_scan
+    close_dlg()
     xdo("key", "ctrl+q"); g.p.wait(10) if g.p.poll() is None else None
     check(g.p.poll() is not None, f"[{theme}] shortcut Ctrl+Q quits")
     if g.p.poll() is None: g.p.kill()

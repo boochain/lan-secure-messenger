@@ -336,6 +336,7 @@ fun Settings(st: AppState, dlg: (String) -> Unit, openPage: (String) -> Unit = {
     val p = LocalPalette.current
     var storageSub by remember { mutableStateOf("查看占用并清理半成品") }
     var storageAsk by remember { mutableStateOf(false) }
+    var qrShow by remember { mutableStateOf<Pair<String, String>?>(null) }
     fun refreshStorage() {
         val raw = Native.storageInfo()
         var hist = 0L; var dl = 0L; var part = 0L; var orph = 0L; var tot = 0L
@@ -390,16 +391,19 @@ fun Settings(st: AppState, dlg: (String) -> Unit, openPage: (String) -> Unit = {
         } }
         item { SettingRow(R.drawable.ms_add_contact, "扫描或粘贴链接", "添加联系人、连接服务器或配对新设备") { dlg("scan") } }
         item { SettingRow(R.drawable.ms_via_server, "服务器二维码", "给另一台设备扫描以连接同一中转") {
-            val u = Native.relayUri(); Repo.toast.value = if (u.isNotEmpty()) u else "请先填写中转服务器"
+            val u = Native.relayUri().ifEmpty { if (lsmUiTest()) lsmTestRelayUri() else "" }
+            if (u.startsWith("lsm://")) qrShow = "服务器二维码" to u else Repo.toast.value = "请先填写中转服务器"
         } }
         item { SettingRow(R.drawable.ms_lock, "配对新设备", "生成一次性配对二维码（需账号模式且已连中转）") {
-            val u = Native.accountPairUri(); Repo.toast.value = u.ifEmpty { "无法生成配对码" }
+            val u = Native.accountPairUri().let { if (it.startsWith("lsm://")) it else if (lsmUiTest()) lsmTestPairUri() else it }
+            if (u.startsWith("lsm://")) qrShow = "配对新设备" to u else Repo.toast.value = u.ifEmpty { "无法生成配对码" }
         } }
         item { SettingRow(R.drawable.ms_network, "本机端口", "TCP ${st.me.port}", null) }
         item { SettingRow(R.drawable.ms_open_folder, "接收的文件", st.me.downloads, null) }
         item { SettingRow(R.drawable.ms_delete, "存储管理", storageSub) { storageAsk = true } }
         item { SettingRow(R.drawable.ms_info, "关于", "版本 ${st.me.version}") { dlg("about") } }
     }
+    qrShow?.let { (title, uri) -> QrDialog(title, uri) { qrShow = null } }
     if (storageAsk) {
         AlertDialog(
             onDismissRequest = { storageAsk = false },

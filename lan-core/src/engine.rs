@@ -2745,7 +2745,7 @@ impl Engine {
             }
             "react" | "edit_message" | "recall_message" => self.rpc_ext(method, params).unwrap(),
             "set_conv_pinned" | "set_draft" | "set_message_flags" | "send_typing" | "list_flagged" | "forward_message" => self.rpc_p2(method, params).unwrap(),
-            "my_uri" | "add_uri" | "resend" | "file_preview" => self.rpc_ux(method, params).unwrap(),
+            "my_uri" | "qr" | "add_uri" | "resend" | "file_preview" => self.rpc_ux(method, params).unwrap(),
             "send_poll" | "vote_poll" | "close_poll" | "set_conv_archived" | "set_folder" | "list_folders" | "set_disappearing" => self.rpc_v062(method, params).unwrap(),
             "history_query" => {
                 let q: crate::history::HistoryQuery = p(params)?;

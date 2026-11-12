@@ -554,6 +554,8 @@ static void win_act(GSimpleAction *a, GVariant *v, gpointer p){ const char *n=g_
     else if(!strcmp(n,"server-qr")) v071_show_server_qr();
     else if(!strcmp(n,"pair-qr")) v071_show_pair_qr();
     else if(!strcmp(n,"paste-uri")) v071_paste_uri();
+    else if(!strcmp(n,"scan-image")) v071_scan_image_file();
+    else if(!strcmp(n,"shot-first-run")) v071_shot_first_run();
     else if(!strcmp(n,"acct-mode")) v071_switch_mode();
     else if(!strcmp(n,"reveal-rk")) v071_reveal_rk();
     else if(!strcmp(n,"quick-switch")) ux_quick_switch();
@@ -661,7 +663,7 @@ static void adw_active(GObject *o, GParamSpec *ps, gpointer p){ (void)o;(void)ps
 static void activate(GtkApplication *a, gpointer p){
     GtkWidget *sidebar_tv, *sb_hdr, *sb_box, *sc, *content_tv, *ct_hdr, *tbox, *tv, *composer, *ov, *send, *attach, *chat_ov, *empty, *add_btn, *ab, *frame;
     lsm_opts o; char err[256]; GMenu *menu, *sec; (void)p;
-    static const char *acts[]={"search","add-contact","refresh","reconnect","view-last-image","next-conv","prev-conv","send-file","paste","clear-chat","details","trust","untrust","block","mute","diagnostics","check-update","pin-offer","relay","downloads","storage","emoji","menu","close","about","quit","history","profile","contact-profile","pin-conv","starred","pinned-msgs","multi-select","new-poll","ttl","archive","folders","filter","my-qr","quick-switch","server-qr","pair-qr","paste-uri","acct-mode","reveal-rk"};
+    static const char *acts[]={"search","add-contact","refresh","reconnect","view-last-image","next-conv","prev-conv","send-file","paste","clear-chat","details","trust","untrust","block","mute","diagnostics","check-update","pin-offer","relay","downloads","storage","emoji","menu","close","about","quit","history","profile","contact-profile","pin-conv","starred","pinned-msgs","multi-select","new-poll","ttl","archive","folders","filter","my-qr","quick-switch","server-qr","pair-qr","paste-uri","scan-image","shot-first-run","acct-mode","reveal-rk"};
     if(win){ gtk_window_present(GTK_WINDOW(win)); ui_wake(); return; }
     { const char *t=getenv("LSM_THEME"); AdwStyleManager *sm=adw_style_manager_get_default(); if(t&&!strcmp(t,"dark")) adw_style_manager_set_color_scheme(sm,ADW_COLOR_SCHEME_FORCE_DARK); else if(t&&!strcmp(t,"light")) adw_style_manager_set_color_scheme(sm,ADW_COLOR_SCHEME_FORCE_LIGHT);
       g_signal_connect(sm,"notify::dark",G_CALLBACK(on_dark),NULL); }
@@ -680,7 +682,15 @@ static void activate(GtkApplication *a, gpointer p){
       add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control><Shift>ISO_Left_Tab","win.prev-conv"); add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control><Shift>Tab","win.prev-conv"); add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control>Page_Up","win.prev-conv");
       add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control>o","win.send-file"); add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control>v","win.paste"); add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control>i","win.details"); add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"F10","win.menu"); add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"F1","win.about");
       add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control>q","win.quit"); add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control><Shift>f","win.history"); add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control>k","win.quick-switch"); add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control>w","win.close");
-      if(getenv("LSM_UI_TEST")) add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"F6","win.view-last-image");
+      if(getenv("LSM_UI_TEST")){
+        add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"F6","win.view-last-image");
+        add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"F7","win.shot-first-run");
+        add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"F8","win.my-qr");
+        add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Shift>F8","win.server-qr");
+        add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Control>F8","win.pair-qr");
+        add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"F9","win.paste-uri");
+        add_shortcut(GTK_SHORTCUT_CONTROLLER(sc2),"<Shift>F9","win.scan-image");
+      }
       gtk_widget_add_controller(win,sc2); }
 
     /* sidebar */

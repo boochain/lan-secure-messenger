@@ -1,8 +1,10 @@
+using LanMessenger.Core.Models;
 using LanMessenger.Core.ViewModels;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Shapes;
 
 namespace LanMessenger.Views;
@@ -13,26 +15,59 @@ internal static class UxDialogs
     static MainViewModel VM => App.VM;
     static bool _open;
 
-    public static async Task MyQrAsync(XamlRoot root)
+    public static ContentDialog BuildUriQr(XamlRoot root, string title, UxUri u, string? hint = null)
     {
-        if (_open) return;
-        var u = await VM.MyUriAsync(); if (u == null || u.QrSize == 0) return;
         const int cell = 6, quiet = 4; int n = u.QrSize, px = (n + quiet * 2) * cell;
         // QR is always dark-on-white (scanners need it), whatever the app theme
         var cv = new Canvas { Width = px, Height = px, Background = new SolidColorBrush(Colors.White) };
         var black = new SolidColorBrush(Colors.Black);
-        for (int y = 0; y < n; y++) for (int x = 0; x < n; x++)
-            if (u.Qr[y * n + x] == '1') { var r = new Rectangle { Width = cell, Height = cell, Fill = black }; Canvas.SetLeft(r, (x + quiet) * cell); Canvas.SetTop(r, (y + quiet) * cell); cv.Children.Add(r); }
-        AutomationProperties(cv, "我的二维码");
-        var link = new TextBox { Text = u.Uri, IsReadOnly = true, TextWrapping = TextWrapping.Wrap, Header = "添加链接" };
+        if (!string.IsNullOrEmpty(u.Qr))
+            for (int y = 0; y < n; y++) for (int x = 0; x < n; x++)
+                if (u.Qr[y * n + x] == '1') { var r = new Rectangle { Width = cell, Height = cell, Fill = black }; Canvas.SetLeft(r, (x + quiet) * cell); Canvas.SetTop(r, (y + quiet) * cell); cv.Children.Add(r); }
+        AutomationProperties(cv, title);
+        var link = new TextBox { Text = u.Uri, IsReadOnly = true, TextWrapping = TextWrapping.Wrap, Header = "链接" };
         var sp = new StackPanel { Spacing = 12, MinWidth = 340 };
-        sp.Children.Add(new TextBlock { Text = "让对方用手机版扫描，或把链接发给对方，在“添加联系人”(Ctrl+N) 里粘贴。指纹一致会自动信任。", TextWrapping = TextWrapping.Wrap });
+        sp.Children.Add(new TextBlock { Text = hint ?? "让对方用手机版扫描，或把链接发给对方，在“添加联系人”(Ctrl+N) 里粘贴。指纹一致会自动信任。", TextWrapping = TextWrapping.Wrap });
         sp.Children.Add(new Border { Child = cv, HorizontalAlignment = HorizontalAlignment.Center });
         sp.Children.Add(link);
-        var d = Services.ThemeService.Prepare(new ContentDialog { XamlRoot = root, Title = "我的二维码", Content = new ScrollViewer { Content = sp }, PrimaryButtonText = "复制链接", CloseButtonText = "关闭", DefaultButton = ContentDialogButton.Close });
+        return Services.ThemeService.Prepare(new ContentDialog { XamlRoot = root, Title = title, Content = new ScrollViewer { Content = sp }, PrimaryButtonText = "复制链接", CloseButtonText = "关闭", DefaultButton = ContentDialogButton.Close });
+    }
+
+    public static async Task MyQrAsync(XamlRoot root)
+    {
+        if (_open) return;
+        var u = await VM.MyUriAsync(); if (u == null || u.QrSize == 0) return;
+        var d = BuildUriQr(root, "我的二维码", u);
         _open = true;
         try { if (await d.ShowAsync() == ContentDialogResult.Primary) { App.Platform.CopyToClipboard(u.Uri); VM.ShowStatus("已复制添加链接"); } }
         finally { _open = false; }
+    }
+
+    public static async Task ShowUriQrAsync(XamlRoot root, string title, string uri)
+    {
+        if (_open) return;
+        var u = await VM.QrAsync(uri); if (u == null || u.QrSize == 0) return;
+        var d = BuildUriQr(root, title, u, "用另一台设备扫描，或复制下面的链接粘贴。");
+        _open = true;
+        try { if (await d.ShowAsync() == ContentDialogResult.Primary) { App.Platform.CopyToClipboard(u.Uri); VM.ShowStatus("已复制链接"); } }
+        finally { _open = false; }
+    }
+
+    public static ContentDialog BuildScanDialog(XamlRoot root, string? imagePath = null, string? decoded = null)
+    {
+        var box = new TextBox { PlaceholderText = "lsm://add?… 或 lsm://relay?… 或 lsm://pair?…", Text = decoded ?? "", TextWrapping = TextWrapping.Wrap, Header = "粘贴链接" };
+        var sp = new StackPanel { Spacing = 12, MinWidth = 360 };
+        sp.Children.Add(new TextBlock { Text = "粘贴 lsm:// 链接，或从图片识别（需安装 zbarimg；测试时可提供 LSM_SHOT_QR_FILE）。", TextWrapping = TextWrapping.Wrap });
+        if (!string.IsNullOrEmpty(imagePath) && System.IO.File.Exists(imagePath))
+        {
+            var img = new Image { MaxHeight = 220, Stretch = Stretch.Uniform };
+            img.Source = new BitmapImage(new Uri(imagePath));
+            sp.Children.Add(img);
+        }
+        if (!string.IsNullOrEmpty(decoded))
+            sp.Children.Add(new TextBlock { Text = "识别结果：" + decoded, TextWrapping = TextWrapping.Wrap });
+        sp.Children.Add(box);
+        return Services.ThemeService.Prepare(new ContentDialog { XamlRoot = root, Title = string.IsNullOrEmpty(imagePath) ? "扫描或粘贴链接" : "从图片识别", Content = new ScrollViewer { Content = sp }, PrimaryButtonText = "添加", CloseButtonText = "关闭", DefaultButton = ContentDialogButton.Close });
     }
 
     static void AutomationProperties(UIElement e, string name) => Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(e, name);

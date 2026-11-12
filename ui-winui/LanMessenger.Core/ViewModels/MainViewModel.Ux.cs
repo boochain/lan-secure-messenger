@@ -13,6 +13,12 @@ public partial class MainViewModel
         try { return await c.MyUriAsync(); } catch (Exception e) { ShowStatus(e.Message); return null; }
     }
 
+    public async Task<UxUri?> QrAsync(string uri)
+    {
+        var c = _client; if (c == null) return null;
+        try { return await c.QrAsync(uri); } catch (Exception e) { ShowStatus(e.Message); return null; }
+    }
+
     public Task AddByLinkAsync(string uri) => SafeCall(x => x.ApplyUriAsync(uri.Trim()), "已处理链接");
 
     public Task ResendAsync(MessageItem m) => SafeCall(x => x.ResendAsync(m.Id), "已重新发送");

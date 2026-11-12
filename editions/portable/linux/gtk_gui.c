@@ -540,7 +540,18 @@ static void on_dark_changed(GObject *o, GParamSpec *ps, gpointer p){ (void)o; (v
 static GtkWidget *menu_btn;
 static gboolean win_key(GtkWidget *w, GdkEventKey *ev, gpointer p){ (void)w; (void)p; if((ev->state&GDK_CONTROL_MASK) && (ev->keyval==GDK_KEY_o||ev->keyval==GDK_KEY_O)){ send_file_dlg(); return TRUE; } /* attach (Telegram / WhatsApp desktop) */ if((ev->state&GDK_CONTROL_MASK) && (ev->keyval==GDK_KEY_v||ev->keyval==GDK_KEY_V)){ paste_clipboard(); return TRUE; } if((ev->state&GDK_CONTROL_MASK)&&(ev->state&GDK_SHIFT_MASK)&&(ev->keyval==GDK_KEY_F||ev->keyval==GDK_KEY_f)){ history_dialog(); return TRUE; } if((ev->state&GDK_CONTROL_MASK)&&!(ev->state&GDK_SHIFT_MASK)&&(ev->keyval==GDK_KEY_k||ev->keyval==GDK_KEY_K)){ ux_quick_switch(); return TRUE; } if((ev->state&GDK_CONTROL_MASK) && (ev->keyval==GDK_KEY_m||ev->keyval==GDK_KEY_M)){ act(NULL,GINT_TO_POINTER(A_MUTE)); return TRUE; } /* 免打扰 toggle (kept out of the full main menu) */
     if(ev->keyval==GDK_KEY_F10){ gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(menu_btn),TRUE); return TRUE; }
-    if(ev->keyval==GDK_KEY_F6 && getenv("LSM_UI_TEST")){ test_open_last_image(); return TRUE; } return FALSE; }
+    if(getenv("LSM_UI_TEST")){
+        if(ev->keyval==GDK_KEY_F6){ test_open_last_image(); return TRUE; }
+        if(ev->keyval==GDK_KEY_F7){ v071_shot_first_run(); return TRUE; }
+        if(ev->keyval==GDK_KEY_F8){
+            if(ev->state&GDK_CONTROL_MASK) v071_show_pair_qr();
+            else if(ev->state&GDK_SHIFT_MASK) v071_show_server_qr();
+            else ux_my_qr();
+            return TRUE;
+        }
+        if(ev->keyval==GDK_KEY_F9){ if(ev->state&GDK_SHIFT_MASK) v071_scan_image_file(); else v071_paste_uri(); return TRUE; }
+    }
+    return FALSE; }
 static gboolean on_delete(GtkWidget *w, GdkEvent *e, gpointer p){ (void)e; (void)p; if(strcmp(tray_kind,"无")){ gtk_widget_hide(w); notify("局域网安全通讯","程序仍在后台运行，可从托盘图标打开。"); return TRUE; } return FALSE; }
 
 static char *g_data, *g_name, *g_targets; static int g_port, g_dport, g_nodisc;

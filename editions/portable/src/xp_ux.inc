@@ -15,13 +15,16 @@ static LRESULT CALLBACK ux_qr_proc(HWND h, UINT m, WPARAM w, LPARAM l){
         EndPaint(h,&ps); return 0; }
     if(m==WM_LBUTTONUP || (m==WM_KEYDOWN && w==VK_ESCAPE)){ DestroyWindow(h); return 0; }
     return DefWindowProcW(h,m,w,l); }
-static void ux_my_qr(void){ char uri[400]; static int reg; RECT r; HWND h; /* LSMF_qr_profile */
-    if(lsm_my_uri(C,uri,sizeof uri)){ msgbox("未找到局域网地址，无法生成二维码。",MB_ICONWARNING); return; }
+static void ux_show_qr(const wchar_t *title, const char *uri){ static int reg; RECT r; HWND h;
+    if(!uri||!uri[0]){ msgbox("无法生成二维码。",MB_ICONWARNING); return; }
     ux_qrn=lsm_qr(uri,ux_qrm); wcsncpy(ux_wuri,W(uri),399); ux_wuri[399]=0; copy_text(ux_wuri);
-    if(!reg){ WNDCLASSW wc; memset(&wc,0,sizeof wc); wc.lpfnWndProc=ux_qr_proc; wc.hInstance=hInst; wc.lpszClassName=L"LsmQr"; wc.hCursor=LoadCursor(NULL,IDC_ARROW); RegisterClassW(&wc); reg=1; }
+    if(!reg){ WNDCLASSW wc; memset(&wc,0,sizeof wc); wc.lpfnWndProc=ux_qr_proc; wc.hInstance=hInst; wc.lpszClassName=L"LsmQr"; wc.hCursor=LoadCursor(NULL,IDC_ARROW); wc.hbrBackground=(HBRUSH)GetStockObject(WHITE_BRUSH); RegisterClassW(&wc); reg=1; }
     GetWindowRect(hMain,&r);
-    h=CreateWindowExW(WS_EX_TOOLWINDOW,L"LsmQr",L"我的二维码",WS_POPUP|WS_CAPTION|WS_SYSMENU,r.left+scale_px(120),r.top+scale_px(60),scale_px(300),scale_px(440),hMain,NULL,hInst,NULL);
+    h=CreateWindowExW(WS_EX_TOOLWINDOW,L"LsmQr",title?title:L"二维码",WS_POPUP|WS_CAPTION|WS_SYSMENU,r.left+scale_px(120),r.top+scale_px(60),scale_px(300),scale_px(440),hMain,NULL,hInst,NULL);
     ShowWindow(h,SW_SHOW); SetFocus(h); }
+static void ux_my_qr(void){ char uri[400]; /* LSMF_qr_profile */
+    if(lsm_my_uri(C,uri,sizeof uri)){ msgbox("未找到局域网地址，无法生成二维码。",MB_ICONWARNING); return; }
+    ux_show_qr(L"我的二维码",uri); }
 static void ux_add_uri_text(const char *u){ char err[256]=""; if(lsm_apply_uri(C,u,err)) /* LSMF_qr_scan LSMF_qr_server LSMF_qr_pair */ msgbox(err,MB_ICONWARNING); else msgbox("正在连接对方……连接成功并核对指纹一致后会自动设为已信任。",MB_ICONINFORMATION); refresh_list(); }
 static void ux_add_uri(void){ prompt_t p; char u8[1600]; memset(&p,0,sizeof p);
     if(prompt(L"通过链接添加",L"粘贴对方的添加链接（lsm://add?…）：",L"",&p,1) && p.text[0]) ux_add_uri_text(U(p.text,u8,sizeof u8)); }

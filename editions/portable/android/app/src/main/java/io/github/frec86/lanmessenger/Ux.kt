@@ -47,8 +47,15 @@ fun fuzzy(hay: String, q: String): Int {
 }
 
 @Composable
-fun QrDialog(onDismiss: () -> Unit) { /* LSMF_qr_profile */
-    val uri = remember { Native.myUri() }
+fun lsmUiTest(): Boolean = File("/data/local/tmp/lsm-ui-test").exists()
+fun lsmTestRelayUri() = "lsm://relay?h=ci.example.invalid&p=9443"
+fun lsmTestPairUri() = "lsm://pair?r=ci.example.invalid:9443&t=" + "0".repeat(64) + "&k=" + "1".repeat(64)
+
+@Composable
+fun QrDialog(onDismiss: () -> Unit) = QrDialog("我的二维码", Native.myUri(), onDismiss) /* LSMF_qr_profile */
+
+@Composable
+fun QrDialog(title: String, uri: String, onDismiss: () -> Unit) {
     val qr = remember(uri) { Native.qr(uri) }
     val n = qr.substringBefore(':').toIntOrNull() ?: 0; val bits = qr.substringAfter(':')
     val clip = LocalClipboardManager.current

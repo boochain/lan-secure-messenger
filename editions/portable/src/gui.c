@@ -256,7 +256,7 @@ static int tmsg(const wchar_t *title, const wchar_t *text, int cancel){ prompt_t
 typedef struct { char id[64]; wchar_t name[160], preview[200], time[16]; wchar_t ini[8]; int online, unread, group, trusted, av, via, draft; } conv_t;
 static void p2_list_sort(int *sel, const char *keep); /* xp_p2.inc */
 static void v062_list_filter(int *sel, const char *keep); static void v062_menu(HMENU pm, const char *id); static int v062_menu_cmd(int cmd, const char *id); /* xp_v062.inc */
-static void ux_menu(HMENU pm, const char *id); static int ux_menu_cmd(int cmd, const char *id); static wchar_t *ux_fail_text(wchar_t *t, const lsm_msg *m); static int ux_up_edit(void); static void ux_add_uri_text(const char *u); /* xp_ux.inc */
+static void ux_menu(HMENU pm, const char *id); static int ux_menu_cmd(int cmd, const char *id); static wchar_t *ux_fail_text(wchar_t *t, const lsm_msg *m); static int ux_up_edit(void); static void ux_add_uri_text(const char *u); static void ux_show_qr(const wchar_t *title, const char *uri); /* xp_ux.inc */
 static conv_t convs[512];
 static int line_h(HDC dc, HFONT f);
 static HWND hSearch;
@@ -1022,6 +1022,11 @@ static int app_key(MSG *msg){ int ctrl=(GetKeyState(VK_CONTROL)&0x8000)!=0, shif
     if(ctrl && !shift && msg->wParam=='K'){ do_command(IDM_QUICK); return 1; }
     if(ctrl && msg->wParam=='R'){ do_command(IDM_REFRESH); return 1; }
     if(msg->wParam==VK_F6 && getenv("LSM_UI_TEST")){ test_open_last_image(); return 1; }
+    if(getenv("LSM_UI_TEST")){
+        if(msg->wParam==VK_F7){ v071_shot_first_run(); return 1; }
+        if(msg->wParam==VK_F8){ if(ctrl) v071_show_pair_qr(); else if(shift) v071_show_server_qr(); else ux_my_qr(); return 1; }
+        if(msg->wParam==VK_F9){ if(shift) v071_scan_image(); else v071_paste_uri(); return 1; }
+    }
     if(getenv("LSM_UI_TEST") && ctrl && shift){
         if(msg->wParam=='1'){ v070_on_command(IDM_V070_CHATS); return 1; }
         if(msg->wParam=='2'){ v070_on_command(IDM_V070_CONTACTS); return 1; }

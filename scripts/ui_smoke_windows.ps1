@@ -59,7 +59,7 @@ if ($Relay) {
 }
 
 $shots = "page-chat", "page-chat-dm", "page-chat-dm-top", "page-groups", "page-transfers", "page-settings", "page-settings-bottom",
-         "page-diag", "page-diag-bottom", "popup-menu", "first-run"
+         "page-diag", "page-diag-bottom", "popup-menu", "first-run", "my-qr", "server-qr", "pair-qr", "scan-paste", "scan-image"
 $problems = @()
 
 foreach ($theme in "light", "dark") {
@@ -74,6 +74,8 @@ foreach ($theme in "light", "dark") {
   $env:LSM_UI_SMOKE_LIVE_FLIP = if ($theme -eq "dark") { "1" } else { $null }
   $env:LSM_NO_DIALOG = "1"
   $env:LSM_UI_SMOKE_RELAY = if ($Relay) { "127.0.0.1|$RelayPort|$RelayPass" } else { $null }
+  $qrSample = Join-Path $PSScriptRoot "..\editions\portable\tests\assets\lsm-qr-sample.png"
+  if (Test-Path $qrSample) { $env:LSM_SHOT_QR_FILE = (Resolve-Path $qrSample).Path }
 
   $proc = Start-Process $AppExe -PassThru
   for ($i = 0; $i -lt 120 -and -not (Test-Path "$dir\ready.txt"); $i++) {

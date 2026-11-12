@@ -47,8 +47,10 @@ im = Image.new("RGB", (640, 400), (40, 110, 180)); d = ImageDraw.Draw(im)
 for i in range(0, 640, 40): d.rectangle([i, 300 - i // 3, i + 30, 400], fill=(250, 200 - i // 4, 60))
 d.ellipse([480, 40, 580, 140], fill=(255, 230, 120)); im.save(f"{W}/会议白板.png")
 open(f"{W}/季度报告.txt", "w", encoding="utf-8").write("季度报告\n" * 2000)
+QR_PNG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "lsm-qr-sample.png")
+shutil.copyfile(QR_PNG, f"{W}/lsm-qr-sample.png")
 for th in a.themes.split(","):
-    tenv = dict(env, LSM_THEME=th, LSM_INSTANCE=th, LSM_UI_TEST="1")
+    tenv = dict(env, LSM_THEME=th, LSM_INSTANCE=th, LSM_UI_TEST="1", LSM_SHOT_QR_FILE=f"{W}/lsm-qr-sample.png")
     gui = bg([a.gui, "--data", f"{W}/gui", "--name", "李明的笔记本", "--port", "47330", "--disco-port", "47331", "--no-discovery"], env=tenv)
     time.sleep(4)
     def area(w):
@@ -61,7 +63,7 @@ for th in a.themes.split(","):
         lm("add", "127.0.0.1:47330"); time.sleep(5)
         st = json.loads(lm("--json", "status")); gfp = [p for p in st["peers"]][0]["fingerprint"]; json.dump({"gfp": gfp}, open(f"{W}/ids.json", "w"))
     gfp = json.load(open(f"{W}/ids.json"))["gfp"]
-    x("mousemove", "5", "790"); time.sleep(0.5); shot(f"{th}-01-welcome")  # LSMF_account_mode LSMF_qr_profile LSMF_qr_scan LSMF_qr_server LSMF_qr_pair
+    x("mousemove", "5", "790"); time.sleep(0.5); shot(f"{th}-01-welcome")  # welcome after auto-completed first-run
     # select the contact (first row of the list)
     x("mousemove", "--window", wid, "150", "128"); x("click", "1"); time.sleep(1.5)
     if th == a.themes.split(",")[0]:
@@ -107,7 +109,15 @@ for th in a.themes.split(","):
         x("key", "F10"); time.sleep(0.8)
         for _ in range(n): x("key", "Up"); time.sleep(0.05)
         x("key", "Return"); time.sleep(1.5)
-    menu_up(6); shot(f"{th}-05-transfers")
+    # 文件传输 is inside 「工具与资料」(Up×3 from 按 IP 添加, then Down×2 in the submenu)
+    x("key", "F10"); time.sleep(0.8)
+    for _ in range(3):
+        x("key", "Up"); time.sleep(0.08)
+    x("key", "Return"); time.sleep(0.5)
+    for _ in range(2):
+        x("key", "Down"); time.sleep(0.08)
+    x("key", "Return"); time.sleep(1.5)
+    shot(f"{th}-05-transfers")
     x("key", "Escape"); time.sleep(0.8)
     menu_up(2); shot(f"{th}-06-about"); x("key", "Return"); time.sleep(0.8)
     # PIN offer dialog: F10 highlights 「按 IP 添加」; 生成 PIN is the 8th item → Down x7
@@ -141,6 +151,21 @@ for th in a.themes.split(","):
         x("mousemove", "--window", wid, "36", str(y)); x("click", "1"); time.sleep(0.7)
         shot(f"{th}-{name}")  # hook captured above
     x("mousemove", "--window", wid, "36", "66"); x("click", "1"); time.sleep(0.4)
+    # CI/test shortcuts re-open the real first-run dialog and QR / scan views
+    def close_dlg():
+        x("key", "Escape"); time.sleep(0.25); x("key", "Return"); time.sleep(0.25); x("windowactivate", wid); time.sleep(0.15)
+    x("key", "F7"); time.sleep(1.2); shot_title(f"{th}-24-first-run", "欢迎使用局域网安全通讯")  # first-run LSMF_account_mode
+    close_dlg()
+    x("key", "F8"); time.sleep(1.2); shot_title(f"{th}-25-my-qr", "我的二维码")  # my-qr LSMF_qr_profile
+    close_dlg()
+    x("key", "shift+F8"); time.sleep(1.2); shot_title(f"{th}-26-server-qr", "服务器二维码")  # server-qr LSMF_qr_server
+    close_dlg()
+    x("key", "ctrl+F8"); time.sleep(1.2); shot_title(f"{th}-27-pair-qr", "配对新设备")  # pair-qr LSMF_qr_pair
+    close_dlg()
+    x("key", "F9"); time.sleep(1.2); shot_title(f"{th}-28-scan-paste", "扫描或粘贴链接")  # scan LSMF_qr_scan
+    close_dlg()
+    x("key", "shift+F9"); time.sleep(1.2); shot_title(f"{th}-29-scan-image", "从图片识别")  # scan-image LSMF_qr_scan
+    close_dlg()
     gui.terminate(); gui.wait(5); time.sleep(1)
 # Colour-emoji in chat (e.g. 📎) and modal dialogs: OCR reads emoji as low-contrast "text";
 # file-chooser is OS chrome + folder thumbnails. Record ignore rects for the colour audit.

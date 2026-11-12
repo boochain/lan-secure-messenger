@@ -162,15 +162,20 @@ public sealed partial class SettingsPage : Page
         catch { /* zbarimg not installed */ }
         VM.ShowStatus("无法从该文件识别二维码，请将 lsm:// 链接粘贴到上方。桌面扫码以粘贴链接为主；安装 zbar 后可从图片识别。");
     }
+    const string TestRelayUri = "lsm://relay?h=ci.example.invalid&p=9443";
+    const string TestPairUri = "lsm://pair?r=ci.example.invalid:9443&t=0000000000000000000000000000000000000000000000000000000000000000&k=1111111111111111111111111111111111111111111111111111111111111111";
+    static bool Smoke => Environment.GetEnvironmentVariable("LSM_UI_SMOKE") is { Length: > 0 };
     private async void ServerQr_Click(object sender, RoutedEventArgs e)
     {
         var uri = await VM.RelayUriAsync();
-        VM.ShowStatus(string.IsNullOrEmpty(uri) ? "请先填写中转服务器" : uri);
+        if (string.IsNullOrEmpty(uri)) { if (Smoke) uri = TestRelayUri; else { VM.ShowStatus("请先填写中转服务器"); return; } }
+        await UxDialogs.ShowUriQrAsync(XamlRoot, "服务器二维码", uri);
     }
     private async void PairQr_Click(object sender, RoutedEventArgs e)
     {
         var uri = await VM.AccountPairStartAsync();
-        if (!string.IsNullOrEmpty(uri)) VM.ShowStatus(uri);
+        if (string.IsNullOrEmpty(uri) || !uri.StartsWith("lsm://")) { if (Smoke) uri = TestPairUri; else { VM.ShowStatus(string.IsNullOrEmpty(uri) ? "无法生成配对码" : uri); return; } }
+        await UxDialogs.ShowUriQrAsync(XamlRoot, "配对新设备", uri);
     }
     private void Profile_Click(object sender, RoutedEventArgs e) => _ = P0Dialogs.ShowMyProfileAsync(XamlRoot);
 }

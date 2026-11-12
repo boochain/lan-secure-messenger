@@ -102,10 +102,13 @@ sh("svc power stayon true; input keyevent 224; wm dismiss-keyguard; settings put
 sh("cmd overlay enable com.android.internal.systemui.navbar.gestural")  # gesture navigation, as on current phones (and in the mockup)
 for k in ("window_animation_scale", "transition_animation_scale", "animator_duration_scale"): sh(f"settings put global {k} 0")
 sh(f"pm clear {PKG}"); sh("cmd uimode night no"); sh(f"pm grant {PKG} android.permission.POST_NOTIFICATIONS")
+sh(f"pm grant {PKG} android.permission.CAMERA")
+sh("touch /data/local/tmp/lsm-ui-test")
+adb("push", os.path.join(HERE, "assets", "lsm-qr-sample.png"), "/data/local/tmp/lsm-qr-sample.png")
 sh(f"am start -W -n {PKG}/.MainActivity"); time.sleep(10)
 # first-run overlay (设备模式 is the default radio)
 if find(lambda n: n.get("text") == "开始使用"):
-    shot("android-light-00-first-run")  # first-run LSMF_account_mode LSMF_qr_profile LSMF_qr_scan LSMF_qr_server LSMF_qr_pair
+    shot("android-light-00-first-run")  # first-run LSMF_account_mode
     tap_text("开始使用"); time.sleep(1.5)
 pdf = "/data/local/tmp/季度报告-Q3-最终版.pdf"; local_pdf = "/tmp/lsm-seed.pdf"
 open(local_pdf, "wb").write(b"%PDF-1.4\n" + os.urandom(2_516_582))
@@ -179,6 +182,42 @@ for th in ("light", "dark"):
         back(); time.sleep(1)
     except Exception as e:
         print("WARN profile/diag pages", e, flush=True)
+    # opened QR + scan view (fake camera) + scan-from-image + server/pair QR
+    if find(lambda n: n.get("text") == "聊天" or n.get("content-desc") == "聊天"):
+        try: tap_text("聊天", timeout=10)
+        except Exception: pass
+    def tap_row(label, timeout=15):
+        r = ui_seed.wait(lambda: find(lambda n: n.get("text") == label or n.get("content-desc") == label), timeout, 1)
+        if not r:
+            sh("input swipe 540 1500 540 400 400"); time.sleep(0.7)
+            r = find(lambda n: n.get("text") == label or n.get("content-desc") == label)
+        if not r: raise RuntimeError("not found: " + label)
+        tap(*r); time.sleep(1.2)
+    try:
+        tap_text("菜单", timeout=15)
+        tap_text("我的二维码", timeout=15)
+        shot(f"android-{th}-16-my-qr")  # my-qr LSMF_qr_profile
+        back(); time.sleep(1)
+        tap_text("菜单", timeout=15)
+        tap_text("扫描二维码", timeout=15)
+        shot(f"android-{th}-17-scan")  # scan LSMF_qr_scan
+        tap_row("从图片识别")
+        time.sleep(1)
+        shot(f"android-{th}-18-scan-image")  # scan-image LSMF_qr_scan
+        back(); time.sleep(1)
+        tap_text("设置", timeout=15)
+        time.sleep(0.6)
+        tap_row("服务器二维码")
+        shot(f"android-{th}-19-server-qr")  # server-qr LSMF_qr_server
+        back(); time.sleep(0.8)
+        if find(lambda n: n.get("text") == "设置" or n.get("content-desc") == "设置"):
+            try: tap_text("设置", timeout=8)
+            except Exception: pass
+        tap_row("配对新设备")
+        shot(f"android-{th}-20-pair-qr")  # pair-qr LSMF_qr_pair
+        back(); time.sleep(0.8)
+    except Exception as e:
+        raise RuntimeError("qr/scan shots failed: " + str(e))
     if find(lambda n: n.get("text") == "聊天" or n.get("content-desc") == "聊天"):
         try: tap_text("聊天", timeout=10)
         except Exception: pass

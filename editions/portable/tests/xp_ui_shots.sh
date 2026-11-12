@@ -24,6 +24,19 @@ ICONS="$WINEPREFIX/drive_c/lsmshots/ui_icons.txt"
 shot(){ xdotool mousemove 1095 755; sleep 0.7  # pointer off the window: no hover state / tooltip in the shot
   [ -f "$ICONS" ] && cp "$ICONS" "$OUT/$1.icons"; local G; G=$(xwininfo -id "$WID"); local X=$(echo "$G"|awk '/Absolute upper-left X/{print $4}') Y=$(echo "$G"|awk '/Absolute upper-left Y/{print $4}') W=$(echo "$G"|awk '/Width:/{print $2}') H=$(echo "$G"|awk '/Height:/{print $2}')
   import -window root -crop ${W}x${H}+${X}+${Y} +repage "$OUT/$1.png"; echo "shot $1 ${W}x${H}+${X}+${Y}"; }
+# crop to a named popup (first-run / QR) if it is visible, else fall back to the main window
+shot_named(){ local NAME=$2 ID G X Y W H
+  ID=$(xdotool search --name "$NAME" 2>/dev/null | tail -1)
+  if [ -n "$ID" ]; then
+    G=$(xwininfo -id "$ID")
+    X=$(echo "$G"|awk '/Absolute upper-left X/{print $4}') Y=$(echo "$G"|awk '/Absolute upper-left Y/{print $4}') W=$(echo "$G"|awk '/Width:/{print $2}') H=$(echo "$G"|awk '/Height:/{print $2}')
+    if [ -n "$W" ] && [ "$W" -gt 50 ]; then
+      xdotool mousemove 1095 755; sleep 0.5
+      import -window root -crop ${W}x${H}+${X}+${Y} +repage "$OUT/$1.png"; echo "shot $1 ${W}x${H}+${X}+${Y} ($NAME)"; return
+    fi
+  fi
+  shot "$1"
+}
 CL(){ eval $(xdotool getwindowgeometry --shell "$WID"); xdotool mousemove $((X+$1)) $((Y+$2)) click 1; }
 menu(){ xdotool key "alt+$1"; sleep 1.2; }
 # Menubar popups cover the left search box. An empty box owner-draws
@@ -33,11 +46,13 @@ menu(){ xdotool key "alt+$1"; sleep 1.2; }
 fill_search(){ xdotool key ctrl+f; sleep 0.25; xdotool type --delay 15 "x"; sleep 0.25; }
 clear_search(){ xdotool key ctrl+f; sleep 0.15; xdotool key ctrl+a BackSpace; sleep 0.2; }
 rm -rf "$WINEPREFIX/drive_c/lsmshots"
+mkdir -p "$WINEPREFIX/drive_c/lsmshots"
+cp "$ROOT/tests/assets/lsm-qr-sample.png" "$WINEPREFIX/drive_c/lsmshots/lsm-qr-sample.png"
 for TH in light dark; do
-  LSM_UI_TEST=1 wine "$EXE" --data "C:\\lsmshots" --name "XP 旧电脑" --port 0 --disco-port 47012 --targets 127.0.0.1:47011 --theme $TH >"$T/gui-$TH.log" 2>&1 &
+  LSM_UI_TEST=1 LSM_SHOT_QR_FILE="C:\\lsmshots\\lsm-qr-sample.png" wine "$EXE" --data "C:\\lsmshots" --name "XP 旧电脑" --port 0 --disco-port 47012 --targets 127.0.0.1:47011 --theme $TH >"$T/gui-$TH.log" 2>&1 &
   for i in $(seq 60); do WID=$(xdotool search --name "局域网安全通讯" 2>/dev/null | head -1); [ -n "$WID" ] && break; sleep 0.5; done
   xdotool windowmove "$WID" 20 20; xdotool windowsize "$WID" 1000 660; xdotool windowactivate "$WID"; sleep 2
-  shot "xp-$TH-01-welcome-empty"  # LSMF_account_mode LSMF_qr_profile LSMF_qr_scan LSMF_qr_server LSMF_qr_pair
+  shot "xp-$TH-01-welcome-empty"  # welcome after auto-completed first-run
   for i in $(seq 40); do $M peers 2>/dev/null | grep -q "XP" && break; sleep 0.5; done
   FX=$($M --json status | python3 -c 'import json,sys;d=json.load(sys.stdin);print([p["fingerprint"] for p in d["peers"] if "XP" in p["name"]][0])')
   CL 150 160; sleep 1
@@ -84,6 +99,19 @@ for TH in light dark; do
   menu c; xdotool key p; sleep 1.5; shot "xp-$TH-09-pin"; xdotool key Return; sleep 0.8
   menu g; xdotool key c; sleep 1.5; shot "xp-$TH-10-dialog-group-picker"; xdotool key Escape; sleep 0.8
   menu h; xdotool key a; sleep 1.5; shot "xp-$TH-11-about"; xdotool key Return; sleep 0.8
+  xdotool windowactivate "$WID"; sleep 0.2
+  xdotool key F7; sleep 1.2; shot_named "xp-$TH-13-first-run" "欢迎使用局域网安全通讯"  # first-run LSMF_account_mode
+  xdotool key Return; sleep 0.6
+  xdotool key F8; sleep 1.2; shot_named "xp-$TH-14-my-qr" "我的二维码"  # my-qr LSMF_qr_profile
+  xdotool key Escape; sleep 0.5
+  xdotool key shift+F8; sleep 1.2; shot_named "xp-$TH-15-server-qr" "服务器二维码"  # server-qr LSMF_qr_server
+  xdotool key Escape; sleep 0.5
+  xdotool key ctrl+F8; sleep 1.2; shot_named "xp-$TH-16-pair-qr" "配对新设备"  # pair-qr LSMF_qr_pair
+  xdotool key Escape; sleep 0.5
+  xdotool key F9; sleep 1.2; shot_named "xp-$TH-17-scan-paste" "扫描或粘贴链接"  # scan LSMF_qr_scan
+  xdotool key Escape; sleep 0.5
+  xdotool key shift+F9; sleep 1.2; shot_named "xp-$TH-18-scan-image" "从图片识别"  # scan-image LSMF_qr_scan
+  xdotool key Escape; sleep 0.5
   wineserver -k; sleep 2
 done
 # app-reported decorative icon rects (online dots, shields) -> ignore file for the colour audit

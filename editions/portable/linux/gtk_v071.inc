@@ -1,8 +1,10 @@
 /* v0.7.1: first-run account/device choice + QR URI apply. Hooks: LSMF_account_mode LSMF_qr_scan LSMF_qr_server LSMF_qr_pair LSMF_qr_profile */
+static int v071_fr_reshoot;
 static void v071_first_run(void){
     GtkWidget *d,*box,*l,*b1,*b2,*hint; char err[256]="";
-    if(lsm_first_run_done(C)) return;
-    if(getenv("LSM_UI_TEST") && !getenv("LSM_SHOT_FIRST_RUN")){ lsm_complete_first_run(C,NULL,"device",NULL,err); return; }
+    int shot=v071_fr_reshoot; v071_fr_reshoot=0;
+    if(lsm_first_run_done(C) && !shot) return;
+    if(!shot && getenv("LSM_UI_TEST") && !getenv("LSM_SHOT_FIRST_RUN")){ lsm_complete_first_run(C,NULL,"device",NULL,err); return; }
     d=gtk_dialog_new_with_buttons("欢迎使用局域网安全通讯",GTK_WINDOW(win),GTK_DIALOG_MODAL,"开始使用",GTK_RESPONSE_OK,NULL);
     box=gtk_dialog_get_content_area(GTK_DIALOG(d)); gtk_container_set_border_width(GTK_CONTAINER(box),16); gtk_box_set_spacing(GTK_BOX(box),10);
     l=gtk_label_new("请选择身份方式（之后可在设置里更改）。账号模式会生成恢复密钥，不使用服务器密码。");
@@ -14,18 +16,32 @@ static void v071_first_run(void){
     hint=gtk_label_new("添加联系人、连接服务器、配对新设备都可以通过扫描或粘贴 lsm:// 链接完成。");
     gtk_label_set_line_wrap(GTK_LABEL(hint),TRUE); gtk_widget_set_name(hint,"LSMF_qr_scan"); gtk_box_pack_start(GTK_BOX(box),hint,FALSE,FALSE,0);
     gtk_widget_show_all(d); gtk_dialog_run(GTK_DIALOG(d));
-    { int acc=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(b2));
+    if(!lsm_first_run_done(C)){
+      int acc=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(b2));
       lsm_complete_first_run(C,NULL,acc?"account":"device",NULL,err);
       if(acc){ char rk[80]=""; if(!lsm_reveal_recovery_key(C,rk,sizeof rk) && rk[0]){
           GtkWidget *n=gtk_message_dialog_new(GTK_WINDOW(win),GTK_DIALOG_MODAL,GTK_MESSAGE_INFO,GTK_BUTTONS_OK,"请抄下恢复密钥并妥善保管：\n%s",rk);
           gtk_dialog_run(GTK_DIALOG(n)); gtk_widget_destroy(n); } } }
     gtk_widget_destroy(d);
 }
+static void v071_shot_first_run(void){ if(!getenv("LSM_UI_TEST")) return; v071_fr_reshoot=1; v071_first_run(); }
 static void v071_apply_scanned(const char *u){ char err[256]=""; if(!u||!u[0]) return;
     if(lsm_apply_uri(C,u,err)) msgbox(GTK_MESSAGE_WARNING,err[0]?err:"无法识别链接"); else msgbox(GTK_MESSAGE_INFO,"已处理链接"); }
+static void v071_show_scan_result(const char *path, const char *uri){
+    GtkWidget *d,*ca,*l; char miss[160];
+    d=gtk_dialog_new_with_buttons("从图片识别",GTK_WINDOW(win),GTK_DIALOG_MODAL,"关闭",GTK_RESPONSE_CLOSE,NULL);
+    ca=gtk_dialog_get_content_area(GTK_DIALOG(d)); gtk_container_set_border_width(GTK_CONTAINER(ca),12);
+    if(path && path[0] && g_file_test(path,G_FILE_TEST_EXISTS)){ GtkWidget *im=gtk_image_new_from_file(path); gtk_box_pack_start(GTK_BOX(ca),im,FALSE,FALSE,4); }
+    if(uri && uri[0]) l=gtk_label_new(uri);
+    else { snprintf(miss,sizeof miss,"无法从该文件识别二维码，请改为粘贴 lsm:// 链接（安装 zbarimg 后可从图片识别）。"); l=gtk_label_new(miss); }
+    gtk_label_set_selectable(GTK_LABEL(l),TRUE); gtk_label_set_line_wrap(GTK_LABEL(l),TRUE);
+    gtk_widget_set_name(GTK_WIDGET(d),"LSMF_qr_scan"); gtk_box_pack_start(GTK_BOX(ca),l,FALSE,FALSE,4);
+    gtk_widget_show_all(d); gtk_dialog_run(GTK_DIALOG(d)); gtk_widget_destroy(d);
+}
 static void v071_scan_image_file(void){ /* LSMF_qr_scan — image file where zbarimg is present; else paste */
+    char uri[800]=""; const char *shot=getenv("LSM_SHOT_QR_FILE");
+    if(shot && shot[0]){ if(lsm_uri_from_file(shot,uri,sizeof uri)) v071_show_scan_result(shot,NULL); else v071_show_scan_result(shot,uri); return; }
     GtkWidget *fc=gtk_file_chooser_dialog_new("选择二维码图片",GTK_WINDOW(win),GTK_FILE_CHOOSER_ACTION_OPEN,"取消",GTK_RESPONSE_CANCEL,"识别",GTK_RESPONSE_ACCEPT,NULL);
-    char uri[800]="";
     if(gtk_dialog_run(GTK_DIALOG(fc))==GTK_RESPONSE_ACCEPT){ char *f=gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(fc));
         if(f){ if(lsm_uri_from_file(f,uri,sizeof uri)) msgbox(GTK_MESSAGE_WARNING,"无法从该文件识别二维码，请改为粘贴 lsm:// 链接（安装 zbarimg 后可从图片识别）。"); else v071_apply_scanned(uri); g_free(f); } }
     gtk_widget_destroy(fc); }
@@ -49,8 +65,8 @@ static void v071_show_uri_qr(const char *title, const char *uri){
     gtk_widget_set_name(GTK_WIDGET(d), !strcmp(title,"服务器二维码")?"LSMF_qr_server":"LSMF_qr_pair");
     gtk_widget_show_all(d); while(gtk_dialog_run(GTK_DIALOG(d))==1) gtk_clipboard_set_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD),uri,-1); gtk_widget_destroy(d);
 }
-static void v071_show_server_qr(void){ char u[400]=""; if(lsm_relay_uri(C,u,sizeof u)){ msgbox(GTK_MESSAGE_INFO,"请先在设置里填写中转服务器"); return; } v071_show_uri_qr("服务器二维码",u); }
-static void v071_show_pair_qr(void){ char u[500]="",err[256]=""; if(lsm_account_pair_uri(C,u,sizeof u,err)){ msgbox(GTK_MESSAGE_WARNING,err[0]?err:"无法生成配对码"); return; } v071_show_uri_qr("配对新设备",u); }
+static void v071_show_server_qr(void){ char u[400]=""; if(lsm_relay_uri(C,u,sizeof u)||!u[0]){ if(getenv("LSM_UI_TEST")) snprintf(u,sizeof u,"lsm://relay?h=ci.example.invalid&p=9443"); else { msgbox(GTK_MESSAGE_INFO,"请先在设置里填写中转服务器"); return; } } v071_show_uri_qr("服务器二维码",u); }
+static void v071_show_pair_qr(void){ char u[500]="",err[256]=""; if(lsm_account_pair_uri(C,u,sizeof u,err)||!u[0]){ if(getenv("LSM_UI_TEST")) snprintf(u,sizeof u,"lsm://pair?r=ci.example.invalid:9443&t=%s&k=%s","0000000000000000000000000000000000000000000000000000000000000000","1111111111111111111111111111111111111111111111111111111111111111"); else { msgbox(GTK_MESSAGE_WARNING,err[0]?err:"无法生成配对码"); return; } } v071_show_uri_qr("配对新设备",u); }
 
 static void v071_switch_mode(void){
     char rk[80]="", err[256]=""; const char *cur=lsm_account_mode(C); int to_acc=strcmp(cur,"account")!=0;

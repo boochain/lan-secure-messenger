@@ -99,6 +99,11 @@ impl Engine {
                 let (n, m) = qr(&uri);
                 Ok(json!({"uri": uri, "qr_size": n, "qr": m}))
             }
+            "qr" => {
+                let uri = params.get("uri").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let (n, m) = qr(&uri);
+                Ok(json!({"uri": uri, "qr_size": n, "qr": m}))
+            }
             "add_uri" => (|| {
                 #[derive(Deserialize)]
                 struct P { uri: String }
