@@ -13,17 +13,40 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Text="网络诊断" Style="{StaticResource TitleTextBlockStyle}" />
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <Border Style="{StaticResource LsmIconTileStyle}" VerticalAlignment="Center">
+                        <FontIcon Glyph="&#xE9D9;" FontSize="16" Foreground="{ThemeResource LsmTileForegroundBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <TextBlock Text="网络诊断" Style="{StaticResource TitleTextBlockStyle}" VerticalAlignment="Center" />
+                </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
                     <ProgressRing IsActive="{x:Bind VM.DiagBusy, Mode=OneWay}" Width="20" Height="20" />
-                    <Button Content="刷新" Command="{x:Bind VM.RefreshDiagnosticsCommand}" />
-                    <Button Content="复制诊断信息" Command="{x:Bind VM.CopyDiagnosticsCommand}" />
+                    <Button Command="{x:Bind VM.RefreshDiagnosticsCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE72C;" FontSize="14" />
+                            <TextBlock Text="刷新" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <Button Command="{x:Bind VM.CopyDiagnosticsCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE8C8;" FontSize="14" />
+                            <TextBlock Text="复制诊断信息" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
             </Grid>
 
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="8">
-                    <TextBlock Text="Windows 防火墙" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Border Style="{StaticResource LsmIconTileStyle}">
+                            <FontIcon Glyph="&#xEA18;" FontSize="16" Foreground="{ThemeResource LsmTileForegroundBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="防火墙" Style="{StaticResource SubtitleTextBlockStyle}" />
+                                <TextBlock Text="入站规则与网络类型" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <FontIcon Glyph="&#xE73E;" Foreground="{ThemeResource StatusOnlineBrush}" Visibility="{x:Bind VM.FirewallOk, Mode=OneWay}" />
                         <FontIcon Glyph="&#xE7BA;" Foreground="{ThemeResource StatusWarnBrush}" Visibility="{x:Bind local:B.Not(VM.FirewallOk), Mode=OneWay}" />
@@ -43,7 +66,15 @@
 
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="8">
-                    <TextBlock Text="发现与端口" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Border Style="{StaticResource LsmIconTileStyle}">
+                            <FontIcon Glyph="&#xE774;" FontSize="16" Foreground="{ThemeResource LsmTileForegroundBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="发现与端口" Style="{StaticResource SubtitleTextBlockStyle}" />
+                            <TextBlock Text="广播、组播与监听" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </StackPanel>
                     <TextBlock Text="{x:Bind VM.PortsText, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
                     <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind VM.DiscoveryText, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
                 </StackPanel>
@@ -51,7 +82,15 @@
 
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="8">
-                    <TextBlock Text="网卡" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Border Style="{StaticResource LsmIconTileStyle}">
+                            <FontIcon Glyph="&#xE968;" FontSize="16" Foreground="{ThemeResource LsmTileForegroundBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="网卡" Style="{StaticResource SubtitleTextBlockStyle}" />
+                            <TextBlock Text="本机接口与地址" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </StackPanel>
                     <TextBlock Text="虚拟网卡（Hyper-V、VMware、VirtualBox、WSL、Docker、VPN 等）会被自动跳过；可在「设置」中手动指定。"
                                Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" />
                     <ItemsRepeater ItemsSource="{x:Bind VM.Interfaces}">
@@ -82,7 +121,15 @@
 
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="8">
-                    <TextBlock Text="联系人连接状态" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Border Style="{StaticResource LsmIconTileStyle}">
+                            <FontIcon Glyph="&#xE716;" FontSize="16" Foreground="{ThemeResource LsmTileForegroundBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="联系人" Style="{StaticResource SubtitleTextBlockStyle}" />
+                            <TextBlock Text="直连或经中转" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </StackPanel>
                     <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="暂无联系人" Visibility="{x:Bind local:B.Empty(VM.PeerDiags.Count), Mode=OneWay}" />
                     <ItemsRepeater ItemsSource="{x:Bind VM.PeerDiags}">
                         <ItemsRepeater.Layout>
@@ -112,7 +159,15 @@
 
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="8">
-                    <TextBlock Text="手动添加的地址" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Border Style="{StaticResource LsmIconTileStyle}">
+                            <FontIcon Glyph="&#xE8A7;" FontSize="16" Foreground="{ThemeResource LsmTileForegroundBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="手动地址" Style="{StaticResource SubtitleTextBlockStyle}" />
+                            <TextBlock Text="指定的对端主机" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </StackPanel>
                     <TextBlock Text="这些地址会被持续重连，适用于广播被路由器/防火墙拦截的网络。" Style="{StaticResource SecondaryCaptionStyle}" />
                     <ItemsRepeater ItemsSource="{x:Bind VM.ManualPeers}">
                         <ItemsRepeater.ItemTemplate>

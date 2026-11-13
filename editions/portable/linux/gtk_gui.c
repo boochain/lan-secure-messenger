@@ -434,7 +434,8 @@ static void show_transfers(void){
     gtk_container_add(GTK_CONTAINER(sc),lb); gtk_box_pack_start(GTK_BOX(box),sc,TRUE,TRUE,0); gtk_window_set_default_size(GTK_WINDOW(d),560,380); gtk_widget_show_all(d);
     g_signal_connect(d,"response",G_CALLBACK(gtk_widget_destroy),NULL); }
 
-enum { A_ADDIP=1, A_TRUST, A_UNTRUST, A_BLOCK, A_PINOFFER, A_PINPAIR, A_GCREATE, A_GINVITE, A_GREMOVE, A_GLEAVE, A_NAME, A_XFERS, A_DLDIR, A_FIREWALL, A_ABOUT, A_QUIT, A_MUTE, A_DIAG, A_UPDATE, A_CLEAR, A_REFRESH, A_RECONNECT, A_STORAGE, A_EMOJI, A_HISTORY, A_PROFILE, A_CPROFILE, A_MYQR, A_ADDURI, A_QUICK, A_PINCONV, A_STARRED, A_PINNED, A_MULTI, A_POLL, A_TTL, A_ARCHIVE, A_FOLDERS, A_FILTER, A_SERVERQR, A_PAIRQR, A_ACCTMODE, A_REVEALRK };
+enum { A_ADDIP=1, A_TRUST, A_UNTRUST, A_BLOCK, A_PINOFFER, A_PINPAIR, A_GCREATE, A_GINVITE, A_GREMOVE, A_GLEAVE, A_NAME, A_XFERS, A_DLDIR, A_FIREWALL, A_ABOUT, A_QUIT, A_MUTE, A_DIAG, A_UPDATE, A_CLEAR, A_REFRESH, A_RECONNECT, A_STORAGE, A_EMOJI, A_HISTORY, A_PROFILE, A_CPROFILE, A_MYQR, A_ADDURI, A_QUICK, A_PINCONV, A_STARRED, A_PINNED, A_MULTI, A_POLL, A_TTL, A_ARCHIVE, A_FOLDERS, A_FILTER, A_SERVERQR, A_PAIRQR, A_ACCTMODE, A_REVEALRK, A_RELAY };
+#include "gtk_v073.inc"
 
 static void storage_dialog(void){
     char info[2048]={0}, msg[2400]; GtkWidget *d; int n; size_t need=lsm_storage_info(C,info,sizeof info);
@@ -509,7 +510,7 @@ static void act(GtkWidget *w, gpointer p){ int id=GPOINTER_TO_INT(p); char err[2
     case A_STARRED: p2_flag_dialog(2,NULL); break;
     case A_PINNED: if(cur_conv[0]) p2_flag_dialog(1,cur_conv); break;
     case A_MULTI: p2_multi(); break;
-    case A_POLL: v062_new_poll(); break; case A_MYQR: ux_my_qr(); break; case A_ADDURI: v071_paste_uri(); break; case A_SERVERQR: v071_show_server_qr(); break; case A_PAIRQR: v071_show_pair_qr(); break; case A_ACCTMODE: v071_switch_mode(); break; case A_REVEALRK: v071_reveal_rk(); break; case A_QUICK: ux_quick_switch(); break;
+    case A_POLL: v062_new_poll(); break; case A_MYQR: ux_my_qr(); break; case A_ADDURI: v071_paste_uri(); break; case A_SERVERQR: v071_show_server_qr(); break; case A_PAIRQR: v071_show_pair_qr(); break; case A_ACCTMODE: v071_switch_mode(); break; case A_REVEALRK: v071_reveal_rk(); break; case A_RELAY: v073_relay_dialog(); break; case A_QUICK: ux_quick_switch(); break;
     case A_TTL: v062_ttl(); break;
     case A_ARCHIVE: v062_archive(); break;
     case A_FOLDERS: v062_folders(); break;
@@ -531,7 +532,7 @@ static void act(GtkWidget *w, gpointer p){ int id=GPOINTER_TO_INT(p); char err[2
         r=gtk_dialog_run(GTK_DIALOG(d)); gtk_widget_destroy(d); if(r==1) act(NULL,GINT_TO_POINTER(A_DIAG)); else if(r==2) act(NULL,GINT_TO_POINTER(A_UPDATE)); else if(r==3) act(NULL,GINT_TO_POINTER(A_STORAGE)); break; }
     case A_QUIT: quit_app(); break; } }
 
-static GtkWidget *mi(GtkWidget *menu, const char *label, int id){ GtkWidget *i=gtk_menu_item_new_with_label(label); gtk_widget_set_direction(i,GTK_TEXT_DIR_LTR); g_signal_connect(i,"activate",G_CALLBACK(act),GINT_TO_POINTER(id)); gtk_menu_shell_append(GTK_MENU_SHELL(menu),i); return i; }
+static GtkWidget *mi(GtkWidget *menu, const char *label, int id){ GtkWidget *i=v073_menu_item(label,id); g_signal_connect(i,"activate",G_CALLBACK(act),GINT_TO_POINTER(id)); gtk_menu_shell_append(GTK_MENU_SHELL(menu),i); return i; }
 static void sep(GtkWidget *m){ gtk_menu_shell_append(GTK_MENU_SHELL(m),gtk_separator_menu_item_new()); }
 
 /* ---------------------------------------------------------------- event pump (core thread -> GTK main loop) */

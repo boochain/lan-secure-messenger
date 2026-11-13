@@ -803,6 +803,7 @@ static void refresh_caption(void);
 #include "xp_v070.inc"
 #include "xp_v071.inc"
 #include "xp_v072.inc"
+#include "xp_v073.inc"
 static void select_conv(int s);
 #include "xp_ux.inc"
 static void do_command(int id){

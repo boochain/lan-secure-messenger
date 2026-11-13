@@ -118,6 +118,13 @@ menu menuitem, .csd menu menuitem { min-height: 22px; padding-top: 2px; padding-
 .lsm-v070-page list, .lsm-v070-page list row, .lsm-v070-page textview, .lsm-v070-page textview text {
   background-color: #F3F3F3; color: #1A1A1A;
 }
+
+.lsm-icon-row { background-color: #F3F3F3; color: #1A1A1A; }
+.lsm-icon-row label { color: #1A1A1A; }
+.lsm-icon-row .dim-label { color: #5C5C5C; }
+.lsm-icon-row:hover, list row.lsm-icon-row:hover:not(:selected) { background-color: #E5E5E5; color: #1A1A1A; }
+.lsm-qa-btn { background-color: #F3F3F3; color: #1A1A1A; border: none; box-shadow: none; background-image: none; }
+.lsm-qa-btn label { color: #1A1A1A; }
 /*@dark*/
 window, dialog, messagedialog, .background, popover { background-color: #202020; color: #FFFFFF; }
 headerbar, headerbar:backdrop { background-color: #202020; color: #FFFFFF; border-color: #323232; }
@@ -196,3 +203,10 @@ menu menuitem, .csd menu menuitem { min-height: 22px; padding-top: 2px; padding-
 .lsm-v070-page list, .lsm-v070-page list row, .lsm-v070-page textview, .lsm-v070-page textview text {
   background-color: #202020; color: #FFFFFF;
 }
+
+.lsm-icon-row { background-color: #202020; color: #FFFFFF; }
+.lsm-icon-row label { color: #FFFFFF; }
+.lsm-icon-row .dim-label { color: #CCCCCC; }
+.lsm-icon-row:hover, list row.lsm-icon-row:hover:not(:selected) { background-color: #2B2B2B; color: #FFFFFF; }
+.lsm-qa-btn { background-color: #202020; color: #FFFFFF; border: none; box-shadow: none; background-image: none; }
+.lsm-qa-btn label { color: #FFFFFF; }

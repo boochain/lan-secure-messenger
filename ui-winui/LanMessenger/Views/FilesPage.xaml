@@ -16,14 +16,29 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <StackPanel>
-                <TextBlock Text="文件站" Style="{StaticResource TitleTextBlockStyle}"
-                           AutomationProperties.AutomationId="LSMF_nav_files" />
-                <TextBlock Text="{x:Bind VM.StorageSummary, Mode=OneWay}" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" />
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <Border Style="{StaticResource LsmIconTileStyle}" VerticalAlignment="Top" Margin="0,4,0,0">
+                    <FontIcon Glyph="&#xE8B7;" FontSize="16" Foreground="{ThemeResource LsmTileForegroundBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <StackPanel>
+                    <TextBlock Text="文件站" Style="{StaticResource TitleTextBlockStyle}"
+                               AutomationProperties.AutomationId="LSMF_nav_files" />
+                    <TextBlock Text="{x:Bind VM.StorageSummary, Mode=OneWay}" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" />
+                </StackPanel>
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                <Button Content="打开下载文件夹" Command="{x:Bind VM.OpenDownloadsCommand}" />
-                <Button Content="清理存储" Command="{x:Bind VM.CleanupStorageCommand}" />
+                <Button Command="{x:Bind VM.OpenDownloadsCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE8B7;" FontSize="14" />
+                        <TextBlock Text="打开下载文件夹" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <Button Command="{x:Bind VM.CleanupStorageCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE74D;" FontSize="14" />
+                        <TextBlock Text="清理存储" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
             </StackPanel>
         </Grid>
         <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Grid.Row="1"
@@ -39,16 +54,20 @@
                 <DataTemplate x:DataType="vm:TransferItem">
                     <Grid Padding="4,10" ColumnSpacing="12">
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <StackPanel>
+                        <Border Style="{StaticResource LsmIconTileStyle}">
+                            <FontIcon Glyph="&#xE8A5;" FontSize="16" Foreground="{ThemeResource LsmTileForegroundBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <StackPanel Grid.Column="1">
                             <TextBlock Text="{x:Bind Name, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                             <TextBlock Style="{StaticResource SecondaryCaptionStyle}">
                                 <Run Text="{x:Bind DirectionText, Mode=OneWay}" /><Run Text=" · " /><Run Text="{x:Bind StateText, Mode=OneWay}" /><Run Text=" · " /><Run Text="{x:Bind ProgressText, Mode=OneWay}" />
                             </TextBlock>
                         </StackPanel>
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
                             <Button Content="打开" Click="Open_Click" Visibility="{x:Bind CanOpen, Mode=OneWay}" />
                             <Button Content="所在文件夹" Click="Reveal_Click" Visibility="{x:Bind CanOpen, Mode=OneWay}" />
                         </StackPanel>

@@ -22,7 +22,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -104,9 +106,12 @@ fun HistoryScreen(st: AppState, initialConv: String?, back: () -> Unit, jump: (S
 }
 
 @Composable
-private fun KV(k: String, v: String) {
+private fun KV(k: String, v: String, icon: Int = R.drawable.ms_info) {
     val p = LocalPalette.current
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) { Text(k, color = p.fg2, style = MaterialTheme.typography.bodySmall); Text(v.ifEmpty { "—" }, color = p.fg) }
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        IconTile(icon, null, size = 36.dp, glyph = 20.dp); Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) { Text(k, color = p.fg2, style = MaterialTheme.typography.bodySmall); Text(v.ifEmpty { "—" }, color = p.fg) }
+    }
 }
 
 @Composable
@@ -122,18 +127,30 @@ fun MyProfileScreen(st: AppState, back: () -> Unit) {
             val e = Native.setProfile(null, f.absolutePath); f.delete(); Repo.toast.value = if (e.isEmpty()) "头像已更新" else e; Repo.refresh()
         } catch (e: Exception) { Repo.toast.value = "无法读取图片" }
     }
+    var qr by remember { mutableStateOf(false) }
+    val clip = LocalClipboardManager.current
+    fun save() {
+        Native.setName(name.trim()); val e = Native.setProfile(sig.trim(), null)
+        Repo.toast.value = if (e.isEmpty()) "个人资料已保存" else e; Repo.refresh(); back()
+    }
     Column(Modifier.fillMaxSize().background(p.window).statusBarsPadding().navigationBarsPadding().imePadding()) {
         PageBar("个人资料", back)
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
             Spacer(Modifier.height(16.dp)); AvatarPic(st.me.avatar, st.me.name, st.me.fp, 96.dp)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { TextButton({ pick.launch("image/*") }) { Text("更换头像") }; if (st.me.avatar.isNotEmpty()) TextButton({ Native.setProfile(null, ""); Repo.refresh() }) { Text("移除头像") } }
+            Text(st.me.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, color = p.fg, modifier = Modifier.padding(top = 8.dp))
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                ActionIcon(R.drawable.ms_image, "头像") { pick.launch("image/*") }
+                ActionIcon(R.drawable.ms_qr, "二维码") { qr = true }
+                ActionIcon(R.drawable.ms_copy, "复制") { clip.setText(AnnotatedString(st.me.fp)); Repo.toast.value = "已复制指纹" }
+                ActionIcon(R.drawable.ms_tick, "保存", onClick = { save() })
+            }
+            if (st.me.avatar.isNotEmpty()) TextButton({ Native.setProfile(null, ""); Repo.refresh() }) { Text("移除头像") }
             OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp), label = { Text("昵称") }, singleLine = true)
             OutlinedTextField(sig, { if (it.codePointCount(0, it.length) <= 120) sig = it }, Modifier.fillMaxWidth().padding(16.dp), label = { Text("个性签名（最多 120 字）") })
-            KV("指纹", st.me.fp); KV("版本", st.me.version)
-            Button({ Native.setName(name.trim()); val e = Native.setProfile(sig.trim(), null); Repo.toast.value = if (e.isEmpty()) "个人资料已保存" else e; Repo.refresh(); back() },
-                Modifier.padding(16.dp), colors = ButtonDefaults.buttonColors(containerColor = p.accent, contentColor = p.onAccent)) { Text("保存") }
+            KV("指纹", st.me.fp, R.drawable.ms_lock); KV("版本", st.me.version, R.drawable.ms_info)
         }
     }
+    if (qr) QrDialog { qr = false }
 }
 
 @Composable
@@ -150,23 +167,25 @@ fun ContactProfileScreen(st: AppState, fp: String, back: () -> Unit, openChat: (
             item {
                 Spacer(Modifier.height(16.dp)); AvatarPic(c.avatar, c.name, c.fp, 96.dp)
                 Text(c.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, color = p.fg, modifier = Modifier.padding(top = 8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(8.dp)) {
-                    Button(openChat, colors = ButtonDefaults.buttonColors(containerColor = p.accent, contentColor = p.onAccent)) { Text("发消息") }
-                    OutlinedButton(history) { Text("消息历史") }
+                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    ActionIcon(R.drawable.ms_chats, "发消息", onClick = openChat)
+                    ActionIcon(R.drawable.ms_search, "历史", onClick = history)
+                    ActionIcon(R.drawable.ms_mute, if (Native.isMuted(fp)) "已静音" else "免打扰") { Native.setMuted(fp, !Native.isMuted(fp)); Repo.refresh() }
+                    ActionIcon(R.drawable.ms_trusted, if (c.trust == 1) "已信任" else "信任") { Native.setTrust(fp, if (c.trust == 1) 0 else 1); Repo.refresh() }
                 }
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(remark, { remark = it }, Modifier.weight(1f), label = { Text("备注名（仅本机）") }, singleLine = true)
                     TextButton({ Native.setRemark(fp, remark.trim()); Repo.refresh(); Repo.toast.value = "备注名已保存" }) { Text("保存") }
                 }
-                KV("昵称", c.nick.ifEmpty { c.name }); KV("个性签名", c.sig.ifEmpty { "（未设置或对方版本较旧）" })
-                KV("状态", (if (c.online) "在线" else "离线") + if (c.online) (if (c.via) " · 经服务器中转" else " · 局域网直连") else "")
-                KV("身份", trustTxt(c.trust)); KV("版本", c.version); KV("指纹", c.fp)
+                KV("昵称", c.nick.ifEmpty { c.name }, R.drawable.ms_edit); KV("个性签名", c.sig.ifEmpty { "（未设置或对方版本较旧）" }, R.drawable.ms_edit)
+                KV("状态", (if (c.online) "在线" else "离线") + if (c.online) (if (c.via) " · 经服务器中转" else " · 局域网直连") else "", R.drawable.ms_online)
+                KV("身份", trustTxt(c.trust), R.drawable.ms_trusted); KV("版本", c.version, R.drawable.ms_info); KV("指纹", c.fp, R.drawable.ms_lock)
                 Text("共享的文件与图片", fontWeight = FontWeight.SemiBold, color = p.fg, modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 12.dp, bottom = 4.dp))
                 if (files.isEmpty()) Text("暂无", color = p.fg2, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp))
             }
             items(files, key = { it.id }) { m ->
                 Row(Modifier.fillMaxWidth().clickable { jump("dm:$fp", m.id) }.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Ic(if (isImageName(m.file)) R.drawable.ms_image else R.drawable.ms_file, null, p.fg2); Spacer(Modifier.width(12.dp))
+                    IconTile(if (isImageName(m.file)) R.drawable.ms_image else R.drawable.ms_file, null, size = 36.dp, glyph = 20.dp); Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) { Text(m.file, color = p.fg, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA).format(Date(m.ts)) + if (m.path.isEmpty()) " · 未接收" else "", color = p.fg2, style = MaterialTheme.typography.bodySmall) }
                 }
             }

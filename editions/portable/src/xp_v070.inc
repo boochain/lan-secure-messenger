@@ -1,3 +1,6 @@
+static void v073_on_show(const char *name);
+static void v073_place(int T0, int W_, int H_, int sb);
+static int v073_page_visible(void);
 /* v0.7.0 (XP / Win32): dedicated in-window pages + chat-list actions on the existing right-click menu. */
 #define IDM_V070_CONTACTS  470
 #define IDM_V070_FILES     471
@@ -43,23 +46,26 @@ static void v070_relayout(void){ RECT rc; if(!hMain) return; GetClientRect(hMain
 static void v070_place_overlay(int T0, int W_, int H_, int sb){
     HWND chrome[]={hReconnect,hAdd,hSearch,hList,hTitle,hHdrSearch,hChat,hFile,hInput,hMic,hSend,hChatSb,hListSb};
     HWND show[]={hReconnect,hAdd,hSearch,hList,hTitle,hChat,hFile,hInput,hMic,hSend};
-    int i, on=hV070Page && IsWindowVisible(hV070Page) && strcmp(v070_page,"chats");
+    int i, on=strcmp(v070_page,"chats") && ((hV070Page && IsWindowVisible(hV070Page)) || v073_page_visible());
     if(on){
         for(i=0;i<(int)(sizeof chrome/sizeof chrome[0]);i++) if(chrome[i]) ShowWindow(chrome[i],SW_HIDE);
         SetWindowPos(hV070Page,HWND_TOP,0,T0,W_,H_-sb,SWP_SHOWWINDOW);
         ShowScrollBar(hV070Page,SB_BOTH,FALSE);
+        v073_place(T0,W_,H_,sb);
     }else{
         for(i=0;i<(int)(sizeof show/sizeof show[0]);i++) if(show[i]) ShowWindow(show[i],SW_SHOW);
     }
 }
 static void v070_show_page(const char *name){
     wchar_t w[4000]; snprintf(v070_page,sizeof v070_page,"%s",name);
-    if(!strcmp(name,"chats")){ if(hV070Page) ShowWindow(hV070Page,SW_HIDE); v070_relayout(); return; }
+    if(!strcmp(name,"chats")){ if(hV070Page) ShowWindow(hV070Page,SW_HIDE); v073_on_show("chats"); v070_relayout(); return; }
+    v073_on_show(name);
+    if(!strcmp(name,"settings")||!strcmp(name,"profile")||!strcmp(name,"files")||!strcmp(name,"transfers")||!strcmp(name,"groups")||!strcmp(name,"contacts")){ v070_relayout(); return; }
     if(!hV070Page) return;
     v070_page_text(w,4000); SetWindowTextW(hV070Page,w); ShowWindow(hV070Page,SW_SHOW); ShowScrollBar(hV070Page,SB_BOTH,FALSE); BringWindowToTop(hV070Page); v070_relayout();
 }
 static void v070_on_command(int id){
-    if(id==IDM_V070_CHATS){ if(hV070Page) ShowWindow(hV070Page,SW_HIDE); snprintf(v070_page,sizeof v070_page,"chats"); v070_relayout(); }
+    if(id==IDM_V070_CHATS){ if(hV070Page) ShowWindow(hV070Page,SW_HIDE); snprintf(v070_page,sizeof v070_page,"chats"); v073_on_show("chats"); v070_relayout(); }
     else if(id==IDM_V070_CONTACTS) v070_show_page("contacts");
     else if(id==IDM_V070_GROUPS) v070_show_page("groups");
     else if(id==IDM_V070_FILES) v070_show_page("files");

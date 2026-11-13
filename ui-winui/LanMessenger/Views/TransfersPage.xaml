@@ -16,13 +16,28 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <StackPanel>
-                <TextBlock Text="文件传输" Style="{StaticResource TitleTextBlockStyle}" AutomationProperties.AutomationId="LSMF_nav_transfers" />
-                <TextBlock Text="{x:Bind VM.TransfersSummary, Mode=OneWay}" Style="{StaticResource SecondaryCaptionStyle}" />
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <Border Style="{StaticResource LsmIconTileStyle}" VerticalAlignment="Top" Margin="0,4,0,0">
+                    <FontIcon Glyph="&#xE896;" FontSize="16" Foreground="{ThemeResource LsmTileForegroundBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <StackPanel>
+                    <TextBlock Text="文件传输" Style="{StaticResource TitleTextBlockStyle}" AutomationProperties.AutomationId="LSMF_nav_transfers" />
+                    <TextBlock Text="{x:Bind VM.TransfersSummary, Mode=OneWay}" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" />
+                </StackPanel>
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                <Button Content="打开下载文件夹" Command="{x:Bind VM.OpenDownloadsCommand}" />
-                <Button Content="清除已完成" Command="{x:Bind VM.ClearFinishedTransfersCommand}" />
+                <Button Command="{x:Bind VM.OpenDownloadsCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE8B7;" FontSize="14" />
+                        <TextBlock Text="打开下载文件夹" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <Button Command="{x:Bind VM.ClearFinishedTransfersCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE74D;" FontSize="14" />
+                        <TextBlock Text="清除已完成" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
             </StackPanel>
         </Grid>
         <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Grid.Row="1" Text="暂无传输。在聊天中点击回形针或把文件拖进聊天窗口即可发送。"

@@ -82,7 +82,7 @@ fun Home(st: AppState, openPage: (String) -> Unit = {}, open: (String) -> Unit) 
                 // Title bar: app icon, never the app name. Section titles only for non-chat tabs.
                 Image(painterResource(R.drawable.ic_app), "局域网安全通讯", modifier = Modifier.size(28.dp).clip(RoundedCornerShape(7.dp)))
                 Spacer(Modifier.width(10.dp))
-                val title = if (tab == 3 && dlg == "relay") "中转服务器（可选）" else when (tab) { 1 -> "联系人"; 2 -> "文件"; 3 -> "设置"; else -> "" }
+                val title = if (tab == 3 && dlg == "relay") "中转服务器" else when (tab) { 1 -> "联系人"; 2 -> "文件"; 3 -> "设置"; else -> "" }
                 if (title.isNotEmpty()) Text(title, style = MaterialTheme.typography.titleLarge, color = p.fg, modifier = Modifier.weight(1f).widthIn(min = 0.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 else Spacer(Modifier.weight(1f))
                 if (tab <= 1) IconButton({ searching = true }) { Ic(R.drawable.ms_search, "搜索", p.fg) }
@@ -92,8 +92,8 @@ fun Home(st: AppState, openPage: (String) -> Unit = {}, open: (String) -> Unit) 
                 // Overflow holds at most 5 items; everything else lives in settings / add-contact pages.
                 DropdownMenu(menu, { menu = false }) {
                     DropdownMenuItem({ Text("添加联系人") }, { menu = false; dlg = "add" }, leadingIcon = { Ic(R.drawable.ms_add_contact) })
-                    DropdownMenuItem({ Text("我的二维码") }, { menu = false; dlg = "qr" }, leadingIcon = { Ic(R.drawable.ms_add_contact) })
-                    DropdownMenuItem({ Text("扫描二维码") }, { menu = false; dlg = "scan" }, leadingIcon = { Ic(R.drawable.ms_add_contact) })
+                    DropdownMenuItem({ Text("我的二维码") }, { menu = false; dlg = "qr" }, leadingIcon = { Ic(R.drawable.ms_qr) })
+                    DropdownMenuItem({ Text("扫描二维码") }, { menu = false; dlg = "scan" }, leadingIcon = { Ic(R.drawable.ms_qr) })
                     DropdownMenuItem({ Text("创建群组") }, { menu = false; dlg = "group" }, leadingIcon = { Ic(R.drawable.ms_groups) })
                     DropdownMenuItem({ Text("刷新联系人") }, { menu = false; Native.refreshPeers(); Repo.refresh(); Repo.toast.value = "已刷新联系人" }, leadingIcon = { Ic(R.drawable.ms_network) })
                 }
@@ -278,11 +278,11 @@ fun ConvRow(c: Conv, click: () -> Unit) {
                 }
             }
             DropdownMenu(menu, { menu = false }) {
-                DropdownMenuItem({ Text(if (c.pinned) "取消置顶" else "置顶") }, { menu = false; pin() }, modifier = Modifier.testTag("LSMF_chat_pin"))
-                DropdownMenuItem({ Text(if (unread) "标为已读" else "标为未读") }, { menu = false; if (unread) read() else markItUnread() }, modifier = Modifier.testTag(if (unread) "LSMF_chat_mark_read" else "LSMF_chat_mark_unread"))
-                if (!c.group) DropdownMenuItem({ Text(if (muted) "取消免打扰" else "免打扰") }, { menu = false; mute() }, modifier = Modifier.testTag("LSMF_chat_mute"))
-                if (!c.group) DropdownMenuItem({ Text(if (c.trusted) "取消信任" else "信任") }, { menu = false; Native.setTrust(c.key, if (c.trusted) 0 else 1); Repo.refresh() })
-                DropdownMenuItem({ Text("删除会话…") }, { menu = false; confirmDel = true }, modifier = Modifier.testTag("LSMF_chat_delete"))
+                DropdownMenuItem({ Text(if (c.pinned) "取消置顶" else "置顶") }, { menu = false; pin() }, modifier = Modifier.testTag("LSMF_chat_pin"), leadingIcon = { Ic(R.drawable.ms_chats) })
+                DropdownMenuItem({ Text(if (unread) "标为已读" else "标为未读") }, { menu = false; if (unread) read() else markItUnread() }, modifier = Modifier.testTag(if (unread) "LSMF_chat_mark_read" else "LSMF_chat_mark_unread"), leadingIcon = { Ic(R.drawable.ms_tick) })
+                if (!c.group) DropdownMenuItem({ Text(if (muted) "取消免打扰" else "免打扰") }, { menu = false; mute() }, modifier = Modifier.testTag("LSMF_chat_mute"), leadingIcon = { Ic(R.drawable.ms_mute) })
+                if (!c.group) DropdownMenuItem({ Text(if (c.trusted) "取消信任" else "信任") }, { menu = false; Native.setTrust(c.key, if (c.trusted) 0 else 1); Repo.refresh() }, leadingIcon = { Ic(R.drawable.ms_trusted) })
+                DropdownMenuItem({ Text("删除会话…") }, { menu = false; confirmDel = true }, modifier = Modifier.testTag("LSMF_chat_delete"), leadingIcon = { Ic(R.drawable.ms_delete) })
             }
         }
     }
@@ -359,26 +359,18 @@ fun Settings(st: AppState, dlg: (String) -> Unit, openPage: (String) -> Unit = {
         storageSub = "合计 ${mb(tot)} · 下载 ${mb(dl)} · 半成品 ${mb(part)}（孤儿 ${mb(orph)}）· 记录 ${mb(hist)}"
     }
     LaunchedEffect(Unit) { refreshStorage() }
-    @Composable fun SettingRow(icon: Int, title: String, sub: String?, click: (() -> Unit)?) =
-        Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).ifThen(click != null) { clickable { click!!() } }.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Ic(icon, null, p.fg2); Spacer(Modifier.width(16.dp))
-            Column(Modifier.weight(1f)) { Text(title, fontSize = 16.sp, lineHeight = 24.sp, color = p.fg); if (sub != null) Text(sub, style = MaterialTheme.typography.bodyMedium, color = p.fg2, maxLines = 2, overflow = TextOverflow.Ellipsis) }
-        }
     LazyColumn(Modifier.fillMaxSize().testTag("LSMF_nav_settings")) {
         item { Row(Modifier.fillMaxWidth().padding(16.dp).testTag("LSMF_nav_profile"), verticalAlignment = Alignment.CenterVertically) {
             Avatar(st.me.name, st.me.fp, 64.dp); Spacer(Modifier.width(16.dp))
-            Column { Text(st.me.name, style = MaterialTheme.typography.titleLarge, color = p.fg); Text("指纹 " + st.me.fp, style = MaterialTheme.typography.bodySmall, color = p.fg2) } } }
+            Column(Modifier.weight(1f)) { Text(st.me.name, style = MaterialTheme.typography.titleLarge, color = p.fg); Text("指纹 " + st.me.fp, style = MaterialTheme.typography.bodySmall, color = p.fg2) } } }
         item { HorizontalDivider(color = p.divider) }
+        item { SettingSection("账号") }
         item { SettingRow(R.drawable.ms_edit, "个人资料", st.me.name) { openPage("profile") } }
-        item { SettingRow(R.drawable.ms_edit, "修改昵称", st.me.name) { dlg("name") } }
-        item { SettingRow(R.drawable.ms_lock, "生成 PIN（让对方输入）", "与新设备配对并互相信任") { dlg("pin") } }
-        item { SettingRow(R.drawable.ms_add_contact, "按 IP 添加", "不在同一网段时手动添加") { dlg("add") } }
-        item { SettingRow(R.drawable.ms_groups, "创建群组", "从已信任的联系人中选择") { dlg("group") } }
-        item { SettingRow(R.drawable.ms_via_server, "中转服务器（可选）", if (st.relay.enabled) relayStateZh(st.relay.state) + (if (st.relay.host.isNotEmpty()) " · ${st.relay.host}" else "") else "未启用 · 局域网直连优先") { dlg("relay") } }
+        item { SettingRow(R.drawable.ms_edit, "修改昵称", st.me.name, click = { dlg("name") }) }
         item {
             val mode = Native.accountMode()
-            SettingRow(R.drawable.ms_lock, if (mode == "account") "账号模式（点按切换为设备模式）" else "设备模式（点按切换为账号模式）",
-                "账号模式把加密身份放在中转上；设备模式仅本机。不使用服务器密码。") {
+            SettingRow(R.drawable.ms_lock, if (mode == "account") "账号模式" else "设备模式",
+                if (mode == "account") "身份在中转上加密备份，点按可切回本机" else "仅本机保存身份，点按可切换为账号模式") {
                 val next = if (mode == "account") "device" else "account"
                 val r = Native.setAccountMode(next)
                 Repo.refresh()
@@ -390,22 +382,28 @@ fun Settings(st: AppState, dlg: (String) -> Unit, openPage: (String) -> Unit = {
                 }
             }
         }
-        item { SettingRow(R.drawable.ms_lock, "恢复密钥", "查看、复制或导出；仅本机可见，服务器看不到明文") {
-            onRecovery()  // the page itself explains when no key exists yet
-        } }
-        item { SettingRow(R.drawable.ms_add_contact, "扫描或粘贴链接", "添加联系人、连接服务器或配对新设备") { dlg("scan") } }
-        item { SettingRow(R.drawable.ms_via_server, "服务器二维码", "给另一台设备扫描以连接同一中转") {
+        item { SettingRow(R.drawable.ms_lock, "恢复密钥", "查看、复制或导出；仅本机可见") { onRecovery() } }
+        item { SettingSection("连接") }
+        item { SettingRow(R.drawable.ms_via_server, "中转服务器", if (st.relay.enabled) relayStateZh(st.relay.state) + (if (st.relay.host.isNotEmpty()) " · ${st.relay.host}" else "") else "未启用 · 局域网直连优先") { dlg("relay") } }
+        item { SettingRow(R.drawable.ms_qr, "服务器二维码", "让另一台设备扫码接入同一中转") {
             val u = Native.relayUri().ifEmpty { if (lsmUiTest()) lsmTestRelayUri() else "" }
             if (u.startsWith("lsm://")) qrShow = "服务器二维码" to u else Repo.toast.value = "请先填写中转服务器"
         } }
-        item { SettingRow(R.drawable.ms_lock, "配对新设备", "生成一次性配对二维码（需账号模式且已连中转）") {
+        item { SettingRow(R.drawable.ms_qr, "配对新设备", "一次性配对码，需账号模式并已连中转") {
             val u = Native.accountPairUri().let { if (it.startsWith("lsm://")) it else if (lsmUiTest()) lsmTestPairUri() else it }
             if (u.startsWith("lsm://")) qrShow = "配对新设备" to u else Repo.toast.value = u.ifEmpty { "无法生成配对码" }
         } }
-        item { SettingRow(R.drawable.ms_network, "本机端口", "TCP ${st.me.port}", null) }
-        item { SettingRow(R.drawable.ms_open_folder, "接收的文件", st.me.downloads, null) }
+        item { SettingRow(R.drawable.ms_network, "本机端口", "TCP ${st.me.port}") }
+        item { SettingSection("联系人") }
+        item { SettingRow(R.drawable.ms_lock, "生成 PIN", "让对方输入，配对并互相信任") { dlg("pin") } }
+        item { SettingRow(R.drawable.ms_add_contact, "按 IP 添加", "不在同一网段时手动添加") { dlg("add") } }
+        item { SettingRow(R.drawable.ms_groups, "创建群组", "从已信任的联系人中选择") { dlg("group") } }
+        item { SettingRow(R.drawable.ms_qr, "扫描链接", "添加联系人、接入中转或配对新设备") { dlg("scan") } }
+        item { SettingSection("存储") }
+        item { SettingRow(R.drawable.ms_open_folder, "接收的文件", st.me.downloads) }
         item { SettingRow(R.drawable.ms_delete, "存储管理", storageSub) { storageAsk = true } }
-        item { SettingRow(R.drawable.ms_info, "诊断信息", "连接与排障") { openPage("diag") } }
+        item { SettingSection("关于") }
+        item { SettingRow(R.drawable.ms_diagnostics, "诊断信息", "连接与排障") { openPage("diag") } }
         item { SettingRow(R.drawable.ms_info, "检查更新", "查看是否有新版本") { dlg("update") } }
         item { SettingRow(R.drawable.ms_info, "关于", "版本 ${st.me.version}") { dlg("about") } }
     }
@@ -476,7 +474,7 @@ fun FilesSite(st: AppState) {
         if (files.isEmpty() && st.transfers.isEmpty()) item { EmptyState(R.drawable.ms_open_folder, "暂无文件", "在聊天中发送或接收的文件会出现在这里。") }
         items(st.transfers, key = { "t-" + it.id }) { t ->
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Ic(fileIcon(t.name), null, p.fg2); Spacer(Modifier.width(12.dp))
+                IconTile(fileIcon(t.name), null, size = 36.dp, glyph = 20.dp); Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(t.name, color = p.fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text((if (t.out) "发送" else "接收") + " · " + xferZh(t.state), style = MaterialTheme.typography.bodySmall, color = p.fg2)
@@ -485,7 +483,7 @@ fun FilesSite(st: AppState) {
         }
         items(files, key = { it.id }) { m ->
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Ic(if (isImageName(m.file)) R.drawable.ms_image else R.drawable.ms_file, null, p.fg2); Spacer(Modifier.width(12.dp))
+                IconTile(if (isImageName(m.file)) R.drawable.ms_image else R.drawable.ms_file, null, size = 36.dp, glyph = 20.dp); Spacer(Modifier.width(12.dp))
                 Text(m.file, color = p.fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }

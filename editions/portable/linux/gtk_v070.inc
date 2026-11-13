@@ -1,5 +1,6 @@
 /* v0.7.0 (GTK3): Telegram-like pages + chat-list context menu (right-click). */
 static GtkWidget *v070_stack, *v070_rail;
+static void v073_enhance(GtkWidget *contacts, GtkWidget *groups, GtkWidget *xfers, GtkWidget *files, GtkWidget *settings, GtkWidget *profile, GtkWidget *diag);
 static void v070_show_page(const char *name){
     if(v070_stack) gtk_stack_set_visible_child_name(GTK_STACK(v070_stack), name);
 }
@@ -176,6 +177,7 @@ static GtkWidget *v070_wrap(GtkWidget *chats){
         g_signal_connect(g,"pressed",G_CALLBACK(v070_row_pressed),NULL);
         g_object_set_data(G_OBJECT(peer_list),"v070-gesture",g);
     }
+    v073_enhance(contacts,groups,xfers,files,settings,profile,diag);
     v070_sync_nav("chats");
     return outer;
 }

@@ -122,8 +122,9 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
                 SearchField(q, { q = it }, "搜索聊天记录", Modifier.weight(1f))
                 IconButton({ searching = false; q = "" }) { Ic(R.drawable.ms_close, "关闭搜索", p.fg) }
             } else {
+                val openInfo = if (contact != null) Modifier.clickable { openPage("cprofile:" + contact.fp) } else Modifier
                 Avatar(name, key, 40.dp, contact?.online == true, p.bar)
-                Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                Column(Modifier.weight(1f).padding(start = 12.dp).then(openInfo)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(name, style = MaterialTheme.typography.titleMedium, color = p.fg, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
                         if (contact?.trust == 1) Ic(R.drawable.ms_trusted_fill, "已验证身份", p.accent, 18.dp, Modifier.padding(start = 4.dp))
@@ -161,30 +162,30 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
                                 DropdownMenuItem({ Text("清空聊天记录") }, { menu = false; menuSub = ""; dlg = "clear" }, leadingIcon = { Ic(R.drawable.ms_delete) })
                             }
                             "conv" -> {
-                                DropdownMenuItem({ Text("置顶 / 取消置顶") }, { menu = false; menuSub = ""; Native.setConvPinned(conv, !cpinned); Repo.refresh() })
-                                DropdownMenuItem({ Text(if (carch) "取消归档" else "归档") }, { menu = false; menuSub = ""; Native.setArchived(conv, !carch); Repo.toast.value = if (carch) "已取消归档" else "已归档（收到新消息会自动回到列表）"; Repo.refresh() })
-                                if (contact != null) DropdownMenuItem({ Text(if (Native.isMuted(contact.fp)) "关闭免打扰" else "免打扰") }, { menu = false; menuSub = ""; Native.setMuted(contact.fp, !Native.isMuted(contact.fp)); Repo.refresh() })
-                                DropdownMenuItem({ Text("会话分组") }, { menu = false; menuSub = ""; v062Dlg = "folders" })
-                                DropdownMenuItem({ Text("定时删除") }, { menu = false; menuSub = ""; v062Dlg = "ttl" })
+                                DropdownMenuItem({ Text("置顶 / 取消置顶") }, { menu = false; menuSub = ""; Native.setConvPinned(conv, !cpinned); Repo.refresh() }, leadingIcon = { Ic(R.drawable.ms_chats) })
+                                DropdownMenuItem({ Text(if (carch) "取消归档" else "归档") }, { menu = false; menuSub = ""; Native.setArchived(conv, !carch); Repo.toast.value = if (carch) "已取消归档" else "已归档（收到新消息会自动回到列表）"; Repo.refresh() }, leadingIcon = { Ic(R.drawable.ms_open_folder) })
+                                if (contact != null) DropdownMenuItem({ Text(if (Native.isMuted(contact.fp)) "关闭免打扰" else "免打扰") }, { menu = false; menuSub = ""; Native.setMuted(contact.fp, !Native.isMuted(contact.fp)); Repo.refresh() }, leadingIcon = { Ic(R.drawable.ms_mute) })
+                                DropdownMenuItem({ Text("会话分组") }, { menu = false; menuSub = ""; v062Dlg = "folders" }, leadingIcon = { Ic(R.drawable.ms_groups) })
+                                DropdownMenuItem({ Text("定时删除") }, { menu = false; menuSub = ""; v062Dlg = "ttl" }, leadingIcon = { Ic(R.drawable.ms_delete) })
                             }
                             "msg" -> {
-                                DropdownMenuItem({ Text("置顶消息") }, { menu = false; menuSub = ""; flagDlg = 1 })
-                                DropdownMenuItem({ Text("收藏的消息") }, { menu = false; menuSub = ""; flagDlg = 2 })
-                                DropdownMenuItem({ Text("多选消息") }, { menu = false; menuSub = ""; multi = true; picked = emptySet() })
-                                DropdownMenuItem({ Text("发起投票") }, { menu = false; menuSub = ""; v062Dlg = "poll" })
-                                DropdownMenuItem({ Text("消息历史") }, { menu = false; menuSub = ""; openPage("history") })
+                                DropdownMenuItem({ Text("置顶消息") }, { menu = false; menuSub = ""; flagDlg = 1 }, leadingIcon = { Ic(R.drawable.ms_chats) })
+                                DropdownMenuItem({ Text("收藏的消息") }, { menu = false; menuSub = ""; flagDlg = 2 }, leadingIcon = { Ic(R.drawable.ms_tick) })
+                                DropdownMenuItem({ Text("多选消息") }, { menu = false; menuSub = ""; multi = true; picked = emptySet() }, leadingIcon = { Ic(R.drawable.ms_tick_double) })
+                                DropdownMenuItem({ Text("发起投票") }, { menu = false; menuSub = ""; v062Dlg = "poll" }, leadingIcon = { Ic(R.drawable.ms_edit) })
+                                DropdownMenuItem({ Text("消息历史") }, { menu = false; menuSub = ""; openPage("history") }, leadingIcon = { Ic(R.drawable.ms_search) })
                             }
                             "peer" -> if (contact != null) {
-                                DropdownMenuItem({ Text("联系人资料 / 备注名") }, { menu = false; menuSub = ""; openPage("cprofile:" + contact.fp) })
-                                DropdownMenuItem({ Text(if (contact.trust == 1) "取消信任" else "信任") }, { menu = false; menuSub = ""; Native.setTrust(contact.fp, if (contact.trust == 1) 0 else 1); Repo.refresh() })
-                                DropdownMenuItem({ Text("输入 PIN 配对") }, { menu = false; menuSub = ""; dlg = "pin" })
-                                DropdownMenuItem({ Text("查看指纹") }, { menu = false; menuSub = ""; dlg = "fp" })
-                                DropdownMenuItem({ Text("屏蔽") }, { menu = false; menuSub = ""; dlg = "block" })
+                                DropdownMenuItem({ Text("联系人资料") }, { menu = false; menuSub = ""; openPage("cprofile:" + contact.fp) }, leadingIcon = { Ic(R.drawable.ms_add_contact) })
+                                DropdownMenuItem({ Text(if (contact.trust == 1) "取消信任" else "信任") }, { menu = false; menuSub = ""; Native.setTrust(contact.fp, if (contact.trust == 1) 0 else 1); Repo.refresh() }, leadingIcon = { Ic(R.drawable.ms_trusted) })
+                                DropdownMenuItem({ Text("输入 PIN 配对") }, { menu = false; menuSub = ""; dlg = "pin" }, leadingIcon = { Ic(R.drawable.ms_lock) })
+                                DropdownMenuItem({ Text("查看指纹") }, { menu = false; menuSub = ""; dlg = "fp" }, leadingIcon = { Ic(R.drawable.ms_info) })
+                                DropdownMenuItem({ Text("屏蔽") }, { menu = false; menuSub = ""; dlg = "block" }, leadingIcon = { Ic(R.drawable.ms_delete) })
                             }
                             "group" -> if (group != null) {
-                                DropdownMenuItem({ Text("邀请成员") }, { menu = false; menuSub = ""; dlg = "invite" })
-                                DropdownMenuItem({ Text("移除成员") }, { menu = false; menuSub = ""; dlg = "remove" })
-                                DropdownMenuItem({ Text("退出群组") }, { menu = false; menuSub = ""; dlg = "leave" })
+                                DropdownMenuItem({ Text("邀请成员") }, { menu = false; menuSub = ""; dlg = "invite" }, leadingIcon = { Ic(R.drawable.ms_add_contact) })
+                                DropdownMenuItem({ Text("移除成员") }, { menu = false; menuSub = ""; dlg = "remove" }, leadingIcon = { Ic(R.drawable.ms_delete) })
+                                DropdownMenuItem({ Text("退出群组") }, { menu = false; menuSub = ""; dlg = "leave" }, leadingIcon = { Ic(R.drawable.ms_close) })
                             }
                         }
                     }

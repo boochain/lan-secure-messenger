@@ -413,7 +413,11 @@
                                         <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE81C;" /></MenuFlyoutItem.Icon>
                                         <MenuFlyoutItem.KeyboardAccelerators><KeyboardAccelerator Modifiers="Control,Shift" Key="F" /></MenuFlyoutItem.KeyboardAccelerators>
                                     </MenuFlyoutItem>
-                                    <MenuFlyoutItem Text="清空聊天记录…" Click="ClearChat_Click" />
+                                    <MenuFlyoutItem Text="清空记录…" Click="ClearChat_Click">
+                                        <MenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE74D;" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
                                 </MenuFlyoutSubItem>
                                 <MenuFlyoutSubItem Text="消息">
                                     <MenuFlyoutItem Text="发起投票…" Click="NewPoll_Click">

@@ -1,3 +1,4 @@
+static void v073_enhance(GtkWidget *contacts, GtkWidget *groups, GtkWidget *xfers, GtkWidget *files, GtkWidget *settings, GtkWidget *profile, GtkWidget *diag);
 /* v0.7.0 (GTK4 / libadwaita): Telegram-like pages + chat-list right-click menu. */
 static GtkWidget *v070_stack, *v070_rail;
 static void v070_show_page(const char *name){ if(v070_stack) gtk_stack_set_visible_child_name(GTK_STACK(v070_stack), name); }
@@ -140,6 +141,7 @@ static GtkWidget *v070_wrap(GtkWidget *chats){
     gtk_widget_set_hexpand(st,TRUE); gtk_box_append(GTK_BOX(outer),rail); gtk_box_append(GTK_BOX(outer),st);
     if(conv_list){ g=gtk_gesture_click_new(); gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(g),GDK_BUTTON_SECONDARY);
         g_signal_connect(g,"released",G_CALLBACK(v070_released),NULL); gtk_widget_add_controller(conv_list,GTK_EVENT_CONTROLLER(g)); }
+    v073_enhance(contacts,groups,xfers,files,settings,profile,diag);
     v070_sync_nav("chats");
     return outer;
 }

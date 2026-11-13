@@ -3,6 +3,7 @@ using LanMessenger.Core.Models;
 using LanMessenger.Core.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.Graphics.Imaging;
 using Windows.Storage;
@@ -75,6 +76,20 @@ internal static class P0Dialogs
         await dlg.ShowAsync();
     }
 
+
+    static Button ActionBtn(string glyph, string label, RoutedEventHandler click)
+    {
+        var tile = new Border { Style = (Style)Application.Current.Resources["LsmIconTileStyle"] };
+        tile.Child = new FontIcon { Glyph = glyph, FontSize = 16, Foreground = (Brush)Application.Current.Resources["LsmTileForegroundBrush"], HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        var sp = new StackPanel { Spacing = 6, HorizontalAlignment = HorizontalAlignment.Center };
+        sp.Children.Add(tile);
+        sp.Children.Add(new TextBlock { Text = label, Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"], HorizontalAlignment = HorizontalAlignment.Center });
+        var b = new Button { Content = sp, Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent), BorderThickness = new Thickness(0), Padding = new Thickness(8, 4) };
+        if (Application.Current.Resources.TryGetValue("LsmActionButtonStyle", out var st) && st is Style style) b.Style = style;
+        b.Click += click;
+        return b;
+    }
+
     static UIElement Avatar(string? path, string name)
     {
         var pp = new PersonPicture { Width = 96, Height = 96, DisplayName = name };
@@ -105,8 +120,8 @@ internal static class P0Dialogs
         Me me; try { me = await cl.Connection.CallAsync<Me>("get_profile"); } catch (Exception ex) { VM.ShowStatus("读取失败：" + ex.Message); return; }
         var name = new TextBox { Header = "昵称", Text = me.Name, MaxLength = 40 };
         var sig = new TextBox { Header = "个性签名（最多 120 字）", Text = me.Signature, MaxLength = 120, TextWrapping = TextWrapping.Wrap, AcceptsReturn = false };
-        var pick = new Button { Content = "更换头像…" }; var rm = new Button { Content = "移除头像" };
         var av = new ContentControl { Content = Avatar(me.AvatarPath, me.Name), HorizontalAlignment = HorizontalAlignment.Center };
+        var pick = ActionBtn("\uE8B9", "头像", (_, _) => { });
         pick.Click += async (_, _) =>
         {
             var p = new Windows.Storage.Pickers.FileOpenPicker(); foreach (var e in new[] { ".png", ".jpg", ".jpeg", ".bmp", ".gif" }) p.FileTypeFilter.Add(e);
@@ -115,8 +130,8 @@ internal static class P0Dialogs
             try { var tmp = await ShrinkAsync(f); var m2 = await cl.SetProfileAsync(null, tmp); File.Delete(tmp); av.Content = Avatar(m2.AvatarPath, m2.Name); VM.ShowStatus("头像已更新"); }
             catch (Exception ex) { VM.ShowStatus("头像：" + ex.Message); }
         };
-        rm.Click += async (_, _) => { try { var m2 = await cl.SetProfileAsync(null, ""); av.Content = Avatar(null, m2.Name); } catch (Exception ex) { VM.ShowStatus(ex.Message); } };
-        var btns = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Center }; btns.Children.Add(pick); btns.Children.Add(rm);
+        var rm = ActionBtn("\uE74D", "移除", async (_, _) => { try { var m2 = await cl.SetProfileAsync(null, ""); av.Content = Avatar(null, m2.Name); } catch (Exception ex) { VM.ShowStatus(ex.Message); } });
+        var btns = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, HorizontalAlignment = HorizontalAlignment.Center }; btns.Children.Add(pick); btns.Children.Add(rm);
         var sp = new StackPanel { Spacing = 10, MinWidth = 420 };
         foreach (var c in new UIElement[] { av, btns, name, sig, KV("指纹", me.Fingerprint), KV("账号", me.AccountUser), KV("版本", me.Version) }) sp.Children.Add(c);
         var d = Services.ThemeService.Prepare(new ContentDialog { XamlRoot = root, Title = "个人资料", Content = new ScrollViewer { Content = sp }, PrimaryButtonText = "保存", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Primary });
@@ -136,10 +151,15 @@ internal static class P0Dialogs
         var peer = r.GetProperty("peer").Deserialize<Peer>(Json.Options)!;
         var media = r.GetProperty("recent_media").Deserialize<List<Message>>(Json.Options) ?? new();
         var shared = r.GetProperty("shared_files").GetInt32();
+        ContentDialog? d = null;
         var remark = new TextBox { Header = "备注名（仅本机可见，留空显示对方昵称）", Text = peer.Remark, MaxLength = 64 };
         var sp = new StackPanel { Spacing = 8, MinWidth = 440 };
         sp.Children.Add(new ContentControl { Content = Avatar(peer.AvatarPath, peer.Name), HorizontalAlignment = HorizontalAlignment.Center });
         sp.Children.Add(new TextBlock { Text = peer.Name, Style = (Style)Application.Current.Resources["SubtitleTextBlockStyle"], HorizontalAlignment = HorizontalAlignment.Center });
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, HorizontalAlignment = HorizontalAlignment.Center };
+        actions.Children.Add(ActionBtn("\uE8BD", "发消息", (_, _) => { if (d != null) { d.Hide(); } }));
+        actions.Children.Add(ActionBtn("\uE721", "历史", async (_, _) => { if (d != null) d.Hide(); await ShowHistoryAsync(root, page, "dm:" + fp); }));
+        sp.Children.Add(actions);
         sp.Children.Add(remark);
         foreach (var kv in new[] { ("昵称", string.IsNullOrEmpty(peer.Nickname) ? peer.Name : peer.Nickname), ("个性签名", peer.ProfileSync || peer.Signature.Length > 0 ? peer.Signature : "（对方版本较旧，不支持资料同步）"),
                  ("状态", (peer.Online ? "在线" : "离线") + (peer.Online ? (peer.ViaRelay ? " · 经服务器中转" : " · 局域网直连") : "")), ("身份", peer.Trust == Trust.Trusted ? "已验证身份" : peer.Trust == Trust.Blocked ? "已屏蔽" : "未验证"),
@@ -148,7 +168,6 @@ internal static class P0Dialogs
         var lv = new ListView { MaxHeight = 220, IsItemClickEnabled = true, SelectionMode = ListViewSelectionMode.None };
         foreach (var m in media) lv.Items.Add(new TextBlock { Text = "📎 " + (m.File?.Name ?? "") + "  " + DateTimeOffset.FromUnixTimeMilliseconds(m.TsMs).ToLocalTime().ToString("MM-dd HH:mm"), Tag = m });
         if (media.Count == 0) sp.Children.Add(new TextBlock { Text = "暂无", Opacity = 0.7 }); else sp.Children.Add(lv);
-        ContentDialog? d = null;
         lv.ItemClick += (_, e) => { if (e.ClickedItem is TextBlock { Tag: Message m }) { d?.Hide(); page?.JumpTo(m.Conversation, m.Id); } };
         d = Services.ThemeService.Prepare(new ContentDialog { XamlRoot = root, Title = "联系人资料", Content = new ScrollViewer { Content = sp }, PrimaryButtonText = "保存备注", SecondaryButtonText = "消息历史", CloseButtonText = "发消息", DefaultButton = ContentDialogButton.Primary });
         var res = await d.ShowAsync();

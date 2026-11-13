@@ -11,12 +11,20 @@
 
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
-                    <TextBlock Text="个人资料" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Border Style="{StaticResource LsmIconTileStyle}">
+                            <FontIcon Glyph="&#xE77B;" FontSize="16" Foreground="{ThemeResource LsmTileForegroundBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="个人资料" Style="{StaticResource SubtitleTextBlockStyle}" />
+                            <TextBlock Text="名称、指纹与头像" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </StackPanel>
                     <TextBox Header="显示名称" Text="{x:Bind VM.EditDisplayName, Mode=TwoWay}" MaxLength="40" />
                     <TextBlock Text="身份指纹" Style="{StaticResource BodyStrongTextBlockStyle}" />
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <TextBlock Text="{x:Bind VM.MyFingerprint, Mode=OneWay}" FontFamily="Consolas" IsTextSelectionEnabled="True" VerticalAlignment="Center" />
-                        <Button Content="复制" Command="{x:Bind VM.CopyFingerprintCommand}" />
+                        <Button Command="{x:Bind VM.CopyFingerprintCommand}" ToolTipService.ToolTip="复制"><StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE8C8;" FontSize="14"/><TextBlock Text="复制" VerticalAlignment="Center"/></StackPanel></Button>
                     </StackPanel>
                     <Button Content="头像与个性签名…" Click="Profile_Click" />
                 </StackPanel>
@@ -24,7 +32,15 @@
 
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
-                    <TextBlock Text="外观" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Border Style="{StaticResource LsmIconTileStyle}">
+                            <FontIcon Glyph="&#xE790;" FontSize="16" Foreground="{ThemeResource LsmTileForegroundBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="外观" Style="{StaticResource SubtitleTextBlockStyle}" />
+                            <TextBlock Text="浅色、深色或跟随系统" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </StackPanel>
                     <RadioButtons x:Name="ThemeChoice" Header="主题" MaxColumns="3" SelectionChanged="ThemeChoice_SelectionChanged">
                         <x:String>跟随系统</x:String>
                         <x:String>浅色</x:String>
@@ -36,7 +52,15 @@
 
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
-                    <TextBlock Text="文件" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Border Style="{StaticResource LsmIconTileStyle}">
+                            <FontIcon Glyph="&#xE8B7;" FontSize="16" Foreground="{ThemeResource LsmTileForegroundBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="文件" Style="{StaticResource SubtitleTextBlockStyle}" />
+                            <TextBlock Text="下载目录与自动接收" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </StackPanel>
                     <Grid ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -54,7 +78,15 @@
 
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
-                    <TextBlock Text="网络与发现" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Border Style="{StaticResource LsmIconTileStyle}">
+                            <FontIcon Glyph="&#xE774;" FontSize="16" Foreground="{ThemeResource LsmTileForegroundBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="网络与发现" Style="{StaticResource SubtitleTextBlockStyle}" />
+                            <TextBlock Text="广播、组播与网卡" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </StackPanel>
                     <ToggleSwitch Header="自动发现局域网内的其他人（UDP 广播）" IsOn="{x:Bind VM.EditDiscovery, Mode=TwoWay}" OnContent="开" OffContent="关" />
                     <ToggleSwitch Header="同时使用组播（部分路由器/交换机需要）" IsOn="{x:Bind VM.EditMulticast, Mode=TwoWay}" OnContent="开" OffContent="关" />
                     <TextBox Header="额外发现目标（IP 或 IP:端口，逗号分隔；跨网段时使用）" Text="{x:Bind VM.EditTargets, Mode=TwoWay}"
@@ -68,7 +100,15 @@
             <!-- 中转服务器（可选）: off by default; LAN direct is always preferred, the server only forwards E2E-encrypted data -->
             <Border x:Name="RelayCard" Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
-                    <TextBlock Text="中转服务器（可选）" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Border Style="{StaticResource LsmIconTileStyle}">
+                            <FontIcon Glyph="&#xE753;" FontSize="16" Foreground="{ThemeResource LsmTileForegroundBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="中转服务器" Style="{StaticResource SubtitleTextBlockStyle}" />
+                            <TextBlock Text="跨网段时转发端到端加密数据" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </StackPanel>
                     <TextBlock Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap"
                                Text="不在同一局域网时，可通过你自己部署的中转服务器联系对方。局域网直连始终优先；服务器只转发端到端加密的数据，无法看到消息内容。" />
                     <ToggleSwitch x:Name="RelayToggle" Header="通过中转服务器连接" IsOn="{x:Bind VM.EditRelayEnabled, Mode=TwoWay}" OnContent="开" OffContent="关"
@@ -106,7 +146,15 @@
 
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
-                    <TextBlock Text="隐私" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Border Style="{StaticResource LsmIconTileStyle}">
+                            <FontIcon Glyph="&#xE72E;" FontSize="16" Foreground="{ThemeResource LsmTileForegroundBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="隐私" Style="{StaticResource SubtitleTextBlockStyle}" />
+                            <TextBlock Text="本地记录与更新检查" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </StackPanel>
                     <ToggleSwitch Header="保存聊天记录（本地加密存储）" IsOn="{x:Bind VM.EditHistory, Mode=TwoWay}" OnContent="开" OffContent="关" />
                     <ToggleSwitch Header="启动时检查更新（访问 GitHub）" IsOn="{x:Bind VM.EditCheckUpdates, Mode=TwoWay}" OnContent="开" OffContent="关" />
                 </StackPanel>
@@ -119,7 +167,15 @@
 
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
-                    <TextBlock Text="备份与恢复" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Border Style="{StaticResource LsmIconTileStyle}">
+                            <FontIcon Glyph="&#xE8AB;" FontSize="16" Foreground="{ThemeResource LsmTileForegroundBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="备份与恢复" Style="{StaticResource SubtitleTextBlockStyle}" />
+                            <TextBlock Text="加密备份身份、联系人与记录" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </StackPanel>
                     <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
                                Text="备份包含身份密钥、联系人、群组和聊天记录，使用你设置的密码加密（Argon2id + ChaCha20-Poly1305）。恢复会覆盖当前数据并重启后台服务。" />
                     <StackPanel Orientation="Horizontal" Spacing="8">
@@ -132,7 +188,15 @@
 
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
-                    <TextBlock Text="存储管理" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Border Style="{StaticResource LsmIconTileStyle}">
+                            <FontIcon Glyph="&#xE912;" FontSize="16" Foreground="{ThemeResource LsmTileForegroundBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="存储管理" Style="{StaticResource SubtitleTextBlockStyle}" />
+                            <TextBlock Text="查看占用并清理半成品" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </StackPanel>
                     <TextBlock Text="{x:Bind VM.StorageSummary, Mode=OneWay}" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" />
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button Content="刷新用量" Command="{x:Bind VM.RefreshStorageCommand}" />
@@ -146,7 +210,15 @@
 
                         <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
-                    <TextBlock Text="局域网与 VPN" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Border Style="{StaticResource LsmIconTileStyle}">
+                            <FontIcon Glyph="&#xE968;" FontSize="16" Foreground="{ThemeResource LsmTileForegroundBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="局域网与 VPN" Style="{StaticResource SubtitleTextBlockStyle}" />
+                            <TextBlock Text="绑定网卡、传输模式与账号" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </StackPanel>
                     <TextBlock Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap"
                                Text="绑定本机局域网 IPv4（或 auto）可让发现/监听/拨号绕过 VPN 虚拟网卡。留空则使用系统默认路由。" />
                     <TextBox Header="局域网绑定 IP" Text="{x:Bind VM.BindLanIp, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="留空 / auto / 192.168.x.x" />
@@ -161,7 +233,7 @@
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button Content="切换为账号模式" Click="AccountModeOn_Click" Tag="LSMF_account_mode" />
                         <Button Content="切换为设备模式" Click="AccountModeOff_Click" />
-                        <Button Content="显示恢复密钥" Click="RevealRk_Click" />
+                        <Button Click="RevealRk_Click"><StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE72E;" FontSize="14"/><TextBlock Text="恢复密钥" VerticalAlignment="Center"/></StackPanel></Button>
                     </StackPanel>
                     <TextBox x:Name="RestoreKeyBox" Header="用恢复密钥在新设备登录" PlaceholderText="RK1-XXXX-XXXX-…" />
                     <Button Content="恢复账号" Click="RestoreAccount_Click" HorizontalAlignment="Left" />
@@ -178,7 +250,15 @@
 
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
-                    <TextBlock Text="通知" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Border Style="{StaticResource LsmIconTileStyle}">
+                            <FontIcon Glyph="&#xE7ED;" FontSize="16" Foreground="{ThemeResource LsmTileForegroundBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="通知" Style="{StaticResource SubtitleTextBlockStyle}" />
+                            <TextBlock Text="未聚焦时的系统或托盘提示" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </StackPanel>
                     <TextBlock x:Name="NotifyStatusText" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap"
                                Text="正在检测通知通道…" />
                     <TextBlock Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap"
@@ -188,7 +268,15 @@
 
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
-                    <TextBlock Text="关于" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Border Style="{StaticResource LsmIconTileStyle}">
+                            <FontIcon Glyph="&#xE946;" FontSize="16" Foreground="{ThemeResource LsmTileForegroundBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="关于" Style="{StaticResource SubtitleTextBlockStyle}" />
+                            <TextBlock Text="版本、日志与更新" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </StackPanel>
                     <TextBlock>
                         <Run Text="版本 " /><Run Text="{x:Bind VM.Version, Mode=OneWay}" />
                     </TextBlock>
@@ -199,8 +287,8 @@
                         <Run Text="日志目录：" /><Run Text="{x:Bind VM.LogDir, Mode=OneWay}" />
                     </TextBlock>
                     <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button Content="检查更新" Command="{x:Bind VM.CheckUpdateCommand}" />
-                        <Button Content="打开日志文件夹" Command="{x:Bind VM.OpenLogsCommand}" />
+                        <Button Command="{x:Bind VM.CheckUpdateCommand}"><StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE72C;" FontSize="14"/><TextBlock Text="检查更新" VerticalAlignment="Center"/></StackPanel></Button>
+                        <Button Command="{x:Bind VM.OpenLogsCommand}"><StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE8B7;" FontSize="14"/><TextBlock Text="打开日志文件夹" VerticalAlignment="Center"/></StackPanel></Button>
                     </StackPanel>
                 </StackPanel>
             </Border>

@@ -2,12 +2,15 @@ package io.github.frec86.lanmessenger
 
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
@@ -169,3 +172,42 @@ fun lanSubnet(): String? = try {
 
 fun Modifier.ifThen(c: Boolean, f: Modifier.() -> Modifier) = if (c) f() else this
 @Suppress("unused") fun Modifier.ring(c: Color, w: Dp) = border(w, c, CircleShape)
+
+
+/** Coloured rounded tile + glyph, like Telegram/Signal settings rows. Uses approved tile/container colours. */
+@Composable
+fun IconTile(@DrawableRes icon: Int, desc: String? = null, bg: Color = LocalPalette.current.tile, fg: Color = LocalPalette.current.tileFg, size: Dp = 40.dp, glyph: Dp = 22.dp) {
+    Box(Modifier.size(size).clip(RoundedCornerShape(12.dp)).background(bg), contentAlignment = Alignment.Center) {
+        Ic(icon, desc, fg, glyph)
+    }
+}
+
+/** Telegram-style profile / chat-info quick action: icon tile with a short caption underneath. */
+@Composable
+fun ActionIcon(@DrawableRes icon: Int, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val p = LocalPalette.current
+    Column(modifier.width(72.dp).clickable(onClick = onClick).padding(vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        IconTile(icon, label)
+        Spacer(Modifier.height(6.dp))
+        Text(label, style = MaterialTheme.typography.labelSmall, color = p.fg, textAlign = TextAlign.Center, maxLines = 2)
+    }
+}
+
+@Composable
+fun SettingRow(@DrawableRes icon: Int, title: String, sub: String? = null, click: (() -> Unit)? = null, bg: Color = LocalPalette.current.tile, fg: Color = LocalPalette.current.tileFg) {
+    val p = LocalPalette.current
+    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).ifThen(click != null) { clickable { click!!() } }.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        IconTile(icon, null, bg, fg)
+        Spacer(Modifier.width(16.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, color = p.fg)
+            if (sub != null) Text(sub, style = MaterialTheme.typography.bodyMedium, color = p.fg2)
+        }
+    }
+}
+
+@Composable
+fun SettingSection(title: String) {
+    val p = LocalPalette.current
+    Text(title, style = MaterialTheme.typography.titleSmall, color = p.fg2, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp))
+}

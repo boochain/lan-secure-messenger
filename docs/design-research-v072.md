@@ -124,3 +124,34 @@ WinUI 会话 ⋯ 拆成 5 个入口，每个再最多 5 项：会话（置顶 / 
 - 浅色/深色截图必须人工逐张看过，不能只信 CI 绿。
 
 在用户说「发版」之前，合进 main 即可，**不打 tag、不发 Release**。
+
+## 7. v0.7.3：其他页面以图标为主、文字为辅
+
+调研日期：2026-11-13（Asia/Shanghai）。对照对象仍是 Telegram、Signal、WhatsApp 的设置、个人资料、存储和聊天资料页。v0.7.2 解决了底栏、顶栏、⋯ 分级和恢复密钥独立页；这一轮补的是 **其余页面仍然字太多、图标太弱**。
+
+### 业界怎么做
+
+| 应用 | 设置列表 | 个人资料 / 聊天资料头 | 来源 |
+|---|---|---|---|
+| Telegram | 每行左侧一块彩色圆角图标，短标题，右侧可跟状态或箭头。分组例如：账号（蓝人像）、聊天设置（橙气泡）、隐私（绿钥匙）、通知（红喇叭）、数据与存储（蓝饼图）、聊天文件夹（蓝文件夹） | 头像与名字下方是一排圆形快捷按钮，图标为主、下方一行小字说明，例如通话、视频、搜索、通知/免打扰、分享 | [TechPP：Telegram Icons](https://techpp.app/explained/telegram-icons-symbols)；Telegram Android `ProfileActivity` / `ProfileActionsView` |
+| Signal | 每行同样是「前置图标 + 标题 + 次要说明」。图标在圆形底上：账号（人像）、外观（半齿轮）、聊天（气泡）、通知（铃）、隐私（锁）、备份（回退时钟）、数据和存储（饼图） | 资料页顶部是头像与名字；常用操作是图标按钮，长说明放在下一行较小的次要色文字里 | [TechPP：Signal Icons](https://techpp.app/explained/signal-symbols-meaning)；[Navigate to Settings](https://support.signal.org/hc/en-us/articles/360009091591-Navigate-to-Settings) |
+| WhatsApp | 正在把长而平的设置列表改成 Material 3 Expressive 的分组圆角容器；每一项仍带前置图标、短标签，说明性文字降为副标题。iOS 的 You 页把高频操作收成快捷入口，其余进齿轮后的设置 | 资料/聊天信息页顶部是头像，下面一排图标快捷操作（通话、视频、搜索等），文字只作短标注 | [WABetaInfo / 2026-11 Android 设置改版](https://www.thenews.com.pk/amp/1422078-whatsapp-to-redesigning-android-settings-with-googles-new-design-style)；[iPhone Settings tab 改版](https://www.ithinkdiff.com/whatsapp-settings-tab-redesign-iphone-beta/) |
+
+共识（本轮采用，不另发明）：
+
+1. **每一行列表都有前置图标**。图标比文字更先被扫到；标题缩短，说明放到较小的次要色副标题。
+2. **图标落在色块上**，不是裸的线框。Telegram 用彩色圆角方块，Signal 用圆形底。本应用不另起一套色：只用已获准的调色板——Android / WinUI / ADW / XP 用 `tile` / `tileFg`（或 `primaryContainer`）；GTK3 没有独立 tile 色，用已有的强调色底 + 强调色上的文字（浅色 `#005FB8`/`#FFFFFF`，深色 `#60CDFF`/`#000000`），避免审核里出现未登记颜色或「色块和页面分不清」。
+3. **个人资料 / 联系人资料 / 聊天资料头** 采用 Telegram 式快捷操作：一排图标按钮，下面一行短标注（头像、二维码、复制、保存、发消息、历史、免打扰、信任）。不要再并排放一长串文字按钮。
+4. **⋯ 菜单项也带图标**，方便扫读；菜单仍然最多 5 项。
+5. **标签要短**，副标题再解释。例如「中转服务器」而不是「中转服务器（可选）」；「账号模式 / 设备模式」而不是把切换说明写进标题。
+6. GTK AppImage 和 XP / Wine **不依赖系统图标主题或 Segoe / 符号字体**，避免缺字形变成空白方块（tofu）。设置页、资料页和菜单里的图标由程序自己画，或使用已打包的矢量/位图。
+
+### 改之前的事实
+
+- Android 设置行已有线框图标和副标题，但图标偏弱、部分标题过长，个人资料 / 联系人资料仍是文字按钮为主。
+- WinUI 设置、资料是分组卡片和表单，卡片标题没有前置图标，资料页没有快捷图标操作。
+- GTK3 / ADW / XP 的设置、资料、文件、传输页仍是 v0.7.0 留下的说明文字（「请到菜单里打开」），几乎没有图标行，也点不进去。
+
+### 本轮范围
+
+五个前端（WinUI、XP、GTK3、GTK4/ADW、Android）的设置及其子页、个人资料、文件/传输、存储、联系人详情、聊天资料、账号与恢复、⋯ 菜单、关于等，全部改成图标主导、文字为辅。继续遵守：⋯ ≤ 5、底栏 ≤ 4、标题栏放应用图标不写软件名、恢复密钥独立页、零溢出/裁切/省略号、分级页面、浅色和深色都跟主题走。合进 main 即可，**不打 tag、不发 Release**，除非用户说「发版」。

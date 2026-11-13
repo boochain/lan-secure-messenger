@@ -280,6 +280,22 @@
             <FontFamily x:Key="CjkFontFamily">Segoe UI Variable Text, Microsoft YaHei UI, Microsoft YaHei</FontFamily>
             <local:PathToImageConverter x:Key="PathToImage" />
 
+
+            <!-- v0.7.3: Telegram/Signal-style icon tile and captioned quick-action button -->
+            <Style x:Key="LsmIconTileStyle" TargetType="Border">
+                <Setter Property="Width" Value="36" />
+                <Setter Property="Height" Value="36" />
+                <Setter Property="CornerRadius" Value="10" />
+                <Setter Property="Background" Value="{ThemeResource LsmTileBackgroundBrush}" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="HorizontalAlignment" Value="Center" />
+            </Style>
+            <Style x:Key="LsmActionButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="Padding" Value="8,4" />
+                <Setter Property="HorizontalAlignment" Value="Center" />
+            </Style>
             <!-- Shared card style (settings, diagnostics, groups). -->
             <Style x:Key="CardBorderStyle" TargetType="Border">
                 <Setter Property="CornerRadius" Value="8" />
