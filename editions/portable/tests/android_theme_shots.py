@@ -56,6 +56,6 @@ for th in ("light", "dark"):
     tap_text("菜单"); shot(f"android-{th}-04-menu")
     adb("shell", "input", "keyevent", "4"); time.sleep(1)  # close ⋯ (PIN/About now live under 设置, not in the 5-item overflow)
     tap_text("设置")
-    tap_text("生成 PIN（让对方输入）"); shot(f"android-{th}-05-pin", True); tap_text("好")
+    tap_text("生成 PIN"); shot(f"android-{th}-05-pin", True); tap_text("好")
     tap_text("关于", scroll=True); shot(f"android-{th}-06-about", True); tap_text("好")
 adb("shell", "cmd", "uimode", "night", "no")

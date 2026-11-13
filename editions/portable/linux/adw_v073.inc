@@ -195,7 +195,7 @@ static void v073_fill_contacts(GtkWidget *page){
         adw_preferences_group_add(ADW_PREFERENCES_GROUP(g),row);
     }
     lsm_unlock(C);
-    if(!n) adw_preferences_group_set_description(ADW_PREFERENCES_GROUP(g),"还没有联系人。同一网段下运行本软件的设备会自动出现在这里。");
+    if(!n) adw_preferences_group_add(ADW_PREFERENCES_GROUP(g),v073_arow(IC_PERSON,"还没有联系人","同一网段下运行本软件的设备会自动出现在这里。",NULL));
     gtk_box_append(GTK_BOX(box),g);
 }
 static void v073_fill_files(GtkWidget *page){

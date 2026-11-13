@@ -71,7 +71,7 @@ check("Android connected to v0.5 by IP", amfp); amfp = amfp[0]
 wait(lambda: [p for p in xp.peers() if p.get("online")], 60)
 shot("light-02-contacts")
 # PIN pairing with the first v0.5 node: Android shows the PIN, v0.5 enters it
-tap_text("菜单"); tap_text("生成 PIN（让对方输入）")
+tap_text("菜单"); tap_text("生成 PIN")
 pin = wait(lambda: find(lambda n: re.fullmatch(r"\d{6}", n.get("text") or "")), 120, 2)[2].get("text")
 shot("light-03-pin")
 win.m("pin-pair", amfp, pin); tap_text("好")
