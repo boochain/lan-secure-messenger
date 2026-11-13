@@ -113,7 +113,19 @@ adb("shell", "input", "keyevent", "4"); time.sleep(3)
 adb("shell", "cmd", "uimode", "night", "yes"); time.sleep(8); launch()
 shot("dark-01-contacts"); tap_text("办公室-Windows"); time.sleep(6); shot("dark-02-chat-image")
 adb("shell", "input", "keyevent", "4"); time.sleep(3); tap_text("项目组"); time.sleep(5); shot("dark-03-group")
-adb("shell", "input", "keyevent", "4"); time.sleep(3); tap_text("菜单"); tap_text("关于"); shot("dark-04-about"); tap_text("好")
+adb("shell", "input", "keyevent", "4"); time.sleep(3)
+# About moved from the ⋯ menu to Settings in v0.7.3 (overflow is 5 items).
+# Tap the About row via its "版本 …" subtitle, not the same-named section heading.
+tap_text("设置")
+end = time.time() + 90
+while time.time() < end:
+    r = find(lambda n: (n.get("text") or "").startswith("版本"))
+    if r:
+        tap(r[0], r[1]); time.sleep(3); break
+    adb("shell", "input", "swipe", "400", "1400", "400", "500", "300"); time.sleep(2)
+else:
+    raise RuntimeError("not found: 关于")
+shot("dark-04-about"); tap_text("好")
 adb("shell", "cmd", "uimode", "night", "no")
 for r in (win, xp): r.m("shutdown")
 json.dump(results, open(f"{args.out}/results.json", "w"), ensure_ascii=False, indent=1)

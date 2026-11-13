@@ -57,5 +57,15 @@ for th in ("light", "dark"):
     adb("shell", "input", "keyevent", "4"); time.sleep(1)  # close ⋯ (PIN/About now live under 设置, not in the 5-item overflow)
     tap_text("设置")
     tap_text("生成 PIN"); shot(f"android-{th}-05-pin", True); tap_text("好")
-    tap_text("关于", scroll=True); shot(f"android-{th}-06-about", True); tap_text("好")
+    # Settings has a section heading "关于" and a row titled "关于".
+    # The heading is not clickable; open the row via its unique "版本 …" subtitle.
+    end = time.time() + 90
+    while time.time() < end:
+        r = find(lambda n: (n.get("text") or "").startswith("版本"))
+        if r:
+            tap(*r); time.sleep(3); break
+        swipe_up(); time.sleep(2)
+    else:
+        raise RuntimeError("not found: 关于")
+    shot(f"android-{th}-06-about", True); tap_text("好")
 adb("shell", "cmd", "uimode", "night", "no")
