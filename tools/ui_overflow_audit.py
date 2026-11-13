@@ -282,9 +282,10 @@ def ellipsis_in_menu(im, path):
                         if int(ys[-1] - ys[0] + 1) > 12:
                             continue
                 pad = _panel_pad(y, ink, y0, y1, h, w, e1)
-                long_label = width >= 150
+                # Only flush-to-edge dots are truncation. A designed trailing
+                # ellipsis ("删除会话…") or a mid-dot in a roomy label has pad>8.
                 flush = pad <= 8
-                if not (flush or long_label):
+                if not flush:
                     continue
                 key = (y0, left // 8, e1 // 8)
                 if key in seen:
