@@ -23,16 +23,32 @@ public sealed partial class SettingsPage : Page
         };
         CloseToTraySwitch.IsOn = Services.UiPrefs.Current.CloseToTray;
         _loadingTheme = true;
-        ThemeChoice.SelectedIndex = (int)LanMessenger.Services.ThemeService.Mode;
+        switch (LanMessenger.Services.ThemeService.Mode)
+        {
+            case LanMessenger.Services.AppThemeMode.Light: ThemeLightRadio.IsChecked = true; break;
+            case LanMessenger.Services.AppThemeMode.Dark: ThemeDarkRadio.IsChecked = true; break;
+            default: ThemeSystemRadio.IsChecked = true; break;
+        }
+        if (VM.TransportMode == "server_lan") TransportBothRadio.IsChecked = true;
+        else TransportLanRadio.IsChecked = true;
         _loadingTheme = false;
     }
 
-    private void ThemeChoice_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void ThemeRadio_Checked(object sender, RoutedEventArgs e)
     {
-        if (_loadingTheme || ThemeChoice.SelectedIndex < 0) return;
-        var mode = (LanMessenger.Services.AppThemeMode)ThemeChoice.SelectedIndex;
+        if (_loadingTheme || sender is not RadioButton rb || rb.IsChecked != true) return;
+        if (rb.Tag is not string s || !int.TryParse(s, out var i)) return;
+        var mode = (LanMessenger.Services.AppThemeMode)i;
         if (mode == LanMessenger.Services.ThemeService.Mode) return;
         LanMessenger.Services.ThemeService.SetMode(mode);
+    }
+
+    private void TransportRadio_Checked(object sender, RoutedEventArgs e)
+    {
+        if (_loadingTheme || sender is not RadioButton rb || rb.IsChecked != true) return;
+        if (rb.Tag is not string mode || mode.Length == 0) return;
+        if (VM.TransportMode == mode) return;
+        VM.TransportMode = mode;
     }
 
     private async Task<string?> AskPasswordAsync(string title, bool confirm)

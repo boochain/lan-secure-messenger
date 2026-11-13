@@ -82,7 +82,14 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _accountUser = "";
     [ObservableProperty] private string _accountMode = "device";
     public string AccountModeLabel => AccountMode == "account" ? "当前：账号模式" : "当前：设备模式";
-    partial void OnAccountModeChanged(string value) { OnPropertyChanged(nameof(AccountModeLabel)); }
+    public bool IsAccountMode => AccountMode == "account";
+    public bool IsDeviceMode => AccountMode != "account";
+    partial void OnAccountModeChanged(string value)
+    {
+        OnPropertyChanged(nameof(AccountModeLabel));
+        OnPropertyChanged(nameof(IsAccountMode));
+        OnPropertyChanged(nameof(IsDeviceMode));
+    }
     [ObservableProperty] private bool _serverRetainDefault;
     [ObservableProperty] private string _transfersSummary = "";
     [ObservableProperty] private int _onlineCount;

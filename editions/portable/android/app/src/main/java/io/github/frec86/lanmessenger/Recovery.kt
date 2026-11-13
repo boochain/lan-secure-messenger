@@ -7,6 +7,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -57,14 +58,11 @@ fun RecoveryCodeScreen(forceConfirm: Boolean, onDone: () -> Unit, onBack: () -> 
             else Spacer(Modifier.width(48.dp))
             Text("恢复密钥", style = MaterialTheme.typography.titleLarge, color = p.fg, modifier = Modifier.weight(1f))
         }
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 8.dp)) {
-            Text(
-                "这是换机恢复账号和加密历史的唯一凭证。请抄到安全的地方，或导出到仅你能看到的文件。丢失后无法找回，服务器也看不到明文。",
-                style = MaterialTheme.typography.bodyMedium, color = p.fg2
-            )
-            Spacer(Modifier.height(24.dp))
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
+            InfoCard(R.drawable.ms_lock, "唯一凭证", "换机恢复账号和加密历史只用这一串。抄下来或导出。丢失无法找回，服务器也看不到明文。")
+            Spacer(Modifier.height(12.dp))
             if (rk.isEmpty()) {
-                Text("还没有恢复密钥。请先在设置里开启账号模式。", color = p.fg)
+                InfoCard(R.drawable.ms_info, "还没有密钥", "请先在设置里开启账号模式。")
             } else {
                 Text(
                     rk,
@@ -75,42 +73,32 @@ fun RecoveryCodeScreen(forceConfirm: Boolean, onDone: () -> Unit, onBack: () -> 
                     color = p.fg,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
+                        .clip(RoundedCornerShape(12.dp))
                         .background(p.chip)
+                        .border(1.dp, p.divider, RoundedCornerShape(12.dp))
                         .padding(horizontal = 16.dp, vertical = 20.dp)
                         .semantics { contentDescription = "恢复密钥" }
                 )
             }
-            Spacer(Modifier.height(20.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(
-                    {
+            Spacer(Modifier.height(12.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ActionCard(R.drawable.ms_copy, "复制", Modifier.weight(1f)) {
+                    if (rk.isNotEmpty()) {
                         val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         cm.setPrimaryClip(ClipData.newPlainText("恢复密钥", rk))
                         Repo.toast.value = "已复制恢复密钥"
-                    },
-                    Modifier.weight(1f),
-                    enabled = rk.isNotEmpty()
-                ) { Text("复制") }
-                OutlinedButton(
-                    { export.launch("lan-messenger-recovery-key.txt") },
-                    Modifier.weight(1f),
-                    enabled = rk.isNotEmpty()
-                ) { Text("导出到文件") }
+                    }
+                }
+                ActionCard(R.drawable.ms_download, "导出", Modifier.weight(1f)) {
+                    if (rk.isNotEmpty()) export.launch("lan-messenger-recovery-key.txt")
+                }
             }
-            Spacer(Modifier.height(24.dp))
-            Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Checkbox(written, { written = it }, enabled = rk.isNotEmpty())
-                Spacer(Modifier.width(8.dp))
-                Text("我已抄下并妥善保管", style = MaterialTheme.typography.bodyLarge, color = p.fg)
-            }
+            Spacer(Modifier.height(12.dp))
+            ChoiceCard(written, R.drawable.ms_tick, "我已抄下", "确认后才能离开首次设置", onClick = { if (rk.isNotEmpty()) written = !written })
             Spacer(Modifier.height(16.dp))
             Button(
                 onDone,
-                Modifier.fillMaxWidth(),
+                Modifier.fillMaxWidth().height(48.dp),
                 enabled = !forceConfirm || written
             ) { Text(if (forceConfirm) "开始使用" else "完成") }
         }

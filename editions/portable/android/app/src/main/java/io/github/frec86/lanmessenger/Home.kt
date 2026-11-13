@@ -226,7 +226,7 @@ fun ConvRow(c: Conv, click: () -> Unit) {
     // LSMF_chat_list_swipe: swipe left reveals inline pin/read/mute/delete (Telegram/WhatsApp style), not a popup.
     // Slide the whole row off-screen so leftover preview text is not mid-glyph clipped at x=0.
     BackHandler(enabled = revealed) { revealed = false }
-    Box(Modifier.testTag("LSMF_chat_list_swipe").semantics { contentDescription = "LSMF_chat_list_menu" }
+    Box(Modifier.padding(horizontal = 12.dp, vertical = 4.dp).clip(RoundedCornerShape(12.dp)).testTag("LSMF_chat_list_swipe").semantics { contentDescription = "LSMF_chat_list_menu" }
         .clipToBounds()
         .pointerInput(c.id) {
             var acc = 0f
@@ -241,7 +241,7 @@ fun ConvRow(c: Conv, click: () -> Unit) {
             )
         }) {
         if (revealed) {
-            Row(Modifier.matchParentSize().background(p.chip).clickable { revealed = false }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.End) {
+            Row(Modifier.matchParentSize().background(p.secCont).clickable { revealed = false }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.End) {
                 TextButton({ pin(); revealed = false }, Modifier.testTag("LSMF_chat_pin")) { Text(if (c.pinned) "取消置顶" else "置顶", color = p.fg, fontSize = 13.sp) }
                 TextButton({ read(); revealed = false }, Modifier.testTag("LSMF_chat_mark_read")) { Text("已读", color = p.fg, fontSize = 13.sp) }
                 if (!c.group) TextButton({ mute(); revealed = false }, Modifier.testTag("LSMF_chat_mute")) { Text(if (muted) "取消免打扰" else "免打扰", color = p.fg, fontSize = 13.sp) }
@@ -249,8 +249,8 @@ fun ConvRow(c: Conv, click: () -> Unit) {
             }
         }
         BoxWithConstraints {
-            Row(Modifier.fillMaxWidth().height(72.dp).offset(x = if (revealed) -maxWidth else 0.dp).background(p.window).combinedClickable(onClick = { if (revealed) revealed = false else click() }, onLongClick = { menu = true }).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Avatar(c.name, c.key, 48.dp, c.online, p.window)
+            Row(Modifier.fillMaxWidth().height(72.dp).offset(x = if (revealed) -maxWidth else 0.dp).background(p.chip).combinedClickable(onClick = { if (revealed) revealed = false else click() }, onLongClick = { menu = true }).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Avatar(c.name, c.key, 48.dp, c.online, p.chip)
                 Spacer(Modifier.width(16.dp))
                 Column(Modifier.weight(1f)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -316,9 +316,9 @@ fun Fab(icon: Int, label: String, desc: String, modifier: Modifier, click: () ->
 fun Transfers(st: AppState) {
     val p = LocalPalette.current
     if (st.transfers.isEmpty()) { EmptyState(R.drawable.ms_transfers, "没有文件传输", "在聊天里点回形针发送文件，进度会显示在这里。"); return }
-    LazyColumn(Modifier.fillMaxSize()) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         items(st.transfers, key = { it.id }) { t ->
-            Row(Modifier.fillMaxWidth().heightIn(min = 72.dp).padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().heightIn(min = 72.dp).clip(RoundedCornerShape(12.dp)).background(p.chip).border(1.dp, p.divider, RoundedCornerShape(12.dp)).padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)).background(p.tile), contentAlignment = Alignment.Center) { Ic(fileIcon(t.name), null, p.tileFg) }
                 Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
                     Text(t.name, fontSize = 16.sp, lineHeight = 24.sp, color = p.fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -359,55 +359,85 @@ fun Settings(st: AppState, dlg: (String) -> Unit, openPage: (String) -> Unit = {
         storageSub = "合计 ${mb(tot)} · 下载 ${mb(dl)} · 半成品 ${mb(part)}（孤儿 ${mb(orph)}）· 记录 ${mb(hist)}"
     }
     LaunchedEffect(Unit) { refreshStorage() }
-    @Composable fun SettingRow(icon: Int, title: String, sub: String?, click: (() -> Unit)?) =
-        Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).ifThen(click != null) { clickable { click!!() } }.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Ic(icon, null, p.fg2); Spacer(Modifier.width(16.dp))
-            Column(Modifier.weight(1f)) { Text(title, fontSize = 16.sp, lineHeight = 24.sp, color = p.fg); if (sub != null) Text(sub, style = MaterialTheme.typography.bodyMedium, color = p.fg2, maxLines = 2, overflow = TextOverflow.Ellipsis) }
-        }
-    LazyColumn(Modifier.fillMaxSize().testTag("LSMF_nav_settings")) {
-        item { Row(Modifier.fillMaxWidth().padding(16.dp).testTag("LSMF_nav_profile"), verticalAlignment = Alignment.CenterVertically) {
-            Avatar(st.me.name, st.me.fp, 64.dp); Spacer(Modifier.width(16.dp))
-            Column { Text(st.me.name, style = MaterialTheme.typography.titleLarge, color = p.fg); Text("指纹 " + st.me.fp, style = MaterialTheme.typography.bodySmall, color = p.fg2) } } }
-        item { HorizontalDivider(color = p.divider) }
-        item { SettingRow(R.drawable.ms_edit, "个人资料", st.me.name) { openPage("profile") } }
-        item { SettingRow(R.drawable.ms_edit, "修改昵称", st.me.name) { dlg("name") } }
-        item { SettingRow(R.drawable.ms_lock, "生成 PIN（让对方输入）", "与新设备配对并互相信任") { dlg("pin") } }
-        item { SettingRow(R.drawable.ms_add_contact, "按 IP 添加", "不在同一网段时手动添加") { dlg("add") } }
-        item { SettingRow(R.drawable.ms_groups, "创建群组", "从已信任的联系人中选择") { dlg("group") } }
-        item { SettingRow(R.drawable.ms_via_server, "中转服务器（可选）", if (st.relay.enabled) relayStateZh(st.relay.state) + (if (st.relay.host.isNotEmpty()) " · ${st.relay.host}" else "") else "未启用 · 局域网直连优先") { dlg("relay") } }
+    val mode = Native.accountMode()
+    val actions = listOf(
+        Triple(R.drawable.ms_edit, "个人资料") { openPage("profile") },
+        Triple(R.drawable.ms_edit, "昵称") { dlg("name") },
+        Triple(R.drawable.ms_lock, "PIN") { dlg("pin") },
+        Triple(R.drawable.ms_add_contact, "按 IP") { dlg("add") },
+        Triple(R.drawable.ms_groups, "建群") { dlg("group") },
+        Triple(R.drawable.ms_add_contact, "扫码") { dlg("scan") },
+        Triple(R.drawable.ms_via_server, "中转") { dlg("relay") },
+        Triple(R.drawable.ms_via_server, "服务器码") {
+            val u = Native.relayUri().ifEmpty { if (lsmUiTest()) lsmTestRelayUri() else "" }
+            if (u.startsWith("lsm://")) qrShow = "服务器二维码" to u else Repo.toast.value = "请先填写中转服务器"
+        },
+        Triple(R.drawable.ms_lock, "配对") {
+            val u = Native.accountPairUri().let { if (it.startsWith("lsm://")) it else if (lsmUiTest()) lsmTestPairUri() else it }
+            if (u.startsWith("lsm://")) qrShow = "配对新设备" to u else Repo.toast.value = u.ifEmpty { "无法生成配对码" }
+        },
+        Triple(R.drawable.ms_lock, "恢复密钥") { onRecovery() },
+        Triple(R.drawable.ms_delete, "存储") { storageAsk = true },
+        Triple(R.drawable.ms_diagnostics, "诊断") { openPage("diag") },
+        Triple(R.drawable.ms_info, "更新") { dlg("update") },
+        Triple(R.drawable.ms_info, "关于") { dlg("about") },
+    )
+    LazyColumn(Modifier.fillMaxSize().testTag("LSMF_nav_settings"), contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
-            val mode = Native.accountMode()
-            SettingRow(R.drawable.ms_lock, if (mode == "account") "账号模式（点按切换为设备模式）" else "设备模式（点按切换为账号模式）",
-                "账号模式把加密身份放在中转上；设备模式仅本机。不使用服务器密码。") {
-                val next = if (mode == "account") "device" else "account"
-                val r = Native.setAccountMode(next)
-                Repo.refresh()
-                when {
-                    next == "account" && (r.startsWith("RK") || Native.revealRecoveryKey().isNotEmpty()) -> onRecovery()
-                    r.isNotEmpty() && !r.startsWith("RK") -> Repo.toast.value = r
-                    next == "account" -> Repo.toast.value = "已切换到账号模式"
-                    else -> Repo.toast.value = "已切换到设备模式"
+            SurfaceCard(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).testTag("LSMF_nav_profile")) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Avatar(st.me.name, st.me.fp, 64.dp)
+                    Spacer(Modifier.width(16.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(st.me.name, style = MaterialTheme.typography.titleLarge, color = p.fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(st.me.fp, style = MaterialTheme.typography.bodySmall, color = p.fg2, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                 }
             }
         }
-        item { SettingRow(R.drawable.ms_lock, "恢复密钥", "查看、复制或导出；仅本机可见，服务器看不到明文") {
-            onRecovery()  // the page itself explains when no key exists yet
-        } }
-        item { SettingRow(R.drawable.ms_add_contact, "扫描或粘贴链接", "添加联系人、连接服务器或配对新设备") { dlg("scan") } }
-        item { SettingRow(R.drawable.ms_via_server, "服务器二维码", "给另一台设备扫描以连接同一中转") {
-            val u = Native.relayUri().ifEmpty { if (lsmUiTest()) lsmTestRelayUri() else "" }
-            if (u.startsWith("lsm://")) qrShow = "服务器二维码" to u else Repo.toast.value = "请先填写中转服务器"
-        } }
-        item { SettingRow(R.drawable.ms_lock, "配对新设备", "生成一次性配对二维码（需账号模式且已连中转）") {
-            val u = Native.accountPairUri().let { if (it.startsWith("lsm://")) it else if (lsmUiTest()) lsmTestPairUri() else it }
-            if (u.startsWith("lsm://")) qrShow = "配对新设备" to u else Repo.toast.value = u.ifEmpty { "无法生成配对码" }
-        } }
-        item { SettingRow(R.drawable.ms_network, "本机端口", "TCP ${st.me.port}", null) }
-        item { SettingRow(R.drawable.ms_open_folder, "接收的文件", st.me.downloads, null) }
-        item { SettingRow(R.drawable.ms_delete, "存储管理", storageSub) { storageAsk = true } }
-        item { SettingRow(R.drawable.ms_info, "诊断信息", "连接与排障") { openPage("diag") } }
-        item { SettingRow(R.drawable.ms_info, "检查更新", "查看是否有新版本") { dlg("update") } }
-        item { SettingRow(R.drawable.ms_info, "关于", "版本 ${st.me.version}") { dlg("about") } }
+        item { SectionLabel("身份") }
+        item {
+            Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ChoiceCard(mode != "account", R.drawable.ms_network, "设备模式", "仅本机，局域网直连") {
+                    if (mode == "account") {
+                        val r = Native.setAccountMode("device")
+                        Repo.refresh()
+                        if (r.isNotEmpty() && !r.startsWith("RK")) Repo.toast.value = r else Repo.toast.value = "已切换到设备模式"
+                    }
+                }
+                ChoiceCard(mode == "account", R.drawable.ms_lock, "账号模式", "加密身份在中转上，换机可恢复") {
+                    if (mode != "account") {
+                        val r = Native.setAccountMode("account")
+                        Repo.refresh()
+                        when {
+                            r.startsWith("RK") || Native.revealRecoveryKey().isNotEmpty() -> onRecovery()
+                            r.isNotEmpty() -> Repo.toast.value = r
+                            else -> onRecovery()
+                        }
+                    }
+                }
+            }
+        }
+        item { SectionLabel("操作") }
+        item {
+            Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                actions.chunked(2).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        row.forEach { (icon, title, go) -> ActionCard(icon, title, Modifier.weight(1f), go) }
+                        if (row.size == 1) Spacer(Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+        item { SectionLabel("本机") }
+        item {
+            Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                InfoCard(R.drawable.ms_network, "端口", "TCP ${st.me.port}")
+                InfoCard(R.drawable.ms_open_folder, "接收目录", st.me.downloads)
+                InfoCard(R.drawable.ms_delete, "存储", storageSub)
+                InfoCard(R.drawable.ms_via_server, "中转", if (st.relay.enabled) relayStateZh(st.relay.state) + (if (st.relay.host.isNotEmpty()) " · ${st.relay.host}" else "") else "未启用 · 局域网直连优先")
+            }
+        }
     }
     qrShow?.let { (title, uri) -> QrDialog(title, uri) { qrShow = null } }
     if (storageAsk) {
@@ -429,13 +459,10 @@ fun Settings(st: AppState, dlg: (String) -> Unit, openPage: (String) -> Unit = {
 
 @Composable
 fun FilesPane(st: AppState, sub: Int, onSub: (Int) -> Unit) {
-    val p = LocalPalette.current
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = sub == 0, onClick = { onSub(0) }, modifier = Modifier.testTag("LSMF_nav_transfers"),
-                label = { Text("传输") }, colors = FilterChipDefaults.filterChipColors(selectedContainerColor = p.secCont, selectedLabelColor = p.onSecCont, labelColor = p.fg2))
-            FilterChip(selected = sub == 1, onClick = { onSub(1) }, modifier = Modifier.testTag("LSMF_nav_files"),
-                label = { Text("文件站") }, colors = FilterChipDefaults.filterChipColors(selectedContainerColor = p.secCont, selectedLabelColor = p.onSecCont, labelColor = p.fg2))
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ChoiceCard(sub == 0, R.drawable.ms_transfers, "传输", null, Modifier.weight(1f).testTag("LSMF_nav_transfers")) { onSub(0) }
+            ChoiceCard(sub == 1, R.drawable.ms_open_folder, "文件站", null, Modifier.weight(1f).testTag("LSMF_nav_files")) { onSub(1) }
         }
         Box(Modifier.weight(1f)) { if (sub == 0) Transfers(st) else FilesSite(st) }
     }
@@ -446,10 +473,10 @@ fun ContactsPane(st: AppState, q: String, openFp: (String) -> Unit) {
     val p = LocalPalette.current
     val list = st.contacts.filter { q.isBlank() || it.name.contains(q, true) || it.fp.contains(q, true) }
     if (list.isEmpty()) { EmptyState(R.drawable.ms_add_contact, "还没有联系人", "同一 Wi-Fi 下运行本软件的设备会自动出现在这里。"); return }
-    LazyColumn(Modifier.fillMaxSize().testTag("LSMF_nav_contacts"), contentPadding = PaddingValues(bottom = 88.dp)) {
+    LazyColumn(Modifier.fillMaxSize().testTag("LSMF_nav_contacts"), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 88.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         items(list, key = { it.fp }) { k ->
-            Row(Modifier.fillMaxWidth().height(72.dp).clickable { openFp(k.fp) }.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Avatar(k.name, k.fp, 48.dp, k.online, p.window); Spacer(Modifier.width(16.dp))
+            Row(Modifier.fillMaxWidth().heightIn(min = 72.dp).clip(RoundedCornerShape(12.dp)).background(p.chip).border(1.dp, p.divider, RoundedCornerShape(12.dp)).clickable { openFp(k.fp) }.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Avatar(k.name, k.fp, 48.dp, k.online, p.chip); Spacer(Modifier.width(16.dp))
                 Column(Modifier.weight(1f)) {
                     Text(k.name, fontSize = 16.sp, color = p.fg, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text((if (k.trust == 1) "已信任" else if (k.trust == 2) "已屏蔽" else "未信任") + " · " + (if (k.online) "在线" else "离线"), style = MaterialTheme.typography.bodyMedium, color = p.fg2)
@@ -461,33 +488,19 @@ fun ContactsPane(st: AppState, q: String, openFp: (String) -> Unit) {
 
 @Composable
 fun FilesSite(st: AppState) {
-    val p = LocalPalette.current
     val info = remember { Native.storageInfo() }
     val files = remember(st.convs(), st.transfers) {
         st.convs().flatMap { c -> Repo.messages(c.id).filter { it.kind == 1 && !isStickerName(it.file) }.map { it } }
             .sortedByDescending { it.ts }.take(200)
     }
-    LazyColumn(Modifier.fillMaxSize().testTag("LSMF_nav_files"), contentPadding = PaddingValues(bottom = 24.dp)) {
-        item {
-            Text("文件站", style = MaterialTheme.typography.titleLarge, color = p.fg, modifier = Modifier.padding(16.dp, 12.dp, 16.dp, 4.dp))
-            Text(info.ifBlank { "（存储信息不可用）" }, style = MaterialTheme.typography.bodySmall, color = p.fg2, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
-            Text("接收目录 ${st.me.downloads}", style = MaterialTheme.typography.bodySmall, color = p.fg2, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
-        }
+    LazyColumn(Modifier.fillMaxSize().testTag("LSMF_nav_files"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        item { InfoCard(R.drawable.ms_open_folder, "文件站", (info.ifBlank { "存储信息不可用" }) + "\n" + st.me.downloads) }
         if (files.isEmpty() && st.transfers.isEmpty()) item { EmptyState(R.drawable.ms_open_folder, "暂无文件", "在聊天中发送或接收的文件会出现在这里。") }
         items(st.transfers, key = { "t-" + it.id }) { t ->
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Ic(fileIcon(t.name), null, p.fg2); Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(t.name, color = p.fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text((if (t.out) "发送" else "接收") + " · " + xferZh(t.state), style = MaterialTheme.typography.bodySmall, color = p.fg2)
-                }
-            }
+            InfoCard(fileIcon(t.name), t.name, (if (t.out) "发送" else "接收") + " · " + xferZh(t.state))
         }
         items(files, key = { it.id }) { m ->
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Ic(if (isImageName(m.file)) R.drawable.ms_image else R.drawable.ms_file, null, p.fg2); Spacer(Modifier.width(12.dp))
-                Text(m.file, color = p.fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
+            InfoCard(if (isImageName(m.file)) R.drawable.ms_image else R.drawable.ms_file, m.file, if (isImageName(m.file)) "图片" else "文件")
         }
     }
 }
@@ -501,6 +514,6 @@ fun DiagScreen(back: () -> Unit) {
             IconButton(back) { Ic(R.drawable.ms_back, "返回", p.fg) }
             Text("诊断信息", style = MaterialTheme.typography.titleLarge, color = p.fg)
         }
-        Text(Native.diagnostics(), fontSize = 11.sp, color = p.fg, modifier = Modifier.padding(16.dp).verticalScroll(rememberScrollState()))
+        DiagCards(Native.diagnostics(), Modifier.weight(1f))
     }
 }

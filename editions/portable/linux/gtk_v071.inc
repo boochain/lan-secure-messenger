@@ -1,6 +1,20 @@
 static void v072_show_recovery(int force, const char *preset);
 /* v0.7.1: first-run account/device choice + QR URI apply. Hooks: LSMF_account_mode LSMF_qr_scan LSMF_qr_server LSMF_qr_pair LSMF_qr_profile */
 static int v071_fr_reshoot;
+static GtkWidget *v071_mode_card(GtkWidget *radio, const char *icon, const char *title, const char *sub){
+    GtkWidget *frame=gtk_frame_new(NULL), *row=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,8);
+    GtkWidget *txt=gtk_box_new(GTK_ORIENTATION_VERTICAL,2), *t,*s,*img;
+    img=gtk_image_new_from_icon_name(icon, GTK_ICON_SIZE_DND);
+    t=gtk_label_new(title); gtk_widget_set_halign(t, GTK_ALIGN_START);
+    s=gtk_label_new(sub); gtk_label_set_line_wrap(GTK_LABEL(s),TRUE); gtk_widget_set_halign(s, GTK_ALIGN_START);
+    gtk_box_pack_start(GTK_BOX(txt),t,FALSE,FALSE,0); gtk_box_pack_start(GTK_BOX(txt),s,FALSE,FALSE,0);
+    gtk_container_set_border_width(GTK_CONTAINER(row),8);
+    gtk_box_pack_start(GTK_BOX(row),img,FALSE,FALSE,0);
+    gtk_box_pack_start(GTK_BOX(row),radio,FALSE,FALSE,0);
+    gtk_box_pack_start(GTK_BOX(row),txt,TRUE,TRUE,0);
+    gtk_container_add(GTK_CONTAINER(frame),row);
+    return frame;
+}
 static void v071_first_run(void){
     GtkWidget *d,*box,*l,*b1,*b2,*hint; char err[256]="";
     int shot=v071_fr_reshoot; v071_fr_reshoot=0;
@@ -10,10 +24,11 @@ static void v071_first_run(void){
     box=gtk_dialog_get_content_area(GTK_DIALOG(d)); gtk_container_set_border_width(GTK_CONTAINER(box),16); gtk_box_set_spacing(GTK_BOX(box),10);
     l=gtk_label_new("请选择身份方式（之后可在设置里更改）。账号模式会生成恢复密钥，不使用服务器密码。");
     gtk_label_set_line_wrap(GTK_LABEL(l),TRUE); gtk_box_pack_start(GTK_BOX(box),l,FALSE,FALSE,0);
-    b1=gtk_radio_button_new_with_label(NULL,"设备模式 — 仅本机，局域网直连，不把身份放到服务器");
-    b2=gtk_radio_button_new_with_label_from_widget(GTK_RADIO_BUTTON(b1),"账号模式 — 身份加密备份在中转上，换机可用恢复密钥或配对二维码恢复");
+    b1=gtk_radio_button_new(NULL);
+    b2=gtk_radio_button_new_from_widget(GTK_RADIO_BUTTON(b1));
     gtk_widget_set_name(b1,"LSMF_account_mode"); gtk_widget_set_name(b2,"LSMF_account_mode");
-    gtk_box_pack_start(GTK_BOX(box),b1,FALSE,FALSE,0); gtk_box_pack_start(GTK_BOX(box),b2,FALSE,FALSE,0);
+    gtk_box_pack_start(GTK_BOX(box),v071_mode_card(b1,"network-workgroup-symbolic","设备模式","仅本机，局域网直连，不把身份放到服务器"),FALSE,FALSE,0);
+    gtk_box_pack_start(GTK_BOX(box),v071_mode_card(b2,"system-users-symbolic","账号模式","身份加密备份在中转上，换机可用恢复密钥或配对二维码恢复"),FALSE,FALSE,0);
     hint=gtk_label_new("添加联系人、连接服务器、配对新设备都可以通过扫描或粘贴 lsm:// 链接完成。");
     gtk_label_set_line_wrap(GTK_LABEL(hint),TRUE); gtk_widget_set_name(hint,"LSMF_qr_scan"); gtk_box_pack_start(GTK_BOX(box),hint,FALSE,FALSE,0);
     gtk_widget_show_all(d); gtk_dialog_run(GTK_DIALOG(d));

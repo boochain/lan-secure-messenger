@@ -11,18 +11,32 @@ static void v071_fr_done(AdwAlertDialog *d, const char *r, gpointer p){
     lsm_complete_first_run(C,NULL,acc?"account":"device",NULL,err);
     if(acc && !lsm_reveal_recovery_key(C,rk,sizeof rk) && rk[0]) v072_show_recovery(1,rk);
 }
+static GtkWidget *v071_mode_card(GtkWidget *radio, const char *icon, const char *title, const char *sub){
+    GtkWidget *box=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,12);
+    GtkWidget *img=gtk_image_new_from_icon_name(icon);
+    GtkWidget *txt=gtk_box_new(GTK_ORIENTATION_VERTICAL,2);
+    GtkWidget *t=gtk_label_new(title), *s=gtk_label_new(sub);
+    gtk_widget_set_halign(t, GTK_ALIGN_START); gtk_widget_set_halign(s, GTK_ALIGN_START);
+    gtk_label_set_wrap(GTK_LABEL(s), TRUE);
+    gtk_box_append(GTK_BOX(txt), t); gtk_box_append(GTK_BOX(txt), s);
+    gtk_box_append(GTK_BOX(box), img); gtk_box_append(GTK_BOX(box), radio); gtk_box_append(GTK_BOX(box), txt);
+    gtk_widget_add_css_class(box, "card");
+    gtk_widget_set_margin_top(box, 6);
+    return box;
+}
 static void v071_first_run(void){
     GtkWidget *box,*b1,*b2; AdwDialog *d; char err[256]="";
     int shot=v071_fr_reshoot;
     if(lsm_first_run_done(C) && !shot) return;
     if(!shot && getenv("LSM_UI_TEST") && !getenv("LSM_SHOT_FIRST_RUN")){ lsm_complete_first_run(C,NULL,"device",NULL,err); return; }
     box=gtk_box_new(GTK_ORIENTATION_VERTICAL,8);
-    b1=gtk_check_button_new_with_label("设备模式 — 仅本机，局域网直连，不把身份放到服务器");
-    b2=gtk_check_button_new_with_label("账号模式 — 身份加密备份在中转上，换机可用恢复密钥或配对二维码恢复");
+    b1=gtk_check_button_new();
+    b2=gtk_check_button_new();
     gtk_check_button_set_group(GTK_CHECK_BUTTON(b2), GTK_CHECK_BUTTON(b1));
     gtk_check_button_set_active(GTK_CHECK_BUTTON(b1), TRUE);
     gtk_widget_set_name(b1,"LSMF_account_mode"); gtk_widget_set_name(b2,"LSMF_account_mode");
-    gtk_box_append(GTK_BOX(box),b1); gtk_box_append(GTK_BOX(box),b2);
+    gtk_box_append(GTK_BOX(box),v071_mode_card(b1,"network-workgroup-symbolic","设备模式","仅本机，局域网直连，不把身份放到服务器"));
+    gtk_box_append(GTK_BOX(box),v071_mode_card(b2,"system-users-symbolic","账号模式","身份加密备份在中转上，换机可用恢复密钥或配对二维码恢复"));
     v071_acc_btn=b2;
     d=adw_alert_dialog_new("欢迎使用局域网安全通讯","请选择身份方式（之后可在设置里更改）。账号模式会生成恢复密钥，不使用服务器密码。添加联系人、连接服务器、配对新设备都可以通过扫描或粘贴 lsm:// 链接完成。");
     adw_alert_dialog_add_responses(ADW_ALERT_DIALOG(d),"ok","开始使用",NULL);

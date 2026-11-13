@@ -280,9 +280,9 @@
             <FontFamily x:Key="CjkFontFamily">Segoe UI Variable Text, Microsoft YaHei UI, Microsoft YaHei</FontFamily>
             <local:PathToImageConverter x:Key="PathToImage" />
 
-            <!-- Shared card style (settings, diagnostics, groups). -->
+            <!-- M3 filled card is 12dp (shape corner medium). Stroke stays so the card is distinct from the page. -->
             <Style x:Key="CardBorderStyle" TargetType="Border">
-                <Setter Property="CornerRadius" Value="8" />
+                <Setter Property="CornerRadius" Value="12" />
                 <Setter Property="Padding" Value="16" />
                 <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
@@ -301,6 +301,44 @@
             </Style>
             <Style x:Key="SecondaryBodyStyle" TargetType="TextBlock">
                 <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Style>
+            <!-- Choice card: M3 selectable card. Icon + short title live in Content. Checked = accent container. -->
+            <Style x:Key="ChoiceCardRadioStyle" TargetType="RadioButton">
+                <Setter Property="MinHeight" Value="72" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="Margin" Value="0,0,0,8" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="RadioButton">
+                            <Border x:Name="Root" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                                    CornerRadius="12" Padding="16">
+                                <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center" />
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver" />
+                                        <VisualState x:Name="Pressed" />
+                                        <VisualState x:Name="Disabled" />
+                                    </VisualStateGroup>
+                                    <VisualStateGroup x:Name="CheckStates">
+                                        <VisualState x:Name="Unchecked" />
+                                        <VisualState x:Name="Checked">
+                                            <VisualState.Setters>
+                                                <Setter Target="Root.Background" Value="{ThemeResource AccentFillColorSecondaryBrush}" />
+                                                <Setter Target="Root.BorderBrush" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+                                                <Setter Target="Root.BorderThickness" Value="2" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Indeterminate" />
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
             </Style>
         </ResourceDictionary>
     </Application.Resources>

@@ -24,13 +24,37 @@
 
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
-                    <TextBlock Text="外观" Style="{StaticResource SubtitleTextBlockStyle}" />
-                    <RadioButtons x:Name="ThemeChoice" Header="主题" MaxColumns="3" SelectionChanged="ThemeChoice_SelectionChanged">
-                        <x:String>跟随系统</x:String>
-                        <x:String>浅色</x:String>
-                        <x:String>深色</x:String>
-                    </RadioButtons>
-                    <TextBlock Text="“跟随系统”会随 Windows 的深色/浅色模式实时切换。" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <FontIcon Glyph="&#xE706;" FontSize="20" />
+                        <TextBlock Text="外观" Style="{StaticResource SubtitleTextBlockStyle}" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <RadioButton x:Name="ThemeSystemRadio" GroupName="LsmTheme" Tag="0" Style="{StaticResource ChoiceCardRadioStyle}" Checked="ThemeRadio_Checked">
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <FontIcon Glyph="&#xE771;" FontSize="20" />
+                            <StackPanel>
+                                <TextBlock Text="跟随系统" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                <TextBlock Text="随 Windows 切换" Style="{StaticResource SecondaryCaptionStyle}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton x:Name="ThemeLightRadio" GroupName="LsmTheme" Tag="1" Style="{StaticResource ChoiceCardRadioStyle}" Checked="ThemeRadio_Checked">
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <FontIcon Glyph="&#xE706;" FontSize="20" />
+                            <StackPanel>
+                                <TextBlock Text="浅色" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                <TextBlock Text="始终浅色" Style="{StaticResource SecondaryCaptionStyle}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton x:Name="ThemeDarkRadio" GroupName="LsmTheme" Tag="2" Style="{StaticResource ChoiceCardRadioStyle}" Checked="ThemeRadio_Checked">
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <FontIcon Glyph="&#xE708;" FontSize="20" />
+                            <StackPanel>
+                                <TextBlock Text="深色" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                <TextBlock Text="始终深色" Style="{StaticResource SecondaryCaptionStyle}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </RadioButton>
                 </StackPanel>
             </Border>
 
@@ -151,18 +175,67 @@
                                Text="绑定本机局域网 IPv4（或 auto）可让发现/监听/拨号绕过 VPN 虚拟网卡。留空则使用系统默认路由。" />
                     <TextBox Header="局域网绑定 IP" Text="{x:Bind VM.BindLanIp, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="留空 / auto / 192.168.x.x" />
                     <TextBlock Text="传输与账号" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,8,0,0" />
-                    <ComboBox Header="传输模式" SelectedValue="{x:Bind VM.TransportMode, Mode=TwoWay}" SelectedValuePath="Tag" Width="280">
-                        <ComboBoxItem Content="仅局域网" Tag="lan" />
-                        <ComboBoxItem Content="服务器 + 局域网（对等）" Tag="server_lan" />
-                    </ComboBox>
-                    <TextBlock TextWrapping="Wrap" Style="{StaticResource SecondaryCaptionStyle}"
-                               Text="身份方式（LSMF_account_mode）：账号模式把端到端加密的身份与历史放在中转上，换机用恢复密钥或配对二维码证明所有权；设备模式仅本机。认证靠密钥/配对，不使用服务器密码。" />
-                    <TextBlock Text="{x:Bind VM.AccountModeLabel, Mode=OneWay}" />
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button Content="切换为账号模式" Click="AccountModeOn_Click" Tag="LSMF_account_mode" />
-                        <Button Content="切换为设备模式" Click="AccountModeOff_Click" />
-                        <Button Content="显示恢复密钥" Click="RevealRk_Click" />
+                    <RadioButton x:Name="TransportLanRadio" GroupName="LsmTransport" Tag="lan" Style="{StaticResource ChoiceCardRadioStyle}" Checked="TransportRadio_Checked">
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <FontIcon Glyph="&#xE774;" FontSize="20" />
+                            <StackPanel>
+                                <TextBlock Text="仅局域网" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                <TextBlock Text="不经中转" Style="{StaticResource SecondaryCaptionStyle}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton x:Name="TransportBothRadio" GroupName="LsmTransport" Tag="server_lan" Style="{StaticResource ChoiceCardRadioStyle}" Checked="TransportRadio_Checked">
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <FontIcon Glyph="&#xE753;" FontSize="20" />
+                            <StackPanel>
+                                <TextBlock Text="服务器 + 局域网" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                <TextBlock Text="两条路对等" Style="{StaticResource SecondaryCaptionStyle}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </RadioButton>
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <FontIcon Glyph="&#xE72E;" FontSize="20" />
+                        <TextBlock Text="身份" Style="{StaticResource SubtitleTextBlockStyle}" VerticalAlignment="Center" />
                     </StackPanel>
+                    <Button Click="AccountModeOff_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="0" Background="Transparent" BorderThickness="0" Tag="LSMF_account_mode">
+                        <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,8">
+                            <Grid>
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <FontIcon Glyph="&#xE774;" FontSize="20" />
+                                    <StackPanel>
+                                        <TextBlock Text="设备模式" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                        <TextBlock Text="仅本机，局域网直连" Style="{StaticResource SecondaryCaptionStyle}" />
+                                    </StackPanel>
+                                </StackPanel>
+                                <FontIcon Glyph="&#xE73E;" HorizontalAlignment="Right" VerticalAlignment="Center" Visibility="{x:Bind local:B.Vis(VM.IsDeviceMode), Mode=OneWay}" />
+                            </Grid>
+                        </Border>
+                    </Button>
+                    <Button Click="AccountModeOn_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="0" Background="Transparent" BorderThickness="0">
+                        <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,8">
+                            <Grid>
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <FontIcon Glyph="&#xE72E;" FontSize="20" />
+                                    <StackPanel>
+                                        <TextBlock Text="账号模式" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                        <TextBlock Text="加密身份在中转上，换机可恢复" Style="{StaticResource SecondaryCaptionStyle}" />
+                                    </StackPanel>
+                                </StackPanel>
+                                <FontIcon Glyph="&#xE73E;" HorizontalAlignment="Right" VerticalAlignment="Center" Visibility="{x:Bind local:B.Vis(VM.IsAccountMode), Mode=OneWay}" />
+                            </Grid>
+                        </Border>
+                    </Button>
+                    <Button Click="RevealRk_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="0" Background="Transparent" BorderThickness="0">
+                        <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,8">
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <FontIcon Glyph="&#xE8D7;" FontSize="20" />
+                                <StackPanel>
+                                    <TextBlock Text="恢复密钥" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                    <TextBlock Text="查看、复制或导出" Style="{StaticResource SecondaryCaptionStyle}" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </Button>
                     <TextBox x:Name="RestoreKeyBox" Header="用恢复密钥在新设备登录" PlaceholderText="RK1-XXXX-XXXX-…" />
                     <Button Content="恢复账号" Click="RestoreAccount_Click" HorizontalAlignment="Left" />
                     <TextBox x:Name="PasteUriBox" Header="粘贴 lsm:// 链接（添加联系人 / 连接服务器 / 配对新设备）" PlaceholderText="lsm://add?… 或 lsm://relay?… 或 lsm://pair?…" Tag="LSMF_qr_scan" />

@@ -16,9 +16,25 @@
         <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
             <StackPanel Spacing="10">
                 <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
-                           Text="同一局域网内打开本软件的电脑会自动互相发现，消息与文件全程端到端加密。请选择身份方式（之后可在设置里更改）。账号模式把加密后的身份与消息备份放在中转上，只有本机密钥能解密；设备模式仅本机、局域网直连。不使用服务器密码。" />
-                <RadioButton x:Name="DeviceModeRadio" GroupName="AcctMode" IsChecked="True" Content="设备模式 — 仅本机，局域网直连，不把身份放到服务器" Tag="LSMF_account_mode" />
-                <RadioButton x:Name="AccountModeRadio" GroupName="AcctMode" Content="账号模式 — 身份加密备份在中转上，换机可用恢复密钥或配对二维码恢复" />
+                           Text="同一局域网内打开本软件的电脑会自动互相发现，消息与文件全程端到端加密。请选择身份方式（之后可在设置里更改）。不使用服务器密码。" />
+                <RadioButton x:Name="DeviceModeRadio" GroupName="AcctMode" IsChecked="True" Tag="LSMF_account_mode" Style="{StaticResource ChoiceCardRadioStyle}">
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <FontIcon Glyph="&#xE774;" FontSize="20" />
+                        <StackPanel>
+                            <TextBlock Text="设备模式" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <TextBlock Text="仅本机，局域网直连" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </StackPanel>
+                </RadioButton>
+                <RadioButton x:Name="AccountModeRadio" GroupName="AcctMode" Style="{StaticResource ChoiceCardRadioStyle}">
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <FontIcon Glyph="&#xE72E;" FontSize="20" />
+                        <StackPanel>
+                            <TextBlock Text="账号模式" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <TextBlock Text="加密身份在中转上，换机可恢复" Style="{StaticResource SecondaryCaptionStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </StackPanel>
+                </RadioButton>
                 <TextBox x:Name="NameBox" Header="你的显示名称（别人看到的名字）" MaxLength="40" />
                 <StackPanel Spacing="4">
                     <TextBlock Text="你的身份指纹（可让对方核对，防止冒充）" Style="{StaticResource BodyStrongTextBlockStyle}" />
