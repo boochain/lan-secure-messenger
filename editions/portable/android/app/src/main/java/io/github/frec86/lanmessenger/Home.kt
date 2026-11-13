@@ -517,7 +517,7 @@ fun FilesSite(st: AppState) {
 fun DiagScreen(back: () -> Unit) {
     val p = LocalPalette.current
     androidx.activity.compose.BackHandler { back() }
-    Column(Modifier.fillMaxSize().background(p.window).statusBarsPadding().testTag("LSMF_nav_diagnostics")) {
+    Column(Modifier.fillMaxSize().background(p.window).statusBarsPadding().navigationBarsPadding().testTag("LSMF_nav_diagnostics")) {
         Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(back) { Ic(R.drawable.ms_back, "返回", p.fg) }
             Text("诊断信息", style = MaterialTheme.typography.titleLarge, color = p.fg)

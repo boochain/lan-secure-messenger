@@ -279,6 +279,10 @@ def ellipsis_in_menu(im, path):
                         if int(ys[-1] - ys[0] + 1) > 12:
                             continue
                 pad = _panel_pad(y, ink, y0, y1, h, w, e1)
+                # No card edge within the search window (pad stays ~47). That is a
+                # timestamp or bubble line in a menu screenshot, not a clipped item.
+                if pad >= 40:
+                    continue
                 long_label = width >= 150
                 flush = pad <= 8
                 if not (flush or long_label):
