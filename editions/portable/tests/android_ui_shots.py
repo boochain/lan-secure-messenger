@@ -42,10 +42,14 @@ def find(pred):
             b = list(map(int, re.findall(r"\d+", n.get("bounds")))); tap((b[0]+b[2])//2, (b[1]+b[3])//2); time.sleep(2); return None
     for n in r.iter("node"):
         if pred(n): b = list(map(int, re.findall(r"\d+", n.get("bounds")))); return ((b[0]+b[2])//2, (b[1]+b[3])//2, n)
-def tap_text(t, exact=True, timeout=120):
-    r = wait(lambda: find(lambda n: (n.get("text") == t or n.get("content-desc") == t) if exact else (t in (n.get("text") or ""))), timeout, 2)
-    if not r: raise RuntimeError("not found: " + t)
-    tap(r[0], r[1]); time.sleep(2); return r
+def tap_text(t, exact=True, timeout=120, scroll=False):
+    end = time.time() + timeout
+    while time.time() < end:
+        r = find(lambda n: (n.get("text") == t or n.get("content-desc") == t) if exact else (t in (n.get("text") or "")))
+        if r: tap(r[0], r[1]); time.sleep(2); return r
+        if scroll: adb("shell", "input", "swipe", "400", "1400", "400", "500", "300")
+        time.sleep(2)
+    raise RuntimeError("not found: " + t)
 def tap(x, y):  # one-shot tap; split DOWN/UP across input(1) startups was a long-press on ConvRow
     adb("shell", f"input tap {x} {y}")
 def tap_edit(timeout=120):
@@ -71,10 +75,10 @@ check("Android connected to v0.5 by IP", amfp); amfp = amfp[0]
 wait(lambda: [p for p in xp.peers() if p.get("online")], 60)
 shot("light-02-contacts")
 # PIN pairing with the first v0.5 node: Android shows the PIN, v0.5 enters it
-tap_text("菜单"); tap_text("生成 PIN（让对方输入）")
+tap_text("设置"); tap_text("生成 PIN（让对方输入）", scroll=True)
 pin = wait(lambda: find(lambda n: re.fullmatch(r"\d{6}", n.get("text") or "")), 120, 2)[2].get("text")
 shot("light-03-pin")
-win.m("pin-pair", amfp, pin); tap_text("好")
+win.m("pin-pair", amfp, pin); tap_text("好"); tap_text("聊天")
 check("PIN pairing Android<->v0.5 (mutual trust)", wait(lambda: any(p["fingerprint"] == amfp and p.get("trust") in ("trusted", "Trusted") for p in win.j("status")["peers"]) or "trusted" in win.m("peers").lower(), 60))
 xp.m("trust", amfp)
 # messages + an image from v0.5 into the app
@@ -113,7 +117,7 @@ adb("shell", "input", "keyevent", "4"); time.sleep(3)
 adb("shell", "cmd", "uimode", "night", "yes"); time.sleep(8); launch()
 shot("dark-01-contacts"); tap_text("办公室-Windows"); time.sleep(6); shot("dark-02-chat-image")
 adb("shell", "input", "keyevent", "4"); time.sleep(3); tap_text("项目组"); time.sleep(5); shot("dark-03-group")
-adb("shell", "input", "keyevent", "4"); time.sleep(3); tap_text("菜单"); tap_text("关于"); shot("dark-04-about"); tap_text("好")
+adb("shell", "input", "keyevent", "4"); time.sleep(3); tap_text("设置"); tap_text("关于", scroll=True); shot("dark-04-about"); tap_text("好")
 adb("shell", "cmd", "uimode", "night", "no")
 for r in (win, xp): r.m("shutdown")
 json.dump(results, open(f"{args.out}/results.json", "w"), ensure_ascii=False, indent=1)

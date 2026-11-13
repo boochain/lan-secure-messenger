@@ -5,7 +5,7 @@
 #include <stddef.h>
 
 #ifndef LSM_APP_VERSION
-#define LSM_APP_VERSION "0.7.1" /* set by tools/set-version.py from VERSION */
+#define LSM_APP_VERSION "0.7.3" /* set by tools/set-version.py from VERSION */
 #endif
 #define FP_LEN 20 /* "XXXX-XXXX-XXXX-XXXX" + NUL */
 

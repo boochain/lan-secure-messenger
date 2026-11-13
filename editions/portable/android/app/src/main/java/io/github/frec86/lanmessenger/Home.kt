@@ -382,6 +382,14 @@ fun Settings(st: AppState, dlg: (String) -> Unit, openPage: (String) -> Unit = {
         Triple(R.drawable.ms_info, "更新") { dlg("update") },
         Triple(R.drawable.ms_info, "关于") { dlg("about") },
     )
+    // Visible captions stay short. These names match the other editions and the UI tests.
+    val a11y = mapOf(
+        "PIN" to "生成 PIN（让对方输入）",
+        "中转" to "中转服务器（可选）",
+        "诊断" to "诊断信息",
+        "服务器码" to "服务器二维码",
+        "配对" to "配对新设备",
+    )
     LazyColumn(Modifier.fillMaxSize().testTag("LSMF_nav_settings"), contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
             SurfaceCard(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).testTag("LSMF_nav_profile")) {
@@ -423,7 +431,7 @@ fun Settings(st: AppState, dlg: (String) -> Unit, openPage: (String) -> Unit = {
             Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 actions.chunked(2).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        row.forEach { (icon, title, go) -> ActionCard(icon, title, Modifier.weight(1f), go) }
+                        row.forEach { (icon, title, go) -> ActionCard(icon, title, Modifier.weight(1f), a11y[title], go) }
                         if (row.size == 1) Spacer(Modifier.weight(1f))
                     }
                 }

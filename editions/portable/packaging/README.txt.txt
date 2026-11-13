@@ -1,4 +1,4 @@
-局域网安全通讯 XP 版 (LAN Secure Messenger, legacy edition) v0.7.1
+局域网安全通讯 XP 版 (LAN Secure Messenger, legacy edition) v0.7.3
 ====================================================================
 
 给老机器（Windows XP SP3 32 位，及 XP x64 / Server 2003）用的版本，所有版本互通（协议 v5）：

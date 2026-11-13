@@ -310,17 +310,28 @@ for th in ("light", "dark"):
     nav_shot("传输", "LSMF_nav_transfers")
     nav_shot("文件站", "LSMF_nav_files")
     nav_shot("设置", "LSMF_nav_settings")
+    def tap_row(label, timeout=15):
+        """Settings cards sit below the fold. Scroll in short steps so a tall card is not skipped."""
+        end = time.time() + timeout
+        while time.time() < end:
+            r = find(lambda n: n.get("text") == label or n.get("content-desc") == label)
+            if r:
+                tap(*r); time.sleep(1.2); return
+            sh("input swipe 540 1200 540 720 280")
+            time.sleep(0.45)
+        raise RuntimeError("not found: " + label)
     def on_recovery_page():
-        return find(lambda n: n.get("text") in ("复制", "导出到文件", "我已抄下并妥善保管")) is not None
+        return find(lambda n: (n.get("text") or n.get("content-desc") or "") in ("复制", "导出", "导出到文件", "我已抄下", "我已抄下并妥善保管")) is not None
     try:
         try: tap_text("设置", timeout=10)
         except Exception: pass
         time.sleep(0.5)
-        # Device-mode installs have no key yet; switching to account mode generates one and opens the page.
-        if find(lambda n: (n.get("text") or "").startswith("设备模式")):
-            tap_text("设备模式（点按切换为账号模式）", timeout=15)
-        elif not on_recovery_page():
-            tap_text("恢复密钥", timeout=15)
+        if not on_recovery_page():
+            # Choice cards: 账号模式 enters account mode and opens the recovery key. The old one-row toggle is gone.
+            try:
+                tap_text("账号模式", timeout=8)
+            except Exception:
+                tap_row("恢复密钥")
         if not ui_seed.wait(on_recovery_page, 15, 1):
             raise RuntimeError("recovery page did not open (no 复制 / 导出到文件)")
         time.sleep(0.4)
@@ -329,18 +340,18 @@ for th in ("light", "dark"):
     except Exception as e:
         print("WARN recovery page", e, flush=True)
     try:
-        if not find(lambda n: n.get("text") == "个人资料"):
+        if not find(lambda n: n.get("text") == "个人资料" or n.get("content-desc") == "个人资料"):
             try: tap_text("设置", timeout=10)
             except Exception: pass
             time.sleep(0.5)
-        tap_text("个人资料", timeout=15)
+        tap_row("个人资料")
         shot(f"android-{th}-page-profile")  # LSMF_nav_profile
         back(); time.sleep(1)
-        if not find(lambda n: n.get("text") == "诊断信息"):
+        if not find(lambda n: n.get("text") == "诊断信息" or n.get("content-desc") == "诊断信息"):
             try: tap_text("设置", timeout=10)
             except Exception: pass
             time.sleep(0.5)
-        tap_text("诊断信息", timeout=15)
+        tap_row("诊断信息")
         shot(f"android-{th}-page-diagnostics")  # LSMF_nav_diagnostics
         back(); time.sleep(1)
     except Exception as e:
@@ -353,13 +364,6 @@ for th in ("light", "dark"):
     if find(lambda n: n.get("text") == "聊天" or n.get("content-desc") == "聊天"):
         try: tap_text("聊天", timeout=10)
         except Exception: pass
-    def tap_row(label, timeout=15):
-        r = ui_seed.wait(lambda: find(lambda n: n.get("text") == label or n.get("content-desc") == label), timeout, 1)
-        if not r:
-            sh("input swipe 540 1500 540 400 400"); time.sleep(0.7)
-            r = find(lambda n: n.get("text") == label or n.get("content-desc") == label)
-        if not r: raise RuntimeError("not found: " + label)
-        tap(*r); time.sleep(1.2)
     try:
         tap_text("菜单", timeout=15)
         tap_text("我的二维码", timeout=15)
@@ -371,7 +375,7 @@ for th in ("light", "dark"):
         tap_row("服务器二维码")
         shot(f"android-{th}-19-server-qr")  # server-qr LSMF_qr_server
         back(); time.sleep(0.8)
-        if not find(lambda n: n.get("text") == "配对新设备"):
+        if not find(lambda n: n.get("text") == "配对新设备" or n.get("content-desc") == "配对新设备"):
             if find(lambda n: n.get("text") == "设置" or n.get("content-desc") == "设置"):
                 try: tap_text("设置", timeout=8)
                 except Exception: pass

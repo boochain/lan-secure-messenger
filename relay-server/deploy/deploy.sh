@@ -4,7 +4,7 @@
 # 命令 (commands): menu run start install remove-autostart stop config status uninstall version
 # 选项 (options): --port N --password P --gen-password --bind ADDR --open-firewall --yes --dry-run --no-start
 set -u
-SCRIPT_VERSION="0.7.1"
+SCRIPT_VERSION="0.7.3"
 SVC=lsm-relay
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 

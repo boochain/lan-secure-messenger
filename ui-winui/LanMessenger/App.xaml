@@ -302,7 +302,9 @@
             <Style x:Key="SecondaryBodyStyle" TargetType="TextBlock">
                 <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
             </Style>
-            <!-- Choice card: M3 selectable card. Icon + short title live in Content. Checked = accent container. -->
+            <!-- Choice card: M3 selectable card. Icon + short title live in Content.
+                 Checked fill is the palette "mine" bubble (not the saturated accent): secondary captions
+                 are #5C5C5C / #CCCCCC and fail contrast on #005FB8 / #60CDFF. Stroke stays the 1px card stroke. -->
             <Style x:Key="ChoiceCardRadioStyle" TargetType="RadioButton">
                 <Setter Property="MinHeight" Value="72" />
                 <Setter Property="HorizontalAlignment" Value="Stretch" />
@@ -327,9 +329,7 @@
                                         <VisualState x:Name="Unchecked" />
                                         <VisualState x:Name="Checked">
                                             <VisualState.Setters>
-                                                <Setter Target="Root.Background" Value="{ThemeResource AccentFillColorSecondaryBrush}" />
-                                                <Setter Target="Root.BorderBrush" Value="{ThemeResource AccentFillColorDefaultBrush}" />
-                                                <Setter Target="Root.BorderThickness" Value="2" />
+                                                <Setter Target="Root.Background" Value="{ThemeResource LsmBubbleOutBackgroundBrush}" />
                                             </VisualState.Setters>
                                         </VisualState>
                                         <VisualState x:Name="Indeterminate" />

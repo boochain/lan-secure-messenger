@@ -83,13 +83,14 @@ fun ChoiceCard(selected: Boolean, icon: Int, title: String, sub: String?, modifi
     }
 }
 
-/** Square action: 40dp round icon, short label underneath. Text is the caption, not the control. */
+/** Square action: 40dp round icon, short label underneath. Text is the caption, not the control.
+ *  a11y, when set, is the full name (TalkBack and UI tests); the visible caption stays short. */
 @Composable
-fun ActionCard(icon: Int, title: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+fun ActionCard(icon: Int, title: String, modifier: Modifier = Modifier, a11y: String? = null, onClick: () -> Unit) {
     val p = LocalPalette.current
     Column(
         modifier.heightIn(min = 104.dp).clip(CardShape).background(p.chip).border(1.dp, p.divider, CardShape)
-            .clickable(onClick = onClick).padding(12.dp).semantics { contentDescription = title },
+            .clickable(onClick = onClick).padding(12.dp).semantics { contentDescription = a11y ?: title },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {

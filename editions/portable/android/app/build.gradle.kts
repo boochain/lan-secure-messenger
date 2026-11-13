@@ -7,8 +7,8 @@ android {
         applicationId = "io.github.frec86.lanmessenger"
         minSdk = 21
         targetSdk = 34
-        versionCode = 70199
-        versionName = "0.7.1"
+        versionCode = 70399
+        versionName = "0.7.3"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
         externalNativeBuild { cmake { arguments += listOf("-DANDROID_STL=none") } }
     }

@@ -26,8 +26,8 @@
     <PublishTrimmed>false</PublishTrimmed>
     <PublishReadyToRun>false</PublishReadyToRun>
     <PublishSingleFile>false</PublishSingleFile>
-    <Version>0.7.1</Version>
-    <InformationalVersion>0.7.1</InformationalVersion>
+    <Version>0.7.3</Version>
+    <InformationalVersion>0.7.3</InformationalVersion>
     <Product>LAN Secure Messenger</Product>
     <Company>FREC86</Company>
     <SatelliteResourceLanguages>zh-Hans;en</SatelliteResourceLanguages>

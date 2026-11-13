@@ -1,4 +1,4 @@
-# Five-surface feature parity table (v0.7.2).
+# Five-surface feature parity table (v0.7.3).
 # Platforms checked: winui, xp, gtk3, adw, android
 # (GTK3 and GTK4/libadwaita are listed separately so neither Linux UI can lag.)
 # CI: python3 tools/check_feature_parity.py
