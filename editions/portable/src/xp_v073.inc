@@ -128,14 +128,26 @@ static void v073_click_id(int id, int idx){
     if(id>0) SendMessageW(hMain,WM_COMMAND,(WPARAM)id,0);
 }
 static int v073_content_h(void){ return scale_px(44)+v073_n*scale_px(60)+scale_px(16); }
+static int v073_sb_w(HWND h){
+    RECT cr; if(!h) return 0; GetClientRect(h,&cr);
+    return v073_content_h()>cr.bottom?scale_px(8):0;
+}
 static void v073_sync_scroll(HWND h){
-    RECT cr; SCROLLINFO si; int maxs, page;
+    RECT cr; int maxs, page;
     if(!h) return; GetClientRect(h,&cr); page=cr.bottom>0?cr.bottom:1;
     maxs=v073_content_h()-page; if(maxs<0) maxs=0;
     if(v073_scroll<0) v073_scroll=0; if(v073_scroll>maxs) v073_scroll=maxs;
-    memset(&si,0,sizeof si); si.cbSize=sizeof si; si.fMask=SIF_RANGE|SIF_PAGE|SIF_POS;
-    si.nMin=0; si.nMax=v073_content_h()>0?v073_content_h()-1:0; si.nPage=(UINT)page; si.nPos=v073_scroll;
-    SetScrollInfo(h,SB_VERT,&si,TRUE);
+}
+static void v073_paint_sb(HDC dc, RECT cr){
+    int content,page,maxs,th,ty,sbw; RECT tr,thb; HBRUSH bt,bh;
+    sbw=v073_content_h()>cr.bottom?scale_px(8):0; if(!sbw) return;
+    content=v073_content_h(); page=cr.bottom; maxs=content-page;
+    th=page*page/content; if(th<scale_px(24)) th=scale_px(24); if(th>page) th=page;
+    ty=maxs>0? (int)((long)v073_scroll*(page-th)/maxs) : 0;
+    tr.left=cr.right-sbw; tr.top=0; tr.right=cr.right; tr.bottom=cr.bottom;
+    bt=CreateSolidBrush(T.divider); FillRect(dc,&tr,bt); DeleteObject(bt);
+    thb=tr; thb.top=ty; thb.bottom=ty+th;
+    bh=CreateSolidBrush(T.text_secondary); FillRect(dc,&thb,bh); DeleteObject(bh);
 }
 static void v073_scroll_by(HWND h, int delta){
     v073_scroll+=delta; v073_sync_scroll(h); InvalidateRect(h,NULL,TRUE);
@@ -144,25 +156,29 @@ static LRESULT CALLBACK v073_proc(HWND h, UINT m, WPARAM w, LPARAM l){
     if(m==WM_PAINT){
         PAINTSTRUCT ps; HDC dc=BeginPaint(h,&ps); RECT cr,r; int i, y, row_h=scale_px(60), tile=scale_px(36), pad=scale_px(16);
         const wchar_t *title=L"";
+        int sbw;
         GetClientRect(h,&cr); FillRect(dc,&cr,brWin);
-        SetBkMode(dc,TRANSPARENT);
+        v073_sync_scroll(h); sbw=v073_sb_w(h);
+        /* Opaque text on the known page colour so Wine/XP ClearType
+         * fringes are not sampled as a off-palette purple (WCAG 4.33 on 需). */
+        SetBkMode(dc,OPAQUE); SetBkColor(dc,T.window_bg);
         if(!strcmp(v073_kind,"settings")) title=L"设置";
         else if(!strcmp(v073_kind,"profile")) title=L"个人资料";
         else if(!strcmp(v073_kind,"files")) title=L"文件站";
         else if(!strcmp(v073_kind,"transfers")) title=L"文件传输";
         else if(!strcmp(v073_kind,"groups")) title=L"群组";
         else if(!strcmp(v073_kind,"contacts")) title=L"联系人";
-        r=cr; r.left=pad; r.top=scale_px(10); r.bottom=r.top+scale_px(28); r.right=cr.right-pad;
+        r=cr; r.left=pad; r.top=scale_px(10); r.bottom=r.top+scale_px(28); r.right=cr.right-pad-sbw;
         SetTextColor(dc,T.text_primary); SelectObject(dc,fBodyStrong); DrawTextW(dc,title,-1,&r,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX);
-        v073_sync_scroll(h);
         y=scale_px(44)-v073_scroll;
         for(i=0;i<v073_n;i++){
-            RECT tr, sr, ir;
-            v073_rows[i].rc.left=0; v073_rows[i].rc.right=cr.right; v073_rows[i].rc.top=y; v073_rows[i].rc.bottom=y+row_h;
+            RECT tr, sr, ir; COLORREF rowbg=(v073_hit==i)?P.rowhover:T.window_bg;
+            v073_rows[i].rc.left=0; v073_rows[i].rc.right=cr.right-sbw; v073_rows[i].rc.top=y; v073_rows[i].rc.bottom=y+row_h;
             if(v073_hit==i){ HBRUSH b=CreateSolidBrush(P.rowhover); FillRect(dc,&v073_rows[i].rc,b); DeleteObject(b); }
             ir.left=pad; ir.top=y+(row_h-tile)/2; ir.right=ir.left+tile; ir.bottom=ir.top+tile;
             v073_tile(dc,ir,v073_rows[i].icon);
-            tr.left=ir.right+scale_px(12); tr.right=cr.right-pad; tr.top=y+scale_px(8); tr.bottom=tr.top+scale_px(22);
+            tr.left=ir.right+scale_px(12); tr.right=cr.right-pad-sbw; tr.top=y+scale_px(8); tr.bottom=tr.top+scale_px(22);
+            SetBkColor(dc,rowbg);
             SetTextColor(dc,T.text_primary); SelectObject(dc,fBodyStrong);
             DrawTextW(dc,v073_rows[i].title,-1,&tr,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX);
             sr=tr; sr.top=tr.bottom; sr.bottom=y+row_h-scale_px(6);
@@ -170,10 +186,16 @@ static LRESULT CALLBACK v073_proc(HWND h, UINT m, WPARAM w, LPARAM l){
             DrawTextW(dc,v073_rows[i].sub,-1,&sr,DT_LEFT|DT_TOP|DT_SINGLELINE|DT_NOPREFIX);
             y+=row_h;
         }
+        v073_paint_sb(dc,cr);
         EndPaint(h,&ps); return 0;
     }
     if(m==WM_LBUTTONDOWN || m==WM_MOUSEMOVE){
-        POINT pt={(short)LOWORD(l),(short)HIWORD(l)}; int i, hit=-1;
+        POINT pt={(short)LOWORD(l),(short)HIWORD(l)}; int i, hit=-1, sbw; RECT cr;
+        GetClientRect(h,&cr); sbw=v073_sb_w(h);
+        if(m==WM_LBUTTONDOWN && sbw && pt.x>=cr.right-sbw){
+            int page=cr.bottom>0?cr.bottom:1;
+            v073_scroll_by(h, pt.y<page/2?-page:page); return 0;
+        }
         for(i=0;i<v073_n;i++) if(PtInRect(&v073_rows[i].rc,pt) && (v073_rows[i].id || v073_rows[i].fp[0])) hit=i;
         if(m==WM_MOUSEMOVE && hit!=v073_hit){ v073_hit=hit; InvalidateRect(h,NULL,FALSE); }
         if(m==WM_LBUTTONDOWN && hit>=0){ v073_click_id(v073_rows[hit].id, hit); }
@@ -201,7 +223,7 @@ static void v073_ensure(void){
     static int reg; WNDCLASSEXW wc;
     if(hV073Page) return;
     if(!reg){ memset(&wc,0,sizeof wc); wc.cbSize=sizeof wc; wc.lpfnWndProc=v073_proc; wc.hInstance=hInst; wc.lpszClassName=L"LsmIconPage"; wc.hCursor=LoadCursor(NULL,IDC_HAND); wc.hbrBackground=brWin; RegisterClassExW(&wc); reg=1; }
-    hV073Page=CreateWindowExW(0,L"LsmIconPage",L"",WS_CHILD|WS_VSCROLL,0,0,0,0,hMain,(HMENU)(INT_PTR)498,hInst,NULL);
+    hV073Page=CreateWindowExW(0,L"LsmIconPage",L"",WS_CHILD,0,0,0,0,hMain,(HMENU)(INT_PTR)498,hInst,NULL);
 }
 static int v073_uses(const char *name){
     return !strcmp(name,"settings")||!strcmp(name,"profile")||!strcmp(name,"files")||!strcmp(name,"transfers")||!strcmp(name,"groups")||!strcmp(name,"contacts");
@@ -215,6 +237,7 @@ static void v073_on_show(const char *name){
 static void v073_place(int T0, int W_, int H_, int sb){
     if(!hV073Page || !IsWindowVisible(hV073Page)) return;
     SetWindowPos(hV073Page,HWND_TOP,0,T0,W_,H_-sb,SWP_SHOWWINDOW);
+    if(hStatus) BringWindowToTop(hStatus);
     v073_sync_scroll(hV073Page); InvalidateRect(hV073Page,NULL,TRUE);
 }
 /* TrackMouseEvent so hover clears. Called from proc via WM_MOUSEMOVE first time — skip, simple hover is enough. */
