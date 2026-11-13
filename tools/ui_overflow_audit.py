@@ -255,7 +255,10 @@ def ellipsis_in_menu(im, path):
                 left = _label_left(union, e1)
                 width = e1 - left
                 # Sidebar/search text often merges to x=0; menu labels do not.
-                if e0 < left or left < 24 or width < 40 or width > 260:
+                # XP dark menu shots are full-window: a file-transfer card
+                # ("195 KB · BIN") measures 249-260px and is not truncated.
+                # Menu labels stay well under 250px.
+                if e0 < left or left < 24 or width < 40 or width >= 250:
                     continue
                 if e1 >= w - 12:
                     continue  # window-border AA, not a menu card
