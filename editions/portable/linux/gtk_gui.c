@@ -655,7 +655,7 @@ static void activate(GtkApplication *a, gpointer p){
       gtk_box_pack_start(GTK_BOX(root),v070_wrap(paned),TRUE,TRUE,0); gtk_box_pack_start(GTK_BOX(root),gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE,FALSE,0); gtk_box_pack_start(GTK_BOX(root),status_lbl,FALSE,FALSE,0); gtk_container_add(GTK_CONTAINER(win),root); }
     g_signal_connect(win,"delete-event",G_CALLBACK(on_delete),NULL); g_signal_connect(win,"focus-in-event",G_CALLBACK(clear_urgency),NULL); g_signal_connect(win,"key-press-event",G_CALLBACK(win_key),NULL); /* F10 opens the menu */
     setup_tray();
-    gtk_widget_show_all(win); v071_first_run(); refresh_list(); refresh_chat(); if(getenv("LSM_TEST_UPDCHECK")) g_timeout_add(1500,upd_test_start,NULL);
+    gtk_widget_show_all(win); v070_show_page("chats"); v070_sync_nav("chats"); v071_first_run(); refresh_list(); refresh_chat(); if(getenv("LSM_TEST_UPDCHECK")) g_timeout_add(1500,upd_test_start,NULL);
     g_timeout_add(200,poll_cb,NULL); }
 
 int main(int argc, char **argv){

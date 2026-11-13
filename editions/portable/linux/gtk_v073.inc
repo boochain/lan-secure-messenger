@@ -190,7 +190,7 @@ static void v073_fill_settings(GtkWidget *page){
     v073_add(sc,IC_DIAG,"诊断信息","连接与排障",A_DIAG);
     v073_add(sc,IC_INFO,"检查更新","查看是否有新版本",A_UPDATE);
     v073_add(sc,IC_INFO,"关于","版本与协议说明",A_ABOUT);
-    gtk_box_pack_start(GTK_BOX(page),sc,TRUE,TRUE,0); gtk_widget_show_all(page);
+    gtk_box_pack_start(GTK_BOX(page),sc,TRUE,TRUE,0); gtk_widget_show_all(sc);
 }
 static void v073_fill_profile(GtkWidget *page){
     char name[128]="", fp[80]="", b[200]; GtkWidget *head,*qa,*sc,*ini; const char *ch;
@@ -214,7 +214,7 @@ static void v073_fill_profile(GtkWidget *page){
     sc=v073_list();
     snprintf(b,sizeof b,"%s",fp); v073_add(sc,IC_LOCK,"指纹",b,0);
     snprintf(b,sizeof b,"版本 %s",LSM_APP_VERSION); v073_add(sc,IC_INFO,"版本",b,0);
-    gtk_box_pack_start(GTK_BOX(page),sc,TRUE,TRUE,0); gtk_widget_show_all(page);
+    gtk_box_pack_start(GTK_BOX(page),sc,TRUE,TRUE,0); gtk_widget_show_all(head); gtk_widget_show_all(sc);
 }
 static void v073_open_dm(GtkListBox *b, GtkListBoxRow *r, gpointer p){
     const char *fp=g_object_get_data(G_OBJECT(r),"fp"); (void)b;(void)p;
@@ -235,8 +235,8 @@ static void v073_fill_contacts(GtkWidget *page){
     }
     lsm_unlock(C);
     if(!n){ GtkWidget *e=gtk_label_new("还没有联系人。同一网段下运行本软件的设备会自动出现在这里。");
-        gtk_style_context_add_class(gtk_widget_get_style_context(e),"dim-label"); gtk_label_set_line_wrap(GTK_LABEL(e),TRUE); gtk_box_pack_start(GTK_BOX(page),e,FALSE,FALSE,8); }
-    gtk_box_pack_start(GTK_BOX(page),sc,TRUE,TRUE,0); gtk_widget_show_all(page);
+        gtk_style_context_add_class(gtk_widget_get_style_context(e),"dim-label"); gtk_label_set_line_wrap(GTK_LABEL(e),TRUE); gtk_box_pack_start(GTK_BOX(page),e,FALSE,FALSE,8); gtk_widget_show_all(e); }
+    gtk_box_pack_start(GTK_BOX(page),sc,TRUE,TRUE,0); gtk_widget_show_all(sc);
 }
 static void v073_fill_files(GtkWidget *page){
     char info[2048]=""; GtkWidget *sc;
@@ -245,20 +245,20 @@ static void v073_fill_files(GtkWidget *page){
     v073_add(sc,IC_STORAGE,"存储用量",info[0]?info:"（存储信息不可用）",A_STORAGE);
     v073_add(sc,IC_FOLDER,"接收文件夹","打开已下载的文件",A_DLDIR);
     v073_add(sc,IC_DOWNLOAD,"文件传输","查看进行中的发送和接收",A_XFERS);
-    gtk_box_pack_start(GTK_BOX(page),sc,TRUE,TRUE,0); gtk_widget_show_all(page);
+    gtk_box_pack_start(GTK_BOX(page),sc,TRUE,TRUE,0); gtk_widget_show_all(sc);
 }
 static void v073_fill_transfers(GtkWidget *page){
     GtkWidget *sc; v073_clear_body(page); sc=v073_list();
     v073_add(sc,IC_DOWNLOAD,"打开传输窗口","查看进行中的发送和接收",A_XFERS);
     v073_add(sc,IC_FOLDER,"接收文件夹","打开发布到本机的文件",A_DLDIR);
-    gtk_box_pack_start(GTK_BOX(page),sc,TRUE,TRUE,0); gtk_widget_show_all(page);
+    gtk_box_pack_start(GTK_BOX(page),sc,TRUE,TRUE,0); gtk_widget_show_all(sc);
 }
 static void v073_fill_groups(GtkWidget *page){
     GtkWidget *sc; v073_clear_body(page); sc=v073_list();
     v073_add(sc,IC_GROUP,"创建群组","从已信任的联系人中选择成员",A_GCREATE);
     v073_add(sc,IC_ADD,"邀请成员","向当前群组添加联系人",A_GINVITE);
     v073_add(sc,IC_TRASH,"退出群组","离开当前选中的群",A_GLEAVE);
-    gtk_box_pack_start(GTK_BOX(page),sc,TRUE,TRUE,0); gtk_widget_show_all(page);
+    gtk_box_pack_start(GTK_BOX(page),sc,TRUE,TRUE,0); gtk_widget_show_all(sc);
 }
 static GtkWidget *v073_menu_item(const char *label, int id){
     GtkWidget *i=gtk_menu_item_new(), *box=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,8), *l=gtk_label_new(label);

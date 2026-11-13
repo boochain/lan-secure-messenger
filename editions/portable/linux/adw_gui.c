@@ -779,7 +779,7 @@ static void activate(GtkApplication *a, gpointer p){
       adw_breakpoint_add_setter(bp,G_OBJECT(split),"collapsed",&v); g_value_unset(&v); adw_application_window_add_breakpoint(ADW_APPLICATION_WINDOW(win),bp); }
     adw_application_window_set_content(ADW_APPLICATION_WINDOW(win),v070_wrap(split)); (void)ov;
     load_window(); g_signal_connect(win,"close-request",G_CALLBACK(on_close),NULL);
-    gtk_window_present(GTK_WINDOW(win)); v071_first_run(); refresh_list(); refresh_chat(); g_signal_connect(win,"notify::is-active",G_CALLBACK(adw_active),NULL); if(getenv("LSM_TEST_UPDCHECK")) g_timeout_add(1500,upd_test_start,NULL);
+    gtk_window_present(GTK_WINDOW(win)); v070_show_page("chats"); v070_sync_nav("chats"); v071_first_run(); refresh_list(); refresh_chat(); g_signal_connect(win,"notify::is-active",G_CALLBACK(adw_active),NULL); if(getenv("LSM_TEST_UPDCHECK")) g_timeout_add(1500,upd_test_start,NULL);
     { const char *oc=getenv("LSM_OPEN_CONV"); if(oc) select_conv(oc); }
     { const char *ws=getenv("LSM_WINDOW_SIZE"); int w,h; if(ws && sscanf(ws,"%dx%d",&w,&h)==2) gtk_window_set_default_size(GTK_WINDOW(win),w,h); }  /* tests: fixed size beats window.ini */
     g_timeout_add(200,poll_cb,NULL); }
