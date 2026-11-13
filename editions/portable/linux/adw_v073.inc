@@ -63,8 +63,9 @@ static GdkPixbuf *v073_pixbuf(int k, int px, int tile){
         else cairo_set_source_rgb(cr,0xDB/255.0,0xE9/255.0,0xFA/255.0);
         cairo_move_to(cr,r,0); cairo_arc(cr,px-r,r,r,-G_PI/2,0); cairo_arc(cr,px-r,px-r,r,0,G_PI/2);
         cairo_arc(cr,r,px-r,r,G_PI/2,G_PI); cairo_arc(cr,r,r,r,G_PI,3*G_PI/2); cairo_close_path(cr); cairo_fill(cr);
-        if(dark) cairo_set_source_rgb(cr,0x81/255.0,0xD0/255.0,1);
-        else cairo_set_source_rgb(cr,0x04/255.0,0x61/255.0,0xBE/255.0);
+        /* primary fg on the tile: tilefg+AA measured 4.30:1 / Lc 57.9 and failed the audit */
+        if(dark) cairo_set_source_rgb(cr,1,1,1);
+        else cairo_set_source_rgb(cr,0x32/255.0,0x32/255.0,0x35/255.0);
     }else{
         if(dark) cairo_set_source_rgb(cr,0x81/255.0,0xD0/255.0,1);
         else cairo_set_source_rgb(cr,0x04/255.0,0x61/255.0,0xBE/255.0);

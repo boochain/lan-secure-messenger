@@ -102,5 +102,7 @@ progressbar.xfer.paused > trough > progress { background-color: @lsm_fg2; }
 }
 
 /* v0.7.3 icon-led rows: tile colours already defined as @lsm_tile / @lsm_tilefg */
-.lsm-icon-tile { background-color: @lsm_tile; color: @lsm_tilefg; border-radius: 12px; min-width: 36px; min-height: 36px; }
+.lsm-icon-tile { background-color: @lsm_tile; color: @lsm_fg; border-radius: 12px; min-width: 36px; min-height: 36px; }
 .lsm-qa-btn { padding: 4px 8px; }
+/* AdwActionRow default subtitle is ~#8C8C8E and fails APCA/WCAG; use the palette secondary token. */
+row .subtitle, preferencesgroup > .description, preferencesgroup .description { color: @lsm_fg2; opacity: 1; }

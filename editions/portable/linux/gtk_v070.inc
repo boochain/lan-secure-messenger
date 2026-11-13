@@ -178,6 +178,6 @@ static GtkWidget *v070_wrap(GtkWidget *chats){
         g_object_set_data(G_OBJECT(peer_list),"v070-gesture",g);
     }
     v073_enhance(contacts,groups,xfers,files,settings,profile,diag);
-    v070_sync_nav("chats");
+    v070_show_page("chats"); v070_sync_nav("chats");
     return outer;
 }

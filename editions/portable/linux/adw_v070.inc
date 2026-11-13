@@ -142,6 +142,6 @@ static GtkWidget *v070_wrap(GtkWidget *chats){
     if(conv_list){ g=gtk_gesture_click_new(); gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(g),GDK_BUTTON_SECONDARY);
         g_signal_connect(g,"released",G_CALLBACK(v070_released),NULL); gtk_widget_add_controller(conv_list,GTK_EVENT_CONTROLLER(g)); }
     v073_enhance(contacts,groups,xfers,files,settings,profile,diag);
-    v070_sync_nav("chats");
+    v070_show_page("chats"); v070_sync_nav("chats");
     return outer;
 }

@@ -318,7 +318,7 @@ for th in ("light", "dark"):
         time.sleep(0.5)
         # Device-mode installs have no key yet; switching to account mode generates one and opens the page.
         if find(lambda n: (n.get("text") or "").startswith("设备模式")):
-            tap_text("设备模式（点按切换为账号模式）", timeout=15)
+            tap_text("设备模式", timeout=15)
         elif not on_recovery_page():
             tap_text("恢复密钥", timeout=15)
         if not ui_seed.wait(on_recovery_page, 15, 1):
