@@ -184,7 +184,7 @@ fun IconTile(@DrawableRes icon: Int, desc: String? = null, bg: Color = LocalPale
 
 /** Telegram-style profile / chat-info quick action: icon tile with a short caption underneath. */
 @Composable
-fun ActionIcon(@DrawableRes icon: Int, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun ActionIcon(@DrawableRes icon: Int, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val p = LocalPalette.current
     Column(modifier.width(72.dp).clickable(onClick = onClick).padding(vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         IconTile(icon, label)
@@ -194,7 +194,7 @@ fun ActionIcon(@DrawableRes icon: Int, label: String, onClick: () -> Unit, modif
 }
 
 @Composable
-fun SettingRow(@DrawableRes icon: Int, title: String, sub: String? = null, click: (() -> Unit)? = null, bg: Color = LocalPalette.current.tile, fg: Color = LocalPalette.current.tileFg) {
+fun SettingRow(@DrawableRes icon: Int, title: String, sub: String? = null, bg: Color = LocalPalette.current.tile, fg: Color = LocalPalette.current.tileFg, click: (() -> Unit)? = null) {
     val p = LocalPalette.current
     Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).ifThen(click != null) { clickable { click!!() } }.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         IconTile(icon, null, bg, fg)

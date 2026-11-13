@@ -803,9 +803,9 @@ static void refresh_caption(void);
 #include "xp_v070.inc"
 #include "xp_v071.inc"
 #include "xp_v072.inc"
-#include "xp_v073.inc"
 static void select_conv(int s);
 #include "xp_ux.inc"
+#include "xp_v073.inc"
 static void do_command(int id){
     char err[256]="", u8[2048]; prompt_t p; memset(&p,0,sizeof p);
     switch(id){

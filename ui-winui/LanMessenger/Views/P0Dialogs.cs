@@ -84,7 +84,7 @@ internal static class P0Dialogs
         var sp = new StackPanel { Spacing = 6, HorizontalAlignment = HorizontalAlignment.Center };
         sp.Children.Add(tile);
         sp.Children.Add(new TextBlock { Text = label, Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"], HorizontalAlignment = HorizontalAlignment.Center });
-        var b = new Button { Content = sp, Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent), BorderThickness = new Thickness(0), Padding = new Thickness(8, 4) };
+        var b = new Button { Content = sp, Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent), BorderThickness = new Thickness(0), Padding = new Thickness(8, 4, 8, 4) };
         if (Application.Current.Resources.TryGetValue("LsmActionButtonStyle", out var st) && st is Style style) b.Style = style;
         b.Click += click;
         return b;
