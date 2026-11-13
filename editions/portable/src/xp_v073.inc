@@ -7,7 +7,7 @@ static HWND hV073Page;
 static char v073_kind[32];
 typedef struct { int icon, id, qa; RECT rc; wchar_t title[48], sub[200]; char fp[72]; } v073_row;
 static v073_row v073_rows[28];
-static int v073_n, v073_hit;
+static int v073_n, v073_hit, v073_scroll;
 static void v073_glyph(HDC dc, RECT r, int k, COLORREF fg){
     HPEN pn=CreatePen(PS_SOLID, scale_px(2)>1?scale_px(2):2, fg); HGDIOBJ op=SelectObject(dc,pn), ob=SelectObject(dc,GetStockObject(NULL_BRUSH));
     int x=r.left, y=r.top, w=r.right-r.left, h=r.bottom-r.top;
@@ -58,7 +58,7 @@ static void v073_add(int icon, const wchar_t *title, const wchar_t *sub, int id)
     v073_n++;
 }
 static void v073_fill(const char *name){
-    v073_n=0; v073_hit=-1; snprintf(v073_kind,sizeof v073_kind,"%s",name);
+    v073_n=0; v073_hit=-1; v073_scroll=0; snprintf(v073_kind,sizeof v073_kind,"%s",name);
     if(!strcmp(name,"settings")){
         char host[256]="", subu[200]; wchar_t sub[200]; int en=0,port=0,hp=0; const char *cur=lsm_account_mode(C);
         v073_add(IC_PERSON,L"个人资料",L"名称、指纹、头像与二维码",IDM_PROFILE);
@@ -127,6 +127,19 @@ static void v073_click_id(int id, int idx){
     if(id<=-20){ const char *fp=v073_rows[idx].fp; if(fp[0]){ snprintf(cur_conv,sizeof cur_conv,"dm:%s",fp); v070_show_page("chats"); refresh_list(); refresh_chat(); } return; }
     if(id>0) SendMessageW(hMain,WM_COMMAND,(WPARAM)id,0);
 }
+static int v073_content_h(void){ return scale_px(44)+v073_n*scale_px(60)+scale_px(16); }
+static void v073_sync_scroll(HWND h){
+    RECT cr; SCROLLINFO si; int maxs, page;
+    if(!h) return; GetClientRect(h,&cr); page=cr.bottom>0?cr.bottom:1;
+    maxs=v073_content_h()-page; if(maxs<0) maxs=0;
+    if(v073_scroll<0) v073_scroll=0; if(v073_scroll>maxs) v073_scroll=maxs;
+    memset(&si,0,sizeof si); si.cbSize=sizeof si; si.fMask=SIF_RANGE|SIF_PAGE|SIF_POS;
+    si.nMin=0; si.nMax=v073_content_h()>0?v073_content_h()-1:0; si.nPage=(UINT)page; si.nPos=v073_scroll;
+    SetScrollInfo(h,SB_VERT,&si,TRUE);
+}
+static void v073_scroll_by(HWND h, int delta){
+    v073_scroll+=delta; v073_sync_scroll(h); InvalidateRect(h,NULL,TRUE);
+}
 static LRESULT CALLBACK v073_proc(HWND h, UINT m, WPARAM w, LPARAM l){
     if(m==WM_PAINT){
         PAINTSTRUCT ps; HDC dc=BeginPaint(h,&ps); RECT cr,r; int i, y, row_h=scale_px(60), tile=scale_px(36), pad=scale_px(16);
@@ -141,7 +154,8 @@ static LRESULT CALLBACK v073_proc(HWND h, UINT m, WPARAM w, LPARAM l){
         else if(!strcmp(v073_kind,"contacts")) title=L"联系人";
         r=cr; r.left=pad; r.top=scale_px(10); r.bottom=r.top+scale_px(28); r.right=cr.right-pad;
         SetTextColor(dc,T.text_primary); SelectObject(dc,fBodyStrong); DrawTextW(dc,title,-1,&r,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX);
-        y=scale_px(44);
+        v073_sync_scroll(h);
+        y=scale_px(44)-v073_scroll;
         for(i=0;i<v073_n;i++){
             RECT tr, sr, ir;
             v073_rows[i].rc.left=0; v073_rows[i].rc.right=cr.right; v073_rows[i].rc.top=y; v073_rows[i].rc.bottom=y+row_h;
@@ -166,6 +180,20 @@ static LRESULT CALLBACK v073_proc(HWND h, UINT m, WPARAM w, LPARAM l){
         return 0;
     }
     if(m==WM_MOUSELEAVE){ v073_hit=-1; InvalidateRect(h,NULL,FALSE); return 0; }
+    if(m==WM_VSCROLL){
+        int n=v073_scroll, page; RECT cr; GetClientRect(h,&cr); page=cr.bottom>0?cr.bottom:1;
+        switch(LOWORD(w)){
+        case SB_LINEUP: n-=scale_px(20); break;
+        case SB_LINEDOWN: n+=scale_px(20); break;
+        case SB_PAGEUP: n-=page; break;
+        case SB_PAGEDOWN: n+=page; break;
+        case SB_THUMBTRACK: case SB_THUMBPOSITION: n=(int)HIWORD(w); break;
+        default: return 0;
+        }
+        v073_scroll_by(h, n-v073_scroll); return 0;
+    }
+    if(m==WM_MOUSEWHEEL){ short d=(short)HIWORD(w); v073_scroll_by(h, -(int)d*scale_px(20)/120); return 0; }
+    if(m==WM_SIZE){ v073_sync_scroll(h); return 0; }
     if(m==WM_ERASEBKGND){ RECT r; GetClientRect(h,&r); FillRect((HDC)w,&r,brWin); return 1; }
     return DefWindowProcW(h,m,w,l);
 }
@@ -173,7 +201,7 @@ static void v073_ensure(void){
     static int reg; WNDCLASSEXW wc;
     if(hV073Page) return;
     if(!reg){ memset(&wc,0,sizeof wc); wc.cbSize=sizeof wc; wc.lpfnWndProc=v073_proc; wc.hInstance=hInst; wc.lpszClassName=L"LsmIconPage"; wc.hCursor=LoadCursor(NULL,IDC_HAND); wc.hbrBackground=brWin; RegisterClassExW(&wc); reg=1; }
-    hV073Page=CreateWindowExW(0,L"LsmIconPage",L"",WS_CHILD,0,0,0,0,hMain,(HMENU)(INT_PTR)498,hInst,NULL);
+    hV073Page=CreateWindowExW(0,L"LsmIconPage",L"",WS_CHILD|WS_VSCROLL,0,0,0,0,hMain,(HMENU)(INT_PTR)498,hInst,NULL);
 }
 static int v073_uses(const char *name){
     return !strcmp(name,"settings")||!strcmp(name,"profile")||!strcmp(name,"files")||!strcmp(name,"transfers")||!strcmp(name,"groups")||!strcmp(name,"contacts");
@@ -187,6 +215,7 @@ static void v073_on_show(const char *name){
 static void v073_place(int T0, int W_, int H_, int sb){
     if(!hV073Page || !IsWindowVisible(hV073Page)) return;
     SetWindowPos(hV073Page,HWND_TOP,0,T0,W_,H_-sb,SWP_SHOWWINDOW);
+    v073_sync_scroll(hV073Page); InvalidateRect(hV073Page,NULL,TRUE);
 }
 /* TrackMouseEvent so hover clears. Called from proc via WM_MOUSEMOVE first time — skip, simple hover is enough. */
 

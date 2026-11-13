@@ -48,10 +48,17 @@ static void v070_place_overlay(int T0, int W_, int H_, int sb){
     HWND show[]={hReconnect,hAdd,hSearch,hList,hTitle,hChat,hFile,hInput,hMic,hSend};
     int i, on=strcmp(v070_page,"chats") && ((hV070Page && IsWindowVisible(hV070Page)) || v073_page_visible());
     if(on){
+        /* v0.7.3 icon pages live on hV073Page. Do not re-show the empty
+         * v0.7.0 static overlay on top of them (SWP_SHOWWINDOW was covering
+         * settings/profile/files/transfers/groups/contacts). */
         for(i=0;i<(int)(sizeof chrome/sizeof chrome[0]);i++) if(chrome[i]) ShowWindow(chrome[i],SW_HIDE);
-        SetWindowPos(hV070Page,HWND_TOP,0,T0,W_,H_-sb,SWP_SHOWWINDOW);
-        ShowScrollBar(hV070Page,SB_BOTH,FALSE);
-        v073_place(T0,W_,H_,sb);
+        if(v073_page_visible()){
+            if(hV070Page) ShowWindow(hV070Page,SW_HIDE);
+            v073_place(T0,W_,H_,sb);
+        }else if(hV070Page){
+            SetWindowPos(hV070Page,HWND_TOP,0,T0,W_,H_-sb,SWP_SHOWWINDOW);
+            ShowScrollBar(hV070Page,SB_BOTH,FALSE);
+        }
     }else{
         for(i=0;i<(int)(sizeof show/sizeof show[0]);i++) if(show[i]) ShowWindow(show[i],SW_SHOW);
     }
