@@ -134,7 +134,9 @@ Hello 的 bincode 后面可以有可选的 `caps: u32` 小端。没有这段就�
 
 接收方：发送者未信任、超过大小限制、或群不存在 / 发送者不是成员 → `FileReject`。否则 `FileAccept`，写入 `.part`。
 
-发送方：32 KiB 一块 `FileChunk`，连续偏移。未确认数据超过 4 MiB 就等 `FileProgress`，30 秒超时，然后 `FileEnd`。接收方偏移不连续就失败；每 256 KiB 以及结束时报进度；`FileEnd` 时核对大小和 SHA-256，改名到下载目录，回 `FileComplete`。任一方 `FileCancel` 都中止。
+发送方：60 KiB 一块 `FileChunk`（`CHUNK = 60*1024`），连续偏移。未确认数据超过 16 MiB 就等 `FileProgress`，45 秒无进展就超时，然后发 `FileEnd`。接收方偏移不连续就失败；每 256 KiB 以及结束时报进度；`FileEnd` 时核对大小和 SHA-256，改名到下载目录，回 `FileComplete`。任一方 `FileCancel` 都中止。
+
+`FileComplete` 丢了的时候，发送方在校验状态最多再发 4 次 `FileEnd`（间隔 8 秒），然后失败，原文是「对方未确认文件已收完」。接收方如果已经收完，再收到 `FileEnd` 就再回一次 `FileComplete`。C 核心在同一线程里先写入数据块再处理 `FileEnd`，字节没到齐就直接失败，不要把它改成异步等待。Rust 会记下 `end_seen`，等字节到齐再进入校验。两边都在 `lan-core/src/engine/files.rs` 和 `editions/portable/src/core.c`。
 
 断线后续传（双方都有 `CAP_RESUME`）：
 
@@ -147,7 +149,7 @@ Hello 的 bincode 后面可以有可选的 `caps: u32` 小端。没有这段就�
 
 接收方的 `.part` 旁边有 `<part>.resume`，发送方在 `<data>/outgoing/<tid>.out`。格式在 `docs/protocol.md` 8.1。启动时重新哈希 `.part` 得到偏移，这不在网络线程上做。超过 30 天的残留删掉。源文件大小或 mtime 变了，发送失败，原文是「源文件已更改」。
 
-文件传输如果停在「正在校验 0/大小」这一类状态，先读 `lan-core/src/engine/files.rs` 和 `editions/portable/src/core.c` 里 `FileEnd` / `FileComplete` 的时序，不要新造一套状态。接收方在 `transferred` 还没更新时就进入校验，或 `FileComplete` 丢了，都会表现为 0 字节校验。
+文件传输如果停在「正在校验 0/大小」，先看是不是 `FileEnd` 比最后一块先到，或 `FileComplete` 丢了。上面的重发已经接在现有状态上。不要再新造一套传输状态。
 
 ## 9. 群
 

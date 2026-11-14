@@ -155,9 +155,11 @@ A frame that needs a capability is only ever sent to a peer that announced it.
 * Receiver: rejects (`FileReject`) if the sender is not trusted, the size exceeds its limit,
   or the group is unknown/sender is not a member; otherwise `FileAccept` (auto-accept
   default on) and writes to a `.part` file.
-* Sender streams `FileChunk` of 32 KiB (`CHUNK = 32*1024`) at increasing contiguous
-  offsets, keeping at most 4 MiB unacknowledged (`offset - received > 4 MiB` ⇒ wait for
-  `FileProgress`, 30 s timeout), then `FileEnd`.
+* Sender streams `FileChunk` of 60 KiB (`CHUNK = 60*1024`, was 32 KiB) at increasing contiguous
+  offsets, keeping at most 16 MiB unacknowledged (`offset - received > 16 MiB` ⇒ wait for
+  `FileProgress`, 45 s timeout), then `FileEnd`. If `FileComplete` does not arrive, the sender
+  resends `FileEnd` up to 4 times, 8 s apart, then fails with 「对方未确认文件已收完」.
+  A receiver that is already done answers a repeated `FileEnd` with another `FileComplete`.
 * Receiver: out-of-order offset ⇒ fail. Sends `FileProgress{received}` every 256 KiB and at
   the end; on `FileEnd` checks size + SHA-256, renames to a unique name in the download dir,
   replies `FileComplete{ok, error}`.
