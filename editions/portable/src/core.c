@@ -1355,16 +1355,16 @@ void lsm_transfer_status(lsm_core *c, lsm_transfer *t, char *out, size_t n){
     case TS_OFFERED: st=t->error[0]?"连接中断，等待重连后续传":(t->out?"等待对方接受":"等待接收"); break;
     case TS_ACTIVE: st=t->hashing==1?"计算校验（核对续传位置）":t->hashing==2?"核对已收部分":t->resumed_from>0?"续传中":"传输中"; break;
     case TS_VERIFYING: st="校验中"; break;
-    case TS_DONE: snprintf(out,n,"完成 · %s",(fmt_bytes(t->size,a,sizeof a),a)); return;
+    case TS_DONE: snprintf(out,n,"完成 / %s",(fmt_bytes(t->size,a,sizeof a),a)); return;
     case TS_REJECTED: snprintf(out,n,"已拒收%s%s",t->error[0]?"：":"",t->error); return;
     case TS_CANCELLED: snprintf(out,n,"已取消"); return;
     default: snprintf(out,n,"失败：%s",t->error[0]?t->error:"未知原因"); return; }
     fmt_bytes(t->transferred,a,sizeof a); fmt_bytes(t->size,b,sizeof b);
-    if(t->state!=TS_ACTIVE || t->hashing){ snprintf(out,n,"%s%s%s",st,path[0]?" · ":"",path); if(t->state==TS_OFFERED && t->transferred){ size_t l=strlen(out); snprintf(out+l,n-l," · 已传 %s/%s (%d%%)",a,b,pct); } return; }
+    if(t->state!=TS_ACTIVE || t->hashing){ snprintf(out,n,"%s%s%s",st,path[0]?" / ":"",path); if(t->state==TS_OFFERED && t->transferred){ size_t l=strlen(out); snprintf(out+l,n-l," / 已传 %s/%s (%d%%)",a,b,pct); } return; }
     fmt_bytes(t->rate_bps,r,sizeof r);
-    if(t->rate_bps && t->size>t->transferred){ uint64_t s=(t->size-t->transferred)/t->rate_bps; if(s>=3600) snprintf(eta,sizeof eta," · 剩余 %uh%02um",(unsigned)(s/3600),(unsigned)(s%3600/60)); else if(s>=60) snprintf(eta,sizeof eta," · 剩余 %um%02us",(unsigned)(s/60),(unsigned)(s%60)); else snprintf(eta,sizeof eta," · 剩余 %us",(unsigned)s); }
-    if(t->out) snprintf(out,n,"%s %d%% · %s/%s%s%s",st,pct,a,b,path[0]?" · ":"",path);
-    else snprintf(out,n,"%s %d%% · %s/%s · %s/s%s%s%s",st,pct,a,b,t->rate_bps?r:"--",eta,path[0]?" · ":"",path); }
+    if(t->rate_bps && t->size>t->transferred){ uint64_t s=(t->size-t->transferred)/t->rate_bps; if(s>=3600) snprintf(eta,sizeof eta," / 剩余 %uh%02um",(unsigned)(s/3600),(unsigned)(s%3600/60)); else if(s>=60) snprintf(eta,sizeof eta," / 剩余 %um%02us",(unsigned)(s/60),(unsigned)(s%60)); else snprintf(eta,sizeof eta," / 剩余 %us",(unsigned)s); }
+    if(t->out) snprintf(out,n,"%s %d%% / %s/%s%s%s",st,pct,a,b,path[0]?" / ":"",path);
+    else snprintf(out,n,"%s %d%% / %s/%s / %s/s%s%s%s",st,pct,a,b,t->rate_bps?r:"--",eta,path[0]?" / ":"",path); }
 int lsm_mark_read(lsm_core *c, const char *conv){ int i, n=0; buf_t p={0}, f={0}; uint8_t id[16];
     mu_lock(&c->mu);
     /* group the unread incoming ids by sender, one Read receipt per sender */
