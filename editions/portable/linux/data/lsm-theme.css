@@ -81,6 +81,24 @@ decoration, window.solid-csd decoration, window.csd decoration { background-colo
 menu, .menu, .context-menu, window.popup menu { border: 1px solid #E5E5E5; }
 progressbar trough { background-color: #E5E5E5; border: none; min-height: 4px; }
 progressbar progress { background-color: #005FB8; border: none; min-height: 4px; }
+/* unchecked Adwaita check is #B8B8B8 on white (1.96:1). Draw a 2px on-surface box instead. */
+check, radio {
+  -gtk-icon-source: none;
+  background-image: none;
+  background-color: #FFFFFF;
+  color: #1A1A1A;
+  border: 2px solid #1A1A1A;
+  box-shadow: none;
+  min-width: 14px;
+  min-height: 14px;
+  border-radius: 2px;
+}
+check:checked, radio:checked {
+  -gtk-icon-source: -gtk-icontheme("object-select-symbolic");
+  background-color: #005FB8;
+  border-color: #005FB8;
+  color: #FFFFFF;
+}
 scrolledwindow viewport, scrolledwindow list, scrolledwindow list row { background-color: #FBFBFB; color: #1A1A1A; }
 dialog scrolledwindow, filechooser scrolledwindow, filechooser placessidebar { border: 1px solid #E5E5E5; }
 dialog .dialog-action-area, dialog buttonbox, filechooser actionbar, dialog > box > box:last-child { border-top: 1px solid #E5E5E5; }
@@ -162,6 +180,23 @@ decoration, window.solid-csd decoration, window.csd decoration { background-colo
 menu, .menu, .context-menu, window.popup menu { border: 1px solid #323232; }
 progressbar trough { background-color: #323232; border: none; min-height: 4px; }
 progressbar progress { background-color: #60CDFF; border: none; min-height: 4px; }
+check, radio {
+  -gtk-icon-source: none;
+  background-image: none;
+  background-color: #1F1F1F;
+  color: #FFFFFF;
+  border: 2px solid #FFFFFF;
+  box-shadow: none;
+  min-width: 14px;
+  min-height: 14px;
+  border-radius: 2px;
+}
+check:checked, radio:checked {
+  -gtk-icon-source: -gtk-icontheme("object-select-symbolic");
+  background-color: #60CDFF;
+  border-color: #60CDFF;
+  color: #000000;
+}
 scrolledwindow viewport, scrolledwindow list, scrolledwindow list row { background-color: #2B2B2B; color: #FFFFFF; }
 dialog scrolledwindow, filechooser scrolledwindow, filechooser placessidebar { border: 1px solid #323232; }
 dialog .dialog-action-area, dialog buttonbox, filechooser actionbar, dialog > box > box:last-child { border-top: 1px solid #323232; }

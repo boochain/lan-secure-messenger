@@ -127,21 +127,15 @@ for th in a.themes.split(","):
     x("mousemove", "--window", wid, "22", "20"); x("click", "1"); time.sleep(1.2); x("type", "bad address"); x("key", "Return"); time.sleep(1.5); shot(f"{th}-10-error"); x("key", "Return"); time.sleep(0.5); x("key", "Escape"); time.sleep(0.8)
     # tooltip on the header-bar + button
     x("mousemove", "--window", wid, "56", "18"); time.sleep(0.3); x("mousemove", "--window", wid, "58", "20"); time.sleep(2.5); shot(f"{th}-11-tooltip"); x("mousemove", "--window", wid, "500", "400"); time.sleep(0.5)
-    # transfers dialog: menu, last-but-6 entry -> use keyboard: F10 then Up x6
+    # 文件传输 is three menus deep (更多 → 文件与系统). Counting Up/Down opened
+    # 「显示恢复密钥」 instead; that dialog's unchecked box was the 1.96:1 failure.
+    x("key", "ctrl+shift+x"); time.sleep(1.5)
+    shot(f"{th}-05-transfers")
+    x("key", "Escape"); time.sleep(0.8)
     def menu_up(n):
         x("key", "F10"); time.sleep(0.8)
         for _ in range(n): x("key", "Up"); time.sleep(0.05)
         x("key", "Return"); time.sleep(1.5)
-    # 文件传输 is inside 「工具与资料」(Up×3 from 按 IP 添加, then Down×2 in the submenu)
-    x("key", "F10"); time.sleep(0.8)
-    for _ in range(3):
-        x("key", "Up"); time.sleep(0.08)
-    x("key", "Return"); time.sleep(0.5)
-    for _ in range(2):
-        x("key", "Down"); time.sleep(0.08)
-    x("key", "Return"); time.sleep(1.5)
-    shot(f"{th}-05-transfers")
-    x("key", "Escape"); time.sleep(0.8)
     menu_up(2); shot(f"{th}-06-about"); x("key", "Return"); time.sleep(0.8)
     # PIN offer dialog: F10 highlights 「按 IP 添加」; 生成 PIN is the 8th item → Down x7
     x("key", "F10"); time.sleep(0.8)

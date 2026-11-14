@@ -582,6 +582,7 @@ static gboolean win_key(GtkWidget *w, GdkEventKey *ev, gpointer p){ (void)w; (vo
     if(ev->keyval==GDK_KEY_F10){ gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(menu_btn),TRUE); return TRUE; }
     if(getenv("LSM_UI_TEST")){
         if((ev->state&GDK_CONTROL_MASK)&&(ev->state&GDK_SHIFT_MASK)&&(ev->keyval==GDK_KEY_T||ev->keyval==GDK_KEY_t)){ uitest_click_trust(); return TRUE; } /* 信任当前联系人 */
+        if((ev->state&GDK_CONTROL_MASK)&&(ev->state&GDK_SHIFT_MASK)&&(ev->keyval==GDK_KEY_X||ev->keyval==GDK_KEY_x)){ show_transfers(); return TRUE; } /* 文件传输：菜单在「更多 → 文件与系统」里，计数会点到恢复密钥 */
         if(ev->keyval==GDK_KEY_F6){ test_open_last_image(); return TRUE; }
         if(ev->keyval==GDK_KEY_F7){ if(ev->state&GDK_SHIFT_MASK) v072_shot_recovery(); else v071_shot_first_run(); return TRUE; }
         if(ev->keyval==GDK_KEY_F8){
