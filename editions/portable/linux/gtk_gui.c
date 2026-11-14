@@ -425,7 +425,7 @@ static void show_transfers(void){
     lsm_transfer *t; int n,i; static const char *TS[]={"等待接收","传输中","校验中","完成","失败","已拒收","已取消"};
     lsm_lock(C); n=lsm_transfers(C,&t);
     for(i=0;i<n;i++){ char l[1200]; GtkWidget *v=gtk_box_new(GTK_ORIENTATION_VERTICAL,4), *a=gtk_label_new(NULL), *pb=gtk_progress_bar_new(); gchar *e=g_markup_escape_text(t[i].name,-1);
-        { char st[256]; gchar *se; lsm_transfer_status(C,&t[i],st,sizeof st); se=g_markup_escape_text(st,-1); snprintf(l,sizeof l,"<b>%s %s</b>   <small>%s</small>",t[i].out?"↑":"↓",e,se); g_free(se); } g_free(e);
+        { char st[256]; gchar *se; lsm_transfer_status(C,&t[i],st,sizeof st); se=g_markup_escape_text(st,-1); snprintf(l,sizeof l,"<b>%s %s</b>   <small>%s</small>",t[i].out?"发出":"收到",e,se); g_free(se); } g_free(e);
         gtk_label_set_markup(GTK_LABEL(a),l); gtk_label_set_xalign(GTK_LABEL(a),0); gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(pb),t[i].size?(double)t[i].transferred/t[i].size:(t[i].state==TS_DONE?1:0));
         gtk_box_pack_start(GTK_BOX(v),a,FALSE,FALSE,0); gtk_box_pack_start(GTK_BOX(v),pb,FALSE,FALSE,0); gtk_widget_set_margin_start(v,10); gtk_widget_set_margin_end(v,10); gtk_widget_set_margin_top(v,8); gtk_widget_set_margin_bottom(v,8); gtk_list_box_insert(GTK_LIST_BOX(lb),v,-1); }
     lsm_unlock(C);
@@ -574,7 +574,7 @@ static void uitest_walk(GtkWidget *w, int *hit){
     if(GTK_IS_CONTAINER(w)){ GList *ch=gtk_container_get_children(GTK_CONTAINER(w)), *l; for(l=ch;l;l=l->next) uitest_walk(l->data, hit); g_list_free(ch); }
 }
 static void uitest_click_trust(void){
-    GtkWidget *menu=menu_btn?gtk_menu_button_get_popup(GTK_MENU_BUTTON(menu_btn)):NULL; int hit=0;
+    GtkWidget *menu=menu_btn?(GtkWidget*)gtk_menu_button_get_popup(GTK_MENU_BUTTON(menu_btn)):NULL; int hit=0;
     if(menu) uitest_walk(menu, &hit);
     if(!hit){ fprintf(stderr,"UITEST trust miss\n"); fflush(stderr); }
 }
