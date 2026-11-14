@@ -130,6 +130,8 @@ jobs:
           make build/x86/LanMessenger.exe
           (cd reference/v0.5 && cargo build --release -p lan-daemon -p lan-cli) && (cd $GITHUB_WORKSPACE && cargo build --release -p lan-daemon -p lan-cli)
       - name: Linux GTK screenshots (every screen, light + dark)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python3 tests/linux_gui_shots.py --rust-bin reference/v0.5/target/release --gui build/linux-rel/lan-messenger-gtk --out shots/linux
       - name: XP Win32 screenshots under wine (every screen, light + dark)
         run: bash tests/xp_ui_shots.sh reference/v0.5/target/release shots/xp

@@ -493,7 +493,7 @@ static void act(GtkWidget *w, gpointer p){ int id=GPOINTER_TO_INT(p); char err[2
     case A_CLEAR: if(cur_conv[0] && confirm("清空聊天记录？","将删除本机上与此会话的全部聊天记录（对方仍保留）。此操作无法撤销。","清空")){ lsm_clear_conversation(C,cur_conv); list_dirty=chat_dirty=1; } break;
     case A_DIAG: { size_t need=lsm_diagnostics(C,NULL,0); char *d=g_malloc(need+1); lsm_diagnostics(C,d,need+1); msgbox(GTK_MESSAGE_INFO,"%s",d); g_free(d); break; }
     case A_UPDATE: upd_start(upd_show); break;
-    case A_TRUST: case A_UNTRUST: case A_BLOCK: { const char *fp=sel_peer(); if(fp){ lsm_set_trust(C,fp,id==A_TRUST?TRUST_TRUSTED:id==A_BLOCK?TRUST_BLOCKED:TRUST_UNKNOWN,err); list_dirty=chat_dirty=1; } break; }
+    case A_TRUST: case A_UNTRUST: case A_BLOCK: { const char *fp=sel_peer(); if(fp){ lsm_set_trust(C,fp,id==A_TRUST?TRUST_TRUSTED:id==A_BLOCK?TRUST_BLOCKED:TRUST_UNKNOWN,err); if(id==A_TRUST && getenv("LSM_UI_TEST")){ fprintf(stderr,"UITEST trust ok %s\n",fp); fflush(stderr); } list_dirty=chat_dirty=1; } break; }
     case A_PINOFFER: { char pin[8], mk[256]; GtkWidget *d; lsm_pin_offer(C,pin); d=gtk_message_dialog_new(GTK_WINDOW(win),GTK_DIALOG_MODAL,GTK_MESSAGE_INFO,GTK_BUTTONS_OK,"请把下面的 PIN 告诉对方");
         snprintf(mk,sizeof mk,"<span size='21504' weight='600' font_family='monospace'>%s</span>\n\n让对方在“输入 PIN 配对”中输入（5 分钟内有效）。",pin); gtk_message_dialog_format_secondary_markup(GTK_MESSAGE_DIALOG(d),"%s",mk); gtk_window_set_title(GTK_WINDOW(d),"PIN 配对"); gtk_dialog_run(GTK_DIALOG(d)); gtk_widget_destroy(d); break; }
     case A_PINPAIR: { const char *fp=sel_peer(); char *s; if(fp && (s=ask_text("输入 PIN 配对","输入对方显示的 6 位 PIN：",""))){ if(lsm_pin_pair(C,fp,s,err)) msgbox(GTK_MESSAGE_WARNING,"%s",err); g_free(s);} break; }
@@ -561,9 +561,27 @@ static void load_theme_css(void){ /* shared block + the light or dark block of t
 static void on_dark_changed(GObject *o, GParamSpec *ps, gpointer p){ (void)o; (void)ps; (void)p; load_theme_css(); }
 
 static GtkWidget *menu_btn;
+/* LSM_UI_TEST: activate the real menu item 「信任当前联系人」(当前联系人 submenu), not a Down-count. */
+static void uitest_walk(GtkWidget *w, int *hit){
+    if(!w || *hit) return;
+    if(GTK_IS_MENU_ITEM(w)){
+        GtkWidget *sub=gtk_menu_item_get_submenu(GTK_MENU_ITEM(w));
+        if(sub){ uitest_walk(sub, hit); return; }
+        if(GTK_IS_BIN(w)){ GtkWidget *c=gtk_bin_get_child(GTK_BIN(w));
+            if(GTK_IS_LABEL(c)){ const char *t=gtk_label_get_text(GTK_LABEL(c));
+                if(t && !strcmp(t,"信任当前联系人")){ gtk_menu_item_activate(GTK_MENU_ITEM(w)); *hit=1; } } }
+        return; }
+    if(GTK_IS_CONTAINER(w)){ GList *ch=gtk_container_get_children(GTK_CONTAINER(w)), *l; for(l=ch;l;l=l->next) uitest_walk(l->data, hit); g_list_free(ch); }
+}
+static void uitest_click_trust(void){
+    GtkWidget *menu=menu_btn?gtk_menu_button_get_popup(GTK_MENU_BUTTON(menu_btn)):NULL; int hit=0;
+    if(menu) uitest_walk(menu, &hit);
+    if(!hit){ fprintf(stderr,"UITEST trust miss\n"); fflush(stderr); }
+}
 static gboolean win_key(GtkWidget *w, GdkEventKey *ev, gpointer p){ (void)w; (void)p; if((ev->state&GDK_CONTROL_MASK) && (ev->keyval==GDK_KEY_o||ev->keyval==GDK_KEY_O)){ send_file_dlg(); return TRUE; } /* attach (Telegram / WhatsApp desktop) */ if((ev->state&GDK_CONTROL_MASK) && (ev->keyval==GDK_KEY_v||ev->keyval==GDK_KEY_V)){ paste_clipboard(); return TRUE; } if((ev->state&GDK_CONTROL_MASK)&&(ev->state&GDK_SHIFT_MASK)&&(ev->keyval==GDK_KEY_F||ev->keyval==GDK_KEY_f)){ history_dialog(); return TRUE; } if((ev->state&GDK_CONTROL_MASK)&&!(ev->state&GDK_SHIFT_MASK)&&(ev->keyval==GDK_KEY_k||ev->keyval==GDK_KEY_K)){ ux_quick_switch(); return TRUE; } if((ev->state&GDK_CONTROL_MASK) && (ev->keyval==GDK_KEY_m||ev->keyval==GDK_KEY_M)){ act(NULL,GINT_TO_POINTER(A_MUTE)); return TRUE; } /* 免打扰 toggle (kept out of the full main menu) */
     if(ev->keyval==GDK_KEY_F10){ gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(menu_btn),TRUE); return TRUE; }
     if(getenv("LSM_UI_TEST")){
+        if((ev->state&GDK_CONTROL_MASK)&&(ev->state&GDK_SHIFT_MASK)&&(ev->keyval==GDK_KEY_T||ev->keyval==GDK_KEY_t)){ uitest_click_trust(); return TRUE; } /* 信任当前联系人 */
         if(ev->keyval==GDK_KEY_F6){ test_open_last_image(); return TRUE; }
         if(ev->keyval==GDK_KEY_F7){ if(ev->state&GDK_SHIFT_MASK) v072_shot_recovery(); else v071_shot_first_run(); return TRUE; }
         if(ev->keyval==GDK_KEY_F8){

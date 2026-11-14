@@ -67,14 +67,37 @@ for th in a.themes.split(","):
     # select the contact (first row of the list)
     x("mousemove", "--window", wid, "150", "128"); x("click", "1"); time.sleep(1.5)
     if th == a.themes.split(",")[0]:
-        # trust from the GUI menu: 信任当前联系人 is the 5th item (separators skipped)
-        x("key", "F10"); time.sleep(0.8)
-        for _ in range(4):
-            x("key", "Down"); time.sleep(0.08)
-        x("key", "Return"); time.sleep(1)
+        # 菜单「当前联系人 → 信任当前联系人」. Ctrl+Shift+T (LSM_UI_TEST) activates that
+        # item by its label. Down×4 was the old flat menu and never reached 信任, so
+        # v0.5's files came back「对方尚未信任你，文件被拒收」.
+        errp = f"{W}/lan-messenger-gtk.err"
+        before = open(errp, errors="replace").read() if os.path.exists(errp) else ""
+        x("windowactivate", "--sync", wid); time.sleep(0.2); x("key", "ctrl+shift+t")
+        trusted = False
+        for _ in range(25):
+            time.sleep(0.1)
+            now = open(errp, errors="replace").read() if os.path.exists(errp) else before
+            if now.count("UITEST trust ok") > before.count("UITEST trust ok"):
+                trusted = True; break
+        x("key", "Escape"); time.sleep(0.2)
+        if not trusted:
+            added = (open(errp, errors="replace").read() if os.path.exists(errp) else "")[len(before):][-800:]
+            raise SystemExit("FAIL: 发文件前没有点到「信任当前联系人」。\n" + added)
         lm("send", gfp, "李明你好，下午三点的评审会改到 302 会议室。"); time.sleep(1.5)
         x("mousemove", "--window", wid, "560", "640"); x("click", "1"); time.sleep(0.5); x("type", "--delay", "40", "OK, thanks!"); x("key", "Return"); time.sleep(1.5)
-        lm("send", gfp, "顺便把白板照片和季度报告发你，请查收 📎"); lm("send-file", gfp, f"{W}/会议白板.png"); lm("send-file", gfp, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "stickers", "thumb.png")); lm("send-file", gfp, f"{W}/季度报告.txt"); time.sleep(6)
+        lm("send", gfp, "顺便把白板照片和季度报告发你，请查收 📎"); lm("send-file", gfp, f"{W}/会议白板.png"); lm("send-file", gfp, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "stickers", "thumb.png")); lm("send-file", gfp, f"{W}/季度报告.txt")
+        last = ""
+        for _ in range(60):
+            last = lm("transfers")
+            if "尚未信任" in last or "rejected" in last:
+                time.sleep(0.25); continue
+            if "季度报告.txt" in last and "会议白板.png" in last and "thumb.png" in last:
+                print("transfers accepted:", last, flush=True); break
+            time.sleep(0.25)
+        else:
+            raise SystemExit("FAIL: 文件被拒收。发文件前必须先互相信任。\n" + last)
+        if "尚未信任" in last or "rejected" in last:
+            raise SystemExit("FAIL: 文件被拒收。发文件前必须先互相信任。\n" + last)
     x("mousemove", "--window", wid, "150", "128"); x("click", "1"); time.sleep(2)
     # shoot the hamburger after a chat is open so the empty pane does not form
     # a huge near-white region against the sidebar (colour-audit indistinct),
