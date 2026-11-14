@@ -506,6 +506,7 @@ static void conn_writable(lsm_core *c, conn *k){
 static void acct_set_rk(lsm_core *c, const char *rk);
 static void acct_save(lsm_core *c);
 static void acct_load(lsm_core *c);
+static void notice(lsm_core *c, const char *fmt, ...);
 #include "relay.c"
 
 /* ------------------------------------------------------------ discovery */
@@ -751,7 +752,12 @@ static int accept_transfer(lsm_core *c, lsm_transfer *t){ char part[600]; conn *
     rs_sidecar_write(c,t); send_tid_frame(c,t->peer_fp,6,t->tid,NULL); emit_xfer(c,t); return 0; }
 /* sender pump: called every loop iteration; respects 16 MiB credit window and socket backlog */
 static void pump_files(lsm_core *c){ int i; uint8_t *buf=NULL;
-    for(i=0;i<c->nxfers;i++){ lsm_transfer *t=&c->xfers[i]; conn *k; if(!t->out || t->state!=TS_ACTIVE || !t->fp_handle || t->hashing) continue;
+    for(i=0;i<c->nxfers;i++){ lsm_transfer *t=&c->xfers[i]; conn *k; 
+        if(t->out && t->state==TS_VERIFYING && t->sha_retries<4 && mono_ms()-t->verify_since>8000){
+            send_tid_frame(c,t->peer_fp,10,t->tid,NULL); t->verify_since=mono_ms(); t->sha_retries++;
+            if(t->sha_retries>=4) xfer_fail(c,t,TS_FAILED,"\xe5\xaf\xb9\xe6\x96\xb9\xe6\x9c\xaa\xe7\xa1\xae\xe8\xae\xa4\xe6\x96\x87\xe4\xbb\xb6\xe5\xb7\xb2\xe6\x94\xb6\xe5\xae\x8c"); /* 对方未确认文件已收完 */
+            continue; }
+        if(!t->out || t->state!=TS_ACTIVE || !t->fp_handle || t->hashing) continue;
         k=conn_by_fp(c,t->peer_fp); if(!k){ continue; }
         while(t->transferred<t->size && k->out.n<2*1024*1024 && t->transferred-t->credit<=WINDOW){
             size_t want=(size_t)((t->size-t->transferred)<CHUNK?(t->size-t->transferred):CHUNK), n; buf_t f={0};
@@ -759,7 +765,7 @@ static void pump_files(lsm_core *c){ int i; uint8_t *buf=NULL;
             n=fread(buf,1,want,(FILE*)t->fp_handle);
             if(n==0){ xfer_fail(c,t,TS_FAILED,"\xe6\x96\x87\xe4\xbb\xb6\xe5\x9c\xa8\xe5\x8f\x91\xe9\x80\x81\xe8\xbf\x87\xe7\xa8\x8b\xe4\xb8\xad\xe8\xa2\xab\xe4\xbf\xae\xe6\x94\xb9\xe6\x88\x96\xe6\x88\xaa\xe6\x96\xad"); send_tid_frame(c,t->peer_fp,12,t->tid,"read error"); break; }
             b_u32(&f,8); b_uuid(&f,t->tid); b_u64(&f,t->transferred); b_bytes(&f,buf,n); send_frame(k,&f); b_free(&f); t->transferred+=n; }
-        if(t->state==TS_ACTIVE && t->transferred>=t->size){ fclose((FILE*)t->fp_handle); t->fp_handle=NULL; send_tid_frame(c,t->peer_fp,10,t->tid,NULL); emit_xfer(c,t); }
+        if(t->state==TS_ACTIVE && t->transferred>=t->size){ fclose((FILE*)t->fp_handle); t->fp_handle=NULL; t->state=TS_VERIFYING; t->verify_since=mono_ms(); t->sha_retries=0; send_tid_frame(c,t->peer_fp,10,t->tid,NULL); emit_xfer(c,t); }
         if(t->state==TS_ACTIVE && t->transferred-t->credit>WINDOW && mono_ms()-t->last_credit_mono>45000){ xfer_fail(c,t,TS_FAILED,"\xe5\xaf\xb9\xe6\x96\xb9\xe9\x95\xbf\xe6\x97\xb6\xe9\x97\xb4\xe6\x97\xa0\xe5\x93\x8d\xe5\xba\x94"); send_tid_frame(c,t->peer_fp,12,t->tid,"timeout"); } }
     free(buf); }
 
@@ -807,7 +813,8 @@ static void on_file_frame(lsm_core *c, const char *fp, uint32_t v, rd_t *r){
         sha256_update((sha256_ctx*)t->hash,d,n); t->transferred+=n;
         if(t->transferred-t->last_prog>=PROGRESS_EVERY || t->transferred==t->size){ t->last_prog=t->transferred; file_progress(c,t); emit_xfer(c,t); }
         break; }
-    case 10: if(t && !t->out && t->state==TS_ACTIVE){ uint8_t h[32]; char fin[600];
+    case 10: if(t && !t->out && t->state==TS_DONE){ file_complete(c,t,1,""); break; }
+        if(t && !t->out && t->state==TS_ACTIVE){ uint8_t h[32]; char fin[600];
         t->state=TS_VERIFYING; fclose((FILE*)t->fp_handle); t->fp_handle=NULL; sha256_final((sha256_ctx*)t->hash,h); free(t->hash); t->hash=NULL;
         if(t->transferred!=t->size){ char e[128]; snprintf(e,sizeof e,"\xe6\x96\x87\xe4\xbb\xb6\xe4\xb8\x8d\xe5\xae\x8c\xe6\x95\xb4 (%llu/%llu)",(unsigned long long)t->transferred,(unsigned long long)t->size); t->state=TS_ACTIVE; xfer_fail(c,t,TS_FAILED,e); file_complete(c,t,0,e); break; }
         if(memcmp(h,t->sha,32) || take_forced_sha_fail()){

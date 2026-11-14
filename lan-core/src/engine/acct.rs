@@ -4,6 +4,7 @@ use crate::account::{self, LsmUri};
 use rand::RngCore;
 use serde::Deserialize;
 use serde_json::{json, Value};
+use sha2::Digest;
 use tokio::sync::oneshot;
 
 fn p<T: for<'de> Deserialize<'de>>(v: Value) -> std::result::Result<T, RpcError> {
@@ -178,7 +179,7 @@ impl Engine {
             return;
         }
         let (tx, rx) = oneshot::channel();
-        if self.relay.send(relay::RelayCmd::AccountGetBackup { user: lookup.clone(), reply: tx }).is_err() {
+        if self.relay.send(relay::RelayCmd::AccountGetBackup { user: lookup.clone(), prev: false, reply: tx }).is_err() {
             let _ = reply.send(Err(RpcError::new(-32020, "中转未启用")));
             return;
         }
@@ -291,7 +292,7 @@ impl Engine {
                 Err(e) => { let _ = reply.send(Err(RpcError::invalid(e.to_string()))); return; }
             };
             let (tx2, rx2) = oneshot::channel();
-            if relay.send(relay::RelayCmd::AccountGetBackup { user: lookup.clone(), reply: tx2 }).is_err() {
+            if relay.send(relay::RelayCmd::AccountGetBackup { user: lookup.clone(), prev: false, reply: tx2 }).is_err() {
                 let _ = reply.send(Err(RpcError::new(-32020, "中转未启用")));
                 return;
             }
@@ -320,4 +321,116 @@ impl Engine {
             let _ = reply.send(res);
         });
     }
+
+    /// Previous encrypted backup (Signal keeps the recovery key; we also keep one older blob).
+    pub(crate) fn begin_account_pull_prev(&mut self, reply: oneshot::Sender<RpcResult>) {
+        let rk = match account::load_recovery_key(&self.paths) {
+            Some(v) => v,
+            None => { let _ = reply.send(Err(RpcError::invalid("还没有恢复密钥"))); return; }
+        };
+        if self.settings.account_mode != "account" || self.settings.account_user.is_empty() {
+            let _ = reply.send(Err(RpcError::invalid("请先连接中转并开启账号模式")));
+            return;
+        }
+        let lookup = self.settings.account_user.clone();
+        let (tx, rx) = oneshot::channel();
+        if self.relay.send(relay::RelayCmd::AccountGetBackup { user: lookup.clone(), prev: true, reply: tx }).is_err() {
+            let _ = reply.send(Err(RpcError::new(-32020, "中转未启用")));
+            return;
+        }
+        let paths = self.paths.clone();
+        tokio::spawn(async move {
+            let r = tokio::time::timeout(std::time::Duration::from_secs(60), rx).await;
+            let res = match r {
+                Ok(Ok(Ok(blob))) => {
+                    let tmp = paths.root.join("account-restore.tmp");
+                    if let Err(e) = std::fs::write(&tmp, &blob) {
+                        Err(RpcError::new(-32021, e.to_string()))
+                    } else {
+                        match crate::backup::import_backup(&paths, &rk, &tmp) {
+                            Ok(()) => {
+                                let _ = std::fs::remove_file(&tmp);
+                                let _ = account::save_recovery_key(&paths, &rk);
+                                Ok(json!({"ok": true, "restart_required": true, "lookup": lookup}))
+                            }
+                            Err(e) => {
+                                let _ = std::fs::remove_file(&tmp);
+                                Err(RpcError::new(-32021, format!("{e:#}")))
+                            }
+                        }
+                    }
+                }
+                Ok(Ok(Err(e))) => Err(RpcError::new(-32020, e)),
+                _ => Err(RpcError::new(-32020, "没有上一份备份，或下载超时")),
+            };
+            let _ = reply.send(res);
+        });
+    }
+
+    /// Signal Settings > Linked devices. The server stores the relay fingerprint, not a password.
+    pub(crate) fn begin_account_devices(&mut self, params: Value, reply: oneshot::Sender<RpcResult>) {
+        #[derive(Deserialize)]
+        struct P { #[serde(default)] unlink: bool }
+        let a: P = match p(params) {
+            Ok(v) => v,
+            Err(e) => { let _ = reply.send(Err(e)); return; }
+        };
+        if self.settings.account_mode != "account" || self.settings.account_user.is_empty() {
+            let _ = reply.send(Err(RpcError::invalid("请先连接中转并开启账号模式。已登录设备不使用服务器密码。")));
+            return;
+        }
+        let user = self.settings.account_user.clone();
+        let op: u8 = if a.unlink { 2 } else { 0 };
+        let (tx, rx) = oneshot::channel();
+        if self.relay.send(relay::RelayCmd::AccountDevices { user, op, reply: tx }).is_err() {
+            let _ = reply.send(Err(RpcError::new(-32020, "中转未启用")));
+            return;
+        }
+        let my = hex::encode(sha2::Sha256::digest(self.shared.identity.x25519_public_bytes()));
+        tokio::spawn(async move {
+            let r = tokio::time::timeout(std::time::Duration::from_secs(20), rx).await;
+            let _ = reply.send(match r {
+                Ok(Ok(Ok(text))) => {
+                    let shown = if op == 2 {
+                        format!("已请求登出其他设备。本机保留。服务器不会删除加密备份。\n{}", format_device_list(&text, &my))
+                    } else {
+                        format_device_list(&text, &my)
+                    };
+                    Ok(json!({"ok": true, "text": shown}))
+                }
+                Ok(Ok(Err(e))) => Err(RpcError::new(-32020, e)),
+                _ => Err(RpcError::new(-32020, "查询已登录设备超时")),
+            });
+        });
+    }
+}
+
+fn format_device_list(raw: &str, my_relay_id_hex: &str) -> String {
+    if raw.trim().is_empty() {
+        return "服务器上还没有已登录设备记录。".into();
+    }
+    let mut lines = vec!["已登录设备".to_string()];
+    for row in raw.lines() {
+        let mut p = row.split_whitespace();
+        let Some(fp) = p.next() else { continue };
+        let first = p.next().unwrap_or("0");
+        let last = p.next().unwrap_or(first);
+        let mine = fp.eq_ignore_ascii_case(my_relay_id_hex);
+        let short = if fp.len() > 8 { &fp[..8] } else { fp };
+        lines.push(format!(
+            "{}{short}…  首次 {}  最近 {}{}",
+            if mine { "本机 " } else { "" },
+            fmt_unix(first),
+            fmt_unix(last),
+            if mine { "（当前连接）" } else { "" }
+        ));
+    }
+    if lines.len() == 1 { raw.to_string() } else { lines.join("\n") }
+}
+
+fn fmt_unix(s: &str) -> String {
+    let Ok(sec) = s.parse::<i64>() else { return "—".into() };
+    chrono::DateTime::from_timestamp(sec, 0)
+        .map(|t| t.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M").to_string())
+        .unwrap_or_else(|| "—".into())
 }

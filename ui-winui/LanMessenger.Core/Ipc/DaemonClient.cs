@@ -65,6 +65,8 @@ public sealed class DaemonClient
     public Task<JsonElement> AccountSetupAsync(string? relayHost = null, ushort relayPort = 0) => Call("account_setup", new { relay_host = relayHost ?? "", relay_port = relayPort });
     public Task<JsonElement> AccountSetModeAsync(string mode) => Call("account_set_mode", new { mode });
     public Task<JsonElement> RevealRecoveryKeyAsync() => Call("reveal_recovery_key", new { });
+    public Task<JsonElement> AccountDevicesAsync(bool unlink) => Call("account_devices", new { unlink });
+    public Task<JsonElement> AccountPullPrevAsync() => Call("account_pull_prev", new { });
     public Task<JsonElement> RelayUriAsync() => Call("relay_uri", new { });
     public Task ApplyUriAsync(string uri) => Call("apply_uri", new { uri });
     public Task AccountRestoreAsync(string recoveryKey) => Call("account_restore", new { recovery_key = recoveryKey });

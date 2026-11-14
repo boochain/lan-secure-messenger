@@ -434,7 +434,7 @@ static void show_transfers(void){
     gtk_container_add(GTK_CONTAINER(sc),lb); gtk_box_pack_start(GTK_BOX(box),sc,TRUE,TRUE,0); gtk_window_set_default_size(GTK_WINDOW(d),560,380); gtk_widget_show_all(d);
     g_signal_connect(d,"response",G_CALLBACK(gtk_widget_destroy),NULL); }
 
-enum { A_ADDIP=1, A_TRUST, A_UNTRUST, A_BLOCK, A_PINOFFER, A_PINPAIR, A_GCREATE, A_GINVITE, A_GREMOVE, A_GLEAVE, A_NAME, A_XFERS, A_DLDIR, A_FIREWALL, A_ABOUT, A_QUIT, A_MUTE, A_DIAG, A_UPDATE, A_CLEAR, A_REFRESH, A_RECONNECT, A_STORAGE, A_EMOJI, A_HISTORY, A_PROFILE, A_CPROFILE, A_MYQR, A_ADDURI, A_QUICK, A_PINCONV, A_STARRED, A_PINNED, A_MULTI, A_POLL, A_TTL, A_ARCHIVE, A_FOLDERS, A_FILTER, A_SERVERQR, A_PAIRQR, A_ACCTMODE, A_REVEALRK };
+enum { A_ADDIP=1, A_TRUST, A_UNTRUST, A_BLOCK, A_PINOFFER, A_PINPAIR, A_GCREATE, A_GINVITE, A_GREMOVE, A_GLEAVE, A_NAME, A_XFERS, A_DLDIR, A_FIREWALL, A_ABOUT, A_QUIT, A_MUTE, A_DIAG, A_UPDATE, A_CLEAR, A_REFRESH, A_RECONNECT, A_STORAGE, A_EMOJI, A_HISTORY, A_PROFILE, A_CPROFILE, A_MYQR, A_ADDURI, A_QUICK, A_PINCONV, A_STARRED, A_PINNED, A_MULTI, A_POLL, A_TTL, A_ARCHIVE, A_FOLDERS, A_FILTER, A_SERVERQR, A_PAIRQR, A_ACCTMODE, A_REVEALRK, A_DEVICES, A_UNLINK, A_PREVBAK };
 
 static void storage_dialog(void){
     char info[2048]={0}, msg[2400]; GtkWidget *d; int n; size_t need=lsm_storage_info(C,info,sizeof info);
@@ -509,7 +509,7 @@ static void act(GtkWidget *w, gpointer p){ int id=GPOINTER_TO_INT(p); char err[2
     case A_STARRED: p2_flag_dialog(2,NULL); break;
     case A_PINNED: if(cur_conv[0]) p2_flag_dialog(1,cur_conv); break;
     case A_MULTI: p2_multi(); break;
-    case A_POLL: v062_new_poll(); break; case A_MYQR: ux_my_qr(); break; case A_ADDURI: v071_paste_uri(); break; case A_SERVERQR: v071_show_server_qr(); break; case A_PAIRQR: v071_show_pair_qr(); break; case A_ACCTMODE: v071_switch_mode(); break; case A_REVEALRK: v071_reveal_rk(); break; case A_QUICK: ux_quick_switch(); break;
+    case A_POLL: v062_new_poll(); break; case A_MYQR: ux_my_qr(); break; case A_ADDURI: v071_paste_uri(); break; case A_SERVERQR: v071_show_server_qr(); break; case A_PAIRQR: v071_show_pair_qr(); break; case A_ACCTMODE: v071_switch_mode(); break; case A_REVEALRK: v071_reveal_rk(); break; case A_DEVICES: case A_UNLINK: { char b[1600]; lsm_account_devices(C,id==A_UNLINK?2:0,b,sizeof b); msgbox(GTK_MESSAGE_INFO,"%s",b); break; } case A_PREVBAK: { char b[400]; lsm_account_pull_prev(C,b,sizeof b); msgbox(GTK_MESSAGE_INFO,"%s",b); break; } case A_QUICK: ux_quick_switch(); break;
     case A_TTL: v062_ttl(); break;
     case A_ARCHIVE: v062_archive(); break;
     case A_FOLDERS: v062_folders(); break;
@@ -555,7 +555,7 @@ static GtkCssProvider *theme_cp;
 static void load_theme_css(void){ /* shared block + the light or dark block of the one CSS file */
     gboolean dark=FALSE; const char *sh=strstr(LSM_THEME_CSS,"/*@shared*/"), *li=strstr(LSM_THEME_CSS,"/*@light*/"), *dk=strstr(LSM_THEME_CSS,"/*@dark*/"); GString *g;
     g_object_get(gtk_settings_get_default(),"gtk-application-prefer-dark-theme",&dark,NULL);
-    g=g_string_new(NULL); g_string_append_len(g,sh,li-sh); g_string_append(g,"\n/* light transitions (#5): hover / selection fade, no layout motion */ button, row, list row { transition: background-color 120ms ease-out, color 120ms ease-out, box-shadow 120ms ease-out; }\n"); if(dark) g_string_append(g,dk); else g_string_append_len(g,li,dk-li);
+    g=g_string_new(NULL); g_string_append_len(g,sh,li-sh); g_string_append(g,"\n/* M3 selection controls: standard easing + short4 200ms. https://m3.material.io/styles/motion/easing-and-duration/tokens-specs */ button, row, list row { transition: background-color 200ms cubic-bezier(0.2, 0.0, 0, 1.0), color 200ms cubic-bezier(0.2, 0.0, 0, 1.0), box-shadow 200ms cubic-bezier(0.2, 0.0, 0, 1.0); }\n"); if(dark) g_string_append(g,dk); else g_string_append_len(g,li,dk-li);
     if(!theme_cp){ theme_cp=gtk_css_provider_new(); gtk_style_context_add_provider_for_screen(gdk_screen_get_default(),GTK_STYLE_PROVIDER(theme_cp),GTK_STYLE_PROVIDER_PRIORITY_APPLICATION); }
     gtk_css_provider_load_from_data(theme_cp,g->str,-1,NULL); g_string_free(g,TRUE); }
 static void on_dark_changed(GObject *o, GParamSpec *ps, gpointer p){ (void)o; (void)ps; (void)p; load_theme_css(); }
@@ -617,7 +617,8 @@ static void activate(GtkApplication *a, gpointer p){
     { GtkWidget *s=v072_msub(menu,"当前联系人");
       mi(s,"信任当前联系人",A_TRUST); mi(s,"取消信任",A_UNTRUST); mi(s,"屏蔽",A_BLOCK); mi(s,"生成 PIN（让对方输入）",A_PINOFFER); mi(s,"输入 PIN 配对…",A_PINPAIR); }
     { GtkWidget *s=v072_msub(menu,"账号与二维码");
-      mi(s,"服务器二维码…",A_SERVERQR); mi(s,"配对新设备…",A_PAIRQR); mi(s,"切换账号/设备模式…",A_ACCTMODE); mi(s,"显示恢复密钥…",A_REVEALRK); mi(s,"重连服务器",A_RECONNECT); }
+      mi(s,"服务器二维码…",A_SERVERQR); mi(s,"配对新设备…",A_PAIRQR); mi(s,"切换账号/设备模式…",A_ACCTMODE); mi(s,"重连服务器",A_RECONNECT);
+      { GtkWidget *d=v072_msub(s,"本机"); mi(d,"显示恢复密钥…",A_REVEALRK); mi(d,"已登录设备…",A_DEVICES); mi(d,"登出其他设备",A_UNLINK); mi(d,"用上一份备份覆盖本机…",A_PREVBAK); } }
     { GtkWidget *s=v072_msub(menu,"群组");
       mi(s,"创建群组…",A_GCREATE); mi(s,"邀请成员…",A_GINVITE); mi(s,"移除成员…",A_GREMOVE); mi(s,"退出群组",A_GLEAVE); }
     { GtkWidget *more=v072_msub(menu,"更多");

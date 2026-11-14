@@ -97,8 +97,9 @@ load_existing() { # 读取现有或旧配置 (current or legacy config)
 }
 write_config() {
   run mkdir -p "$CONF_DIR" "$STATE_DIR" "$LOG_DIR"
+  migrate_data
   [ -z "${SALT:-}" ] && SALT="$(gen_salt)"
-  if [ "$DRY" = 1 ]; then say "[dry-run] write $CONF (port=$PORT bind=$BIND)"; return; fi
+  if [ "$DRY" = 1 ]; then say "[dry-run] write $CONF (port=$PORT bind=$BIND data=$STATE_DIR/data)"; return; fi
   local tmp="$CONF.tmp.$$"
   ( umask 077; cat > "$tmp" <<TOML
 # LSM 中转服务器配置 (relay-server config) — 由 deploy.sh 生成
@@ -110,6 +111,8 @@ passphrase = $(toml_str "$PASS")
 salt = "$SALT"
 # 本机状态接口 (local status endpoint); "" = 127.0.0.1:<port+1>, "off" 关闭
 status_addr = ""
+# 固定数据目录。升级只做增量迁移，不删除来源目录。
+data_dir = $(toml_str "$STATE_DIR/data")
 
 [limits]
 max_frame = 12582976
@@ -125,6 +128,36 @@ file = $(toml_str "$LOG_DIR/relay.log")
 TOML
   ) && chmod 600 "$tmp" && mv -f "$tmp" "$CONF"
   ok "配置已写入 (config written): $CONF"
+}
+
+# Copy an older relay-data tree into the fixed directory. Never deletes the source.
+migrate_data() {
+  local dest="$STATE_DIR/data" src
+  [ "$DRY" = 1 ] && { say "[dry-run] data_dir=$dest (legacy copy only if users/ is empty)"; return; }
+  mkdir -p "$dest"
+  if [ -d "$dest/users" ] && [ -n "$(ls -A "$dest/users" 2>/dev/null)" ]; then
+    :
+  else
+    for src in \
+      "$STATE_DIR/relay-data" \
+      "${PWD:-.}/relay-data" \
+      /relay-data \
+      /var/lib/lsm-relay/relay-data \
+      /opt/lsm-relay/relay-data \
+      "${HOME:-/nonexistent}/.lsm-relay/relay-data" \
+      "${HOME:-/nonexistent}/.lsm-relay/state/relay-data"
+    do
+      [ -d "$src/users" ] || continue
+      [ "$(readlink -f "$src" 2>/dev/null || printf '%s' "$src")" = "$(readlink -f "$dest" 2>/dev/null || printf '%s' "$dest")" ] && continue
+      cp -a "$src/." "$dest/"
+      printf '%s\n' "$src" > "$dest/MIGRATED_FROM"
+      ok "已复制旧数据到固定目录，原目录保留 (copied, source kept): $src -> $dest"
+      break
+    done
+  fi
+  if [ ! -f "$dest/SCHEMA" ]; then
+    printf '1\n' > "$dest/SCHEMA"
+  fi
 }
 
 # ---------------- 端口与口令 (port & passphrase) ----------------
@@ -322,9 +355,9 @@ start_bg() {
   if svc_enabled && has_systemd; then run systemctl restart "$SVC"; ok "已通过 systemd 启动 (started via systemd)"; echo service > "$MODEF" 2>/dev/null; return; fi
   if is_running; then stop_all; fi
   if [ "$DRY" = 1 ]; then say "[dry-run] nohup setsid $BIN --config $CONF --pid-file $PIDF &"; return; fi
-  mkdir -p "$LOG_DIR" "$STATE_DIR"
-  if have setsid; then setsid nohup "$BIN" --config "$CONF" --pid-file "$PIDF" >>"$LOG_DIR/console.log" 2>&1 < /dev/null &
-  else nohup "$BIN" --config "$CONF" --pid-file "$PIDF" >>"$LOG_DIR/console.log" 2>&1 < /dev/null & fi
+  mkdir -p "$LOG_DIR" "$STATE_DIR" "$STATE_DIR/data"
+  if have setsid; then ( cd "$STATE_DIR" && setsid nohup "$BIN" --config "$CONF" --pid-file "$PIDF" >>"$LOG_DIR/console.log" 2>&1 < /dev/null & )
+  else ( cd "$STATE_DIR" && nohup "$BIN" --config "$CONF" --pid-file "$PIDF" >>"$LOG_DIR/console.log" 2>&1 < /dev/null & ); fi
   disown 2>/dev/null || true
   echo background > "$MODEF"
   for _ in $(seq 1 30); do sleep 0.2; pid_alive "$(read_pid "$PIDF")" && break; done
@@ -345,6 +378,7 @@ Wants=network-online.target
 
 [Service]
 ExecStart=$BIN --config $CONF
+WorkingDirectory=$STATE_DIR
 Restart=on-failure
 RestartSec=3
 LimitNOFILE=65536
@@ -365,6 +399,7 @@ UNITEOF
 description="LSM Relay Server"
 command="$BIN"
 command_args="--config $CONF --pid-file $PIDF"
+directory="$STATE_DIR"
 command_background=true
 pidfile="$PIDF"
 depend() { need net; }

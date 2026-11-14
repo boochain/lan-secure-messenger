@@ -5,6 +5,7 @@ port = 9443               # TCP 端口 (port)
 # passphrase = ""          # optional; empty (default) = open relay, no client password
 salt = ""                 # 32 hex chars; deploy scripts generate one. "" = built-in default
 status_addr = ""          # "" = 127.0.0.1:<port+1>; "off" disables
+# data_dir = ""           # empty = fixed default (/var/lib/lsm-relay/data, ProgramData\LsmRelay\data, or LSM_RELAY_DATA). deploy scripts set this. Upgrades copy an older relay-data tree in and do not delete it.
 
 [limits]
 max_frame = 12582976      # bytes per frame (12 MiB + 64; fits account history+file backups)

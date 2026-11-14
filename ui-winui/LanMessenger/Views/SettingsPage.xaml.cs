@@ -140,6 +140,49 @@ public sealed partial class SettingsPage : Page
         App.MainWin?.NavigateTo("recovery");
     }
     private async void RestoreAccount_Click(object sender, RoutedEventArgs e) => await VM.RestoreAccountAsync(RestoreKeyBox.Text);
+
+    private async void Devices_Click(object sender, RoutedEventArgs e)
+    {
+        var text = await VM.AccountDevicesAsync(false);
+        if (string.IsNullOrEmpty(text)) return;
+        var d = new ContentDialog
+        {
+            Title = "已登录设备",
+            Content = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true },
+            CloseButtonText = "关闭",
+            XamlRoot = XamlRoot
+        };
+        await d.ShowAsync();
+    }
+
+    private async void Unlink_Click(object sender, RoutedEventArgs e)
+    {
+        var ask = new ContentDialog
+        {
+            Title = "登出其他设备",
+            Content = "只从服务器名单里去掉其他设备。本机保留，加密备份不删除。",
+            PrimaryButtonText = "登出其他",
+            CloseButtonText = "取消",
+            XamlRoot = XamlRoot
+        };
+        if (await ask.ShowAsync() != ContentDialogResult.Primary) return;
+        var text = await VM.AccountDevicesAsync(true);
+        if (!string.IsNullOrEmpty(text)) VM.ShowStatus(text);
+    }
+
+    private async void PrevBackup_Click(object sender, RoutedEventArgs e)
+    {
+        var ask = new ContentDialog
+        {
+            Title = "用上一份备份覆盖本机",
+            Content = "服务器保留当前这份加密备份，并用上一份覆盖本机身份和历史。没有上一份时不会改本机。",
+            PrimaryButtonText = "覆盖本机",
+            CloseButtonText = "取消",
+            XamlRoot = XamlRoot
+        };
+        if (await ask.ShowAsync() != ContentDialogResult.Primary) return;
+        await VM.AccountPullPrevAsync();
+    }
     private async void ApplyUri_Click(object sender, RoutedEventArgs e) => await VM.AddByLinkAsync(PasteUriBox.Text);
     private async void ScanImage_Click(object sender, RoutedEventArgs e)
     {

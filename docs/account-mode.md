@@ -97,3 +97,18 @@ P2P 线协议仍是 `PROTO_VERSION = 5`。新能力用 Hello 尾部的 capabilit
 * 设置：切换模式、再次显示恢复密钥、显示配对二维码、粘贴 URI 或从图片识别。
 * 个人资料：我的二维码（添加我）。
 * Android 会话列表左滑：直接露出 置顶 / 已读 / 免打扰 / 删除 按钮（不再只弹出菜单）。长按仍打开完整菜单。
+
+## 7. 已登录设备（对照 Signal「Linked devices」）
+
+账号模式登录或注册成功后，服务器按这次连接的中转指纹记一条设备记录（`users/<lookup>/devices/<hex>`，内容是首次见到和最近见到的 Unix 时间）。不另设服务器密码。已经记在这份名单里的设备才能：
+
+* 查看名单（帧 `ACCOUNT_DEVICES` 0x6D，op 0；应答 `ACCOUNT_DEVICE_LIST` 0x6E）。
+* 登出其他设备（op 2）。只删设备记录，不删 `identity.bak`。
+
+五个界面都在账号菜单里提供「已登录设备」和「登出其他设备」。名单按本机时区显示短指纹、首次和最近活跃时间，并标出当前连接。旧服务器不认识 0x6D 时，客户端会收到失败提示，局域网设备模式不受影响。
+
+## 8. 备份的上一份，以及固定数据目录
+
+每次上传加密备份时，服务器先把现有的 `identity.bak` 改名为 `identity.bak.prev`，再放入新文件。中途崩溃不会只留下一份写了一半的备份。客户端可以请求上一份（`ACCOUNT_GET_BACKUP` 的用户名后面多一个字节 `1`）。没有上一份时本机不动。当前这份仍然留在服务器上。恢复密钥仍然只在客户端，服务器解不开任何一份。
+
+中转进程的数据目录不再跟着工作目录走。`data_dir` 为空时用固定路径（能写则 `/var/lib/lsm-relay/data`，否则 `~/.lsm-relay/state/data`；Windows 为 `%ProgramData%\LsmRelay\data`，否则 `%LOCALAPPDATA%\LsmRelay\data`；也可用环境变量 `LSM_RELAY_DATA`）。`deploy.sh` / `deploy.ps1` 会把同一路径写进配置，systemd 的 `WorkingDirectory` 指到状态目录。旧的 `relay-data` 树只在目标 `users/` 还是空的时候被复制进去，来源目录不删除。目录里的 `SCHEMA` 文件只做加法迁移（现在是 `1`，只写入这个标记）。设备记录不在数据根目录，而在登录时写到 `users/<lookup>/devices/`。不改名、不删已有文件。

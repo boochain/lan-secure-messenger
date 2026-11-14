@@ -2,7 +2,7 @@
 
 写给下一个 agent。从线协议往上读。不要从界面、不要从旧网站、不要从聊天记录开始改。
 
-仓库：`boochain/lan-secure-messenger`。已发布版本看仓库根目录的 `VERSION`（写这份说明时是 **0.7.3**，发布提交 `848539c`）。README 开头那句「v0.6」是过时的，以 `VERSION` 和本文件为准。`https://lan-messenger-kmzf.pages.grok.bot/` 是 v0.6 的手册，只能当历史，不能当事实。仓库里没有的文件、帧、数据目录，都还没实现。先搜索再写。
+仓库：`boochain/lan-secure-messenger`。已发布版本看仓库根目录的 `VERSION`（写这份说明时是 **0.7.3**）。Android 安装包的开发者证书在提交 `bbe7ee3`。README 开头那句「v0.6」是过时的，以 `VERSION` 和本文件为准。`https://lan-messenger-kmzf.pages.grok.bot/` 是 v0.6 的手册，只能当历史，不能当事实。仓库里没有的文件、帧、数据目录，都还没实现。先搜索再写。
 
 ## 0. 接到任务先做这几步
 
@@ -181,7 +181,7 @@ P2P 仍然是协议 5。中转是后加的转发，HELLO 版本仍是 1。细节
 
 中转 `AUTH_OK` 在原有 38 字节后可以追加 `caps: u32`。`CAP_RELAY_ACCOUNT = 1`，`CAP_RELAY_PAIR = 2`。旧服务器没有这段，客户端要说「服务器不支持账号模式」，局域网设备模式不受影响。
 
-账号相关帧从 `0x68` 起（`PAIR_PUT/GET/DATA/MISS/OK`）。未知类型旧服务器忽略。不要占用已经用掉的类型号。
+账号相关帧：`PAIR_*` 是 `0x68`–`0x6C`。`ACCOUNT_DEVICES` 是 `0x6D`（用户名后一个字节：0 列设备，2 登出其他设备），应答 `ACCOUNT_DEVICE_LIST` `0x6E`（每行 `hex first_unix last_unix`）。设备号是这次连接的 X25519 公钥的 SHA-256。调用者必须已经在名单里。登出只删设备文件，不删 `identity.bak`。`ACCOUNT_GET_BACKUP` 在用户名后再加一个字节 `1` 表示要上一份备份，没有这个字节仍是当前这份。未知类型旧服务器忽略。不要占用已经用掉的类型号。五个界面的账号菜单都有「已登录设备」「登出其他设备」「用上一份备份覆盖本机」。细节在 `docs/account-mode.md` 第 7、8 节。
 
 传输模式：`lan` 时优先直连，没有候选才走中转；`server_lan` 时两条路并行。每条消息可以选 ends-only（中转不落盘，默认）或 server-retain（存密文、有 TTL 和配额）。群消息默认不留在服务器。
 
@@ -189,14 +189,20 @@ P2P 仍然是协议 5。中转是后加的转发，HELLO 版本仍是 1。细节
 
 Windows daemon 的文档路径是 `%APPDATA%\FREC86\lan-secure-messenger\{config,data,logs}`。日志按天滚动，留 7 天，不写私钥。
 
-C 核心、Android、中转的数据目录以代码和部署脚本里的实际路径为准。搜索 `data_dir` / `XDG` / `relay-data` 再改。不要假设已经有「固定 `/var/lib` + SCHEMA 迁移」——没在树里的迁移就是没有。
+中转的数据目录在 `relay-server/src/datadir.rs`。配置里的 `data_dir` 非空就用那个路径。为空时：
+
+1. 环境变量 `LSM_RELAY_DATA`（非空）。
+2. Windows：`%ProgramData%\LsmRelay\data`，没有就 `%LOCALAPPDATA%\LsmRelay\data`。
+3. 其他系统：能写就 `/var/lib/lsm-relay/data`，否则 `~/.lsm-relay/state/data`，再否则才是 `relay-data`。
+
+`deploy.sh` 写入 `$STATE_DIR/data`（root 就是 `/var/lib/lsm-relay/data`）。`deploy.ps1` 管理员写入 `%ProgramData%\LsmRelay\data`，非管理员写入 `%LOCALAPPDATA%\LsmRelay\data`。两边都会在目标 `users/` 为空时复制旧的 `relay-data`，来源不删。`SCHEMA` 现在是 `1`，只表示这个目录已经按当前布局打开过；设备文件在 `users/<查找名>/devices/`，登录时才创建。每次上传备份先把活的 `identity.bak` 改名为 `identity.bak.prev`，再写入新文件。
 
 改数据目录时的硬规则：
 
 - 新版本要能读旧版本的目录。
 - 迁移是拷贝或原地升级，不删除用户原来的目录。
 - 先写新的，确认能读，再考虑清理。失败必须还能用旧目录启动。
-- 空配置如果会落到进程的当前工作目录，升级时工作目录一变数据就像丢了。这种路径要在改部署脚本时一起看：`relay-server/deploy/deploy.sh`、`deploy.ps1`。
+- 不要把空的 `data_dir` 再解释成「进程当前目录下的 `./relay-data`」。部署脚本和 `datadir.rs` 要一起看：`relay-server/deploy/deploy.sh`、`deploy.ps1`。
 
 ## 12. 五个界面怎么对齐
 

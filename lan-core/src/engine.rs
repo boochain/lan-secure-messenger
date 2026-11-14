@@ -1968,6 +1968,8 @@ impl Engine {
                 };
             }
             "account_restore" => { self.begin_account_restore(params, reply); return; }
+            "account_pull_prev" => { self.begin_account_pull_prev(reply); return; }
+            "account_devices" => { self.begin_account_devices(params, reply); return; }
             "account_pair_start" => { self.begin_account_pair_start(reply); return; }
             "account_pair_accept" => { self.begin_account_pair_accept(params, reply); return; }
             "apply_uri" => {
@@ -2094,7 +2096,7 @@ impl Engine {
                     Err(e) => { let _ = reply.send(Err(RpcError::invalid(e.to_string()))); return; }
                 };
                 let (tx, rx) = oneshot::channel();
-                if self.relay.send(relay::RelayCmd::AccountGetBackup { user: a.user.trim().to_string(), reply: tx }).is_err() {
+                if self.relay.send(relay::RelayCmd::AccountGetBackup { user: a.user.trim().to_string(), prev: false, reply: tx }).is_err() {
                     let _ = reply.send(Err(RpcError::new(-32020, "中转未启用")));
                     return;
                 }

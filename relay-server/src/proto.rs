@@ -66,6 +66,10 @@ pub mod t {
     pub const PAIR_DATA: u8 = 0x6A;
     pub const PAIR_MISS: u8 = 0x6B;
     pub const PAIR_OK: u8 = 0x6C;
+    /// List or unlink linked devices. Body: u16 user_len | user | u8 op (0 list, 2 unlink others).
+    pub const ACCOUNT_DEVICES: u8 = 0x6D;
+    /// UTF-8 device list. One line per device: `hex first_unix last_unix`.
+    pub const ACCOUNT_DEVICE_LIST: u8 = 0x6E;
     // both directions
     pub const PING: u8 = 0x20;
     pub const PONG: u8 = 0x21;

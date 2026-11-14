@@ -59,6 +59,8 @@ const T_PAIR_GET: u8 = 0x69;
 const T_PAIR_DATA: u8 = 0x6A;
 const T_PAIR_MISS: u8 = 0x6B;
 const T_PAIR_OK: u8 = 0x6C;
+const T_ACCOUNT_DEVICES: u8 = 0x6D;
+const T_ACCOUNT_DEVICE_LIST: u8 = 0x6E;
 const T_BYE: u8 = 0x7F;
 
 const K_DATA: u8 = 0;
@@ -78,6 +80,7 @@ pub struct RelayConfig {
 
 pub type AccountReply = oneshot::Sender<Result<(), String>>;
 pub type BackupReply = oneshot::Sender<Result<Vec<u8>, String>>;
+pub type DeviceReply = oneshot::Sender<Result<String, String>>;
 pub type StoreReply = oneshot::Sender<Result<(), String>>;
 pub type FetchReply = oneshot::Sender<Result<Option<Vec<u8>>, String>>;
 pub type ListReply = oneshot::Sender<Result<Vec<Vec<u8>>, String>>;
@@ -90,13 +93,15 @@ pub enum RelayCmd {
     AccountRegister { user: String, pass: String, reply: AccountReply },
     AccountLogin { user: String, pass: String, reply: AccountReply },
     AccountPutBackup { user: String, blob: Vec<u8>, reply: AccountReply },
-    AccountGetBackup { user: String, reply: BackupReply },
+    AccountGetBackup { user: String, prev: bool, reply: BackupReply },
     /// Opaque retain blob. `dest` = full 32-byte relay peer id of recipient when set.
     Store { id: Vec<u8>, blob: Vec<u8>, ttl: u32, dest: Option<[u8; 32]>, reply: StoreReply },
     Fetch { id: Vec<u8>, reply: FetchReply },
     StoreDel { id: Vec<u8> },
     ListRetain { reply: ListReply },
     AccountRevoke { user: String, pass: String, reply: AccountReply },
+    /// op 0 = list linked devices, op 2 = unlink every other device (Signal linked devices).
+    AccountDevices { user: String, op: u8, reply: DeviceReply },
     PairPut { token: [u8; 32], ttl: u32, blob: Vec<u8>, reply: AccountReply },
     PairGet { token: [u8; 32], reply: BackupReply },
     /// Drop the current relay TCP session (if any) and reconnect immediately.
@@ -153,6 +158,7 @@ async fn run(shared: Arc<Shared>, mut cmd: mpsc::UnboundedReceiver<RelayCmd>, tx
                     Some(RelayCmd::Fetch { reply, .. }) => { let _ = reply.send(Err("relay offline".into())); }
                     Some(RelayCmd::ListRetain { reply }) => { let _ = reply.send(Err("relay offline".into())); }
                     Some(RelayCmd::AccountRevoke { reply, .. }) => { let _ = reply.send(Err("relay offline".into())); }
+                    Some(RelayCmd::AccountDevices { reply, .. }) => { let _ = reply.send(Err("relay offline".into())); }
                     Some(RelayCmd::PairPut { reply, .. }) => { let _ = reply.send(Err("relay offline".into())); }
                     Some(RelayCmd::PairGet { reply, .. }) => { let _ = reply.send(Err("relay offline".into())); }
                     Some(RelayCmd::StoreDel { .. }) | Some(RelayCmd::Open(_)) | Some(RelayCmd::Rename) | Some(RelayCmd::Reconnect) => {}
@@ -200,6 +206,7 @@ async fn run(shared: Arc<Shared>, mut cmd: mpsc::UnboundedReceiver<RelayCmd>, tx
                     Some(RelayCmd::Fetch { reply, .. }) => { let _ = reply.send(Err("relay offline".into())); }
                     Some(RelayCmd::ListRetain { reply }) => { let _ = reply.send(Err("relay offline".into())); }
                     Some(RelayCmd::AccountRevoke { reply, .. }) => { let _ = reply.send(Err("relay offline".into())); }
+                    Some(RelayCmd::AccountDevices { reply, .. }) => { let _ = reply.send(Err("relay offline".into())); }
                     Some(RelayCmd::PairPut { reply, .. }) => { let _ = reply.send(Err("relay offline".into())); }
                     Some(RelayCmd::PairGet { reply, .. }) => { let _ = reply.send(Err("relay offline".into())); }
                     Some(RelayCmd::Reconnect) => { fails = 0; break; }
@@ -476,6 +483,7 @@ async fn session(
     let mut by_fp: HashMap<String, [u8; 32]> = HashMap::new();
     let mut sess: HashMap<[u8; 32], Sess> = HashMap::new();
     let mut pend_acct: Option<AccountReply> = None;
+    let mut pend_dev: Option<DeviceReply> = None;
     let mut pend_bak: Option<BackupReply> = None;
     let mut pend_store: Option<(Vec<u8>, StoreReply)> = None;
     let mut pend_fetch: Option<(Vec<u8>, FetchReply)> = None;
@@ -580,7 +588,8 @@ async fn session(
                         let msg = String::from_utf8_lossy(&b).to_string();
                         let detail = if msg.is_empty() { "account failed".into() } else { msg };
                         if let Some(r) = pend_acct.take() { let _ = r.send(Err(detail.clone())); }
-                        if let Some(r) = pend_bak.take() { let _ = r.send(Err(detail)); }
+                        if let Some(r) = pend_bak.take() { let _ = r.send(Err(detail.clone())); }
+                        if let Some(r) = pend_dev.take() { let _ = r.send(Err(detail)); }
                     }
                     T_ACCOUNT_BACKUP => {
                         if let Some(r) = pend_bak.take() { let _ = r.send(Ok(b)); }
@@ -590,6 +599,10 @@ async fn session(
                     }
                     T_PAIR_DATA => {
                         if let Some(r) = pend_bak.take() { let _ = r.send(Ok(b)); }
+                    }
+                    T_ACCOUNT_DEVICE_LIST => {
+                        let text = String::from_utf8_lossy(&b).to_string();
+                        if let Some(r) = pend_dev.take() { let _ = r.send(Ok(text)); }
                     }
                     T_PAIR_MISS => {
                         if let Some(r) = pend_bak.take() { let _ = r.send(Err("配对已过期或不存在".into())); }
@@ -642,6 +655,7 @@ async fn session(
                         if let Some((_, r)) = pend_store.take() { let _ = r.send(Err(d.clone())); }
                         if let Some((_, r)) = pend_fetch.take() { let _ = r.send(Err(d.clone())); }
                         if let Some(r) = pend_list.take() { let _ = r.send(Err(d.clone())); }
+                        if let Some(r) = pend_dev.take() { let _ = r.send(Err(d.clone())); }
                         return fail("error", d);
                     }
                     T_BYE => return fail("error", "服务器关闭连接".into()),
@@ -700,9 +714,11 @@ async fn session(
                     body.extend_from_slice(&blob);
                     send!(frame(T_ACCOUNT_PUT_BACKUP, &body));
                 }
-                Some(RelayCmd::AccountGetBackup { user, reply }) => {
+                Some(RelayCmd::AccountGetBackup { user, prev, reply }) => {
                     pend_bak = Some(reply);
-                    send!(frame(T_ACCOUNT_GET_BACKUP, &user_body(&user)));
+                    let mut body = user_body(&user);
+                    if prev { body.push(1); }
+                    send!(frame(T_ACCOUNT_GET_BACKUP, &body));
                 }
                 Some(RelayCmd::Store { id, blob, ttl, dest, reply }) => {
                     pend_store = Some((id.clone(), reply));
@@ -737,6 +753,12 @@ async fn session(
                 Some(RelayCmd::AccountRevoke { user, pass, reply }) => {
                     pend_acct = Some(reply);
                     send!(frame(T_ACCOUNT_REVOKE, &user_pass_body(&user, &pass)));
+                }
+                Some(RelayCmd::AccountDevices { user, op, reply }) => {
+                    pend_dev = Some(reply);
+                    let mut body = user_body(&user);
+                    body.push(op);
+                    send!(frame(T_ACCOUNT_DEVICES, &body));
                 }
                 Some(RelayCmd::PairPut { token, ttl, blob, reply }) => {
                     pend_acct = Some(reply);

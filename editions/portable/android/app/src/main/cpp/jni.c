@@ -171,6 +171,8 @@ JNIEXPORT jstring JNICALL FN(completeFirstRun)(JNIEnv *e, jclass k, jstring name
 JNIEXPORT jstring JNICALL FN(accountSetup)(JNIEnv *e, jclass k){ char rk[80]="", err[256]=""; (void)k; if(C) lsm_account_setup(C,rk,sizeof rk,err); return J(e,rk[0]?rk:err); }
 JNIEXPORT jstring JNICALL FN(setAccountMode)(JNIEnv *e, jclass k, jstring mode){ char *m=U(e,mode), rk[80]="", err[256]=""; (void)k; if(C) lsm_set_account_mode(C,m,rk,sizeof rk,err); free(m); return J(e,rk[0]?rk:err); }
 JNIEXPORT jstring JNICALL FN(revealRecoveryKey)(JNIEnv *e, jclass k){ char rk[80]=""; (void)k; if(C) lsm_reveal_recovery_key(C,rk,sizeof rk); return J(e,rk); }
+JNIEXPORT jstring JNICALL FN(accountDevices)(JNIEnv *e, jclass k, jboolean unlink){ char b[1600]=""; (void)k; if(C) lsm_account_devices(C,unlink?2:0,b,sizeof b); return JU(e,b); }
+JNIEXPORT jstring JNICALL FN(accountPullPrev)(JNIEnv *e, jclass k){ char b[400]=""; (void)k; if(C) lsm_account_pull_prev(C,b,sizeof b); return JU(e,b); }
 JNIEXPORT jstring JNICALL FN(relayUri)(JNIEnv *e, jclass k){ char u[400]=""; (void)k; if(C) lsm_relay_uri(C,u,sizeof u); return J(e,u); }
 JNIEXPORT jstring JNICALL FN(accountPairUri)(JNIEnv *e, jclass k){ char u[500]="", err[256]=""; (void)k; if(C && lsm_account_pair_uri(C,u,sizeof u,err)) return J(e,err[0]?err:"failed"); return J(e,u); }
 JNIEXPORT jstring JNICALL FN(resend)(JNIEnv *e, jclass k, jstring id){ char *s=U(e,id), err[256]="", nid[40]=""; int rc=C?lsm_resend(C,s,nid,err):1; (void)k; free(s); return J(e,rc?(err[0]?err:"failed"):""); }

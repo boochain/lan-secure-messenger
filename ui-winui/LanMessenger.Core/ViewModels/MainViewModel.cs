@@ -1074,6 +1074,19 @@ public partial class MainViewModel : ObservableObject
 
     public Task RestoreAccountAsync(string key) => SafeCall(x => x.AccountRestoreAsync(key?.Trim() ?? ""), "正在用恢复密钥恢复账号…");
 
+    public async Task<string> AccountDevicesAsync(bool unlink)
+    {
+        string text = "";
+        await SafeCall(async x =>
+        {
+            var el = await x.AccountDevicesAsync(unlink);
+            if (el.TryGetProperty("text", out var p) && p.GetString() is string s) text = s;
+        }, unlink ? "正在登出其他设备…" : "正在查询已登录设备…");
+        return text;
+    }
+
+    public Task AccountPullPrevAsync() => SafeCall(x => x.AccountPullPrevAsync(), "正在用上一份备份覆盖本机…");
+
     public async Task<string?> RelayUriAsync()
     {
         string? uri = null;

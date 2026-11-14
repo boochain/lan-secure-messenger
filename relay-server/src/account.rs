@@ -41,7 +41,7 @@ impl AccountStore {
             fs::write(dir.join("pass.hash"), hash).map_err(|_| "io")?;
         }
         if device_fp.len() == 32 {
-            let _ = fs::write(dir.join("device.fp"), device_fp);
+            self.record_device(&dir, device_fp);
         }
         Ok(())
     }
@@ -69,7 +69,7 @@ impl AccountStore {
         // passwordless (auth.v): presence of the directory is enough; ciphertext backup
         // is decrypted client-side with the recovery key.
         if device_fp.len() == 32 {
-            let _ = fs::write(dir.join("device.fp"), device_fp);
+            self.record_device(&dir, device_fp);
         }
         Ok(())
     }
@@ -82,12 +82,32 @@ impl AccountStore {
         if blob.len() > 12 * 1024 * 1024 {
             return Err("too large");
         }
-        fs::write(dir.join("identity.bak"), blob).map_err(|_| "io")
+        // Write beside the live backup, keep one previous generation, then rename.
+        // A crash cannot leave a truncated identity.bak as the only copy.
+        let dest = dir.join("identity.bak");
+        let tmp = dir.join("identity.bak.tmp");
+        let prev = dir.join("identity.bak.prev");
+        fs::write(&tmp, blob).map_err(|_| "io")?;
+        if dest.exists() {
+            let _ = fs::rename(&dest, &prev);
+        }
+        fs::rename(&tmp, &dest).map_err(|_| "io")?;
+        Ok(())
     }
 
     pub fn get_backup(&self, user: &str) -> Result<Vec<u8>, &'static str> {
+        self.get_backup_gen(user, 0)
+    }
+
+    /// `which` 0 = live backup, 1 = the previous generation kept across an upload.
+    pub fn get_backup_gen(&self, user: &str, which: u8) -> Result<Vec<u8>, &'static str> {
         let dir = self.user_dir(user).ok_or("bad user")?;
-        fs::read(dir.join("identity.bak")).map_err(|_| "no backup")
+        let name = match which {
+            0 => "identity.bak",
+            1 => "identity.bak.prev",
+            _ => return Err("bad gen"),
+        };
+        fs::read(dir.join(name)).map_err(|_| if which == 1 { "no previous backup" } else { "no backup" })
     }
 
     pub fn store_blob(&self, owner_fp: &[u8], id: &[u8], blob: &[u8], ttl_secs: u32) -> Result<(), &'static str> {
@@ -182,7 +202,66 @@ impl AccountStore {
             return Err("no user");
         }
         let _ = fs::remove_file(dir.join("device.fp"));
+        if let Ok(rd) = fs::read_dir(dir.join("devices")) {
+            for e in rd.flatten() {
+                let _ = fs::remove_file(e.path());
+            }
+        }
         Ok(())
+    }
+
+    /// Signal-style linked device: one file per fingerprint, first-seen preserved.
+    fn record_device(&self, dir: &std::path::Path, fp: &[u8]) {
+        if fp.len() != 32 {
+            return;
+        }
+        let d = dir.join("devices");
+        let _ = fs::create_dir_all(&d);
+        let path = d.join(hex(fp));
+        let now = now();
+        let first = fs::read_to_string(&path).ok().and_then(|s| s.split_whitespace().next().and_then(|x| x.parse().ok())).unwrap_or(now);
+        let _ = fs::write(&path, format!("{first} {now}\n"));
+        let _ = fs::write(dir.join("device.fp"), fp);
+    }
+
+    fn caller_is_device(&self, dir: &std::path::Path, me: &[u8]) -> bool {
+        me.len() == 32 && dir.join("devices").join(hex(me)).is_file()
+    }
+
+    /// `op` 0 = list, 2 = unlink every device except the caller (this connection).
+    pub fn devices(&self, user: &str, me: &[u8], op: u8) -> Result<String, &'static str> {
+        let dir = self.user_dir(user).ok_or("bad user")?;
+        if !dir.is_dir() {
+            return Err("no user");
+        }
+        if !self.caller_is_device(&dir, me) {
+            return Err("not a device");
+        }
+        if op == 2 {
+            if let Ok(rd) = fs::read_dir(dir.join("devices")) {
+                let keep = hex(me);
+                for e in rd.flatten() {
+                    if e.file_name().to_string_lossy() != keep {
+                        let _ = fs::remove_file(e.path());
+                    }
+                }
+            }
+        } else if op != 0 {
+            return Err("bad op");
+        }
+        let mut lines = Vec::new();
+        if let Ok(rd) = fs::read_dir(dir.join("devices")) {
+            for e in rd.flatten() {
+                let name = e.file_name().to_string_lossy().to_string();
+                let body = fs::read_to_string(e.path()).unwrap_or_default();
+                let mut it = body.split_whitespace();
+                let first = it.next().unwrap_or("0");
+                let last = it.next().unwrap_or(first);
+                lines.push(format!("{name} {first} {last}"));
+            }
+        }
+        lines.sort();
+        Ok(lines.join("\n"))
     }
 
     fn pair_path(&self, token: &[u8]) -> Option<PathBuf> {
@@ -273,12 +352,26 @@ mod tests {
         assert!(store.login("alice", "wrong", &me).is_err());
         store.register("bob-key", "", &me).unwrap();
         store.login("bob-key", "", &me).unwrap();
-        let mut tok = [3u8; 32];
+        let tok = [3u8; 32];
         store.pair_put(&tok, 60, b"LSMPAIR1blob").unwrap();
         assert_eq!(store.pair_get(&tok).unwrap(), b"LSMPAIR1blob");
         assert!(store.pair_get(&tok).is_err());
         store.put_backup("alice", b"LSMBAK02demo").unwrap();
         assert_eq!(store.get_backup("alice").unwrap(), b"LSMBAK02demo");
+        let other = [4u8; 32];
+        store.login("alice", "secret12", &other).unwrap();
+        let list = store.devices("alice", &me, 0).unwrap();
+        assert!(list.contains(&hex(&me)));
+        assert!(list.contains(&hex(&other)));
+        assert!(store.devices("alice", &[1u8; 32], 0).is_err());
+        let left = store.devices("alice", &me, 2).unwrap();
+        assert!(left.contains(&hex(&me)));
+        assert!(!left.contains(&hex(&other)));
+        store.put_backup("alice", b"LSMBAK02next").unwrap();
+        assert_eq!(store.get_backup("alice").unwrap(), b"LSMBAK02next");
+        assert_eq!(fs::read(dir.join("users/alice/identity.bak.prev")).unwrap(), b"LSMBAK02demo");
+        assert_eq!(store.get_backup_gen("alice", 1).unwrap(), b"LSMBAK02demo");
+        assert!(store.get_backup_gen("alice", 2).is_err());
         let dest = [7u8; 32];
         store.store_blob(&dest, b"msgid1", b"cipher", 60).unwrap();
         assert_eq!(store.fetch_blob(&dest, b"msgid1").unwrap(), b"cipher");
@@ -287,7 +380,8 @@ mod tests {
         assert!(listed.iter().any(|i| i == b"msgid2"));
         assert_eq!(store.gc_expired(), 0);
         store.revoke_devices("alice", "secret12").unwrap();
-        assert!(!dir.join("users/alice/device.fp").exists() || true);
+        assert!(!dir.join("users/alice/devices").join(hex(&me)).exists());
+        assert!(!dir.join("users/alice/devices").join(hex(&other)).exists());
         store.del_blob(&dest, b"msgid1");
         store.del_blob(&dest, b"msgid2");
         assert!(store.fetch_blob(&dest, b"msgid1").is_err());

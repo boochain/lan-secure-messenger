@@ -6,6 +6,9 @@ static void v072_show_recovery(int force, const char *preset);
 #define IDM_ACCTMODE 269
 #define IDM_REVEALRK 270
 #define IDM_SCANIMG  271
+#define IDM_UNLINK 272
+#define IDM_DEVICES 273
+#define IDM_PREVBAK 274
 static int v071_fr_reshoot, v071_fr_picked;
 #define ID_FR_DEV 4001
 #define ID_FR_ACC 4002

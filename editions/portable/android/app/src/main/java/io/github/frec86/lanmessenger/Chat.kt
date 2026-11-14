@@ -240,10 +240,15 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
                 }
             }
         }
-        // #5 light transition: reply / edit bar slides + fades (keeps the last message while leaving)
-        val barMsg = editing ?: replyTo; var lastBar by remember { mutableStateOf<Pair<Msg, Boolean>?>(null) }; if (barMsg != null) lastBar = barMsg to (editing != null)
-        androidx.compose.animation.AnimatedVisibility(barMsg != null, enter = androidx.compose.animation.expandVertically(androidx.compose.animation.core.tween(150)) + androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(150)),
-            exit = androidx.compose.animation.shrinkVertically(androidx.compose.animation.core.tween(120)) + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(120))) {
+        val barMsg = editing ?: replyTo
+        var lastBar by remember { mutableStateOf<Pair<Msg, Boolean>?>(null) }
+        if (barMsg != null) lastBar = barMsg to (editing != null)
+        // Material 3 motion: enter = emphasized decelerate 400ms, exit = emphasized accelerate 200ms
+        // https://m3.material.io/styles/motion/easing-and-duration/tokens-specs
+        val m3Enter = androidx.compose.animation.core.CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)
+        val m3Exit = androidx.compose.animation.core.CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)
+        androidx.compose.animation.AnimatedVisibility(barMsg != null, enter = androidx.compose.animation.expandVertically(androidx.compose.animation.core.tween(400, easing = m3Enter)) + androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(400, easing = m3Enter)),
+            exit = androidx.compose.animation.shrinkVertically(androidx.compose.animation.core.tween(200, easing = m3Exit)) + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(200, easing = m3Exit))) {
             lastBar?.let { (m, ed) -> ReplyBar(m, ed) { if (editing != null) input = ""; editing = null; replyTo = null } }
         }
         /* composer: [field · attach · mic] (send) */

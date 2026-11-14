@@ -834,6 +834,11 @@ static void do_command(int id){
     case IDM_PAIRQR: v071_show_pair_qr(); break;
     case IDM_ACCTMODE: v071_switch_mode(); break;
     case IDM_REVEALRK: v071_reveal_rk(); break;
+    case IDM_DEVICES: case IDM_UNLINK: { char b[1600]; lsm_account_devices(C,id==IDM_UNLINK?2:0,b,sizeof b); msgbox(b,MB_ICONINFORMATION); break; }
+    case IDM_PREVBAK: { char b[400]; int ask; wchar_t *wm; const char *q="用服务器上的上一份加密备份覆盖本机身份和历史？\r\n当前这份备份会留在服务器上。没有上一份时不会改本机。";
+        int wn=MultiByteToWideChar(CP_UTF8,0,q,-1,NULL,0); wm=(wchar_t*)calloc((size_t)wn+1,sizeof(wchar_t)); MultiByteToWideChar(CP_UTF8,0,q,-1,wm,wn);
+        ask=MessageBoxW(hMain,wm,L"上一份备份",MB_YESNO|MB_ICONWARNING|MB_DEFBUTTON2); free(wm); if(ask!=IDYES) break;
+        lsm_account_pull_prev(C,b,sizeof b); msgbox(b,MB_ICONINFORMATION); break; }
     case IDM_QUICK: ux_quick_switch(); break;
     case IDM_PINCONV: p2_toggle_conv_pin(); break;
     case IDM_STARRED: p2_flag_list(2,NULL); break;
@@ -1025,7 +1030,7 @@ static HMENU build_menu(void){
     AM(g,MF_STRING,IDM_GCREATE,L"创建群组(&C)..."); AM(g,MF_STRING,IDM_GINVITE,L"邀请成员(&I)..."); AM(g,MF_STRING,IDM_GREMOVE,L"移除成员(&R)..."); AM(g,MF_STRING,IDM_GLEAVE,L"退出群组(&L)"); AM(g,MF_STRING,IDM_V070_GROUPS,L"群组页");
     AM(s,MF_STRING,IDM_PROFILE,L"个人资料(&P)…");
     acc=v072_mpopup(s,L"账号(&A)"); AM(acc,MF_STRING,IDM_NAME,L"修改昵称(&N)..."); AM(acc,MF_STRING,IDM_RELAY,L"中转服务器(&R)..."); AM(acc,MF_STRING,IDM_SERVERQR,L"服务器二维码..."); AM(acc,MF_STRING,IDM_PAIRQR,L"配对新设备...");
-    more=v072_mpopup(acc,L"更多"); AM(more,MF_STRING,IDM_ACCTMODE,L"切换账号/设备模式..."); AM(more,MF_STRING,IDM_REVEALRK,L"显示恢复密钥...");
+    more=v072_mpopup(acc,L"更多"); AM(more,MF_STRING,IDM_ACCTMODE,L"切换账号/设备模式..."); AM(more,MF_STRING,IDM_REVEALRK,L"显示恢复密钥..."); AM(more,MF_STRING,IDM_DEVICES,L"已登录设备..."); AM(more,MF_STRING,IDM_UNLINK,L"登出其他设备"); AM(more,MF_STRING,IDM_PREVBAK,L"用上一份备份覆盖本机...");
     pages=v072_mpopup(s,L"页面"); AM(pages,MF_STRING,IDM_V070_SETTINGS,L"设置页"); AM(pages,MF_STRING,IDM_V070_DIAG,L"诊断页"); AM(pages,MF_STRING,IDM_V070_PROFILE,L"个人资料页");
     appearance=v072_mpopup(s,L"外观"); AM(appearance,MF_STRING|(theme_mode==0?MF_CHECKED:0),IDM_THEME_SYS,L"外观：跟随系统(&Y)"); AM(appearance,MF_STRING|(theme_mode==1?MF_CHECKED:0),IDM_THEME_LIGHT,L"外观：浅色(&L)"); AM(appearance,MF_STRING|(theme_mode==2?MF_CHECKED:0),IDM_THEME_DARK,L"外观：深色(&K)");
     AM(h,MF_STRING,IDM_DIAG,L"诊断信息(&D)..."); AM(h,MF_STRING,IDM_UPDATE,L"检查更新(&U)..."); AM(h,MF_STRING,IDM_ABOUT,L"关于(&A)");

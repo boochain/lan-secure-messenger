@@ -196,3 +196,9 @@ See `docs/account-mode.md` for the client crypto and UX. Wire additions, all opt
 * Pairing frames: `PAIR_PUT` 0x68 (`token[32] · ttl u32 BE · blob`), `PAIR_GET` 0x69
   (`token[32]`), `PAIR_DATA` 0x6A, `PAIR_MISS` 0x6B, `PAIR_OK` 0x6C. Blobs are opaque
   (clients store a wrapped recovery key). Tokens expire and are deleted after a successful get.
+* Linked devices: `ACCOUNT_DEVICES` 0x6D (`u16 user_len · user · u8 op`; op 0 lists,
+  op 2 unlinks every device except the caller). Reply is `ACCOUNT_DEVICE_LIST` 0x6E,
+  UTF-8 lines `hex first_unix last_unix`. The caller must already be a recorded device.
+  Device id is SHA-256 of the connection's X25519 public key. Unlink does not delete
+  `identity.bak`. `ACCOUNT_GET_BACKUP` may end with an extra byte `1` to fetch
+  `identity.bak.prev` instead of the live blob; a missing byte still means the live copy.

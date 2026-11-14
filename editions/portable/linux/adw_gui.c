@@ -561,6 +561,8 @@ static void win_act(GSimpleAction *a, GVariant *v, gpointer p){ const char *n=g_
     else if(!strcmp(n,"shot-recovery")) v072_shot_recovery();
     else if(!strcmp(n,"acct-mode")) v071_switch_mode();
     else if(!strcmp(n,"reveal-rk")) v071_reveal_rk();
+    else if(!strcmp(n,"devices")||!strcmp(n,"unlink-devices")){ char b[1600]; lsm_account_devices(C,!strcmp(n,"unlink-devices")?2:0,b,sizeof b); info("已登录设备",b); }
+    else if(!strcmp(n,"prev-backup")){ char b[400]; lsm_account_pull_prev(C,b,sizeof b); info("上一份备份",b); }
     else if(!strcmp(n,"quick-switch")) ux_quick_switch();
     else if(!strcmp(n,"ttl")) v062_ttl();
     else if(!strcmp(n,"archive")) v062_archive();
@@ -636,7 +638,7 @@ static void load_palette(void){ int dark=adw_style_manager_get_dark(adw_style_ma
     if(!pal_cp){ pal_cp=gtk_css_provider_new(); gtk_style_context_add_provider_for_display(gdk_display_get_default(),GTK_STYLE_PROVIDER(pal_cp),GTK_STYLE_PROVIDER_PRIORITY_APPLICATION); }
     { GString *s=g_string_new(LSM_ADW_PALETTE[dark?1:0]); char *css=NULL; gsize n=0; char ph[1200]; const char *ad=getenv("LSM_ADW_CSS");
       /* the rules (lsm-adw.css) are compiled in; LSM_ADW_CSS=<file> overrides for design iteration */
-      if(ad && g_file_get_contents(ad,&css,&n,NULL)){ g_string_append(s,css); g_free(css); } else g_string_append(s,LSM_ADW_RULES); (void)ph; g_string_append(s,"\n/* light transitions (#5): hover / selection fade, no layout motion */ button, row, .msg-row { transition: background-color 120ms ease-out, color 120ms ease-out, box-shadow 120ms ease-out; }\n");
+      if(ad && g_file_get_contents(ad,&css,&n,NULL)){ g_string_append(s,css); g_free(css); } else g_string_append(s,LSM_ADW_RULES); (void)ph; g_string_append(s,"\n/* M3 selection controls: standard easing + short4 200ms. https://m3.material.io/styles/motion/easing-and-duration/tokens-specs */ button, row, .msg-row { transition: background-color 200ms cubic-bezier(0.2, 0.0, 0, 1.0), color 200ms cubic-bezier(0.2, 0.0, 0, 1.0), box-shadow 200ms cubic-bezier(0.2, 0.0, 0, 1.0); }\n");
 #if GTK_CHECK_VERSION(4, 12, 0)
       gtk_css_provider_load_from_string(pal_cp,s->str);
 #else
@@ -666,7 +668,7 @@ static void adw_active(GObject *o, GParamSpec *ps, gpointer p){ (void)o;(void)ps
 static void activate(GtkApplication *a, gpointer p){
     GtkWidget *sidebar_tv, *sb_hdr, *sb_box, *sc, *content_tv, *ct_hdr, *tbox, *tv, *composer, *ov, *send, *attach, *chat_ov, *empty, *add_btn, *ab, *frame;
     lsm_opts o; char err[256]; GMenu *menu; (void)p;
-    static const char *acts[]={"search","add-contact","refresh","reconnect","view-last-image","next-conv","prev-conv","send-file","paste","clear-chat","details","trust","untrust","block","mute","diagnostics","check-update","pin-offer","relay","downloads","storage","emoji","menu","close","about","quit","history","profile","contact-profile","pin-conv","starred","pinned-msgs","multi-select","new-poll","ttl","archive","folders","filter","my-qr","quick-switch","server-qr","pair-qr","paste-uri","scan-image","shot-first-run","shot-recovery","acct-mode","reveal-rk"};
+    static const char *acts[]={"search","add-contact","refresh","reconnect","view-last-image","next-conv","prev-conv","send-file","paste","clear-chat","details","trust","untrust","block","mute","diagnostics","check-update","pin-offer","relay","downloads","storage","emoji","menu","close","about","quit","history","profile","contact-profile","pin-conv","starred","pinned-msgs","multi-select","new-poll","ttl","archive","folders","filter","my-qr","quick-switch","server-qr","pair-qr","paste-uri","scan-image","shot-first-run","shot-recovery","acct-mode","reveal-rk","devices","unlink-devices","prev-backup"};
     if(win){ gtk_window_present(GTK_WINDOW(win)); ui_wake(); return; }
     { const char *t=getenv("LSM_THEME"); AdwStyleManager *sm=adw_style_manager_get_default(); if(t&&!strcmp(t,"dark")) adw_style_manager_set_color_scheme(sm,ADW_COLOR_SCHEME_FORCE_DARK); else if(t&&!strcmp(t,"light")) adw_style_manager_set_color_scheme(sm,ADW_COLOR_SCHEME_FORCE_LIGHT);
       g_signal_connect(sm,"notify::dark",G_CALLBACK(on_dark),NULL); }
@@ -712,7 +714,9 @@ static void activate(GtkApplication *a, gpointer p){
     menu=g_menu_new();
     { GMenu *s=g_menu_new(); g_menu_append(s,"个人资料…","win.profile"); g_menu_append(s,"消息历史 (Ctrl+Shift+F)","win.history"); g_menu_append(s,"收藏的消息…","win.starred"); g_menu_append(s,"筛选会话（分组 / 已归档）…","win.filter"); v072_append_sub(menu,"浏览",s); g_object_unref(s); }
     { GMenu *s=g_menu_new(); g_menu_append(s,"发送文件… (Ctrl+O)","win.send-file"); g_menu_append(s,"插入表情…","win.emoji"); g_menu_append(s,"打开接收文件夹","win.downloads"); g_menu_append(s,"存储管理…","win.storage"); v072_append_sub(menu,"文件",s); g_object_unref(s); }
-    { GMenu *s=g_menu_new(); g_menu_append(s,"生成 PIN（让对方输入）","win.pin-offer"); g_menu_append(s,"中转服务器…","win.relay"); g_menu_append(s,"服务器二维码…","win.server-qr"); g_menu_append(s,"配对新设备…","win.pair-qr"); g_menu_append(s,"显示恢复密钥…","win.reveal-rk"); v072_append_sub(menu,"账号",s); g_object_unref(s); }
+    { GMenu *s=g_menu_new(); g_menu_append(s,"生成 PIN（让对方输入）","win.pin-offer"); g_menu_append(s,"中转服务器…","win.relay"); g_menu_append(s,"服务器二维码…","win.server-qr"); g_menu_append(s,"配对新设备…","win.pair-qr");
+      { GMenu *d=g_menu_new(); g_menu_append(d,"显示恢复密钥…","win.reveal-rk"); g_menu_append(d,"已登录设备…","win.devices"); g_menu_append(d,"登出其他设备","win.unlink-devices"); g_menu_append(d,"用上一份备份覆盖本机…","win.prev-backup"); g_menu_append_submenu(s,"本机",G_MENU_MODEL(d)); g_object_unref(d); }
+      v072_append_sub(menu,"账号",s); g_object_unref(s); }
     { GMenu *s=g_menu_new(); g_menu_append(s,"切换账号/设备模式…","win.acct-mode"); g_menu_append(s,"重连服务器","win.reconnect"); v072_append_sub(menu,"连接",s); g_object_unref(s); }
     { GMenu *s=g_menu_new(); g_menu_append(s,"诊断信息","win.diagnostics"); g_menu_append(s,"检查更新…","win.check-update"); g_menu_append(s,"关于","win.about"); g_menu_append(s,"退出 (Ctrl+Q)","win.quit"); v072_append_sub(menu,"工具",s); g_object_unref(s); }
     menu_btn=gtk_menu_button_new(); gtk_menu_button_set_icon_name(GTK_MENU_BUTTON(menu_btn),"open-menu-symbolic"); gtk_widget_set_tooltip_text(menu_btn,"主菜单 (F10)"); gtk_menu_button_set_menu_model(GTK_MENU_BUTTON(menu_btn),G_MENU_MODEL(menu)); g_object_unref(menu);

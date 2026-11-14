@@ -340,6 +340,7 @@ fun Settings(st: AppState, dlg: (String) -> Unit, openPage: (String) -> Unit = {
     val p = LocalPalette.current
     var storageSub by remember { mutableStateOf("查看占用并清理半成品") }
     var storageAsk by remember { mutableStateOf(false) }
+    var prevAsk by remember { mutableStateOf(false) }
     var qrShow by remember { mutableStateOf<Pair<String, String>?>(null) }
     fun refreshStorage() {
         val raw = Native.storageInfo()
@@ -377,6 +378,9 @@ fun Settings(st: AppState, dlg: (String) -> Unit, openPage: (String) -> Unit = {
             if (u.startsWith("lsm://")) qrShow = "配对新设备" to u else Repo.toast.value = u.ifEmpty { "无法生成配对码" }
         },
         Triple(R.drawable.ms_lock, "恢复密钥") { onRecovery() },
+        Triple(R.drawable.ms_lock, "已登录设备") { Repo.toast.value = Native.accountDevices(false).ifEmpty { "已向服务器查询" } },
+        Triple(R.drawable.ms_delete, "登出其他") { Repo.toast.value = Native.accountDevices(true) },
+        Triple(R.drawable.ms_lock, "上一份备份") { prevAsk = true },
         Triple(R.drawable.ms_delete, "存储") { storageAsk = true },
         Triple(R.drawable.ms_diagnostics, "诊断") { openPage("diag") },
         Triple(R.drawable.ms_info, "更新") { dlg("update") },
@@ -460,6 +464,15 @@ fun Settings(st: AppState, dlg: (String) -> Unit, openPage: (String) -> Unit = {
                 }) { Text("清理") }
             },
             dismissButton = { TextButton({ storageAsk = false }) { Text("取消") } }
+        )
+    }
+    if (prevAsk) {
+        AlertDialog(
+            onDismissRequest = { prevAsk = false },
+            title = { Text("用上一份备份覆盖本机") },
+            text = { Text("服务器保留当前这份加密备份，并用上一份覆盖本机身份和历史。没有上一份时不会改本机。恢复密钥仍然只在你手里。") },
+            confirmButton = { TextButton({ prevAsk = false; Repo.toast.value = Native.accountPullPrev() }) { Text("覆盖本机") } },
+            dismissButton = { TextButton({ prevAsk = false }) { Text("取消") } }
         )
     }
 }

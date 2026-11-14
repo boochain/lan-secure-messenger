@@ -89,6 +89,11 @@ pub(crate) struct TransferRt {
     /// Restored from a sidecar: the .part is being re-hashed; a re-offer meanwhile is deferred.
     pub resume_loading: bool,
     pub reoffer_pending: bool,
+    /// FileEnd arrived before the recv task reported the last byte.
+    pub end_seen: bool,
+    /// Outbound FileEnd retransmits while Verifying (a lost ack must not stick at 0 bytes).
+    pub verify_retries: u8,
+    verify_at: Option<Instant>,
     rate_mark: (Instant, u64),
     bps: u64,
     last_emit: Instant,
@@ -572,6 +577,9 @@ impl Engine {
                 resumed_from: 0,
                 resume_loading: true,
                 reoffer_pending: false,
+                end_seen: false,
+                verify_retries: 0,
+                verify_at: None,
                 rate_mark: (Instant::now(), 0),
                 bps: 0,
                 last_emit: Instant::now(),
@@ -651,6 +659,9 @@ impl Engine {
                 resumed_from: 0,
                 resume_loading: false,
                 reoffer_pending: false,
+                end_seen: false,
+                verify_retries: 0,
+                verify_at: None,
                 rate_mark: (Instant::now(), 0),
                 bps: 0,
                 last_emit: Instant::now(),
@@ -749,6 +760,9 @@ impl Engine {
                 resumed_from: 0,
                 resume_loading: false,
                 reoffer_pending: false,
+                end_seen: false,
+                verify_retries: 0,
+                verify_at: None,
                 rate_mark: (Instant::now(), 0),
                 bps: 0,
                 last_emit: Instant::now(),
@@ -823,6 +837,34 @@ impl Engine {
     /// Re-offer every outbound transfer still waiting on a peer that is online.
     /// Covers a lost FileOffer after direct↔relay switch (rust↔rust mid-transfer).
     pub(crate) fn resend_pending_offers(&mut self) {
+        // Lost FileComplete: resend FileEnd while Verifying (same idea as the C core, up to 4 times / 8s).
+        let due: Vec<(Uuid, String, u8)> = self
+            .transfers
+            .values()
+            .filter(|t| {
+                t.direction == Direction::Out
+                    && t.state == TransferState::Verifying
+                    && self.conns.contains_key(&t.peer_fp)
+                    && t.verify_at.map(|i| i.elapsed() >= Duration::from_secs(8)).unwrap_or(true)
+            })
+            .map(|t| (t.id, t.peer_fp.clone(), t.verify_retries))
+            .collect();
+        for (tid, peer, n) in due {
+            if n >= 4 {
+                if let Some(t) = self.transfers.get_mut(&tid) {
+                    t.state = TransferState::Failed;
+                    t.error = "对方未确认文件已收完".into();
+                }
+                self.emit_transfer(tid, true);
+                self.mark_file_msg_failed(tid);
+            } else {
+                if let Some(t) = self.transfers.get_mut(&tid) {
+                    t.verify_retries = n + 1;
+                    t.verify_at = Some(Instant::now());
+                }
+                self.send_ctrl(&peer, Frame::FileEnd { tid });
+            }
+        }
         // Stall watchdog (rust<->rust direct->relay race): a resumable outbound transfer that is Active on a link
         // that no longer carries it (no receiver progress for STALL) goes back to Offered and is re-offered on the
         // current link; the receiver answers FileResume from its partial offset (or interrupts its stale recv task).
@@ -1109,6 +1151,9 @@ impl Engine {
                     resumed_from: 0,
                     resume_loading: false,
                     reoffer_pending: false,
+                end_seen: false,
+                verify_retries: 0,
+                verify_at: None,
                     rate_mark: (Instant::now(), 0),
                     bps: 0,
                     last_emit: Instant::now(),
@@ -1214,12 +1259,25 @@ impl Engine {
                 }
             }
             Frame::FileEnd { tid } => {
+                let mut reack = false;
                 if let Some(t) = self.transfers.get_mut(&tid).filter(|t| t.peer_fp == fp && t.direction == Direction::In) {
-                    if let Some(c) = &t.chunk_tx {
-                        let _ = c.send(RecvCmd::End);
+                    match on_inbound_file_end(t.state) {
+                        "reack" => reack = true,
+                        "ignore" => {}
+                        _ => {
+                            if let Some(c) = &t.chunk_tx {
+                                let _ = c.send(RecvCmd::End);
+                            }
+                            t.end_seen = true;
+                            if t.transferred >= t.size && t.state == TransferState::Active {
+                                t.state = TransferState::Verifying;
+                            }
+                            self.emit_transfer(tid, true);
+                        }
                     }
-                    t.state = TransferState::Verifying;
-                    self.emit_transfer(tid, true);
+                }
+                if reack {
+                    self.send_ctrl(fp, Frame::FileComplete { tid, ok: true, error: String::new() });
                 }
             }
             Frame::FileComplete { tid, ok, error } => {
@@ -1300,7 +1358,12 @@ impl Engine {
                     return; // finished, or interrupted and waiting to resume
                 }
                 match result {
-                    Ok(()) => t.state = TransferState::Verifying,
+                    Ok(()) => {
+                        t.transferred = t.size;
+                        t.state = TransferState::Verifying;
+                        t.verify_retries = 0;
+                        t.verify_at = Some(Instant::now());
+                    }
                     Err(e) if t.resumable && e == "连接断开" => {
                         t.state = TransferState::Offered;
                         t.error = "连接中断，重连后自动续传".into();
@@ -1358,9 +1421,17 @@ impl Engine {
                 }
             }
             TransferEvt::RecvProgress { tid, written } => {
-                if let Some(t) = self.transfers.get_mut(&tid) {
+                let emit = if let Some(t) = self.transfers.get_mut(&tid) {
                     t.set_progress(written);
-                    self.emit_transfer(tid, false);
+                    if t.end_seen && t.transferred >= t.size && t.state == TransferState::Active {
+                        t.state = TransferState::Verifying;
+                    }
+                    Some(t.state == TransferState::Verifying)
+                } else {
+                    None
+                };
+                if let Some(force) = emit {
+                    self.emit_transfer(tid, force);
                 }
             }
             TransferEvt::RecvDone { tid, result } => {
@@ -1435,6 +1506,15 @@ pub(crate) fn is_stalled(state: TransferState, resumable: bool, since_progress: 
     state == TransferState::Active && resumable && since_progress >= STALL
 }
 
+/// What an inbound FileEnd does. A repeat after Done must re-ack, not fall back to Verifying.
+pub(crate) fn on_inbound_file_end(state: TransferState) -> &'static str {
+    match state {
+        TransferState::Done => "reack",
+        TransferState::Failed | TransferState::Rejected | TransferState::Cancelled => "ignore",
+        _ => "take",
+    }
+}
+
 #[cfg(test)]
 mod stall_tests {
     use super::*;
@@ -1444,5 +1524,8 @@ mod stall_tests {
         assert!(!is_stalled(TransferState::Active, true, Duration::from_secs(5)));
         assert!(!is_stalled(TransferState::Active, false, Duration::from_secs(60))); // old peer: no resume
         assert!(!is_stalled(TransferState::Offered, true, Duration::from_secs(60)));
+        assert_eq!(on_inbound_file_end(TransferState::Done), "reack");
+        assert_eq!(on_inbound_file_end(TransferState::Active), "take");
+        assert_eq!(on_inbound_file_end(TransferState::Cancelled), "ignore");
     }
 }

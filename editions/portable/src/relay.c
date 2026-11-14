@@ -10,11 +10,13 @@
 enum { RT_HELLO=0x00, RT_AUTH=0x01, RT_AUTH_OK=0x02, RT_AUTH_FAIL=0x03, RT_SEND=0x10, RT_DELIVER=0x11, RT_SEND_FAIL=0x12,
        RT_PING=0x20, RT_PONG=0x21, RT_LIST=0x30, RT_PEER_LIST=0x40, RT_PEER_JOIN=0x41, RT_PEER_LEAVE=0x42, RT_ERROR=0x50,
        RT_ACCOUNT_REGISTER=0x60, RT_ACCOUNT_OK=0x62, RT_ACCOUNT_FAIL=0x63, RT_ACCOUNT_PUT_BACKUP=0x64, RT_ACCOUNT_GET_BACKUP=0x65, RT_ACCOUNT_BACKUP=0x66,
-       RT_PAIR_PUT=0x68, RT_PAIR_GET=0x69, RT_PAIR_DATA=0x6A, RT_PAIR_MISS=0x6B, RT_PAIR_OK=0x6C, RT_BYE=0x7f };
+       RT_PAIR_PUT=0x68, RT_PAIR_GET=0x69, RT_PAIR_DATA=0x6A, RT_PAIR_MISS=0x6B, RT_PAIR_OK=0x6C,
+       RT_ACCOUNT_DEVICES=0x6D, RT_ACCOUNT_DEVICE_LIST=0x6E, RT_BYE=0x7f };
 enum { RS_OFF=0, RS_IDLE, RS_CONNECTING, RS_HELLO, RS_AUTH, RS_UP };
 enum { RK_DATA=0, RK_OPEN=1, RK_CLOSE=2 };
 #define RL_OUT_HIGH (2*1024*1024)
 #define RL_CHUNK 60000
+static void fmt_device_list(const uint8_t myid[32], const char *raw, char *out, size_t n);
 
 typedef struct { uint8_t id[32]; char fp[FP_LEN]; char name[300]; int64_t next_try; int fails; } rl_peer;
 struct relay_cl {
@@ -25,6 +27,7 @@ struct relay_cl {
     int64_t next_attempt, last_rx, last_ping, started; int fails;
     rl_peer *peers; int npeers;
     char status[32], detail[256];
+    char devices[1600];
 };
 
 static void rl_be32(uint8_t *p, uint32_t v){ p[0]=(uint8_t)(v>>24); p[1]=(uint8_t)(v>>16); p[2]=(uint8_t)(v>>8); p[3]=(uint8_t)v; }
@@ -175,7 +178,18 @@ static void rl_on_frame(lsm_core *c, uint8_t ty, const uint8_t *b, size_t n){
             lsm_backup_import(c->data_dir,c->recovery_key,tmp,err,fp);
         }
         break; }
-    case RT_PAIR_OK: case RT_PAIR_MISS: case RT_ACCOUNT_OK: case RT_ACCOUNT_FAIL: break;
+    case RT_PAIR_OK: case RT_PAIR_MISS: case RT_ACCOUNT_OK: break;
+    case RT_ACCOUNT_FAIL: {
+        char m[300]; size_t k=n; if(k>=sizeof m) k=sizeof m-1; memcpy(m,b,k); m[k]=0;
+        if(m[0]) notice(c,"账号操作失败：%s",m);
+        break; }
+    case RT_ACCOUNT_DEVICE_LIST: {
+        char shown[1600];
+        if(n>=sizeof r->devices) n=sizeof r->devices-1;
+        memcpy(r->devices,b,n); r->devices[n]=0;
+        fmt_device_list(r->myid, r->devices[0]?r->devices:"", shown, sizeof shown);
+        notice(c,"%s",shown);
+        break; }
 default: break; } }
 
 static void rl_readable(lsm_core *c){
@@ -240,6 +254,36 @@ static void rl_tick(lsm_core *c){
           rl_blob(c,p->id,RK_OPEN,sid,NULL,0); k=rl_new_conn(c,p->id,sid,1);
           { uint8_t m[64]; int w=noise_write(&k->hs,m); raw_send(k,m,(size_t)w); } } } }
 
+static void fmt_dev_time(unsigned long long sec, char *b, size_t n){
+    time_t tt=(time_t)sec; struct tm tm;
+    if(!sec){ scpy(b,"—",n); return; }
+#ifdef _WIN32
+    if(localtime_s(&tm,&tt)){ scpy(b,"—",n); return; }
+#else
+    if(!localtime_r(&tt,&tm)){ scpy(b,"—",n); return; }
+#endif
+    snprintf(b,n,"%04d-%02d-%02d %02d:%02d",tm.tm_year+1900,tm.tm_mon+1,tm.tm_mday,tm.tm_hour,tm.tm_min); }
+/* Server lines are "hex first_unix last_unix". Show a short id and local times (Signal linked-devices list). */
+static void fmt_device_list(const uint8_t myid[32], const char *raw, char *out, size_t n){
+    char mine[65], line[220], firsts[32], lasts[32];
+    const char *p=raw; size_t used=0;
+    hex_enc(myid,32,mine); out[0]=0;
+    if(!raw||!raw[0]){ scpy(out,"服务器上还没有已登录设备记录。",n); return; }
+    scpy(out,"已登录设备",n); used=strlen(out);
+    while(*p){
+        const char *nl=strchr(p,'\n'); size_t ln=nl?(size_t)(nl-p):strlen(p);
+        char row[180], fp[80]; unsigned long long a=0,b=0;
+        if(ln>=sizeof row) ln=sizeof row-1;
+        memcpy(row,p,ln); row[ln]=0; fp[0]=0;
+        if(sscanf(row,"%79s %llu %llu",fp,&a,&b)>=1 && fp[0]){
+            int mine_row=!strcmp(fp,mine);
+            fmt_dev_time(a,firsts,sizeof firsts); fmt_dev_time(b,lasts,sizeof lasts);
+            snprintf(line,sizeof line,"%s%.8s…  首次 %s  最近 %s%s", mine_row?"本机 ":"", fp, firsts, lasts, mine_row?"（当前连接）":"");
+        } else snprintf(line,sizeof line,"%s",row);
+        if(used+1<n){ out[used++]='\n'; out[used]=0; }
+        if(used<n){ size_t c=strlen(line); if(c>n-1-used) c=n-1-used; memcpy(out+used,line,c); used+=c; out[used]=0; }
+        if(!nl) break; p=nl+1; } }
+
 static void rl_on_link_closed(lsm_core *c, conn *k){ if(k->via_relay==1) rl_blob(c,k->rpeer,RK_CLOSE,k->rsid,NULL,0); }
 
 /* ---- public API ---- */
@@ -256,6 +300,34 @@ int lsm_relay_set(lsm_core *c, int enabled, const char *host, int port, const ch
 int lsm_relay_get(lsm_core *c, int *enabled, char *host, size_t hn, int *port, int *has_pass){
     struct relay_cl *r; mu_lock(&c->mu); r=c->rl;
     if(enabled) *enabled=r->enabled; if(host) scpy(host,r->host,hn); if(port) *port=r->port; if(has_pass) *has_pass=r->pass[0]!=0;
+    mu_unlock(&c->mu); return 0; }
+/* op 0 = list linked devices, op 2 = unlink every device except this one (Signal "unlink"). */
+int lsm_account_devices(lsm_core *c, int op, char *out, size_t n){
+    struct relay_cl *r; uint8_t hdr[80]; uint16_t ln;
+    if(!out||n<8) return -1;
+    mu_lock(&c->mu); r=c->rl;
+    if(!r || r->st!=RS_UP || !c->account_lookup[0] || strcmp(c->account_mode,"account")){
+        scpy(out,"请先连接中转并开启账号模式。已登录设备按本机指纹登记，不使用服务器密码。",n);
+        mu_unlock(&c->mu); return -1; }
+    ln=(uint16_t)strlen(c->account_lookup); if(ln>70) ln=70;
+    hdr[0]=(uint8_t)(ln>>8); hdr[1]=(uint8_t)ln; memcpy(hdr+2,c->account_lookup,ln); hdr[2+ln]=(uint8_t)op;
+    rl_frame(r,RT_ACCOUNT_DEVICES,hdr,3+ln,NULL,0);
+    if(r->devices[0] && op==0) fmt_device_list(r->myid, r->devices, out, n);
+    else if(op==2) scpy(out,"已请求登出其他设备。本机保留。服务器不会删除加密备份。",n);
+    else scpy(out,"已向服务器查询已登录设备，结果会以提示显示。",n);
+    mu_unlock(&c->mu); return 0; }
+/* Previous generation of the encrypted backup (identity.bak.prev). The live copy stays on the server. */
+int lsm_account_pull_prev(lsm_core *c, char *out, size_t n){
+    struct relay_cl *r; uint8_t hdr[80]; uint16_t ln;
+    if(!out||n<8) return -1;
+    mu_lock(&c->mu); r=c->rl;
+    if(!r || r->st!=RS_UP || !c->account_lookup[0] || strcmp(c->account_mode,"account")){
+        scpy(out,"请先连接中转并开启账号模式。",n);
+        mu_unlock(&c->mu); return -1; }
+    ln=(uint16_t)strlen(c->account_lookup); if(ln>70) ln=70;
+    hdr[0]=(uint8_t)(ln>>8); hdr[1]=(uint8_t)ln; memcpy(hdr+2,c->account_lookup,ln); hdr[2+ln]=1;
+    rl_frame(r,RT_ACCOUNT_GET_BACKUP,hdr,3+ln,NULL,0);
+    scpy(out,"已请求上一份加密备份。若服务器有上一份，到达后会覆盖本机身份和历史；当前这份仍留在服务器上。",n);
     mu_unlock(&c->mu); return 0; }
 const char *lsm_relay_status(lsm_core *c, char *detail, size_t dn){ /* locked by caller or not: plain reads */
     struct relay_cl *r=c->rl; if(detail) scpy(detail,r->detail,dn); return r->status; }

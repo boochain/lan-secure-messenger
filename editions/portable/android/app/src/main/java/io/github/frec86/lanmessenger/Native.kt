@@ -67,6 +67,8 @@ object Native {
     @JvmStatic external fun accountSetup(): String
     @JvmStatic external fun setAccountMode(mode: String): String
     @JvmStatic external fun revealRecoveryKey(): String
+    @JvmStatic external fun accountDevices(unlinkOthers: Boolean): String
+    @JvmStatic external fun accountPullPrev(): String
     @JvmStatic external fun relayUri(): String
     @JvmStatic external fun accountPairUri(): String
     @JvmStatic external fun resend(id: String): String

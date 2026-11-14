@@ -95,8 +95,13 @@ function Load-Existing {
 }
 function Write-Config {
   if (-not $script:Salt) { $script:Salt = New-Salt }
-  if ($DryRun) { Say "[dry-run] write $Conf (port=$script:Port bind=$script:Bind)"; return }
-  New-Item -ItemType Directory -Force -Path $DataDir, $LogDir | Out-Null
+  # Matches relay-server datadir.rs when data_dir is empty.
+  # Admin: %ProgramData%\LsmRelay\data. Non-admin DataDir is already %LOCALAPPDATA%\LsmRelay\data.
+  if ($IsAdmin) { $store = Join-Path $env:ProgramData 'LsmRelay\data' }
+  else { $store = $DataDir }
+  if ($DryRun) { Say "[dry-run] write $Conf (port=$script:Port bind=$script:Bind data=$store)"; return }
+  New-Item -ItemType Directory -Force -Path $DataDir, $LogDir, $store | Out-Null
+  Import-LegacyData $store
   $logf = Join-Path $LogDir 'relay.log'
   $txt = @"
 # LSM 中转服务器配置 (relay-server config) — 由 deploy.ps1 生成
@@ -107,6 +112,8 @@ port = $($script:Port)
 passphrase = $(Toml-Str $script:Password)
 salt = "$($script:Salt)"
 status_addr = ""
+# 固定数据目录。升级只做增量迁移，不删除来源目录。
+data_dir = $(Toml-Str $store)
 
 [limits]
 max_frame = 12582976
@@ -123,6 +130,37 @@ file = $(Toml-Str $logf)
   # 仅管理员/SYSTEM 与当前用户可读 (restrict ACL)
   try { & icacls $Conf /inheritance:r /grant:r "*S-1-5-18:F" "*S-1-5-32-544:F" "$($env:USERNAME):F" 2>&1 | Out-Null } catch {}
   Ok "配置已写入 (config written): $Conf"
+}
+
+# Copy an older relay-data tree into the fixed store. Never deletes the source.
+function Import-LegacyData([string]$Dest) {
+  New-Item -ItemType Directory -Force -Path $Dest | Out-Null
+  $users = Join-Path $Dest 'users'
+  $has = (Test-Path $users) -and (@(Get-ChildItem $users -Force -ErrorAction SilentlyContinue).Count -gt 0)
+  if (-not $has) {
+    $cands = @(
+      (Join-Path (Get-Location) 'relay-data'),
+      'C:\relay-data',
+      'C:\relay-server\relay-data',
+      (Join-Path $env:ProgramData 'LsmRelay\relay-data'),
+      (Join-Path $env:LOCALAPPDATA 'LsmRelay\relay-data'),
+      (Join-Path $DataDir 'relay-data')
+    )
+    foreach ($src in $cands) {
+      if (-not $src) { continue }
+      if (-not (Test-Path (Join-Path $src 'users'))) { continue }
+      $srcFull = [IO.Path]::GetFullPath($src)
+      $dstFull = [IO.Path]::GetFullPath($Dest)
+      if ($srcFull -eq $dstFull) { continue }
+      Copy-Item -Path (Join-Path $src '*') -Destination $Dest -Recurse -Force
+      Set-Content -Path (Join-Path $Dest 'MIGRATED_FROM') -Value $srcFull -Encoding ascii
+      Ok "已复制旧数据到固定目录，原目录保留 (copied, source kept): $srcFull -> $dstFull"
+      break
+    }
+  }
+  if (-not (Test-Path (Join-Path $Dest 'SCHEMA'))) {
+    Set-Content -Path (Join-Path $Dest 'SCHEMA') -Value "1`n" -Encoding ascii
+  }
 }
 
 # ---------------- 端口/口令 (port & passphrase) ----------------

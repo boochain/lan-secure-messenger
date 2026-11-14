@@ -212,7 +212,7 @@ pub async fn start(cfg: Config) -> Result<Running> {
         .map_err(|e| anyhow::anyhow!("无法监听 {bind} (cannot listen): {e}"))?;
     let addr = listener.local_addr()?;
     let (tx, rx) = watch::channel(false);
-    let data_dir = if cfg.server.data_dir.is_empty() { std::path::PathBuf::from("relay-data") } else { std::path::PathBuf::from(&cfg.server.data_dir) };
+    let data_dir = crate::datadir::prepare(&cfg.server.data_dir).map_err(|e| anyhow::anyhow!("数据目录不可用 (data dir): {e}"))?;
     let hub = Arc::new(Hub {
         key,
         salt,
@@ -502,7 +502,8 @@ async fn handle_conn(sock: TcpStream, peer: SocketAddr, hub: &Arc<Hub>, mut shut
                 let ul = u16::from_be_bytes([body[0], body[1]]) as usize;
                 if body.len() < 2 + ul { let _ = ctx.try_send(account::account_fail("malformed").encode()); continue; }
                 let user = String::from_utf8_lossy(&body[2..2+ul]).to_string();
-                match hub.accounts.get_backup(&user) {
+                let which = if body.len() > 2 + ul { body[2 + ul] } else { 0 };
+                match hub.accounts.get_backup_gen(&user, which) {
                     Ok(blob) => { let _ = ctx.try_send(Frame::new(t::ACCOUNT_BACKUP, blob).encode()); }
                     Err(e) => { let _ = ctx.try_send(account::account_fail(e).encode()); }
                 }
@@ -589,6 +590,18 @@ async fn handle_conn(sock: TcpStream, peer: SocketAddr, hub: &Arc<Hub>, mut shut
                     Ok(blob) => { let _ = ctx.try_send(Frame::new(t::PAIR_DATA, blob).encode()); }
                     Err(_) => { let _ = ctx.try_send(Frame::new(t::PAIR_MISS, token.to_vec()).encode()); }
                 }
+            }
+            t::ACCOUNT_DEVICES => {
+                let body = &f.body;
+                if body.len() < 3 { let _ = ctx.try_send(account::account_fail("malformed").encode()); continue; }
+                let ul = u16::from_be_bytes([body[0], body[1]]) as usize;
+                if body.len() < 2 + ul + 1 { let _ = ctx.try_send(account::account_fail("malformed").encode()); continue; }
+                let user = String::from_utf8_lossy(&body[2..2 + ul]).to_string();
+                let op = body[2 + ul];
+                let _ = ctx.try_send(match hub.accounts.devices(&user, &me, op) {
+                    Ok(text) => Frame::new(t::ACCOUNT_DEVICE_LIST, text.into_bytes()).encode(),
+                    Err(e) => account::account_fail(e).encode(),
+                });
             }
             t::ACCOUNT_REVOKE => {
                 let body = &f.body;

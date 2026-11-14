@@ -101,7 +101,8 @@ typedef struct {
     int hashing;             /* internal: 1 sender prefix check, 2 receiver re-hash of a restored .part (chunked) */
     uint64_t hash_want, hash_done; void *hctx; uint8_t hpre[32]; int reoffer_pending;
     uint64_t rate_bps, rate_b0; int64_t rate_t0; /* runtime throughput sample (lsm_transfer_status) */
-    int sha_retries;         /* receiver: SHA-256 mismatches retried so far (max 3) */
+    int sha_retries;         /* receiver: SHA-256 mismatches retried so far (max 3); sender: FileEnd resends while verifying */
+    int64_t verify_since;    /* sender: when FileEnd was last sent */
 } lsm_transfer;
 
 typedef struct lsm_core lsm_core;
@@ -293,6 +294,10 @@ int lsm_account_setup(lsm_core *c, char *rk_out, size_t n, char *err);
 int lsm_set_account_mode(lsm_core *c, const char *mode, char *rk_out, size_t n, char *err);
 int lsm_relay_uri(lsm_core *c, char *out, size_t n);
 int lsm_account_pair_uri(lsm_core *c, char *uri_out, size_t n, char *err);
+/* Linked devices on the relay (Signal Settings > Linked devices). op 0 lists, op 2 unlinks every device except this one. */
+int lsm_account_devices(lsm_core *c, int op, char *out, size_t n);
+/* Ask the relay for identity.bak.prev and import it when it arrives. Does not delete the live backup. */
+int lsm_account_pull_prev(lsm_core *c, char *out, size_t n);
 int lsm_uri_from_file(const char *path, char *out, size_t n);           /* text file or zbarimg */
 int lsm_qr(const char *text, uint8_t *out);                             /* out[177*177]; returns side, 0 = error */
 #endif
