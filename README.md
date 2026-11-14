@@ -2,6 +2,8 @@
 
 无服务器、无账号的局域网聊天工具：同一局域网内的电脑自动互相发现，文本、图片、文件、群聊全部端到端加密。
 
+> **接手先读 [docs/handover.md](docs/handover.md)。** 那是给下一个 agent 的说明，从线协议往上写。本 README 开头仍写着 v0.6，以仓库根目录 `VERSION` 为准。
+
 > **v0.6**：Windows（WinUI 3）、Windows XP、Linux（GTK 4 / GTK 3）、Android 和可选的中转服务器统一在本仓库开发、
 > 在同一个 Release 发布，所有版本互通（协议 v5）。Windows 版自 v0.5 起为 Rust 后台服务 + WinUI 3 界面。
 
