@@ -43,7 +43,7 @@ data class Pal(
             dialog = c(0xFFFFFF), error = c(0xC42B1C), warning = c(0x9D5D00), imageScrim = Color(0x8C000000))
         val Dark = Pal(window = c(0x0B1020), chat = c(0x0B1020), rowSel = c(0x243044), fg = c(0xFFFFFF), fg2 = c(0xCCCCCC), accent = c(0x60CDFF), onAccent = c(0x000000),
             mine = c(0x2A4068), mineFg = c(0xFFFFFF), mineMeta = c(0xCCCCCC), theirs = c(0x1C2436), theirsFg = c(0xFFFFFF), meta = c(0xCCCCCC),
-            divider = c(0x3A445C), badge = c(0x60CDFF), badgeFg = c(0x000000), online = c(0x6CCB5F), field = c(0x1C2436), chip = c(0x1C2436), chipFg = c(0xCCCCCC),
+            divider = c(0x3A445C), badge = c(0x60CDFF), badgeFg = c(0x000000), online = c(0xDCFCA0), field = c(0x1C2436), chip = c(0x1C2436), chipFg = c(0xCCCCCC),
             service = c(0x1A2740), serviceFg = c(0xCCCCCC), read = c(0x60CDFF), wall = c(0xFFFFFF), wallAlpha = .035f, tile = c(0x2A4068), tileFg = c(0xFFFFFF),
             secCont = c(0x2A4068), onSecCont = c(0xFFFFFF), pCont = c(0x2A4068), onPCont = c(0xFFFFFF), bar = c(0x1C2436), navBar = c(0x1A2740),
             dialog = c(0x1C2436), error = c(0xFF99A4), warning = c(0xFCE100), imageScrim = Color(0x8C000000))
