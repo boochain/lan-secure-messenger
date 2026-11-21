@@ -228,7 +228,7 @@ Windows daemon 的文档路径是 `%APPDATA%\FREC86\lan-secure-messenger\{config
 | GTK 4 / libadwaita | `editions/portable/linux/adw_gui.c` 和 `adw_*.inc` |
 | Android | `editions/portable/android/app/src/main/java/io/github/frec86/lanmessenger/` |
 
-XP 保持系统控件和经典主题。不要用自绘卡片去对抗系统主题。Android 用 Material 3，配色是种子 `#005FB8` 的固定 SchemeTonalSpot（不跟壁纸变），见 `Theme.kt`。主色 `#3F5F90`，主容器 `#D6E3FF`。
+XP 保持系统控件和经典主题。不要用自绘卡片去对抗系统主题。Android 不用 Material You：页面、卡片、胶囊导航和气泡是不透明的 Liquid Glass（`Theme.kt` 的 `Pal`，色值在 `editions/portable/tools/palettes/android.json`）。Compose Material3 只剩对话框、菜单和文字，配色被 `Pal.scheme()` 盖掉，不要改回 SchemeTonalSpot，也不要换启动图标。
 
 ## 13. 界面改动听谁的
 

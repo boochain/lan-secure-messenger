@@ -33,7 +33,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
@@ -243,17 +242,15 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
         val barMsg = editing ?: replyTo
         var lastBar by remember { mutableStateOf<Pair<Msg, Boolean>?>(null) }
         if (barMsg != null) lastBar = barMsg to (editing != null)
-        // Material 3 motion: enter = emphasized decelerate 400ms, exit = emphasized accelerate 200ms
-        // https://m3.material.io/styles/motion/easing-and-duration/tokens-specs
-        val m3Enter = androidx.compose.animation.core.CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)
-        val m3Exit = androidx.compose.animation.core.CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)
-        androidx.compose.animation.AnimatedVisibility(barMsg != null, enter = androidx.compose.animation.expandVertically(androidx.compose.animation.core.tween(400, easing = m3Enter)) + androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(400, easing = m3Enter)),
-            exit = androidx.compose.animation.shrinkVertically(androidx.compose.animation.core.tween(200, easing = m3Exit)) + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(200, easing = m3Exit))) {
+        // Apple standard ease: enter 350ms, exit a bit faster. Same curve the rest of the chrome uses.
+        val glassEase = androidx.compose.animation.core.CubicBezierEasing(0.32f, 0.72f, 0f, 1f)
+        androidx.compose.animation.AnimatedVisibility(barMsg != null, enter = androidx.compose.animation.expandVertically(androidx.compose.animation.core.tween(350, easing = glassEase)) + androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(350, easing = glassEase)),
+            exit = androidx.compose.animation.shrinkVertically(androidx.compose.animation.core.tween(200, easing = glassEase)) + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(200, easing = glassEase))) {
             lastBar?.let { (m, ed) -> ReplyBar(m, ed) { if (editing != null) input = ""; editing = null; replyTo = null } }
         }
         /* composer: [field · attach · mic] (send) */
         Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(8.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(Modifier.weight(1f).heightIn(min = 48.dp).ifThen(!isDark()) { shadow(1.dp, RoundedCornerShape(24.dp)) }.clip(RoundedCornerShape(24.dp)).background(p.field).padding(horizontal = 4.dp),
+            Row(Modifier.weight(1f).heightIn(min = 48.dp).clip(RoundedCornerShape(24.dp)).background(p.field).padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 IconButton({ emojiOpen = !emojiOpen }, Modifier.size(40.dp)) { Ic(R.drawable.ms_emoji, "表情", p.fg2) }
                 Box(Modifier.weight(1f).padding(start = 4.dp, top = 12.dp, bottom = 12.dp)) {
@@ -269,7 +266,7 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
                 IconButton({ pick.launch(arrayOf("*/*")) }, Modifier.size(40.dp)) { Ic(R.drawable.ms_attach, "发送文件", p.fg2) }
                 IconButton({ micClick() }, Modifier.size(40.dp)) { Ic(if (recording) R.drawable.ms_stop else R.drawable.ms_mic, if (recording) "停止并发送语音" else "语音消息", if (recording) p.error else p.fg2) }
             }
-            Box(Modifier.size(48.dp).ifThen(!isDark()) { shadow(2.dp, CircleShape) }.clip(CircleShape).background(p.accent)
+            Box(Modifier.size(48.dp).clip(CircleShape).background(p.accent)
                 .clickable { sendNow() },
                 contentAlignment = Alignment.Center) { Ic(R.drawable.ms_send_fill, "发送", p.onAccent) }
         }
@@ -354,7 +351,7 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
 @Composable
 fun SearchField(v: String, on: (String) -> Unit, hint: String, modifier: Modifier = Modifier) {
     val p = LocalPalette.current
-    Box(modifier.height(48.dp).padding(horizontal = 4.dp), contentAlignment = Alignment.CenterStart) {
+    Box(modifier.height(40.dp).clip(RoundedCornerShape(20.dp)).background(p.field).padding(horizontal = 14.dp), contentAlignment = Alignment.CenterStart) {
         if (v.isEmpty()) Text(hint, style = MaterialTheme.typography.bodyLarge, color = p.fg2)
         BasicTextField(v, on, Modifier.fillMaxWidth(), singleLine = true, textStyle = MaterialTheme.typography.bodyLarge.copy(color = p.fg), cursorBrush = SolidColor(p.accent))
     }
@@ -363,7 +360,7 @@ fun SearchField(v: String, on: (String) -> Unit, hint: String, modifier: Modifie
 @Composable
 fun ServicePill(lock: Boolean, text: String) {
     val p = LocalPalette.current
-    Row(Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(if (lock) 8.dp else 12.dp)).background(p.service).padding(start = 12.dp, end = 12.dp, top = 3.dp, bottom = 4.dp),
+    Row(Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(20.dp)).background(p.service).padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically) {
         if (lock) { Ic(R.drawable.ms_lock, null, p.serviceFg, 14.dp); Spacer(Modifier.width(6.dp)) }
         Text(text, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium, color = p.serviceFg, textAlign = TextAlign.Center)
@@ -391,7 +388,7 @@ fun MessageRow(r: ChatRow.Bubble, t: Transfer?, maxW: androidx.compose.ui.unit.D
     Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth().padding(top = if (r.first) 12.dp else 2.dp), horizontalArrangement = if (m.out) Arrangement.End else Arrangement.Start) {
         // the shape reserves 8 dp for the tail on the outer side, so every bubble of a run shares one edge
-        Box(Modifier.widthIn(max = maxW + 8.dp).ifThen(!isDark()) { shadow(.5.dp, shape) }.clip(shape).background(bg)
+        Box(Modifier.widthIn(max = maxW + 8.dp).clip(shape).background(bg)
             .padding(start = if (m.out) 0.dp else 8.dp, end = if (m.out) 8.dp else 0.dp)) {
             CompositionLocalProvider(LocalContentColor provides fg) {
                 when {
@@ -442,7 +439,7 @@ fun ImageBubble(m: Msg, path: String, first: Boolean) {
     val bmp = remember(path) { decodeSampled(path, 720) }
     var full by remember { mutableStateOf(false) }
     Box(Modifier.padding(4.dp).clickable { full = true }) {
-        val inner = RoundedCornerShape(topStart = if (!m.out && first) 2.dp else 13.dp, topEnd = if (m.out && first) 2.dp else 13.dp, bottomEnd = 13.dp, bottomStart = 13.dp)
+        val inner = RoundedCornerShape(topStart = if (!m.out && first) 8.dp else 18.dp, topEnd = if (m.out && first) 8.dp else 18.dp, bottomEnd = 18.dp, bottomStart = 18.dp)
         if (bmp != null) Image(bmp.asImageBitmap(), m.file, Modifier.size(240.dp, 165.dp).clip(inner), contentScale = ContentScale.Crop)
         else Box(Modifier.size(240.dp, 165.dp).clip(inner).background(LocalPalette.current.tile))
         Box(Modifier.align(Alignment.BottomEnd).padding(8.dp)) { Meta(m, over = true) }

@@ -8,9 +8,9 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-/* Redesign (design/redesign/spec.md, Android = Material 3). Scheme = M3 SchemeTonalSpot from seed #005FB8,
- * fixed (no wallpaper dynamic colour, so every device looks like the approved mockup). Chat-specific roles
- * (bubbles, wallpaper, service pills, online) are extra tokens next to the scheme. */
+/* Liquid Glass chrome (opaque regular material, not Material You).
+ * Fills are the lg_* tokens in tools/palette.json. Material3 stays only as the widget toolkit
+ * (dialogs, menus, text); the colour scheme is these tokens, not SchemeTonalSpot. */
 private fun c(v: Long) = Color(0xFF000000 or v)
 
 data class Pal(
@@ -26,30 +26,33 @@ data class Pal(
     val textPrimary get() = fg
     fun scheme(dark: Boolean): ColorScheme = (if (dark) darkColorScheme() else lightColorScheme()).copy(
         primary = accent, onPrimary = onAccent, primaryContainer = pCont, onPrimaryContainer = onPCont,
-        secondaryContainer = secCont, onSecondaryContainer = onSecCont,
-        background = window, onBackground = fg, surface = window, onSurface = fg, onSurfaceVariant = fg2, surfaceVariant = chip,
-        surfaceTint = Color.Transparent, surfaceContainerLowest = theirs, surfaceContainerLow = navBar, surfaceContainer = navBar,
-        surfaceContainerHigh = dialog, surfaceContainerHighest = chip, outline = if (dark) c(0x8E9099) else c(0x74777F), outlineVariant = divider,
-        error = error, scrim = Color.Black)
+        inversePrimary = accent,
+        secondary = fg2, onSecondary = window, secondaryContainer = secCont, onSecondaryContainer = onSecCont,
+        tertiary = accent, onTertiary = onAccent, tertiaryContainer = pCont, onTertiaryContainer = onPCont,
+        background = window, onBackground = fg, surface = dialog, onSurface = fg, onSurfaceVariant = fg2, surfaceVariant = chip,
+        surfaceTint = Color.Transparent, surfaceContainerLowest = dialog, surfaceContainerLow = dialog, surfaceContainer = dialog,
+        surfaceContainerHigh = dialog, surfaceContainerHighest = dialog, outline = fg2, outlineVariant = divider,
+        error = error, onError = if (dark) Color.Black else Color.White, errorContainer = dialog, onErrorContainer = error,
+        inverseSurface = fg, inverseOnSurface = window, scrim = Color.Black)
     companion object {
-        val Light = Pal(window = c(0xF9F9FF), chat = c(0xE7E8EE), rowSel = c(0xD9E3F8), fg = c(0x191C20), fg2 = c(0x43474E), accent = c(0x3F5F90), onAccent = c(0xFFFFFF),
-            mine = c(0xD6E3FF), mineFg = c(0x191C20), mineMeta = c(0x3E4758), theirs = c(0xFFFFFF), theirsFg = c(0x191C20), meta = c(0x43474E),
-            divider = c(0xC4C6CF), badge = c(0x3F5F90), badgeFg = c(0xFFFFFF), online = c(0x1B7F2B), field = c(0xFFFFFF), chip = c(0xE7E8EE), chipFg = c(0x43474E),
-            service = c(0xE2E2E9), serviceFg = c(0x43474E), read = c(0x3F5F90), wall = c(0x191C20), wallAlpha = .04f, tile = c(0xD6E3FF), tileFg = c(0x264777),
-            secCont = c(0xD9E3F8), onSecCont = c(0x3E4758), pCont = c(0xD6E3FF), onPCont = c(0x264777), bar = c(0xF9F9FF), navBar = c(0xEDEDF4),
-            dialog = c(0xEDEDF4), error = c(0xBA1A1A), warning = c(0x8A5100), imageScrim = Color(0x8C000000))
-        val Dark = Pal(window = c(0x111318), chat = c(0x111318), rowSel = c(0x3E4758), fg = c(0xE2E2E9), fg2 = c(0xC4C6CF), accent = c(0xA8C8FF), onAccent = c(0x07305F),
-            mine = c(0x264777), mineFg = c(0xE2E2E9), mineMeta = c(0xC4D3EE), theirs = c(0x282A2F), theirsFg = c(0xE2E2E9), meta = c(0xC4C6CF),
-            divider = c(0x43474E), badge = c(0xA8C8FF), badgeFg = c(0x07305F), online = c(0x7DDB86), field = c(0x282A2F), chip = c(0x1D2024), chipFg = c(0xC4C6CF),
-            service = c(0x282A2F), serviceFg = c(0xC4C6CF), read = c(0xA8C8FF), wall = c(0xE2E2E9), wallAlpha = .035f, tile = c(0x264777), tileFg = c(0xD6E3FF),
-            secCont = c(0x3E4758), onSecCont = c(0xD9E3F8), pCont = c(0x264777), onPCont = c(0xD6E3FF), bar = c(0x1D2024), navBar = c(0x1D2024),
-            dialog = c(0x282A2F), error = c(0xFFB4AB), warning = c(0xFFB86E), imageScrim = Color(0x8C000000))
+        val Light = Pal(window = c(0xE7EDF6), chat = c(0xE7EDF6), rowSel = c(0xFFFFFF), fg = c(0x1A1A1A), fg2 = c(0x5C5C5C), accent = c(0x005FB8), onAccent = c(0xFFFFFF),
+            mine = c(0xD6E6FF), mineFg = c(0x1A1A1A), mineMeta = c(0x5C5C5C), theirs = c(0xFFFFFF), theirsFg = c(0x1A1A1A), meta = c(0x5C5C5C),
+            divider = c(0xD5DCE6), badge = c(0x005FB8), badgeFg = c(0xFFFFFF), online = c(0x0F7B0F), field = c(0xFFFFFF), chip = c(0xFFFFFF), chipFg = c(0x5C5C5C),
+            service = c(0xD5E0F0), serviceFg = c(0x5C5C5C), read = c(0x005FB8), wall = c(0x1A1A1A), wallAlpha = .04f, tile = c(0xD6E6FF), tileFg = c(0x1A1A1A),
+            secCont = c(0xD6E6FF), onSecCont = c(0x1A1A1A), pCont = c(0xD6E6FF), onPCont = c(0x1A1A1A), bar = c(0xFFFFFF), navBar = c(0xD5E0F0),
+            dialog = c(0xFFFFFF), error = c(0xC42B1C), warning = c(0x9D5D00), imageScrim = Color(0x8C000000))
+        val Dark = Pal(window = c(0x0B1020), chat = c(0x0B1020), rowSel = c(0x243044), fg = c(0xFFFFFF), fg2 = c(0xCCCCCC), accent = c(0x60CDFF), onAccent = c(0x000000),
+            mine = c(0x2A4068), mineFg = c(0xFFFFFF), mineMeta = c(0xCCCCCC), theirs = c(0x1C2436), theirsFg = c(0xFFFFFF), meta = c(0xCCCCCC),
+            divider = c(0x3A445C), badge = c(0x60CDFF), badgeFg = c(0x000000), online = c(0x6CCB5F), field = c(0x1C2436), chip = c(0x1C2436), chipFg = c(0xCCCCCC),
+            service = c(0x1A2740), serviceFg = c(0xCCCCCC), read = c(0x60CDFF), wall = c(0xFFFFFF), wallAlpha = .035f, tile = c(0x2A4068), tileFg = c(0xFFFFFF),
+            secCont = c(0x2A4068), onSecCont = c(0xFFFFFF), pCont = c(0x2A4068), onPCont = c(0xFFFFFF), bar = c(0x1C2436), navBar = c(0x1A2740),
+            dialog = c(0x1C2436), error = c(0xFF99A4), warning = c(0xFCE100), imageScrim = Color(0x8C000000))
     }
 }
 val Palette = Pal
 val LocalPalette = staticCompositionLocalOf { Pal.Light }
 
-/** M3 type scale (Roboto + Noto Sans CJK SC system fallback), the roles the spec uses. */
+/** Type scale (Roboto + Noto Sans CJK SC). Sizes match the shared ramp; this is not a Material colour system. */
 val M3Typography: Typography = run {
     fun t(size: Int, lh: Int, w: FontWeight = FontWeight.Normal, ls: Double = 0.0) = TextStyle(fontSize = size.sp, lineHeight = lh.sp, fontWeight = w, letterSpacing = ls.sp)
     val m = FontWeight.Medium

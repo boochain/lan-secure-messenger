@@ -50,7 +50,7 @@ fun RelayScreen(st: AppState, back: () -> Unit) {
         Repo.refresh()
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(p.chip).padding(16.dp), verticalAlignment = Alignment.Top) {
+        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(p.chip).padding(16.dp), verticalAlignment = Alignment.Top) {
             Ic(R.drawable.ms_via_server, null, p.fg2, 20.dp); Spacer(Modifier.width(12.dp))
             Text("不在同一局域网时，可通过你自己部署的中转服务器联系对方。局域网直连始终优先；服务器只转发端到端加密的数据，无法看到消息内容。",
                 style = MaterialTheme.typography.bodyMedium, color = p.fg2)

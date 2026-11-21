@@ -71,7 +71,7 @@ fun QuoteStrip(m: Msg) {
 fun ReactionChips(m: Msg) {
     if (m.reactions.isEmpty() || m.recalled) return
     val p = LocalPalette.current
-    Row(Modifier.padding(horizontal = 12.dp, vertical = 2.dp).clip(RoundedCornerShape(12.dp)).background(p.field).padding(horizontal = 8.dp, vertical = 2.dp)) {
+    Row(Modifier.padding(horizontal = 12.dp, vertical = 2.dp).clip(RoundedCornerShape(16.dp)).background(p.field).padding(horizontal = 8.dp, vertical = 2.dp)) {
         Text(m.reactions, fontSize = 13.sp, color = p.fg)
     }
 }

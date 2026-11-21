@@ -33,6 +33,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -40,7 +41,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/* ---------------------------------------------------------------- home: app bar · chips · connection banner · chat list · FAB · navigation bar (spec §5.1, Android) */
+/* ---------------------------------------------------------------- home: app bar · pills · connection banner · chat list · add pill · floating tab capsule */
 @Composable
 fun Home(st: AppState, openPage: (String) -> Unit = {}, open: (String) -> Unit) {
     var showFr by remember { mutableStateOf(!Native.firstRunDone()) }
@@ -72,7 +73,8 @@ fun Home(st: AppState, openPage: (String) -> Unit = {}, open: (String) -> Unit) 
     }
     val convs = st.convs()
     val totalUnread = convs.sumOf { it.unread }
-    Column(Modifier.fillMaxSize().background(p.window).statusBarsPadding()) {
+    Box(Modifier.fillMaxSize().background(p.window)) {
+    Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(bottom = 84.dp)) {
         Row(Modifier.fillMaxWidth().height(64.dp).padding(start = if (searching) 4.dp else 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             if (searching) {
                 IconButton({ searching = false; q = "" }) { Ic(R.drawable.ms_back, "关闭搜索", p.fg) }
@@ -135,21 +137,37 @@ fun Home(st: AppState, openPage: (String) -> Unit = {}, open: (String) -> Unit) 
                     }, openPage, onRecovery = { recoveryForced = false; showRecovery = true })
             }
         }
-        HorizontalDivider(thickness = 1.dp, color = p.divider)
-        NavigationBar(containerColor = p.navBar, tonalElevation = 0.dp, modifier = Modifier.navigationBarsPadding()) {
-            val items = listOf(
-                Triple("聊天", R.drawable.ms_chats to R.drawable.ms_chats_fill, "LSMF_nav_chats"),
-                Triple("联系人", R.drawable.ms_add_contact to R.drawable.ms_add_contact, "LSMF_nav_contacts"),
-                Triple("文件", R.drawable.ms_transfers to R.drawable.ms_transfers_fill, "LSMF_nav_files_tab"),
-                Triple("设置", R.drawable.ms_settings to R.drawable.ms_settings_fill, "LSMF_nav_settings"))
-            items.forEachIndexed { i, (label, icons, hook) ->
-                val (ic, icOn) = icons
-                NavigationBarItem(selected = tab == i, onClick = { tab = i; searching = false; q = ""; if (dlg == "relay") dlg = "" }, modifier = Modifier.testTag(hook).padding(horizontal = 4.dp), label = { Text(label, fontWeight = if (tab == i) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1) },
-                    icon = { val n = when (i) { 0 -> totalUnread; 2 -> st.transfers.count { it.state == "active" || it.state == "offered" }; else -> 0 }
-                        if (n > 0) BadgedBox(badge = { Badge(containerColor = p.badge, contentColor = p.badgeFg) { Text("$n") } }) { Ic(if (tab == i) icOn else ic, null) } else Ic(if (tab == i) icOn else ic, null) },
-                    colors = NavigationBarItemDefaults.colors(selectedIconColor = p.onSecCont, selectedTextColor = p.fg, indicatorColor = p.secCont, unselectedIconColor = p.fg2, unselectedTextColor = p.fg2))
+    }
+    Row(
+        Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(start = 12.dp, end = 12.dp, bottom = 10.dp)
+            .fillMaxWidth().height(64.dp).clip(RoundedCornerShape(32.dp)).background(p.navBar),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        val items = listOf(
+            Triple("聊天", R.drawable.ms_chats to R.drawable.ms_chats_fill, "LSMF_nav_chats"),
+            Triple("联系人", R.drawable.ms_add_contact to R.drawable.ms_add_contact, "LSMF_nav_contacts"),
+            Triple("文件", R.drawable.ms_transfers to R.drawable.ms_transfers_fill, "LSMF_nav_files_tab"),
+            Triple("设置", R.drawable.ms_settings to R.drawable.ms_settings_fill, "LSMF_nav_settings"))
+        items.forEachIndexed { i, (label, icons, hook) ->
+            val (ic, icOn) = icons
+            val on = tab == i
+            val n = when (i) { 0 -> totalUnread; 2 -> st.transfers.count { it.state == "active" || it.state == "offered" }; else -> 0 }
+            Column(
+                Modifier.weight(1f).padding(horizontal = 4.dp, vertical = 6.dp)
+                    .background(if (on) p.rowSel else Color.Transparent, RoundedCornerShape(24.dp))
+                    .clickable { tab = i; searching = false; q = ""; if (dlg == "relay") dlg = "" }
+                    .testTag(hook).padding(vertical = 2.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Ic(if (on) icOn else ic, null, if (on) p.fg else p.fg2)
+                    if (n > 0) { Spacer(Modifier.width(4.dp)); CountBadge(n) }
+                }
+                Text(label, color = if (on) p.fg else p.fg2, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1, fontSize = 12.sp, lineHeight = 16.sp)
             }
         }
+    }
     }
     when (dlg) {
         "add" -> TextDialog("按 IP 添加", "输入对方 IP 地址（可带端口，如 192.168.1.20 或 192.168.1.20:41235），或粘贴添加链接 lsm://…：", onOk = { if (it.trim().startsWith("lsm://")) Ux.addUri(it) else { val e = Native.addAddr(it); if (e.isNotEmpty()) Repo.toast.value = e } }, onDismiss = { dlg = "" })
@@ -176,7 +194,7 @@ fun Home(st: AppState, openPage: (String) -> Unit = {}, open: (String) -> Unit) 
 @Composable
 fun ViaBadge(modifier: Modifier = Modifier) {
     val p = LocalPalette.current
-    Row(modifier.clip(RoundedCornerShape(8.dp)).background(p.chip).padding(horizontal = 6.dp, vertical = 1.dp).semantics { contentDescription = "经服务器中转" },
+    Row(modifier.clip(RoundedCornerShape(12.dp)).background(p.navBar).padding(horizontal = 6.dp, vertical = 1.dp).semantics { contentDescription = "经服务器中转" },
         verticalAlignment = Alignment.CenterVertically) {
         Ic(R.drawable.ms_via_server, null, p.chipFg, 14.dp); Spacer(Modifier.width(3.dp))
         Text("经服务器", fontSize = 12.sp, lineHeight = 16.sp, color = p.chipFg, maxLines = 1)
@@ -186,11 +204,17 @@ fun ViaBadge(modifier: Modifier = Modifier) {
 @Composable
 fun Chip(on: Boolean, label: String, icon: Int?, modifier: Modifier = Modifier, click: () -> Unit) {
     val p = LocalPalette.current
-    FilterChip(selected = on, onClick = click, modifier = modifier, label = { Text(label, style = MaterialTheme.typography.labelLarge) },
-        leadingIcon = if (on) ({ Ic(R.drawable.ms_tick, null, size = 18.dp) }) else icon?.let { { Ic(it, null, size = 18.dp) } },
-        shape = RoundedCornerShape(8.dp),
-        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = p.secCont, selectedLabelColor = p.onSecCont, selectedLeadingIconColor = p.onSecCont, labelColor = p.fg2, iconColor = p.fg2),
-        border = FilterChipDefaults.filterChipBorder(enabled = true, selected = on, borderColor = p.divider, selectedBorderColor = p.secCont))
+    val tint = if (on) p.fg else p.fg2
+    Row(
+        modifier.clip(RoundedCornerShape(20.dp)).background(if (on) p.rowSel else Color.Transparent)
+            .border(1.dp, if (on) p.rowSel else p.divider, RoundedCornerShape(20.dp))
+            .clickable(onClick = click).padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (on) { Ic(R.drawable.ms_tick, null, tint, 18.dp); Spacer(Modifier.width(6.dp)) }
+        else if (icon != null) { Ic(icon, null, tint, 18.dp); Spacer(Modifier.width(6.dp)) }
+        Text(label, style = MaterialTheme.typography.labelLarge, color = tint, maxLines = 1)
+    }
 }
 
 @Composable
@@ -203,7 +227,7 @@ fun ConnBanner(st: AppState) {
         net == null -> false to "未连接局域网 · 连上 Wi-Fi 后会自动发现联系人"
         else -> true to "已连接 · 局域网 $net" + (if (st.relay.enabled && st.relay.state == "online") " · 中转服务器" else "") + " · ${st.contacts.size} 位联系人"
     }
-    Row(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(p.chip).padding(horizontal = 16.dp, vertical = 8.dp),
+    Row(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp).fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(p.chip).padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically) {
         Ic(if (ok) R.drawable.ms_network else R.drawable.ms_info, null, if (ok) p.online else if (st.error.isNotEmpty()) p.error else p.fg2, 18.dp)
         Spacer(Modifier.width(12.dp)); Text(txt, style = MaterialTheme.typography.bodySmall, color = if (st.error.isNotEmpty()) p.error else p.fg2, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -226,7 +250,7 @@ fun ConvRow(c: Conv, click: () -> Unit) {
     // LSMF_chat_list_swipe: swipe left reveals inline pin/read/mute/delete (Telegram/WhatsApp style), not a popup.
     // Slide the whole row off-screen so leftover preview text is not mid-glyph clipped at x=0.
     BackHandler(enabled = revealed) { revealed = false }
-    Box(Modifier.padding(horizontal = 12.dp, vertical = 4.dp).clip(RoundedCornerShape(12.dp)).testTag("LSMF_chat_list_swipe").semantics { contentDescription = "LSMF_chat_list_menu" }
+    Box(Modifier.padding(horizontal = 12.dp, vertical = 4.dp).clip(RoundedCornerShape(22.dp)).testTag("LSMF_chat_list_swipe").semantics { contentDescription = "LSMF_chat_list_menu" }
         .clipToBounds()
         .pointerInput(c.id) {
             var acc = 0f
@@ -241,7 +265,7 @@ fun ConvRow(c: Conv, click: () -> Unit) {
             )
         }) {
         if (revealed) {
-            Row(Modifier.matchParentSize().background(p.secCont).clickable { revealed = false }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.End) {
+            Row(Modifier.matchParentSize().background(p.window).clickable { revealed = false }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.End) {
                 TextButton({ pin(); revealed = false }, Modifier.testTag("LSMF_chat_pin")) { Text(if (c.pinned) "取消置顶" else "置顶", color = p.fg, fontSize = 13.sp) }
                 TextButton({ read(); revealed = false }, Modifier.testTag("LSMF_chat_mark_read")) { Text("已读", color = p.fg, fontSize = 13.sp) }
                 if (!c.group) TextButton({ mute(); revealed = false }, Modifier.testTag("LSMF_chat_mute")) { Text(if (muted) "取消免打扰" else "免打扰", color = p.fg, fontSize = 13.sp) }
@@ -307,9 +331,14 @@ fun EmptyState(icon: Int, title: String, body: String) {
 @Composable
 fun Fab(icon: Int, label: String, desc: String, modifier: Modifier, click: () -> Unit) {
     val p = LocalPalette.current
-    ExtendedFloatingActionButton(onClick = click, modifier = modifier.padding(16.dp).semantics { contentDescription = desc }, containerColor = p.pCont, contentColor = p.onPCont,
-        elevation = FloatingActionButtonDefaults.elevation(3.dp, 3.dp, 3.dp, 4.dp),  // mockup: box-shadow 0 2px 6px .18 (M3 default 6dp casts a visibly larger shadow)
-        icon = { Ic(icon, null) }, text = { Text(label, style = MaterialTheme.typography.labelLarge) })
+    Row(
+        modifier.padding(16.dp).height(48.dp).clip(RoundedCornerShape(24.dp)).background(p.pCont)
+            .clickable(onClick = click).padding(horizontal = 16.dp).semantics { contentDescription = desc },
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Ic(icon, null, p.onPCont); Spacer(Modifier.width(8.dp))
+        Text(label, style = MaterialTheme.typography.labelLarge, color = p.onPCont)
+    }
 }
 
 @Composable
@@ -318,7 +347,7 @@ fun Transfers(st: AppState) {
     if (st.transfers.isEmpty()) { EmptyState(R.drawable.ms_transfers, "没有文件传输", "在聊天里点回形针发送文件，进度会显示在这里。"); return }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         items(st.transfers, key = { it.id }) { t ->
-            Row(Modifier.fillMaxWidth().heightIn(min = 72.dp).clip(RoundedCornerShape(12.dp)).background(p.chip).border(1.dp, p.divider, RoundedCornerShape(12.dp)).padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().heightIn(min = 72.dp).clip(RoundedCornerShape(22.dp)).background(p.chip).border(1.dp, p.divider, RoundedCornerShape(22.dp)).padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)).background(p.tile), contentAlignment = Alignment.Center) { Ic(fileIcon(t.name), null, p.tileFg) }
                 Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
                     Text(t.name, fontSize = 16.sp, lineHeight = 24.sp, color = p.fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -496,7 +525,7 @@ fun ContactsPane(st: AppState, q: String, openFp: (String) -> Unit) {
     if (list.isEmpty()) { EmptyState(R.drawable.ms_add_contact, "还没有联系人", "同一 Wi-Fi 下运行本软件的设备会自动出现在这里。"); return }
     LazyColumn(Modifier.fillMaxSize().testTag("LSMF_nav_contacts"), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 88.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         items(list, key = { it.fp }) { k ->
-            Row(Modifier.fillMaxWidth().heightIn(min = 72.dp).clip(RoundedCornerShape(12.dp)).background(p.chip).border(1.dp, p.divider, RoundedCornerShape(12.dp)).clickable { openFp(k.fp) }.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().heightIn(min = 72.dp).clip(RoundedCornerShape(22.dp)).background(p.chip).border(1.dp, p.divider, RoundedCornerShape(22.dp)).clickable { openFp(k.fp) }.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Avatar(k.name, k.fp, 48.dp, k.online, p.chip); Spacer(Modifier.width(16.dp))
                 Column(Modifier.weight(1f)) {
                     Text(k.name, fontSize = 16.sp, color = p.fg, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)

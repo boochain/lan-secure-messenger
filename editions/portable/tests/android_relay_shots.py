@@ -105,9 +105,7 @@ except Exception as ex:
 finally:
     open(f"{args.out}/logcat.txt", "w").write(adb("logcat", "-d", "-v", "time", t=60))
     sh("cmd uimode night no"); P.stop(); relay.terminate()
-# M3 navbar (#EDEDF4) sits above a thin system gesture inset filled with window
-# (#F9F9FF); CIEDE2000 is 2.51, under the colour-audit adjacency gate of 2.9.
-# The pair is the approved palette (not unreadable text). Ignore that band.
+# Floating capsule plus the system gesture inset. The system bar can tint that strip.
 def nav_ignore(png):
     from PIL import Image
     w, h = Image.open(png).size
@@ -127,7 +125,7 @@ for fn in sorted(os.listdir(args.out)):
     boxes.append(nav_ignore(png))
     entry["ignore"] = boxes
     ign[fn] = entry
-    ign["_reasons"][fn] = "Android bottom navigation + system gesture inset: approved M3 navbar (#EDEDF4) against the window-coloured gesture area (#F9F9FF); not UI text"
+    ign["_reasons"][fn] = "Android floating tab capsule and the system gesture inset under it; the system bar can tint that strip"
 json.dump(ign, open(ign_path, "w"), ensure_ascii=False, indent=1)
 json.dump({"fails": FAILS}, open(f"{args.out}/relay-ui-checks.json", "w"), ensure_ascii=False)
 print("RELAY UI:", "OK" if not FAILS else "FAILED " + ", ".join(FAILS)); sys.exit(1 if FAILS else 0)

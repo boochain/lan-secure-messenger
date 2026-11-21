@@ -49,7 +49,11 @@
       "warning": "#9D5D00",
       "error": "#C42B1C",
       "badge_bg": "#C42B1C",
-      "badge_fg": "#FFFFFF"
+      "badge_fg": "#FFFFFF",
+      "lg_page": "#E7EDF6",
+      "lg_nav": "#D5E0F0",
+      "lg_mine": "#D6E6FF",
+      "lg_divider": "#D5DCE6"
     },
     "dark": {
       "window_bg": "#202020",
@@ -73,7 +77,13 @@
       "warning": "#FCE100",
       "error": "#FF99A4",
       "badge_bg": "#FF99A4",
-      "badge_fg": "#000000"
+      "badge_fg": "#000000",
+      "lg_page": "#0B1020",
+      "lg_card": "#1C2436",
+      "lg_nav": "#1A2740",
+      "lg_selected": "#243044",
+      "lg_mine": "#2A4068",
+      "lg_divider": "#3A445C"
     }
   },
   "contrast": {

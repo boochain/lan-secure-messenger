@@ -21,18 +21,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-/* Material 3 containment, not a custom look.
- * Cards: filled = surface-container-highest, corner medium 12dp, padding 16dp
- *   https://m3.material.io/components/cards/specs
- * Lists: two-line row 72dp, 16dp padding, leading slot 40dp, icon 24dp
- *   https://m3.material.io/components/lists/specs
- * Icon buttons: 24dp glyph inside a 40dp round container (default shape is round)
- *   https://m3.material.io/components/icon-buttons/specs
- * Selected choice: primary-container + check icon (card selection, same page).
- * Palette roles already mapped in Theme.kt (chip = surfaceContainerHighest, pCont = primaryContainer).
+/* Liquid Glass cards: 22dp continuous corners, filled surface, 1dp outline.
+ * Lists stay 72dp with a 40dp leading well. Icon buttons stay a 24dp glyph in a 40dp circle.
+ * Selected choice uses the tinted surface (pCont) plus a check, on the same page.
  */
 
-private val CardShape = RoundedCornerShape(12.dp)
+private val CardShape = RoundedCornerShape(22.dp)
 
 @Composable
 fun IconWell(icon: Int, container: androidx.compose.ui.graphics.Color, tint: androidx.compose.ui.graphics.Color, well: Dp = 40.dp) {
@@ -48,7 +42,7 @@ fun SectionLabel(text: String) {
         modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp))
 }
 
-/** Filled card (surface-container-highest) with a 1dp outline so it stays distinct from the page. */
+/** Filled card with a 1dp outline so it stays distinct from the page. */
 @Composable
 fun SurfaceCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     val p = LocalPalette.current

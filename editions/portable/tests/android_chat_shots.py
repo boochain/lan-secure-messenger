@@ -39,15 +39,14 @@ def back_to_main(tries=8):
 IGN_PATH = None
 
 def dialog_rect(png, th):
-    """Dialog card = bbox of the palette card_bg fill (the page behind it is darkened by the scrim).
-    Same helper as android_theme_shots.py (add-ip / pin / about)."""
+    """Dialog card = largest blob of the glass dialog fill (light white, dark card)."""
     from PIL import Image
     import numpy as np, cv2
-    card = (0xED, 0xED, 0xF4) if th == "light" else (0x28, 0x2A, 0x2F)  # M3 dialog = surfaceContainerHigh
+    card = (0xFF, 0xFF, 0xFF) if th == "light" else (0x1C, 0x24, 0x36)
     m = (np.array(Image.open(png).convert("RGB")) == card).all(-1).astype(np.uint8)
     n, lab, st, _ = cv2.connectedComponentsWithStats(m, connectivity=4)
     if n <= 1:
-        raise RuntimeError(f"no dialog card_bg in {png}")
+        raise RuntimeError(f"no dialog card in {png}")
     k = 1 + int(np.argmax(st[1:, cv2.CC_STAT_AREA]))  # the dialog card is the largest card_bg blob
     x0, y0, w0, h0 = (int(st[k, j]) for j in range(4))
     xs = np.array([x0, x0 + w0 - 1]); ys = np.array([y0, y0 + h0 - 1])
@@ -88,9 +87,8 @@ def qr_canvas_boxes(png):
     return boxes
 
 def nav_ignore_box(png):
-    # M3 navbar (#EDEDF4) sits above a thin system gesture inset filled with window
-    # (#F9F9FF); CIEDE2000 is 2.51, under the colour-audit adjacency gate of 2.9.
-    # The pair is the approved palette (not unreadable text). Same band as android_relay_shots.py.
+    # Floating capsule plus the system gesture inset. The system bar can tint that strip,
+    # so the colour audit skips it. The page above the capsule is still audited.
     from PIL import Image
     w, h = Image.open(png).size
     band = max(200, int(h * 0.12))
@@ -117,7 +115,7 @@ def finalize_nav_ignore():
         ign[fn] = entry
         reasons = ign["_reasons"]
         prev = reasons.get(fn, "")
-        note = "Android bottom navigation + system gesture inset: approved M3 navbar (#EDEDF4) against the window-coloured gesture area (#F9F9FF); not UI text"
+        note = "Android floating tab capsule and the system gesture inset under it; the system bar can tint that strip"
         if note not in str(prev):
             reasons[fn] = (prev + "; " if prev else "") + note
     json.dump(ign, open(path, "w"), ensure_ascii=False, indent=1)

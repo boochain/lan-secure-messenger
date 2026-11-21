@@ -18,7 +18,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
@@ -35,7 +34,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -215,9 +213,9 @@ fun decodeSampled(path: String, max: Int): android.graphics.Bitmap? {
     return BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = s })
 }
 
-/** Modal dialog drawn entirely by us: palette card on our own scrim inside ONE full-screen dialog window
- *  (platform dim disabled). The M3 AlertDialog used `surface` and the platform dim layer was composited over it
- *  on the test emulator, giving a non-palette grey card (#D9D9D9 / #1D1D1D). */
+/** Modal dialog drawn entirely by us, inside one full-screen window with the platform dim
+ *  turned off. A translucent black veil blends into off-palette greys, so the page stays
+ *  as-is and the card is just the opaque glass surface. */
 @Composable
 fun LsmAlertDialog(onDismissRequest: () -> Unit, confirmButton: @Composable () -> Unit, dismissButton: (@Composable () -> Unit)? = null,
                    title: (@Composable () -> Unit)? = null, text: (@Composable () -> Unit)? = null) {
@@ -226,7 +224,7 @@ fun LsmAlertDialog(onDismissRequest: () -> Unit, confirmButton: @Composable () -
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
         val w = (androidx.compose.ui.platform.LocalView.current.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window
         SideEffect { w?.setDimAmount(0f) }
-        Box(Modifier.fillMaxSize().background(Color(0x99000000)).imePadding().clickable(indication = null,
+        Box(Modifier.fillMaxSize().imePadding().clickable(indication = null,
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }) { onDismissRequest() },
             contentAlignment = Alignment.Center) {
             Surface(color = p.dialog, contentColor = p.fg, shape = RoundedCornerShape(28.dp),

@@ -126,7 +126,7 @@ fun buildRows(msgs: List<Msg>, isGroup: Boolean): List<ChatRow> {
 }
 
 /* ---------------------------------------------------------------- bubble shape with a tail (Telegram/WhatsApp): the tail sits at the top outer corner of the first bubble of a group */
-class BubbleShape(private val mine: Boolean, private val tail: Boolean, private val r: Dp = 16.dp, private val small: Dp = 2.dp, private val t: Dp = 8.dp) : Shape {
+class BubbleShape(private val mine: Boolean, private val tail: Boolean, private val r: Dp = 20.dp, private val small: Dp = 6.dp, private val t: Dp = 8.dp) : Shape {
     override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline = with(density) {
         val rr = r.toPx(); val sm = small.toPx(); val tw = t.toPx()
         val body = Rect(if (mine) 0f else tw, 0f, if (mine) size.width - tw else size.width, size.height)

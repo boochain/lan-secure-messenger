@@ -73,9 +73,9 @@ fun RecoveryCodeScreen(forceConfirm: Boolean, onDone: () -> Unit, onBack: () -> 
                     color = p.fg,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(22.dp))
                         .background(p.chip)
-                        .border(1.dp, p.divider, RoundedCornerShape(12.dp))
+                        .border(1.dp, p.divider, RoundedCornerShape(22.dp))
                         .padding(horizontal = 16.dp, vertical = 20.dp)
                         .semantics { contentDescription = "恢复密钥" }
                 )
