@@ -95,11 +95,15 @@ def android_nav_overlap(im, path):
             continue
         boxes.append((x, y, x + bw, y + bh, area))
     # Cluster icon + label + badge of one tab into a column.
+    # The dark selected pill (#243044) is within dist 18 of the bar (#1A2740),
+    # so it does not glue the icon to the unread badge beside it. Join on the
+    # gap between boxes, not on the new box's centre: a ~40px badge can sit
+    # ~11px away while its centre is ~30px past the icon's right edge.
+    # Tabs on this bar are >100px apart, so a 32px gap still counts a 5th item.
     boxes.sort(key=lambda b: (b[0] + b[2]) / 2)
     cols = []  # (x0, x1, blobs)
     for b in boxes:
-        cx = (b[0] + b[2]) / 2
-        if cols and cx - cols[-1][1] < 24:
+        if cols and b[0] - cols[-1][1] < 32:
             x0, x1, group = cols[-1]
             group.append(b)
             cols[-1] = (min(x0, b[0]), max(x1, b[2]), group)
@@ -414,6 +418,32 @@ def self_test(out: Path) -> int:
         return 1
     if not r_menu_bad or "ellipsized" not in r_menu_bad:
         print("SELFTEST FAIL: ellipsized menu item was not flagged:", r_menu_bad)
+        return 1
+    # Dark selected pill blends into the bar, so an unread badge must not
+    # become a fifth destination. Five real icons must still fail.
+    def nav_shot(badge, name):
+        canvas = Image.new("RGB", (824, 400), (11, 16, 32))
+        d = ImageDraw.Draw(canvas)
+        d.rounded_rectangle((24, 180, 800, 340), radius=40, fill=(26, 39, 64))
+        xs = (48, 196, 344, 492, 640) if not badge else (70, 280, 490, 700)
+        for i, x in enumerate(xs):
+            d.rounded_rectangle((x, 220, x + 40, 260), radius=6, fill=(204, 204, 204))
+            d.rectangle((x + 8, 300, x + 32, 312), fill=(204, 204, 204))
+        if badge:
+            d.ellipse((118, 214, 158, 254), fill=(96, 205, 255))
+        path = out / name
+        canvas.save(path)
+        return path
+    p_nav_ok = nav_shot(True, "android-dark-page-badge.png")
+    p_nav_bad = nav_shot(False, "android-dark-page-five.png")
+    r_nav_ok = audit_one(p_nav_ok, {})
+    r_nav_bad = audit_one(p_nav_bad, {})
+    print("self-test nav badge:", r_nav_ok, "five:", r_nav_bad)
+    if r_nav_ok:
+        print("SELFTEST FAIL: badge on a 4-item nav flagged:", r_nav_ok)
+        return 1
+    if not r_nav_bad or "cramped" not in r_nav_bad:
+        print("SELFTEST FAIL: 5-item nav was not flagged:", r_nav_bad)
         return 1
     print("SELFTEST OK")
     return 0
