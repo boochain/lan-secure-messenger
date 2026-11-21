@@ -1,12 +1,30 @@
 package io.github.frec86.lanmessenger
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 
 /* Liquid Glass chrome (opaque regular material, not Material You).
  * Fills are the lg_* tokens in tools/palette.json. Material3 stays only as the widget toolkit
@@ -68,6 +86,30 @@ fun AppTheme(content: @Composable () -> Unit) {
     val dark = isSystemInDarkTheme(); val p = if (dark) Pal.Dark else Pal.Light
     CompositionLocalProvider(LocalPalette provides p) {
         MaterialTheme(colorScheme = p.scheme(dark), typography = M3Typography, content = content)
+    }
+}
+
+/* material3 1.2 DropdownMenu paints Surface + 3.dp elevation and ignores containerColor.
+ * surfaceTint Transparent is black, so that elevation becomes #EAEAEA / #1A2132 (off palette).
+ * This popup is the dialog fill with a 1.dp edge and no shadow. */
+private class LsmMenuPosition : PopupPositionProvider {
+    override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
+        val x = (anchorBounds.right - popupContentSize.width).coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0))
+        val below = anchorBounds.bottom
+        val y = if (below + popupContentSize.height <= windowSize.height) below else (anchorBounds.top - popupContentSize.height).coerceAtLeast(0)
+        return IntOffset(x, y)
+    }
+}
+
+@Composable
+fun LsmMenu(expanded: Boolean, onDismissRequest: () -> Unit, modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    if (!expanded) return
+    val p = LocalPalette.current
+    val shape = RoundedCornerShape(22.dp)
+    Popup(popupPositionProvider = LsmMenuPosition(), onDismissRequest = onDismissRequest, properties = PopupProperties(focusable = true)) {
+        Column(
+            modifier.width(IntrinsicSize.Max).clip(shape).background(p.dialog).border(1.dp, p.divider, shape).padding(vertical = 4.dp),
+            content = content)
     }
 }
 

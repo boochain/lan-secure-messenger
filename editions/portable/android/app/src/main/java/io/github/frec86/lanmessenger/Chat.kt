@@ -148,7 +148,7 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
                 IconButton({ searching = true }) { Ic(R.drawable.ms_search, "搜索聊天记录", p.fg) }
                 Box {
                     IconButton({ menu = true }, Modifier.semantics { contentDescription = "菜单" }) { Ic(R.drawable.ms_more, "菜单", p.fg) }
-                    DropdownMenu(menu, { menu = false; menuSub = "" }) {
+                    LsmMenu(menu, { menu = false; menuSub = "" }) {
                         val cpinned = contact?.pinned ?: group?.pinned ?: false
                         val carch = contact?.archived ?: group?.archived ?: false
                         when (menuSub) {
@@ -217,7 +217,7 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
                         is ChatRow.Bubble -> Box(Modifier.fillMaxWidth().background(if (r.m.id in picked) p.field else Color.Transparent).pointerInput(r.m.id, multi) { detectTapGestures(onTap = { if (multi) picked = if (r.m.id in picked) picked - r.m.id else picked + r.m.id }, onLongPress = { if (multi) picked = picked + r.m.id else msgMenu = r.m }) }) {
                             MessageRow(r, st.transfers.firstOrNull { it.msg == r.m.id }, maxW) { path -> saveSrc = path; save.launch(r.m.file) }
                             // long-press menu (Material: long press shows the item's actions)
-                            DropdownMenu(msgMenu?.id == r.m.id, { msgMenu = null }, Modifier.align(if (r.m.out) Alignment.TopEnd else Alignment.TopStart)) {
+                            LsmMenu(msgMenu?.id == r.m.id, { msgMenu = null }, Modifier.align(if (r.m.out) Alignment.TopEnd else Alignment.TopStart)) {
                                 if (!r.m.recalled) {
                                     DropdownMenuItem({ Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { REACTIONS.forEach { em ->
                                         Text(em, fontSize = 22.sp, modifier = Modifier.clip(CircleShape).background(if (r.m.mine == em) p.field else Color.Transparent).clickable {
@@ -268,7 +268,7 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
                                 val id = Native.lastEditable(conv); all.firstOrNull { it.id == id }?.let { replyTo = null; editing = it; input = it.body; true } ?: false
                             } else false }, maxLines = 5,
                         textStyle = MaterialTheme.typography.bodyLarge.copy(color = p.fg), cursorBrush = SolidColor(p.accent))
-                    DropdownMenu(atOpen, { atOpen = false }) { mentionCandidates(conv).forEach { mc -> DropdownMenuItem({ Text(mc.name) }, { atOpen = false; input = input + mc.name + " " }) } }
+                    LsmMenu(atOpen, { atOpen = false }) { mentionCandidates(conv).forEach { mc -> DropdownMenuItem({ Text(mc.name) }, { atOpen = false; input = input + mc.name + " " }) } }
                 }
                 IconButton({ pick.launch(arrayOf("*/*")) }, Modifier.size(40.dp)) { Ic(R.drawable.ms_attach, "发送文件", p.fg2) }
                 IconButton({ micClick() }, Modifier.size(40.dp)) { Ic(if (recording) R.drawable.ms_stop else R.drawable.ms_mic, if (recording) "停止并发送语音" else "语音消息", if (recording) p.error else p.fg2) }

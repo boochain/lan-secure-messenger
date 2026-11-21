@@ -126,7 +126,7 @@ impl TransferRt {
         self.transferred = n.min(self.size);
         let (t0, b0) = self.rate_mark;
         let dt = t0.elapsed().as_secs_f64();
-        if dt >= 0.5 {
+        if dt >= 0.5 && self.transferred > b0 {
             let inst = ((self.transferred.saturating_sub(b0)) as f64 / dt) as u64;
             self.bps = if self.bps == 0 { inst } else { (self.bps * 2 + inst) / 3 };
             self.rate_mark = (Instant::now(), self.transferred);
@@ -1026,11 +1026,20 @@ impl Engine {
         t.error.clear();
         let rp = t.resume_part.take();
         let (part, resume) = match rp {
-            Some(r) if can_resume && r.written > 0 && r.written < t.size => {
+            Some(r) if can_resume && r.written < t.size => {
+                // Offset 0 still has to be FileResume. FileAccept is ignored once the sender is
+                // already Active, which is how a link switch before the first byte stalled forever
+                // (rust<->rust "never reached 40%").
                 let prefix: [u8; 32] = r.hasher.clone().finalize().into();
                 let _ = conn.ctrl.send(Frame::FileResume { tid, offset: r.written, prefix_sha256: prefix });
-                t.resumed_from = r.written;
-                (r.part, Some((r.written, r.hasher)))
+                if r.written > 0 {
+                    t.resumed_from = r.written;
+                    (r.part, Some((r.written, r.hasher)))
+                } else {
+                    remove_part_and_sidecar(&r.part, false);
+                    t.resumed_from = 0;
+                    (dir.join(format!(".{}.{}.part", t.name, &tid.to_string()[..8])), None)
+                }
             }
             other => {
                 if let Some(r) = other {
@@ -1205,7 +1214,15 @@ impl Engine {
                 let bulk = conn.bulk.clone();
                 let can_resume = conn.caps & crate::wire::CAP_RESUME != 0;
                 let t = self.transfers.get_mut(&tid).unwrap();
-                // Offered = first accept / reconnect resume. Verifying = receiver SHA mismatch retry (FileResume after FileEnd).
+                // Offered = first accept / reconnect resume. Verifying = receiver SHA mismatch retry.
+                // Active + FileResume = the receiver switched links (native accepts frame 16 while ACTIVE).
+                // A duplicate FileAccept while already sending is ignored.
+                if t.state == TransferState::Active && resume.is_some() {
+                    t.cancel.store(true, Ordering::Relaxed);
+                    t.cancel = Arc::new(AtomicBool::new(false));
+                    t.credit = None;
+                    t.state = TransferState::Offered;
+                }
                 if t.state == TransferState::Verifying && resume.is_none() {
                     return;
                 }

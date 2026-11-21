@@ -54,7 +54,7 @@ fun AvatarPic(path: String, name: String, key: String, size: androidx.compose.ui
 private fun <T> Choice(label: String, options: List<Pair<String, T>>, sel: T, on: (T) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box { AssistChip({ open = true }, { Text(options.firstOrNull { it.second == sel }?.first ?: label) })
-        DropdownMenu(open, { open = false }) { options.forEach { o -> DropdownMenuItem({ Text(o.first) }, { on(o.second); open = false }) } } }
+        LsmMenu(open, { open = false }) { options.forEach { o -> DropdownMenuItem({ Text(o.first) }, { on(o.second); open = false }) } } }
 }
 
 private fun dayMs(s: String, end: Boolean): Long = try { val d = SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).parse(s.trim())!!.time; if (end) d + 86_400_000L else d } catch (e: Exception) { 0L }

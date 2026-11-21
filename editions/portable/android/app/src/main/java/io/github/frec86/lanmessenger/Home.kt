@@ -92,7 +92,7 @@ fun Home(st: AppState, openPage: (String) -> Unit = {}, open: (String) -> Unit) 
             Box {
                 IconButton({ menu = true }, Modifier.semantics { contentDescription = "菜单" }) { Ic(R.drawable.ms_more, "菜单", p.fg) }
                 // Overflow holds at most 5 items; everything else lives in settings / add-contact pages.
-                DropdownMenu(menu, { menu = false }) {
+                LsmMenu(menu, { menu = false }) {
                     DropdownMenuItem({ Text("添加联系人") }, { menu = false; dlg = "add" }, leadingIcon = { Ic(R.drawable.ms_add_contact) })
                     DropdownMenuItem({ Text("我的二维码") }, { menu = false; dlg = "qr" }, leadingIcon = { Ic(R.drawable.ms_add_contact) })
                     DropdownMenuItem({ Text("扫描二维码") }, { menu = false; dlg = "scan" }, leadingIcon = { Ic(R.drawable.ms_add_contact) })
@@ -207,7 +207,7 @@ fun Chip(on: Boolean, label: String, icon: Int?, modifier: Modifier = Modifier, 
     val tint = if (on) p.fg else p.fg2
     Row(
         modifier.clip(RoundedCornerShape(20.dp)).background(if (on) p.rowSel else Color.Transparent)
-            .border(1.dp, if (on) p.rowSel else p.divider, RoundedCornerShape(20.dp))
+            .border(1.dp, if (on) p.rowSel else p.fg2, RoundedCornerShape(20.dp))
             .clickable(onClick = click).padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -301,7 +301,7 @@ fun ConvRow(c: Conv, click: () -> Unit) {
                     }
                 }
             }
-            DropdownMenu(menu, { menu = false }) {
+            LsmMenu(menu, { menu = false }) {
                 DropdownMenuItem({ Text(if (c.pinned) "取消置顶" else "置顶") }, { menu = false; pin() }, modifier = Modifier.testTag("LSMF_chat_pin"))
                 DropdownMenuItem({ Text(if (unread) "标为已读" else "标为未读") }, { menu = false; if (unread) read() else markItUnread() }, modifier = Modifier.testTag(if (unread) "LSMF_chat_mark_read" else "LSMF_chat_mark_unread"))
                 if (!c.group) DropdownMenuItem({ Text(if (muted) "取消免打扰" else "免打扰") }, { menu = false; mute() }, modifier = Modifier.testTag("LSMF_chat_mute"))

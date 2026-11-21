@@ -37,8 +37,8 @@ def android_checks(root: Path, rows):
             fail(rows, "android-nav", f"bottom nav has {n} destinations (max {MAX_NAV})")
         elif n == 0:
             fail(rows, "android-nav", "no Triple destinations in NavigationBar")
-    # header overflow: first DropdownMenu in the file (top bar ⋯)
-    m = re.search(r"DropdownMenu\([^)]*\)\s*\{(.*?)\n                \}", text, re.S)
+    # header overflow: first menu in the file (top bar ⋯). LsmMenu is the palette popup; DropdownMenu is the old name.
+    m = re.search(r"(?:DropdownMenu|LsmMenu)\([^)]*\)\s*\{(.*?)\n                \}", text, re.S)
     if not m:
         fail(rows, "android-overflow", "header DropdownMenu not found")
     else:
