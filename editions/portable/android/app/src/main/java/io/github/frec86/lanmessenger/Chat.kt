@@ -115,7 +115,7 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
       Column(Modifier.fillMaxSize().navigationBarsPadding().imePadding().background(p.window).statusBarsPadding()) {
         /* header: back · avatar(+dot) · name + shield · status · search · more */
         if (multi) SelectBar(picked.size, { fwdIds = picked.toList() }, { picked.forEach { Native.setMsgFlags(it, -1, 1) }; Repo.toast.value = "已收藏"; multi = false; picked = emptySet(); Repo.refresh() }, { multiDel = true }, { multi = false; picked = emptySet() })
-        else Row(Modifier.fillMaxWidth().height(64.dp).background(p.bar).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        else Row(Modifier.fillMaxWidth().height(64.dp).background(p.window).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(back) { Ic(R.drawable.ms_back, "返回", p.fg) }
             if (searching) {
                 SearchField(q, { q = it }, "搜索聊天记录", Modifier.weight(1f))

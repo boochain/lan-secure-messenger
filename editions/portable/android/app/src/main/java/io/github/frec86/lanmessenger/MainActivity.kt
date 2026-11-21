@@ -17,6 +17,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -228,6 +229,7 @@ fun LsmAlertDialog(onDismissRequest: () -> Unit, confirmButton: @Composable () -
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }) { onDismissRequest() },
             contentAlignment = Alignment.Center) {
             Surface(color = p.dialog, contentColor = p.fg, shape = RoundedCornerShape(28.dp),
+                border = BorderStroke(1.dp, p.divider), shadowElevation = 0.dp, tonalElevation = 0.dp,
                 modifier = Modifier.padding(horizontal = 24.dp).widthIn(min = 280.dp, max = 560.dp).fillMaxWidth()
                     .clickable(indication = null, interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }) {}) {
                 Column(Modifier.padding(24.dp)) {
