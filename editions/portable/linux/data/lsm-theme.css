@@ -13,7 +13,7 @@ window, dialog, messagedialog, .background { font-size: 14px; }
 .subtitle-text { font-size: 20px; font-weight: 600; }
 .welcome-title { font-size: 20px; font-weight: 600; }
 .pin { font-size: 28px; font-weight: 600; font-family: monospace; }
-.bubble { border-radius: 8px; padding: 8px 12px; margin: 2px 12px; }
+.bubble { border-radius: 18px; padding: 8px 12px; margin: 2px 12px; }
 .meta { margin: 6px 16px 0 16px; }
 .sysmsg { margin: 8px; }
 /* 历史跳转：高亮目标消息 */
@@ -24,7 +24,7 @@ window, dialog, messagedialog, .background { font-size: 14px; }
 .drophint { border-radius: 12px; padding: 24px; font-size: 20px; font-weight: 600; }
 .statusbar { padding: 4px 10px; }
 .chatlist { padding: 8px 0; }
-button { border-radius: 4px; padding: 4px 12px; background-image: none; box-shadow: none; text-shadow: none; -gtk-icon-shadow: none; }
+button { border-radius: 12px; padding: 4px 12px; background-image: none; box-shadow: none; text-shadow: none; -gtk-icon-shadow: none; }
 headerbar { background-image: none; box-shadow: none; border-top: none; border-left: none; border-right: none; border-bottom-width: 1px; border-bottom-style: solid; }
 decoration, window.csd decoration, window.solid-csd decoration { box-shadow: none; border: none; margin: 0; border-radius: 0; }
 window.solid-csd, window.csd { margin: 0; padding: 0; border: none; box-shadow: none; }
@@ -111,7 +111,7 @@ list row label.online, row label.online, label.online { color: #0F7B0F; }
 list row label.offline, row label.offline, label.offline { color: #5C5C5C; }
 popover, popover.menu, popover.background { border: 1px solid #E5E5E5; box-shadow: none; }
 popover separator, popover.menu separator { background-color: #E5E5E5; min-height: 1px; margin: 4px 0; }
-window.popup menu, .csd menu, menu { box-shadow: inset 0 0 0 1px #E5E5E5; border-radius: 0; }
+window.popup menu, .csd menu, menu { box-shadow: inset 0 0 0 1px #E5E5E5; border-radius: 12px; }
 menu, .csd menu, window.popup menu { padding: 4px; margin: 0; }
 menu menuitem, .csd menu menuitem { min-height: 22px; padding-top: 2px; padding-bottom: 2px; }  /* GTK 3.24 skips the menu node border; the popup window's 1px border is only visible when items do not cover the edge */
 
@@ -209,7 +209,7 @@ list row label.online, row label.online, label.online { color: #6CCB5F; }
 list row label.offline, row label.offline, label.offline { color: #CCCCCC; }
 popover, popover.menu, popover.background { border: 1px solid #323232; box-shadow: none; }
 popover separator, popover.menu separator { background-color: #323232; min-height: 1px; margin: 4px 0; }
-window.popup menu, .csd menu, menu { box-shadow: inset 0 0 0 1px #323232; border-radius: 0; }
+window.popup menu, .csd menu, menu { box-shadow: inset 0 0 0 1px #323232; border-radius: 12px; }
 menu, .csd menu, window.popup menu { padding: 4px; margin: 0; }
 menu menuitem, .csd menu menuitem { min-height: 22px; padding-top: 2px; padding-bottom: 2px; }  /* GTK 3.24 skips the menu node border; the popup window's 1px border is only visible when items do not cover the edge */
 
