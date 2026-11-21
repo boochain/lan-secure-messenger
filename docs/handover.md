@@ -2,7 +2,7 @@
 
 写给下一个 agent。从线协议往上读。不要从界面、不要从旧网站、不要从聊天记录开始改。
 
-仓库：`boochain/lan-secure-messenger`。已发布版本看仓库根目录的 `VERSION`（写这份说明时是 **0.7.3**）。Android 安装包的开发者证书在提交 `bbe7ee3`。README 开头那句「v0.6」是过时的，以 `VERSION` 和本文件为准。`https://lan-messenger-kmzf.pages.grok.bot/` 是 v0.6 的手册，只能当历史，不能当事实。仓库里没有的文件、帧、数据目录，都还没实现。先搜索再写。
+仓库：`boochain/lan-secure-messenger`。已发布版本看仓库根目录的 `VERSION`（写这份说明时是 **0.7.4**）。Android 安装包的开发者证书在提交 `bbe7ee3`，从 **v0.7.4** 这个 Release 才开始打进安装包；v0.7.3 标签上的 APK 仍是调试证书。README 开头那句「v0.6」是过时的，以 `VERSION` 和本文件为准。`https://lan-messenger-kmzf.pages.grok.bot/` 是 v0.6 的手册，只能当历史，不能当事实。仓库里没有的文件、帧、数据目录，都还没实现。先搜索再写。
 
 ## 0. 接到任务先做这几步
 
@@ -273,7 +273,7 @@ XP 保持系统控件和经典主题。不要用自绘卡片去对抗系统主�
 
 现在 `app/build.gradle.kts` 的 release 使用 `app/signing/lsm-release.p12`。主体、指纹和「为什么不能换钥匙」写在 `docs/signing.md`。release 构建缺这个文件就应该失败，不要静默退回 debug。
 
-换图标或证书之后，已经发出去的那个 APK 不会自己变。要替换 Release 上的 `LanMessenger-v0.7.3-android.apk`，并改 `SHA256SUMS.txt` 里对应的一行。包名仍是 `io.github.frec86.lanmessenger`，`versionName` 仍是 `0.7.3`，除非用户要求新版本号。证书一换，如果有人曾经装上旧的 debug 包，必须先卸载。
+换图标或证书之后，已经发出去的那个 APK 不会自己变。v0.7.3 的 Release 不要再改包；新包在 v0.7.4。包名仍是 `io.github.frec86.lanmessenger`。证书一换，如果有人曾经装上旧的 debug 包，必须先卸载。
 
 ## 16. 明确不要做的事
 
