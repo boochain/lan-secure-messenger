@@ -190,6 +190,13 @@ fun Chat(st: AppState, conv: String, openPage: (String) -> Unit = {}, back: () -
                 }
             }
         }
+        if (!multi && !searching && contact != null && contact.trust == 0) {
+            Box(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 6.dp)
+                .clickable { Native.setTrust(contact.fp, 1); Repo.refresh() }
+                .semantics { contentDescription = "尚未信任对方，点此信任" }, contentAlignment = Alignment.Center) {
+                ServicePill(true, "尚未信任对方。点此信任，或完成 PIN 配对后才能发图片和文件。")
+            }
+        }
         all.lastOrNull { it.pinned && !it.recalled }?.let { pm -> PinnedBanner(pm, all.count { it.pinned && !it.recalled }) { flagDlg = 1 } }
         /* messages over the doodle wallpaper */
         val wall = WALL_ICONS.map { painterResource(it) }
