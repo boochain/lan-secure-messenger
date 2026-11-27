@@ -19,7 +19,7 @@
 | 实现 | 谁在用 | 位置 |
 |---|---|---|
 | Rust | Windows 10/11。`lan-daemon` 做网络和存储，WinUI 只渲染 | `lan-core/`、`lan-daemon/`、`lan-cli/`、`ui-winui/` |
-| C | Windows XP、Linux GTK 3、Linux GTK 4/libadwaita、Android（JNI） | `editions/portable/src`（`core.c`、`relay.c`、`xcrypto.c`），界面在 `src/gui.c`、`linux/gtk_gui.c`、`linux/adw_gui.c`、`android/` |
+| C | Windows XP、Linux GTK 3、Linux GTK 4/libadwaita、Android（JNI）、HarmonyOS（NAPI，未进 CI） | `editions/portable/src`（`core.c`、`relay.c`、`xcrypto.c`），界面在 `src/gui.c`、`linux/gtk_gui.c`、`linux/adw_gui.c`、`android/`、`harmony/` |
 | 中转 | 可选的自建转发进程，不是会话的一方 | `relay-server/` |
 
 WinUI 不自己持有连接。它用 JSON-RPC 过命名管道 `\\.\pipe\lan-secure-messenger-<用户名>` 问 daemon。Linux 上同一份 IPC 走 Unix socket。界面只根据快照和事件画，不自己维护在线状态。IPC 见 `docs/ipc.md`。
@@ -286,6 +286,7 @@ XP 保持系统控件和经典主题。不要用自绘卡片去对抗系统主�
 - 不要在升级脚本里删除旧数据目录。
 - 不要把恢复密钥、私钥、PIN 写进日志或 IPC 快照。快照里只允许 `account_mode`、`account_user`（查找名）、`has_recovery_key`。
 - 不要打标签，除非用户说发版。
+- 不要把鸿蒙写进 `features.yml`，也不要提交鸿蒙的 p12 / p7b / cer。
 - 不要用网页原型或设计稿里的假数据当成已经接通的功能。
 
 ## 17. 本地可以先跑的检查
@@ -317,3 +318,14 @@ keytool -printcert -jarfile app/build/outputs/apk/release/app-release.apk
 | 导航和恢复密钥该长什么样 | `docs/design-research-v072.md` |
 | Windows 怎么连 daemon | `docs/ipc.md` |
 | 证书 | `docs/signing.md` |
+| 鸿蒙 7 | `editions/portable/harmony/README.md` |
+
+## 19. HarmonyOS（还没进 CI，也还没编过 HAP）
+
+用户要的是鸿蒙 7 能用、安装尽量简单，基线是已发布的 0.7.4，不是新协议。工程在 `editions/portable/harmony`。HarmonyOS 7 是纯血 NEXT（API / SDK 26.0.0），双击 APK 打不开。卓易通可以跑已经发布的 0.7.4 APK，那只是过渡，不是这个工程。
+
+`build-profile.json5`：`compatibleSdkVersion` 为 `5.0.0(12)`，`targetSdkVersion` 为 `26.0.0`，`runtimeOS` 为 `HarmonyOS`。不写 `compileSdkVersion`，用 DevEco 自带 SDK。不要写成 `7.0.0(26)`。Hvigor `modelVersion` 是 `26.0.0`，插件 `6.26.9`。工程级 `oh-package.json5` 的 `modelVersion` 也是 `26.0.0`。签名配置是空数组，产品不要引用名叫 `default` 的 signingConfig。能装进手机的 HAP 必须用华为调试或发布证书，调试证书绑定那台机器的 UDID。这条路是 DevEco Studio 26 自动签名然后 Run。本机没有 DevEco，不要假装包已经编出来。
+
+安卓 JNI（`android/app/src/main/cpp/jni.c`）和鸿蒙 NAPI（`harmony/entry/src/main/cpp/napi_init.cpp`）都调 `editions/portable/src/lsm_host.c`。JSON 只写这一份。`lsmh_poll` 空闲返回 NULL。每个 `char*` 由调用方 `free`。`napi` 必须用 `extern "C"` 包住这个头，否则 C++ 名字修饰对不上。C 核心用了 pthread，鸿蒙 CMake 要链 `pthread`。
+
+界面底栏只有聊天、联系人、文件、设置。没信任不能发文件，提示句必须是「对方尚未信任，无法发送图片/文件。请先在联系人菜单中信任对方（或完成 PIN 配对）。」图片在应用内看。颜色只用 `$r('sys.color.ohos_id_color_*')`，不要把安卓 Liquid Glass 色板搬过来。反应、投票、引用这些已经在 NAPI 里，界面还没有逐个按钮。不要把 `harmony` 加进 `docs/features.yml`，检查器会因为没有钩子、`automated_test` 和 `gui_verified` 让 CI 失败。不要为了它去跑 `tools/gen-portable-workflow.py`。不要为了让人看到工程就推进 `main`。

@@ -1,0 +1,10 @@
+{
+  "app": {
+    "bundleName": "io.github.frec86.lanmessenger",
+    "vendor": "frec86",
+    "versionCode": 70499,
+    "versionName": "0.7.4",
+    "icon": "$media:app_icon",
+    "label": "$string:app_name"
+  }
+}

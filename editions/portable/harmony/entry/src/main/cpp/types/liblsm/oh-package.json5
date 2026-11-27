@@ -1,0 +1,6 @@
+{
+  "name": "liblsm.so",
+  "types": "./Index.d.ts",
+  "version": "0.7.4",
+  "description": "LAN Secure Messenger core"
+}

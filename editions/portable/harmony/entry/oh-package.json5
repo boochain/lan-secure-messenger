@@ -1,0 +1,11 @@
+{
+  "name": "entry",
+  "version": "0.7.4",
+  "description": "局域网安全通讯",
+  "main": "",
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "liblsm.so": "file:./src/main/cpp/types/liblsm"
+  }
+}

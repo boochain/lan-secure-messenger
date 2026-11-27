@@ -1,0 +1,8 @@
+{
+  "string": [
+    { "name": "module_desc", "value": "局域网安全通讯" },
+    { "name": "EntryAbility_desc", "value": "局域网加密聊天" },
+    { "name": "EntryAbility_label", "value": "局域网安全通讯" },
+    { "name": "internet_reason", "value": "用于在局域网和中转服务器上收发消息与文件" }
+  ]
+}

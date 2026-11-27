@@ -24,6 +24,7 @@
 │       ├── src/          共享 C 核心 core.c / relay.c / resume.c / xcrypto.c、CLI，以及 XP Win32 界面 gui.c
 │       ├── linux/        Linux：GTK 4 + libadwaita 界面（adw_gui.c，AppImage）与 GTK 3 兼容界面（gtk_gui.c）
 │       ├── android/      Android 应用（Kotlin / Compose，JNI 调用同一份 C 核心）
+│       ├── harmony/      HarmonyOS NEXT / 鸿蒙 7 工程（NAPI 调用同一份 C 核心，用 DevEco 签名安装，未进 CI）
 │       ├── reference/v0.5  互通测试用的 v0.5 Rust 后台服务源码快照
 │       └── tests/  tools/  互通矩阵 matrix.py、截图与配色审计等
 ├── tools/                配色审计、sync-from-xp.sh、gen-portable-workflow.py
