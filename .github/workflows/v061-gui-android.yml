@@ -65,6 +65,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Toolchain (mingw-w64, wine32)
         run: |
+          sudo bash -c 'shopt -s nullglob; for f in /etc/apt/sources.list.d/*; do if grep -q packages.microsoft.com "$f"; then rm -f "$f"; fi; done'
           sudo dpkg --add-architecture i386 && sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq mingw-w64 wine wine32:i386
       - name: Build XP CLI + current lan-daemon
