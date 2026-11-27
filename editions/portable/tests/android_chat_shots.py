@@ -120,6 +120,25 @@ def finalize_nav_ignore():
             reasons[fn] = (prev + "; " if prev else "") + note
     json.dump(ign, open(path, "w"), ensure_ascii=False, indent=1)
 
+def online_dot_boxes(png):
+    """Online dots and the trusted-shield are both the palette online green, drawn on top of an avatar.
+    Tesseract merges the dot into the monogram (王 was read as 会) and the ink-core step then picks the
+    green (#0F7B0F on avatar #1F6FB2, WCAG 1.03). Presence is also written as 在线 / 已信任."""
+    from PIL import Image
+    import numpy as np, cv2
+    a = np.asarray(Image.open(png).convert("RGB")).astype(int)
+    m = np.zeros(a.shape[:2], np.uint8)
+    for c in ((15, 123, 15), (220, 252, 160)):  # light online #0F7B0F, dark online #DCFCA0
+        m |= (np.abs(a - c).max(-1) <= 18).astype(np.uint8)
+    n, _, st, _ = cv2.connectedComponentsWithStats(m, connectivity=8)
+    out = []
+    for i in range(1, n):
+        area = int(st[i, cv2.CC_STAT_AREA])
+        if not (40 <= area <= 2500):
+            continue
+        x, y, w, h = (int(st[i, k]) for k in range(4))
+        out.append([max(0, x - 4), max(0, y - 4), w + 8, h + 8])
+    return out
 def emoji_boxes(png):
     """Colour-emoji glyphs (Noto Color Emoji, e.g. the yellow thumbs-up) are pictures, not UI text: OCR reads them as
     low-contrast 'text'. Locate the saturated yellow/orange glyph blobs and exclude them (with a reason) from the audit."""
@@ -134,6 +153,8 @@ def shot(name):
     ign = json.load(open(path)) if os.path.exists(path) else {}
     ign.setdefault("_reasons", {})["android-*-11-chat emoji"] = "colour emoji glyph (Noto Color Emoji) inside a message is a picture, not UI text"
     boxes = emoji_boxes(png)
+    dots = [] if "image-viewer" in name else online_dot_boxes(png)
+    boxes.extend(dots)
     ign["_reasons"]["android-*-11-chat photo"] = "the photo inside an image bubble is user content, not UI (its dark shades also occur in dark surfaces, so colour masking cannot isolate it)"
     for n in nodes():  # Image(contentDescription = file name) in the image bubble
         if re.search(r"\.(jpe?g|png|webp|gif)$", n.get("content-desc") or "", re.I):
@@ -156,6 +177,8 @@ def shot(name):
         qrs = qr_canvas_boxes(png)
         if qrs:
             entry["ignore"] = qrs
+        if dots:
+            entry["ignore"] = list(entry.get("ignore") or []) + dots
         ign[name + ".png"] = entry
         ign["_reasons"][name + ".png"] = (
             "modal AlertDialog: the page behind the scrim is inactive (WCAG 1.4.3 exempts inactive UI); "
@@ -173,6 +196,11 @@ def shot(name):
             ign[name + ".png"] = boxes
     elif boxes:
         ign[name + ".png"] = boxes
+    if dots:
+        prev = ign["_reasons"].get(name + ".png", "")
+        note = "decorative online dot and trusted-shield (palette online green on the avatar). OCR merges the dot into the monogram; 在线 / 已信任 is also written as text"
+        if note not in prev:
+            ign["_reasons"][name + ".png"] = (prev + "; " if prev else "") + note
     json.dump(ign, open(path, "w"), ensure_ascii=False, indent=1)
 
 def _hit(label):
