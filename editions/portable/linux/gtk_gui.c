@@ -14,6 +14,7 @@
 #include <sys/stat.h>
 #include "../src/core.h"
 #include "upd_gio.h"
+#include "upd_apply.h"
 
 #define APP_ID "io.github.frec86.LanMessenger"
 static lsm_core *C;
@@ -159,8 +160,8 @@ static void show_image_viewer(const char *path){
     GError *er=NULL; GdkPixbuf *pb=gdk_pixbuf_new_from_file(path,&er); ImgV *v; GtkWidget *box, *hint, *evb;
     if(!pb){ if(er) g_error_free(er); open_path_default(path); return; }
     v=g_new0(ImgV,1); v->orig=pb; v->zoom=1;
-    v->win=gtk_window_new(GTK_WINDOW_TOPLEVEL); gtk_window_set_title(GTK_WINDOW(v->win),"图片"); gtk_window_set_transient_for(GTK_WINDOW(v->win),GTK_WINDOW(win)); gtk_window_set_modal(GTK_WINDOW(v->win),TRUE);
-    gtk_window_set_default_size(GTK_WINDOW(v->win),900,700);
+    v->win=gtk_window_new(GTK_WINDOW_TOPLEVEL); gtk_window_set_title(GTK_WINDOW(v->win),"图片");
+    gtk_window_set_default_size(GTK_WINDOW(v->win),900,700); gtk_window_set_position(GTK_WINDOW(v->win),GTK_WIN_POS_CENTER);
     box=gtk_box_new(GTK_ORIENTATION_VERTICAL,0); v->sw=gtk_scrolled_window_new(NULL,NULL);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(v->sw),GTK_POLICY_AUTOMATIC,GTK_POLICY_AUTOMATIC);
     evb=gtk_event_box_new(); v->img=gtk_image_new(); gtk_container_add(GTK_CONTAINER(evb),v->img); gtk_container_add(GTK_CONTAINER(v->sw),evb);
@@ -177,7 +178,7 @@ static void show_image_viewer(const char *path){
     gtk_widget_add_events(evb,GDK_SCROLL_MASK|GDK_BUTTON_PRESS_MASK|GDK_BUTTON_RELEASE_MASK|GDK_POINTER_MOTION_MASK|GDK_SMOOTH_SCROLL_MASK);
     g_signal_connect(v->sw,"configure-event",G_CALLBACK(imgv_configured),v);
     g_signal_connect_swapped(v->win,"destroy",G_CALLBACK(imgv_free),v);
-    gtk_widget_show_all(v->win); imgv_redraw(v); }
+    gtk_widget_show_all(v->win); gtk_window_present(GTK_WINDOW(v->win)); imgv_redraw(v); }
 static void test_open_last_image(void){
     lsm_msg *m; int n,i; const char *path=NULL;
     if(!C||!cur_conv[0]) return; lsm_lock(C); n=lsm_messages(C,&m);
@@ -412,8 +413,27 @@ static int peer_muted(const char *fp){ lsm_contact *k; int n,i,m=0; lsm_lock(C);
 static void upd_test_note(int newer, const char *msg){ const char *tf=getenv("LSM_TEST_UPDCHECK"); FILE *f; /* CI release gate: record what the check said */
     if(tf && *tf && (f=fopen(tf,"w"))){ fprintf(f,"newer=%d version=%s %s\n",newer,LSM_APP_VERSION,msg); fclose(f); } }
 static gboolean upd_test_start(gpointer p); 
-static void upd_show(int newer, const char *msg, const char *url){ GtkWidget *d;
+typedef struct { char asset[800], sums[800], name[200]; } upd_job;
+typedef struct { int rc; char err[400]; } upd_res;
+static gboolean upd_job_done(gpointer p){ upd_res *r=p;
+    if(r->rc==2){ if(status_lbl) gtk_label_set_text(GTK_LABEL(status_lbl),"正在退出以安装更新…"); g_application_quit(G_APPLICATION(app)); }
+    else msgbox(GTK_MESSAGE_WARNING,"%s",r->err[0]?r->err:"安装更新失败。");
+    g_free(r); return G_SOURCE_REMOVE; }
+static gpointer upd_job_run(gpointer p){ upd_job *j=p; upd_res *r=g_new0(upd_res,1);
+    r->rc=upd_fetch_and_apply(j->asset,j->sums,j->name,r->err,sizeof r->err); g_free(j); g_idle_add(upd_job_done,r); return NULL; }
+static void upd_show(int newer, const char *msg, const char *url, const char *json){ GtkWidget *d;
     upd_test_note(newer,msg);
+    if(newer>0 && json){ char needle[80], avoid[32], tag[64], asset[800], sums[800], name[200];
+        upd_self_pkg(needle,sizeof needle,avoid,sizeof avoid); upd_pick(json,tag,sizeof tag);
+        if(upd_asset_url(json,tag,needle,avoid[0]?avoid:NULL,asset,sizeof asset,name,sizeof name)
+           && upd_asset_url(json,tag,"SHA256SUMS",NULL,sums,sizeof sums,NULL,0)){
+            d=gtk_message_dialog_new(GTK_WINDOW(win),GTK_DIALOG_MODAL,GTK_MESSAGE_INFO,GTK_BUTTONS_YES_NO,"%s\n下载并安装？程序会退出并替换自身，聊天记录留在数据目录。",msg);
+            gtk_window_set_title(GTK_WINDOW(d),"检查更新");
+            if(gtk_dialog_run(GTK_DIALOG(d))==GTK_RESPONSE_YES){ upd_job *j; gtk_widget_destroy(d);
+                j=g_new0(upd_job,1); snprintf(j->asset,sizeof j->asset,"%s",asset); snprintf(j->sums,sizeof j->sums,"%s",sums); snprintf(j->name,sizeof j->name,"%s",name);
+                if(status_lbl) gtk_label_set_text(GTK_LABEL(status_lbl),"正在下载更新…");
+                g_thread_new("lsm-upd",upd_job_run,j); return; }
+            gtk_widget_destroy(d); return; } }
     if(newer==0){ msgbox(GTK_MESSAGE_INFO,"%s",msg); return; }
     d=gtk_message_dialog_new(GTK_WINDOW(win),GTK_DIALOG_MODAL,newer>0?GTK_MESSAGE_INFO:GTK_MESSAGE_WARNING,GTK_BUTTONS_YES_NO,"%s\n%s",msg,newer>0?"是否打开下载页？":"是否在浏览器中打开发布页？");
     gtk_window_set_title(GTK_WINDOW(d),"检查更新"); if(gtk_dialog_run(GTK_DIALOG(d))==GTK_RESPONSE_YES) upd_open_url(url); gtk_widget_destroy(d); }

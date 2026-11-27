@@ -191,11 +191,18 @@ for i, theme in enumerate(["light", "dark"]):
         xdo("key", "ctrl+Tab"); time.sleep(0.6)
     xdo("type", "--delay", "20", "OK, see you at 3 pm."); xdo("key", "Return"); time.sleep(1.5)
     check(A.wait_for("see you at 3 pm", 8) is not None, f"[{theme}] Enter in the composer sends (peer received it)")
-    xdo("key", "F6"); time.sleep(1.5); shot_title("page-image-viewer", theme, "图片", g=g)
+    def focus_picture():
+        wids = subprocess.run(["xdotool", "search", "--onlyvisible", "--name", "图片"], env=env, capture_output=True, text=True).stdout.split()
+        if not wids:
+            raise SystemExit("FAIL: 图片查看器不是独立窗口（找不到标题为「图片」的窗口）")
+        xdo("windowactivate", "--sync", wids[-1]); time.sleep(0.3)
+    xdo("key", "F6"); time.sleep(1.5); focus_picture(); shot_title("page-image-viewer", theme, "图片", g=g)
     for _ in range(5):
         xdo("key", "plus"); time.sleep(0.12)
-    time.sleep(0.6); shot_title("page-image-viewer-zoom", theme, "图片", g=g)
+    time.sleep(0.6); focus_picture(); shot_title("page-image-viewer-zoom", theme, "图片", g=g)
     xdo("key", "Escape"); time.sleep(0.5)
+    mw = subprocess.run(["xdotool", "search", "--onlyvisible", "--name", "局域网安全通讯"], env=env, capture_output=True, text=True).stdout.split()
+    if mw: xdo("windowactivate", "--sync", mw[-1]); time.sleep(0.2)
     gl = len(g.lines); xdo("key", "ctrl+f"); l = g.wait_for("UI search", 5, gl)
     check(l is not None and "Text" in l, f"[{theme}] shortcut Ctrl+F focuses the conversation search ({l})"); xdo("key", "Escape"); time.sleep(0.4)
     gl = len(g.lines); xdo("key", "ctrl+n"); l = g.wait_for("UI add-contact", 5, gl)

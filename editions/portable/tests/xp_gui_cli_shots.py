@@ -44,6 +44,35 @@ def shot(name, icons=None):
     except OSError: r = []
     if r: ignore[os.path.basename(path)] = r; ignore["_reasons"][os.path.basename(path)] = "decorative icons only: avatar monogram tiles with their online dot (OCR merges the two; white-on-avatar colours come from the shared palette), photo thumbnails (user content), system scrollbars and the window caption/frame (OS theme colours), online presence ( is also spelled out as 在线 / N 人在线) and the trusted-identity shield (also spelled out as 已验证身份); bounds reported by the app (LSM_UI_TEST)"
     return path
+def hint_bar_ignore(png):
+    """Ignore the picture (and the OS caption above it). The hint bar at the bottom is still audited."""
+    from PIL import Image
+    import statistics
+    im = Image.open(png).convert("RGB"); w, h = im.size; pix = im.load()
+    def sig(y):
+        y = max(0, min(h - 1, y)); band = max(8, w // 6)
+        xs = list(range(0, band, 4)) + list(range(w - band, w, 4))
+        cs = [pix[x, y] for x in xs]
+        return tuple(int(statistics.median([c[i] for c in cs])) for i in range(3))
+    def dist(a, b):
+        return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5
+    base = sig(h - 3); cut = max(1, h - 20)
+    for y in range(h - 4, max(0, h - 90), -1):
+        if dist(sig(y), base) > 12:
+            cut = min(y + 2, h - 14); break
+    return [[0, 0, w, max(1, cut)]]
+def shot_viewer(name, theme):
+    wids = xdo("search", "--onlyvisible", "--name", "图片").split()
+    check(bool(wids), f"[{theme}] image viewer is its own window")
+    if not wids: return
+    xdo("windowactivate", "--sync", wids[-1]); time.sleep(0.3)
+    g = {k: int(v) for k, v in (l.split("=") for l in xdo("getwindowgeometry", "--shell", wids[-1]).split())}
+    path = f"{out}/{name}.png"
+    subprocess.run(["import", "-window", "root", "-crop", f"{g['WIDTH']}x{g['HEIGHT']}+{g['X']}+{g['Y']}", "+repage", path], env=env)
+    print("shot", path, flush=True)
+    ignore[os.path.basename(path)] = hint_bar_ignore(path)
+    ignore["_reasons"][os.path.basename(path)] = "user-sent image in the viewer (fit/zoom interpolates colours); the hint bar under the picture is still audited"
+    return path
 def click(x, y, b="1"):
     g = {k: int(v) for k, v in (l.split("=") for l in xdo("getwindowgeometry", "--shell", wid).split())}; xdo("mousemove", str(g["X"] + x), str(g["Y"] + y), "click", b)
 img = f"{W}/季度报告-Q3-最终版.pdf"; open(img, "wb").write(os.urandom(2400 * 1024))
@@ -81,11 +110,11 @@ for i, theme in enumerate(themes):
     click(200, 160); time.sleep(1.5)   # first conversation (window coords incl. the wine-drawn frame)
     xdo("type", "--delay", "40", "OK, see you at 3 pm."); xdo("key", "Return"); time.sleep(2.5)
     shot(f"xp-{theme}-chat")
-    xdo("key", "F6"); time.sleep(1.5); shot(f"xp-{theme}-image-viewer")
+    xdo("key", "F6"); time.sleep(1.5); shot_viewer(f"xp-{theme}-image-viewer", theme)
     for _ in range(5):
         xdo("key", "plus"); time.sleep(0.12)
-    time.sleep(0.6); shot(f"xp-{theme}-image-viewer-zoom")
-    xdo("key", "Escape"); time.sleep(0.5)
+    time.sleep(0.6); shot_viewer(f"xp-{theme}-image-viewer-zoom", theme)
+    xdo("key", "Escape"); time.sleep(0.5); xdo("windowactivate", "--sync", wid); time.sleep(0.2)
     g2 = {k: int(v) for k, v in (l.split("=") for l in xdo("getwindowgeometry", "--shell", wid).split())}
     xdo("mousemove", str(g2["X"] + 600), str(g2["Y"] + 300)); [xdo("click", "4") for _ in range(3)]; time.sleep(0.8); shot(f"xp-{theme}-chat-wheel-up")   # themed scrollbar follows the wheel
     xdo("mousemove", str(g2["X"] + 600), str(g2["Y"] + 300)); [xdo("click", "5") for _ in range(6)]; time.sleep(0.5)

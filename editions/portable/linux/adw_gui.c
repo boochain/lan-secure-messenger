@@ -70,6 +70,7 @@ static void notify_conv(const char *title, const char *body, const char *conv){ 
       g_spawn_command_line_async(cmd,NULL); g_free(cmd); g_free(tq); g_free(bq); } }
 static void notify(const char *title, const char *body){ notify_conv(title,body,NULL); }
 #include "upd_gio.h"
+#include "upd_apply.h"
 static int peer_muted(const char *fp){ lsm_contact *k; int n,i,m=0; lsm_lock(C); n=lsm_contacts(C,&k); for(i=0;i<n;i++) if(!strcmp(k[i].fp,fp)){ m=k[i].muted; break; } lsm_unlock(C); return m; }
 
 /* ---------------------------------------------------------------- dialogs (AdwAlertDialog on 1.5+, AdwMessageDialog on 1.4) */
@@ -237,7 +238,7 @@ static void show_image_viewer(const char *path){
     GError *er=NULL; GdkPixbuf *pb=gdk_pixbuf_new_from_file(path,&er); AdwImgV *v; GtkWidget *box, *hint;
     if(!pb){ if(er) g_error_free(er); open_path_safe(path); return; }
     v=g_new0(AdwImgV,1); v->orig=pb; v->zoom=1;
-    v->win=gtk_window_new(); gtk_window_set_title(GTK_WINDOW(v->win),"图片"); gtk_window_set_transient_for(GTK_WINDOW(v->win),GTK_WINDOW(win)); gtk_window_set_modal(GTK_WINDOW(v->win),TRUE); gtk_window_set_default_size(GTK_WINDOW(v->win),900,700);
+    v->win=gtk_window_new(); gtk_window_set_title(GTK_WINDOW(v->win),"图片"); gtk_window_set_default_size(GTK_WINDOW(v->win),900,700);
     v->sw=gtk_scrolled_window_new(); v->pic=gtk_picture_new(); gtk_picture_set_content_fit(GTK_PICTURE(v->pic),GTK_CONTENT_FIT_FILL);
     gtk_widget_set_halign(v->pic,GTK_ALIGN_CENTER); gtk_widget_set_valign(v->pic,GTK_ALIGN_CENTER);
     gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(v->sw),v->pic);
@@ -391,9 +392,24 @@ static void upd_open_cb(gpointer u){ upd_open_url((const char*)u); }
 static void upd_test_note(int newer, const char *msg){ const char *tf=getenv("LSM_TEST_UPDCHECK"); FILE *f; /* CI release gate: record what the check said */
     if(tf && *tf && (f=fopen(tf,"w"))){ fprintf(f,"newer=%d version=%s %s\n",newer,LSM_APP_VERSION,msg); fclose(f); } }
 static gboolean upd_test_start(gpointer p); 
-static void upd_show(int newer, const char *msg, const char *url){
+typedef struct { char asset[800], sums[800], name[200]; } upd_job;
+typedef struct { int rc; char err[400]; } upd_res;
+static gboolean upd_job_done(gpointer p){ upd_res *r=p;
+    if(r->rc==2) g_application_quit(G_APPLICATION(app));
+    else info("安装更新失败", r->err[0]?r->err:"安装更新失败。");
+    g_free(r); return G_SOURCE_REMOVE; }
+static gpointer upd_job_run(gpointer p){ upd_job *j=p; upd_res *r=g_new0(upd_res,1);
+    r->rc=upd_fetch_and_apply(j->asset,j->sums,j->name,r->err,sizeof r->err); g_free(j); g_idle_add(upd_job_done,r); return NULL; }
+static void upd_install_cb(gpointer p){ upd_job *j=g_new0(upd_job,1); memcpy(j,p,sizeof *j); g_thread_new("lsm-upd",upd_job_run,j); }
+static void upd_show(int newer, const char *msg, const char *url, const char *json){
     upd_test_note(newer,msg);
-    if(newer==0) info("检查更新",msg); else confirm(newer>0?"发现新版本":"检查更新失败",msg,newer>0?"打开下载页":"打开发布页",0,upd_open_cb,g_strdup(url),g_free); }
+    if(newer>0 && json){ char needle[80], avoid[32], tag[64], asset[800], sums[800], name[200];
+        upd_self_pkg(needle,sizeof needle,avoid,sizeof avoid); upd_pick(json,tag,sizeof tag);
+        if(upd_asset_url(json,tag,needle,avoid[0]?avoid:NULL,asset,sizeof asset,name,sizeof name)
+           && upd_asset_url(json,tag,"SHA256SUMS",NULL,sums,sizeof sums,NULL,0)){
+            upd_job *j=g_new0(upd_job,1); snprintf(j->asset,sizeof j->asset,"%s",asset); snprintf(j->sums,sizeof j->sums,"%s",sums); snprintf(j->name,sizeof j->name,"%s",name);
+            confirm("发现新版本",msg,"下载并安装",0,upd_install_cb,j,g_free); return; } }
+    if(newer==0) info("检查更新",msg); else confirm(newer>0?"发现新版本":"检查更新失败",msg,newer>0?"打开下载页":"打开发布页",0,upd_open_cb,g_strdup(url?url:UPD_RELEASES_URL),g_free); }
 static void trust_do(gpointer t){ char err[256]=""; if(!strncmp(cur_conv,"dm:",3)) lsm_set_trust(C,cur_conv+3,GPOINTER_TO_INT(t),err); list_dirty=chat_dirty=1; }
 static void details(void){ char b[2400]="", fp[200]=""; if(!cur_conv[0]) return; lsm_lock(C);
     if(!strncmp(cur_conv,"dm:",3)){ lsm_contact *k; int nk=lsm_contacts(C,&k),j; for(j=0;j<nk;j++) if(!strcmp(k[j].fp,cur_conv+3)){ int q=0; const char *f=k[j].fp; for(;*f;f++){ if(*f=='-') continue; if(q&&q%4==0) strcat(fp," "); strncat(fp,f,1); q++; }

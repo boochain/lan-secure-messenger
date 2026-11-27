@@ -278,6 +278,8 @@
                     </TextBlock>
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button Content="检查更新" Command="{x:Bind VM.CheckUpdateCommand}" />
+                        <Button Content="下载并安装" Command="{x:Bind VM.InstallUpdateCommand}"
+                                Visibility="{x:Bind local:B.NotEmpty(VM.UpdateAsset), Mode=OneWay}" />
                         <Button Content="打开日志文件夹" Command="{x:Bind VM.OpenLogsCommand}" />
                     </StackPanel>
                 </StackPanel>

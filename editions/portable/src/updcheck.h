@@ -36,4 +36,32 @@ static int upd_result(const char *json, const char *local, char *msg, size_t mn,
     snprintf(url,un,"%s/tag/%s",UPD_RELEASES_URL,tag);
     if(upd_cmp(tag,local)>0){ snprintf(msg,mn,"发现新版本 %s（当前 %s）。",tag,local); return 1; }
     snprintf(msg,mn,"已是最新版本（当前 %s，最新发布 %s）。",local,tag); return 0; }
+/* Pull the next JSON string after `p` (p sits on the key). 1 on success. */
+static int upd_pull_str(const char *p, char *out, size_t on){ const char *q, *e; size_t l;
+    if(!p||!out||on<2) return 0; q=strchr(p,'"'); if(!q) return 0; q++; e=q;
+    while(*e && *e!='"'){ if(*e=='\\' && e[1]) e++; e++; }
+    if(*e!='"') return 0; l=(size_t)(e-q); if(l>=on) l=on-1; memcpy(out,q,l); out[l]=0; return 1; }
+/* Span of the release object whose tag_name equals `tag` (until the next tag_name). */
+static const char *upd_release_span(const char *json, const char *tag, const char **end){ const char *p=json; char t[80];
+    if(end) *end=json?json+strlen(json):NULL;
+    while(json && (p=strstr(p,"\"tag_name\""))){
+        if(!upd_pull_str(p+10,t,sizeof t)){ p+=10; continue; }
+        if(!strcmp(t,tag)){ const char *n=strstr(p+10,"\"tag_name\""); if(end) *end=n?n:(json+strlen(json)); return p; }
+        p+=10; }
+    return NULL; }
+/* Asset whose file name contains `needle` and not `avoid` (avoid may be NULL). Copies browser_download_url. */
+static int upd_asset_url(const char *json, const char *tag, const char *needle, const char *avoid, char *url, size_t un, char *name, size_t nn){
+    const char *end=NULL, *span, *q; char best[240];
+    if(!url||un<8||!needle) return 0; url[0]=0; if(name) name[0]=0;
+    span=upd_release_span(json,tag,&end); if(!span||!end) return 0;
+    q=span;
+    while((q=strstr(q,"\"browser_download_url\"")) && q<end){
+        char u[900]; const char *s; best[0]=0;
+        if(!upd_pull_str(q+22,u,sizeof u)){ q+=22; continue; }
+        s=span;
+        while((s=strstr(s,"\"name\"")) && s<q){ char t[240]; if(upd_pull_str(s+6,t,sizeof t) && strchr(t,'.')){ strncpy(best,t,sizeof best-1); best[sizeof best-1]=0; } s+=6; }
+        if(best[0] && strstr(best,needle) && (!avoid || !avoid[0] || !strstr(best,avoid))){
+            strncpy(url,u,un-1); url[un-1]=0; if(name && nn){ strncpy(name,best,nn-1); name[nn-1]=0; } return 1; }
+        q+=22; }
+    return 0; }
 #endif

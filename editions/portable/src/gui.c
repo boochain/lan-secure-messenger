@@ -84,8 +84,10 @@ static void fit_vscroll(HWND e);
 static int peer_muted(const char *fp);
 static char balloon_conv[128]; /* chat of the last 新消息 balloon: clicking it opens that chat (X17) */
 static void msgbox(const char *t, UINT f);
+static void tray_balloon(const char *title, const char *body);
 #include <winhttp.h>
 #include "updcheck.h"
+#include "xcrypto.h"
 /* Update check (help menu): WinHTTP GET of the GitHub releases API on a worker thread; the result string goes back
  * with WM_UPDRES. XP's WinHTTP 5.1 cannot do TLS 1.2, so there the request fails and we offer the releases page. */
 /* winhttp.dll is loaded at run time: not on the XP import allow-list (tools/xp_import_check.py), and absent on
@@ -116,12 +118,104 @@ static DWORD WINAPI upd_thread(LPVOID hwnd){ HINTERNET s=NULL,cn=NULL,rq=NULL; c
     if(rq) pClose(rq); if(cn) pClose(cn); if(s) pClose(s);
     if(!ok){ free(body); body=NULL; } FreeLibrary(m);
     PostMessageW((HWND)hwnd,WM_UPDRES,0,(LPARAM)body); return 0; }
+static void upd_offer(const char *json, const char *msg, const char *page);
 static void upd_done(char *body){ char m[300], url[300];
     if(!body){ if(tmsg(L"检查更新",L"无法连接 GitHub 检查更新（Windows XP 不支持 GitHub 要求的 TLS 1.2，或网络不可用）。\n是否在浏览器中打开发布页？",1)==1) ShellExecuteW(hMain,L"open",L"" UPD_RELEASES_URL,NULL,NULL,SW_SHOWNORMAL); return; }
-    { int newer=upd_result(body,LSM_APP_VERSION,m,sizeof m,url,sizeof url); free(body);
-      if(newer){ char t[400]; snprintf(t,sizeof t,"%s\n是否打开下载页？",m); if(tmsg(L"检查更新",W(t),1)==1) ShellExecuteW(hMain,L"open",W(url),NULL,NULL,SW_SHOWNORMAL); }
-      else msgbox(m,MB_ICONINFORMATION); } }
+    { int newer=upd_result(body,LSM_APP_VERSION,m,sizeof m,url,sizeof url);
+      if(newer) upd_offer(body,m,url); else msgbox(m,MB_ICONINFORMATION); free(body); } }
 static void msgbox(const char *t, UINT f){ (void)f; tmsg(L"局域网安全通讯 XP",W(t),0); }
+#define WM_UPDAPPLY (WM_APP+41)
+static int upd_wh_save(const char *url_utf8, const wchar_t *dest){ HMODULE m; HINTERNET s=NULL,cn=NULL,rq=NULL; HANDLE out=INVALID_HANDLE_VALUE; char url[1200]; int hop, ok=0;
+    typedef HINTERNET (WINAPI *wh_open_t)(LPCWSTR,DWORD,LPCWSTR,LPCWSTR,DWORD); typedef BOOL (WINAPI *wh_tmo_t)(HINTERNET,int,int,int,int);
+    typedef HINTERNET (WINAPI *wh_conn_t)(HINTERNET,LPCWSTR,INTERNET_PORT,DWORD); typedef HINTERNET (WINAPI *wh_oreq_t)(HINTERNET,LPCWSTR,LPCWSTR,LPCWSTR,LPCWSTR,LPCWSTR*,DWORD);
+    typedef BOOL (WINAPI *wh_send_t)(HINTERNET,LPCWSTR,DWORD,LPVOID,DWORD,DWORD,DWORD_PTR); typedef BOOL (WINAPI *wh_recv_t)(HINTERNET,LPVOID);
+    typedef BOOL (WINAPI *wh_qh_t)(HINTERNET,DWORD,LPCWSTR,LPVOID,LPDWORD,LPDWORD); typedef BOOL (WINAPI *wh_qda_t)(HINTERNET,LPDWORD);
+    typedef BOOL (WINAPI *wh_rd_t)(HINTERNET,LPVOID,DWORD,LPDWORD); typedef BOOL (WINAPI *wh_close_t)(HINTERNET); typedef BOOL (WINAPI *wh_set_t)(HINTERNET,DWORD,LPVOID,DWORD);
+    wh_open_t pOpen; wh_tmo_t pTmo; wh_conn_t pConn; wh_oreq_t pOreq; wh_send_t pSend; wh_recv_t pRecv; wh_qh_t pQh; wh_qda_t pQda; wh_rd_t pRd; wh_close_t pClose; wh_set_t pSet;
+    m=LoadLibraryW(L"winhttp.dll"); if(!m) return 0;
+    pOpen=(wh_open_t)GetProcAddress(m,"WinHttpOpen"); pTmo=(wh_tmo_t)GetProcAddress(m,"WinHttpSetTimeouts"); pConn=(wh_conn_t)GetProcAddress(m,"WinHttpConnect");
+    pOreq=(wh_oreq_t)GetProcAddress(m,"WinHttpOpenRequest"); pSend=(wh_send_t)GetProcAddress(m,"WinHttpSendRequest"); pRecv=(wh_recv_t)GetProcAddress(m,"WinHttpReceiveResponse");
+    pQh=(wh_qh_t)GetProcAddress(m,"WinHttpQueryHeaders"); pQda=(wh_qda_t)GetProcAddress(m,"WinHttpQueryDataAvailable"); pRd=(wh_rd_t)GetProcAddress(m,"WinHttpReadData");
+    pClose=(wh_close_t)GetProcAddress(m,"WinHttpCloseHandle"); pSet=(wh_set_t)GetProcAddress(m,"WinHttpSetOption");
+    if(!(pOpen&&pTmo&&pConn&&pOreq&&pSend&&pRecv&&pQh&&pQda&&pRd&&pClose)){ FreeLibrary(m); return 0; }
+    strncpy(url,url_utf8,sizeof url-1); url[sizeof url-1]=0;
+    s=pOpen(L"LanMessenger-XP",WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,WINHTTP_NO_PROXY_NAME,WINHTTP_NO_PROXY_BYPASS,0);
+    if(s) pTmo(s,15000,15000,20000,20000);
+    for(hop=0; s && hop<5; hop++){ wchar_t host[256], path[1100], wurl[1200]; char *p, *sl; DWORD st=0, sln=sizeof st, prot=0x800|0x200|0x80; DWORD wr;
+        if(strncmp(url,"https://",8)) break; p=url+8; sl=strchr(p,'/'); if(!sl) break;
+        MultiByteToWideChar(CP_UTF8,0,url,-1,wurl,1100);
+        MultiByteToWideChar(CP_UTF8,0,p,(int)(sl-p),host,(int)(sizeof host/sizeof host[0])); host[sl-p<255?sl-p:255]=0;
+        MultiByteToWideChar(CP_UTF8,0,sl,-1,path,1100);
+        if(cn){ pClose(cn); cn=NULL; } if(rq){ pClose(rq); rq=NULL; }
+        cn=pConn(s,host,INTERNET_DEFAULT_HTTPS_PORT,0); if(!cn) break;
+        rq=pOreq(cn,L"GET",path,NULL,WINHTTP_NO_REFERER,WINHTTP_DEFAULT_ACCEPT_TYPES,WINHTTP_FLAG_SECURE); if(!rq) break;
+        if(pSet) pSet(rq,84,&prot,sizeof prot); /* TLS 1.2 when the XP schannel update is installed; ignored otherwise */
+        if(!pSend(rq,WINHTTP_NO_ADDITIONAL_HEADERS,0,WINHTTP_NO_REQUEST_DATA,0,0,0) || !pRecv(rq,NULL)) break;
+        sln=sizeof st; pQh(rq,WINHTTP_QUERY_STATUS_CODE|WINHTTP_QUERY_FLAG_NUMBER,WINHTTP_HEADER_NAME_BY_INDEX,&st,&sln,WINHTTP_NO_HEADER_INDEX);
+        if(st==301||st==302||st==303||st==307||st==308){ wchar_t loc[1200]; DWORD ln=sizeof loc; if(!pQh(rq,33,WINHTTP_HEADER_NAME_BY_INDEX,loc,&ln,WINHTTP_NO_HEADER_INDEX)) break;
+            WideCharToMultiByte(CP_UTF8,0,loc,-1,url,(int)sizeof url,NULL,NULL); continue; }
+        if(st!=200) break;
+        out=CreateFileW(dest,GENERIC_WRITE,0,NULL,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,NULL); if(out==INVALID_HANDLE_VALUE) break;
+        { unsigned long long total=0; DWORD av=0, rd=0; char buf[65536]; ok=1;
+          while(pQda(rq,&av) && av){ if(av>sizeof buf) av=sizeof buf; if(!pRd(rq,buf,av,&rd) || !rd){ ok=0; break; } if(!WriteFile(out,buf,rd,&wr,NULL) || wr!=rd){ ok=0; break; } total+=rd; if(total>512ull*1024*1024){ ok=0; break; } }
+          if(!pQda) ok=0; }
+        CloseHandle(out); out=INVALID_HANDLE_VALUE; break; }
+    if(out!=INVALID_HANDLE_VALUE) CloseHandle(out);
+    if(rq) pClose(rq); if(cn) pClose(cn); if(s) pClose(s); FreeLibrary(m);
+    if(!ok) DeleteFileW(dest); return ok; }
+static int upd_sha_ok(const wchar_t *sums, const char *filename, const wchar_t *file){ FILE *f=_wfopen(sums,L"rb"); FILE *in; char line[900], got[65]; sha256_ctx c; unsigned char buf[65536]; uint8_t out[32]; size_t n, fl; int i;
+    if(!f) return 0; fl=strlen(filename);
+    while(fgets(line,sizeof line,f)){ char *sp=strchr(line,' '), *nl=strchr(line,'\n'); if(nl) *nl=0; if(!sp) continue; *sp++=0; while(*sp==' '||*sp=='*') sp++;
+        if(strlen(sp)<fl || strcmp(sp+strlen(sp)-fl,filename)) continue; fclose(f);
+        in=_wfopen(file,L"rb"); if(!in) return 0; sha256_init(&c); while((n=fread(buf,1,sizeof buf,in))>0) sha256_update(&c,buf,n); fclose(in); sha256_final(&c,out);
+        for(i=0;i<32;i++) sprintf(got+i*2,"%02x",out[i]); got[64]=0; return !strcmp(line,got); }
+    fclose(f); return 0; }
+typedef struct { char asset[900], sums[900], name[220]; } upd_job;
+static DWORD WINAPI upd_apply_thread(LPVOID arg){ upd_job *j=arg; wchar_t tmp[MAX_PATH], dir[MAX_PATH], pkg[MAX_PATH], sm[MAX_PATH], exe[MAX_PATH], bat[MAX_PATH], vbs[MAX_PATH], cmd[1600];
+    char *err=NULL; FILE *f; STARTUPINFOW si; PROCESS_INFORMATION pi; DWORD pid=GetCurrentProcessId();
+    GetTempPathW(MAX_PATH,tmp); _snwprintf(dir,MAX_PATH,L"%slsm-update",tmp);
+    CreateDirectoryW(dir,NULL);
+    _snwprintf(pkg,MAX_PATH,L"%s\\pkg.zip",dir); _snwprintf(sm,MAX_PATH,L"%s\\SHA256SUMS.txt",dir);
+    _snwprintf(bat,MAX_PATH,L"%s\\apply.cmd",dir); _snwprintf(vbs,MAX_PATH,L"%s\\unzip.vbs",dir);
+    GetModuleFileNameW(NULL,exe,MAX_PATH);
+    if(!upd_wh_save(j->asset,pkg) || !upd_wh_save(j->sums,sm)) err="下载更新包失败。";
+    else if(!upd_sha_ok(sm,j->name,pkg)) err="更新包校验失败，没有替换任何文件。";
+    else {
+        f=_wfopen(vbs,L"w"); if(!f) err="无法写入安装脚本。"; else {
+            fputs("Set sh=CreateObject(\"Shell.Application\")\r\nSet fso=CreateObject(\"Scripting.FileSystemObject\")\r\n"
+                "zip=WScript.Arguments(0): dest=WScript.Arguments(1)\r\n"
+                "temp=fso.GetSpecialFolder(2) & \"\\lsm-unzip\"\r\n"
+                "If fso.FolderExists(temp) Then fso.DeleteFolder temp, True\r\n"
+                "fso.CreateFolder temp\r\n"
+                "Set items=sh.NameSpace(zip).Items\r\n"
+                "If items.Count=1 Then\r\n  If items.Item(0).IsFolder Then Set items=items.Item(0).GetFolder.Items\r\nEnd If\r\n"
+                "sh.NameSpace(temp).CopyHere items, 20\r\n"
+                "n=0\r\nDo While n<120\r\n  If fso.FileExists(temp & \"\\LanMessenger.exe\") Then Exit Do\r\n  WScript.Sleep 500\r\n  n=n+1\r\nLoop\r\n"
+                "If Not fso.FileExists(temp & \"\\LanMessenger.exe\") Then WScript.Quit 1\r\n"
+                "For Each f In fso.GetFolder(temp).Files\r\n  fso.CopyFile f.Path, dest & \"\\\" & f.Name, True\r\nNext\r\n"
+                "If fso.FolderExists(temp & \"\\x64\") Then\r\n  If Not fso.FolderExists(dest & \"\\x64\") Then fso.CreateFolder dest & \"\\x64\"\r\n"
+                "  For Each f In fso.GetFolder(temp & \"\\x64\").Files\r\n    fso.CopyFile f.Path, dest & \"\\x64\\\" & f.Name, True\r\n  Next\r\nEnd If\r\n", f);
+            fclose(f);
+            f=_wfopen(bat,L"w"); if(!f) err="无法写入安装脚本。"; else {
+                fputs("@echo off\r\nset N=0\r\n:wait\r\ntasklist /FI \"PID eq %1\" | find \"%1\" >nul\r\n"
+                    "if errorlevel 1 goto go\r\nset /a N+=1\r\nif %N% GTR 120 exit /b 1\r\nping -n 2 127.0.0.1 >nul\r\ngoto wait\r\n"
+                    ":go\r\ncscript //nologo \"%~dp0unzip.vbs\" \"%~2\" \"%~3\"\r\nif errorlevel 1 exit /b 1\r\nstart \"\" \"%~4\"\r\n", f);
+                fclose(f);
+                memset(&si,0,sizeof si); si.cb=sizeof si; si.dwFlags=STARTF_USESHOWWINDOW; si.wShowWindow=SW_HIDE; memset(&pi,0,sizeof pi);
+                _snwprintf(cmd,1600,L"cmd.exe /c \"\"%s\" %lu \"%s\" \"%s\" \"%s\"\"",bat,(unsigned long)pid,pkg,exe_dir,exe);
+                if(!CreateProcessW(NULL,cmd,NULL,NULL,FALSE,DETACHED_PROCESS|CREATE_NEW_PROCESS_GROUP,NULL,NULL,&si,&pi)) err="无法启动安装程序。";
+                else { CloseHandle(pi.hThread); CloseHandle(pi.hProcess); } } } }
+    free(j);
+    PostMessageW(hMain,WM_UPDAPPLY,err?0:1,(LPARAM)(err?_strdup(err):NULL)); return 0; }
+static void upd_offer(const char *json, const char *msg, const char *page){ char tag[64], asset[900], sums[900], name[220], t[500]; upd_job *j; HANDLE th;
+    upd_pick(json,tag,sizeof tag);
+    if(wcsstr(exe_dir,L"\\build\\") || !upd_asset_url(json,tag,"LanMessenger-XP-",NULL,asset,sizeof asset,name,sizeof name) || !upd_asset_url(json,tag,"SHA256SUMS",NULL,sums,sizeof sums,NULL,0)){
+        snprintf(t,sizeof t,"%s\n没有可自行替换的安装包。是否打开下载页？",msg); if(tmsg(L"检查更新",W(t),1)==1) ShellExecuteW(hMain,L"open",W(page),NULL,NULL,SW_SHOWNORMAL); return; }
+    snprintf(t,sizeof t,"%s\n下载并安装？程序会退出并替换自身。data 目录里的聊天记录会保留。",msg);
+    if(tmsg(L"检查更新",W(t),1)!=1) return;
+    j=(upd_job*)calloc(1,sizeof *j); if(!j) return; snprintf(j->asset,sizeof j->asset,"%s",asset); snprintf(j->sums,sizeof j->sums,"%s",sums); snprintf(j->name,sizeof j->name,"%s",name);
+    tray_balloon("局域网安全通讯","正在下载更新…");
+    th=CreateThread(NULL,0,upd_apply_thread,j,0,NULL); if(th) CloseHandle(th); else { free(j); msgbox("无法开始下载。",MB_ICONWARNING); } }
 
 /* ---------------------------------------------------------------- theme (design/palette.json, Fluent 2)
  * Every text/background pair is taken from ONE row of this table; no handler sets only one of them.
@@ -553,15 +647,7 @@ static LRESULT CALLBACK ImgViewProc(HWND h, UINT m, WPARAM w, LPARAM l){
         if(w=='1' || w==VK_NUMPAD1){ RECT rc; GetClientRect(h,&rc); { double fit=imgv_fit_k(rc.right,rc.bottom); imgv_zoom=fit>1e-6?(1.0/fit):1.0; } imgv_offx=imgv_offy=0; InvalidateRect(h,NULL,TRUE); return 0; }
     }
     if(m==WM_CLOSE){ DestroyWindow(h); return 0; }
-    if(m==WM_DESTROY){
-        EnableWindow(hMain,TRUE);
-        ShowWindow(hMain,SW_RESTORE);
-        ShowWindow(hMain,SW_SHOW);
-        SetWindowPos(hMain,HWND_TOP,0,0,0,0,SWP_NOMOVE|SWP_NOSIZE|SWP_SHOWWINDOW);
-        SetForegroundWindow(hMain);
-        InvalidateRect(hMain,NULL,TRUE);
-        UpdateWindow(hMain);
-        imgv_bm=NULL; imgv_drag=0; return 0; }
+    if(m==WM_DESTROY){ imgv_bm=NULL; imgv_drag=0; return 0; }
     return DefWindowProcW(h,m,w,l); }
 static void show_image_viewer(const char *path){
     HBITMAP bm; int w,h; WNDCLASSW wc; HWND hv; RECT r; int WW,HH;
@@ -571,9 +657,9 @@ static void show_image_viewer(const char *path){
     memset(&wc,0,sizeof wc); wc.style=CS_DBLCLKS; wc.lpfnWndProc=ImgViewProc; wc.hInstance=hInst; wc.hCursor=LoadCursor(NULL,IDC_HAND); wc.hbrBackground=(HBRUSH)GetStockObject(BLACK_BRUSH); wc.lpszClassName=L"LsmImgView";
     RegisterClassW(&wc); /* ignore already-registered */
     GetWindowRect(hMain,&r); WW=r.right-r.left; if(WW<scale_px(480)) WW=scale_px(640); HH=r.bottom-r.top; if(HH<scale_px(360)) HH=scale_px(480);
-    hv=CreateWindowExW(WS_EX_TOOLWINDOW,L"LsmImgView",L"图片",WS_POPUP|WS_CAPTION|WS_SYSMENU|WS_VISIBLE,r.left,r.top,WW,HH,hMain,NULL,hInst,NULL);
+    hv=CreateWindowExW(0,L"LsmImgView",L"图片",WS_OVERLAPPEDWINDOW|WS_VISIBLE,r.left+48,r.top+48,WW,HH,NULL,NULL,hInst,NULL);
     if(!hv){ open_path_safe(path); return; }
-    EnableWindow(hMain,FALSE); SetForegroundWindow(hv); SetFocus(hv); }
+    SetForegroundWindow(hv); SetFocus(hv); }
 static void test_open_last_image(void){ int i; for(i=nrows-1;i>=0;i--) if(rows[i].kind==R_IMAGE && rows[i].path[0]){ show_image_viewer(rows[i].path); return; } }
 static WNDPROC oldChatProc;
 static int chat_hit(LPARAM l, RECT *ir){ DWORD r=(DWORD)SendMessageW(hChat,LB_ITEMFROMPOINT,0,l); int i=(int)LOWORD(r); if(HIWORD(r) || i<0 || i>=nrows) return -1; SendMessageW(hChat,LB_GETITEMRECT,i,(LPARAM)ir); return i; }
@@ -1220,6 +1306,7 @@ static LRESULT CALLBACK MainProc(HWND h, UINT m, WPARAM w, LPARAM l){
         if(LOWORD(w)==IDC_MIC){ p1_mic(); return 0; }
         do_command(LOWORD(w)); return 0;
     case WM_UPDRES: upd_done((char*)l); return 0;
+    case WM_UPDAPPLY: { char *er=(char*)l; if(w==1){ msgbox("即将退出并安装更新。聊天记录仍在 data 目录。",MB_ICONINFORMATION); PostQuitMessage(0); } else { msgbox(er?er:"安装更新失败。",MB_ICONWARNING); free(er); } return 0; }
     case WM_TRAY:
         if(l==WM_LBUTTONDBLCLK) do_command(IDM_SHOW);
         else if(l==NIN_BALLOONUSERCLICK){ int i; do_command(IDM_SHOW); if(balloon_conv[0]){ refresh_list(); for(i=0;i<nlist;i++) if(!strcmp(list_ids[i],balloon_conv)){ select_conv(i); break; } } }

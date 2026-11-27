@@ -116,11 +116,16 @@ for th in a.themes.split(","):
         shot(f"{th}-14-send-image")  # 发送图片？ 压缩发送 / 原图发送 / 取消
         x("key", "Return"); time.sleep(3)  # Enter = 压缩发送
     shot(f"{th}-02-chat")
-    x("key", "F6"); time.sleep(1.5); shot_title(f"{th}-12-image-viewer", "图片")
+    def focus_picture():
+        wids = x("search", "--onlyvisible", "--name", "图片").split()
+        if not wids:
+            raise SystemExit("FAIL: 图片查看器不是独立窗口（找不到标题为「图片」的窗口）")
+        x("windowactivate", "--sync", wids[-1]); time.sleep(0.3)
+    x("key", "F6"); time.sleep(1.5); focus_picture(); shot_title(f"{th}-12-image-viewer", "图片")
     for _ in range(5):
         x("key", "plus"); time.sleep(0.12)
-    time.sleep(0.6); shot_title(f"{th}-13-image-viewer-zoom", "图片")
-    x("key", "Escape"); time.sleep(0.5)
+    time.sleep(0.6); focus_picture(); shot_title(f"{th}-13-image-viewer-zoom", "图片")
+    x("key", "Escape"); time.sleep(0.5); x("windowactivate", "--sync", wid); time.sleep(0.2)
     # add-by-IP dialog (header + button)
     x("mousemove", "--window", wid, "22", "20"); x("click", "1"); time.sleep(1.2); x("type", "192.168.1.20"); time.sleep(0.5); shot(f"{th}-04-add-by-ip"); x("key", "Escape"); time.sleep(0.8)
     # error state: invalid address -> error dialog

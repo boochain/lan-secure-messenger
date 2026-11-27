@@ -193,4 +193,112 @@ public sealed class WindowsPlatform : IPlatform
     public void ShowToast(string title, string body, string conversationId) => Toasts.Show(title, body, conversationId);
 
     public bool IsWindowActive => Window?.IsActiveAndVisible ?? false;
+
+    public async Task<string?> StageSelfUpdateAsync(string assetUrl, string sumsUrl, string assetName)
+    {
+        var dest = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (dest.Contains("ui-winui", StringComparison.OrdinalIgnoreCase) || dest.Contains(@"\build\", StringComparison.OrdinalIgnoreCase))
+            return "当前不是安装包（开发目录不会被替换）。请从发布页下载。";
+        if (string.IsNullOrEmpty(sumsUrl) || string.IsNullOrEmpty(assetName))
+            return "这个版本没有 SHA256SUMS，已停止安装。";
+        var dir = Path.Combine(Path.GetTempPath(), "lsm-update");
+        Directory.CreateDirectory(dir);
+        var zip = Path.Combine(dir, "pkg.zip");
+        var sums = Path.Combine(dir, "SHA256SUMS.txt");
+        var script = Path.Combine(dir, "apply.ps1");
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("LanMessenger-WinUI");
+            if (!await SaveAsync(http, assetUrl, zip) || !await SaveAsync(http, sumsUrl, sums))
+                return "下载更新包失败。";
+            if (!ShaMatches(sums, assetName, zip))
+            {
+                try { File.Delete(zip); } catch { }
+                return "更新包校验失败，没有替换任何文件。";
+            }
+            var pid = Environment.ProcessId;
+            var exe = Path.Combine(dest, "LanMessenger.exe");
+            string Q(string s) => s.Replace("'", "''");
+            // Regular strings: '$' must stay a PowerShell variable. $PID is reserved, so the app id is $app.
+            File.WriteAllText(script,
+                "$ErrorActionPreference='Stop'\r\n" +
+                "$app = " + pid + "\r\n" +
+                "$zip = '" + Q(zip) + "'\r\n" +
+                "$dest = '" + Q(dest) + "'\r\n" +
+                "$exe = '" + Q(exe) + "'\r\n" +
+                "for ($i = 0; $i -lt 240; $i++) {\r\n" +
+                "  if (-not (Get-Process -Id $app -ErrorAction SilentlyContinue)) { break }\r\n" +
+                "  Start-Sleep -Milliseconds 250\r\n}\r\n" +
+                "$stage = Join-Path $env:TEMP ('lsm-unzip-' + $app)\r\n" +
+                "if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }\r\n" +
+                "Expand-Archive -LiteralPath $zip -DestinationPath $stage -Force\r\n" +
+                "$root = Join-Path $stage 'LanMessenger'\r\n" +
+                "if (-not (Test-Path (Join-Path $root 'LanMessenger.exe'))) {\r\n" +
+                "  $dirs = @(Get-ChildItem $stage -Directory)\r\n" +
+                "  if ($dirs.Count -eq 1) { $root = $dirs[0].FullName } else { $root = $stage }\r\n}\r\n" +
+                "function Copy-Tree($from, $to) {\r\n" +
+                "  New-Item -ItemType Directory -Force -Path $to | Out-Null\r\n" +
+                "  Get-ChildItem $from -Force | ForEach-Object {\r\n" +
+                "    $target = Join-Path $to $_.Name\r\n" +
+                "    if ($_.PSIsContainer) { Copy-Tree $_.FullName $target }\r\n" +
+                "    else {\r\n" +
+                "      for ($n = 0; $n -lt 40; $n++) {\r\n" +
+                "        try { Copy-Item -LiteralPath $_.FullName -Destination $target -Force; break } catch { Start-Sleep -Milliseconds 250 }\r\n" +
+                "      }\r\n    }\r\n  }\r\n}\r\n" +
+                "Copy-Tree $root $dest\r\n" +
+                "Start-Process -FilePath $exe -WorkingDirectory $dest\r\n");
+            var psi = new ProcessStartInfo("cmd.exe", "/c start \"\" /MIN powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"" + script + "\"")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WindowStyle = ProcessWindowStyle.Hidden,
+            };
+            Process.Start(psi);
+        }
+        catch (Exception e)
+        {
+            return "安装更新失败：" + e.Message;
+        }
+        try { if (Window != null) await Window.ExitFullyAsync(); } catch { }
+        return null;
+    }
+
+    private static async Task<bool> SaveAsync(HttpClient http, string url, string path)
+    {
+        using var res = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+        if (!res.IsSuccessStatusCode) return false;
+        await using var src = await res.Content.ReadAsStreamAsync();
+        await using var dst = File.Create(path);
+        var buf = new byte[65536];
+        long total = 0;
+        int n;
+        while ((n = await src.ReadAsync(buf)) > 0)
+        {
+            total += n;
+            if (total > 512L * 1024 * 1024) return false;
+            await dst.WriteAsync(buf.AsMemory(0, n));
+        }
+        return total > 0;
+    }
+
+    private static bool ShaMatches(string sumsPath, string filename, string file)
+    {
+        string got;
+        using (var sha = System.Security.Cryptography.SHA256.Create())
+        using (var s = File.OpenRead(file))
+            got = Convert.ToHexString(sha.ComputeHash(s)).ToLowerInvariant();
+        foreach (var raw in File.ReadAllLines(sumsPath))
+        {
+            var line = raw.Trim();
+            var sp = line.IndexOf(' ');
+            if (sp < 1) continue;
+            var hex = line[..sp];
+            var name = line[(sp + 1)..].TrimStart(' ', '*');
+            if (name.Length >= filename.Length && name.EndsWith(filename, StringComparison.Ordinal) &&
+                string.Equals(hex, got, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
 }

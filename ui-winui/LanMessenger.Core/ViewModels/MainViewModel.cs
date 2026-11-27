@@ -124,6 +124,10 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private double _editMaxFileMb = 4096;
     [ObservableProperty] private bool _editCheckUpdates = true;
     [ObservableProperty] private string _updateText = "";
+    /// <summary>Browser download URL of this machine's zip when a newer release has one. Empty hides 「下载并安装」.</summary>
+    [ObservableProperty] private string _updateAsset = "";
+    private string _updateSums = "";
+    private string _updateFile = "";
     [ObservableProperty] private string _pinText = "";
 
     // Diagnostics
@@ -1158,6 +1162,9 @@ public partial class MainViewModel : ObservableObject
     private async Task CheckUpdateAsync()
     {
         UpdateText = "正在检查…";
+        UpdateAsset = "";
+        _updateSums = "";
+        _updateFile = "";
         try
         {
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
@@ -1173,13 +1180,50 @@ public partial class MainViewModel : ObservableObject
                 if (r.TryGetProperty("draft", out var d) && d.ValueKind == JsonValueKind.True) continue;
                 if (best == null || CompareVersions(tag, best) > 0) { best = tag; url = r.GetProperty("html_url").GetString(); }
             }
-            UpdateText = best == null ? "未找到新版本" :
-                CompareVersions(best, "v" + Version) > 0 ? $"发现新版本 {best}：{url}" : $"已是最新版本 ({Version})";
+            if (best == null) { UpdateText = "未找到新版本"; return; }
+            if (CompareVersions(best, "v" + Version) <= 0) { UpdateText = $"已是最新版本 ({Version})"; return; }
+            UpdateText = $"发现新版本 {best}：{url}";
+            var (zip, sums, name) = PickUpdateAsset(doc.RootElement, best);
+            if (!string.IsNullOrEmpty(zip) && !string.IsNullOrEmpty(sums) && !string.IsNullOrEmpty(name))
+            { UpdateAsset = zip; _updateSums = sums; _updateFile = name; }
         }
         catch (Exception e)
         {
             UpdateText = "检查更新失败：" + e.Message;
         }
+    }
+
+    /// <summary>win-x64.zip or win-arm64.zip plus SHA256SUMS.txt from the named release. Empty when either is missing.</summary>
+    public static (string? Zip, string? Sums, string? Name) PickUpdateAsset(JsonElement releases, string tag)
+    {
+        var needle = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture == System.Runtime.InteropServices.Architecture.Arm64
+            ? "win-arm64.zip" : "win-x64.zip";
+        foreach (var r in releases.EnumerateArray())
+        {
+            if ((r.TryGetProperty("tag_name", out var tg) ? tg.GetString() : null) != tag) continue;
+            if (!r.TryGetProperty("assets", out var assets)) return (null, null, null);
+            string? zip = null, sums = null, name = null;
+            foreach (var a in assets.EnumerateArray())
+            {
+                var n = a.TryGetProperty("name", out var nn) ? nn.GetString() ?? "" : "";
+                var u = a.TryGetProperty("browser_download_url", out var uu) ? uu.GetString() ?? "" : "";
+                if (n.Contains("SHA256SUMS", StringComparison.OrdinalIgnoreCase)) sums = u;
+                else if (n.Contains(needle, StringComparison.OrdinalIgnoreCase)) { zip = u; name = n; }
+            }
+            return (zip, sums, name);
+        }
+        return (null, null, null);
+    }
+
+    [RelayCommand]
+    private async Task InstallUpdateAsync()
+    {
+        if (string.IsNullOrEmpty(UpdateAsset) || string.IsNullOrEmpty(_updateSums) || string.IsNullOrEmpty(_updateFile)) return;
+        if (!await _platform.ConfirmAsync("下载并安装？", "程序会退出并替换自身。聊天记录在数据目录，不会删除。")) return;
+        UpdateText = "正在下载更新…";
+        var err = await _platform.StageSelfUpdateAsync(UpdateAsset, _updateSums, _updateFile);
+        if (err != null) UpdateText = err;
+        else UpdateText = "即将退出并安装更新。聊天记录仍在数据目录。";
     }
 
     public static int CompareVersions(string a, string b)

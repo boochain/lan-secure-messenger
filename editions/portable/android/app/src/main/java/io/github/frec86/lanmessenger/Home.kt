@@ -58,6 +58,8 @@ fun Home(st: AppState, openPage: (String) -> Unit = {}, open: (String) -> Unit) 
     var filter by rememberSaveable { mutableIntStateOf(0) }; var folder by rememberSaveable { mutableStateOf("") }
     var menu by remember { mutableStateOf(false) }; var dlg by remember { mutableStateOf("") }
     var upd by remember { mutableStateOf(Triple(2, "", "")) }
+    var updJson by remember { mutableStateOf("") }
+    var updBusy by remember { mutableStateOf(false) }
     var searching by rememberSaveable { mutableStateOf(false) }; var q by rememberSaveable { mutableStateOf("") }
     // system Back at the root: close search, then go to the 聊天 tab, then double-press within 2 s to exit
     val act = LocalContext.current as? android.app.Activity
@@ -132,7 +134,7 @@ fun Home(st: AppState, openPage: (String) -> Unit = {}, open: (String) -> Unit) 
                     Fab(R.drawable.ms_add_contact, "添加", "按 IP 添加", Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = 8.dp)) { dlg = "add" }
                 }
                 else -> if (dlg == "relay") RelayScreen(st) { dlg = "" } else Settings(st, {
-                        if (it == "update") { upd = Triple(2, "正在检查…", Updates.RELEASES); Updates.check(st.me.version) { n, m, u -> upd = Triple(n, m, u) } }
+                        if (it == "update") { upd = Triple(2, "正在检查…", Updates.RELEASES); updJson = ""; Updates.check(st.me.version) { n, m, u, j -> upd = Triple(n, m, u); updJson = j } }
                         dlg = it
                     }, openPage, onRecovery = { recoveryForced = false; showRecovery = true })
             }
@@ -183,9 +185,18 @@ fun Home(st: AppState, openPage: (String) -> Unit = {}, open: (String) -> Unit) 
         "diag" -> LsmAlertDialog(onDismissRequest = { dlg = "" }, title = { Text("诊断信息") },
             text = { Text(Native.diagnostics(), fontSize = 11.sp, modifier = Modifier.verticalScroll(rememberScrollState())) },
             confirmButton = { TextButton({ dlg = "" }) { Text("关闭") } })
-        "update" -> LsmAlertDialog(onDismissRequest = { dlg = "" }, title = { Text("检查更新") }, text = { Text(upd.second) },
-            confirmButton = { if (upd.first == 1 || upd.first == -1) TextButton({ dlg = ""; try { act?.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(upd.third))) } catch (_: Exception) {} }) { Text(if (upd.first == 1) "打开下载页" else "打开发布页") } else TextButton({ dlg = "" }) { Text("好") } },
-            dismissButton = { if (upd.first == 1 || upd.first == -1) TextButton({ dlg = "" }) { Text("取消") } })
+        "update" -> {
+            val canInstall = upd.first == 1 && Updates.asset(updJson, "android.apk") != null && Updates.asset(updJson, "SHA256SUMS") != null
+            LsmAlertDialog(onDismissRequest = { if (!updBusy) dlg = "" }, title = { Text("检查更新") }, text = { Text(upd.second) },
+            confirmButton = {
+                when {
+                    canInstall -> TextButton(enabled = !updBusy, onClick = { val a = act ?: return@TextButton; updBusy = true; Updates.beginInstall(a, updJson) { msg -> upd = Triple(upd.first, msg, upd.third); updBusy = false } }) { Text(if (updBusy) "正在下载…" else "下载并安装") }
+                    upd.first == 1 || upd.first == -1 -> TextButton({ dlg = ""; try { act?.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(upd.third))) } catch (_: Exception) {} }) { Text(if (upd.first == 1) "打开下载页" else "打开发布页") }
+                    else -> TextButton({ dlg = "" }) { Text("好") }
+                }
+            },
+            dismissButton = { if (upd.first == 1 || upd.first == -1) TextButton(enabled = !updBusy, onClick = { dlg = "" }) { Text("取消") } })
+        }
         "about" -> LsmAlertDialog(onDismissRequest = { dlg = "" }, title = { Text("关于") }, text = { Text("局域网安全通讯 Android 版 ${st.me.version}\n\n所有版本互通（协议 v5）：Noise_XX_25519_ChaChaPoly_BLAKE2s 加密、自动发现、按 IP 添加、PIN 配对、群组、文件传输、送达/已读回执。\n\n本机端口 TCP ${st.me.port}") }, confirmButton = { TextButton({ dlg = "" }) { Text("好") } })
     }
 }

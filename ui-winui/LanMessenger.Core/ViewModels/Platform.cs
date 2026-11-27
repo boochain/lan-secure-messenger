@@ -33,6 +33,12 @@ public interface IPlatform
     void CopyToClipboard(string text);
     void ShowToast(string title, string body, string conversationId);
     bool IsWindowActive { get; }
+    /// <summary>
+    /// Download the release zip and SHA256SUMS, verify, and start a helper that replaces program files after this process exits.
+    /// Does not delete the data directory. Null means the helper is running (the app should exit). Any string is an error and nothing was replaced.
+    /// </summary>
+    Task<string?> StageSelfUpdateAsync(string assetUrl, string sumsUrl, string assetName) =>
+        Task.FromResult<string?>("此环境不支持应用内安装。");
 }
 
 public static class FileRisk

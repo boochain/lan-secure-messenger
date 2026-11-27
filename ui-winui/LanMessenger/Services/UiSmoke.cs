@@ -581,23 +581,31 @@ public static class UiSmoke
     private static async Task ShotAsync(MainWindow w, string dir, string name, string label, ElementTheme theme)
     {
         var file = Path.Combine(dir, $"{name}-{label}.png");
-        await ParkPointerAsync(w);
-        var (px, width, height, how) = await GrabAsync(w, theme);
+        Window target = w;
+        var viewerShot = name.Contains("image-viewer");
+        if (viewerShot)
+        {
+            if (ChatPage.ViewerWindow == null) { Fail($"{name}: image viewer is not an independent window"); return; }
+            target = ChatPage.ViewerWindow;
+        }
+        else await ParkPointerAsync(w);
+        var (px, width, height, how) = await GrabAsync(target, theme);
         await SavePngAsync(file, px, width, height);
         var luma = MeanLuma(px);
         Log.Add($"{name}-{label}: {new FileInfo(file).Length} bytes, {width}x{height} via {how}, meanLuma={luma:F2}");
         if (new FileInfo(file).Length < 5000) Fail($"{name}: screenshot looks empty");
         if (!ThemeService.HighContrast)
         {
-            // Fullscreen image viewer is a black overlay on every theme (same as GTK/XP); skip the page-luma gate.
-            if (!name.Contains("image-viewer"))
+            // The picture window is black on every theme (same as GTK/XP); skip the page-luma gate.
+            if (!viewerShot)
             {
                 if (theme == ElementTheme.Dark && luma > 0.45) Fail($"{name}: dark theme but screenshot is bright (mean luma {luma:F2})");
                 if (theme == ElementTheme.Light && luma < 0.55) Fail($"{name}: light theme but screenshot is dark (mean luma {luma:F2})");
             }
         }
-        CheckContrast(w, $"{name}-{label}", theme);
-        RecordAuditHints(w, dir, file);
+        // Contrast walks the main window's tree. The viewer is a different HWND, so those coordinates would not match.
+        if (!viewerShot) CheckContrast(w, $"{name}-{label}", theme);
+        RecordAuditHints(target, dir, file);
     }
 
     /// <summary>Before every shot: move the mouse to a neutral spot outside the window (no hover row, no hover tooltip)
@@ -636,7 +644,7 @@ public static class UiSmoke
     private static readonly Dictionary<string, object> AuditHints = new();
     private static readonly Dictionary<string, string> AuditReasons = new();
 
-    private static void RecordAuditHints(MainWindow w, string dir, string file)
+    private static void RecordAuditHints(Window w, string dir, string file)
     {
         try
         {
@@ -717,7 +725,7 @@ public static class UiSmoke
     }
 
     /// <summary>Screen pixels of the window (includes Mica, popups and dialogs); falls back to RenderTargetBitmap.</summary>
-    private static async Task<(byte[] px, int w, int h, string how)> GrabAsync(MainWindow w, ElementTheme theme)
+    private static async Task<(byte[] px, int w, int h, string how)> GrabAsync(Window w, ElementTheme theme)
     {
         try
         {
