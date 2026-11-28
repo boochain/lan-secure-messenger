@@ -37,7 +37,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -227,15 +226,19 @@ fun LsmAlertDialog(onDismissRequest: () -> Unit, confirmButton: @Composable () -
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
         val w = (androidx.compose.ui.platform.LocalView.current.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window
         SideEffect { w?.setDimAmount(0f) }
-        Box(Modifier.fillMaxSize().imePadding().clickable(indication = null,
+        BoxWithConstraints(Modifier.fillMaxSize().imePadding().clickable(indication = null,
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }) { onDismissRequest() },
             contentAlignment = Alignment.Center) {
-            val maxH = LocalConfiguration.current.screenHeightDp.dp - 48.dp
+            // Dialog windows here report no system-bar insets. A card almost as
+            // tall as the screen puts 好 under the nav bar, where uiautomator
+            // drops it. Long text scrolls; the button stays in the safe area.
+            val maxCard = (maxHeight - 96.dp).coerceAtLeast(240.dp)
             Surface(color = p.dialog, contentColor = p.fg, shape = RoundedCornerShape(28.dp),
                 border = BorderStroke(1.dp, p.divider), shadowElevation = 0.dp, tonalElevation = 0.dp,
                 modifier = Modifier.padding(horizontal = 24.dp).widthIn(min = 280.dp, max = 560.dp).fillMaxWidth()
+                    .heightIn(max = maxCard)
                     .clickable(indication = null, interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }) {}) {
-                Column(Modifier.padding(24.dp).heightIn(max = maxH)) {
+                Column(Modifier.padding(24.dp)) {
                     if (title != null) { ProvideTextStyle(MaterialTheme.typography.headlineSmall) { title() }; Spacer(Modifier.height(16.dp)) }
                     if (text != null) {
                         Box(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
