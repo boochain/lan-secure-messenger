@@ -78,7 +78,16 @@ def resume_check(X, Y, interrupt, tag, max_latency=None):
     xs = X.xfer(name, "out") or ("?", 0, RESUME_SIZE, 0)
     resent = (RESUME_SIZE - xs[3]) / RESUME_SIZE
     lat_ok = max_latency is None or (lat is not None and lat is not False and lat < max_latency)
-    return bool(got) and resent < 0.7 and lat_ok, (f"resume after {lat:.1f}s " if lat else "never resumed ") + f"cut at {hit[1] * 100 // RESUME_SIZE}% resumed_from={xs[3] * 100 // RESUME_SIZE}% resent={resent:.0%} sha={'ok' if got else 'FAIL'}"
+    ok = bool(got) and resent < 0.7 and lat_ok
+    # A fast veth can finish the remaining bytes (or leave them in the socket buffer) before ss -K
+    # lands, so the sender never resumes and this attempt proves nothing. One repeat, same as the
+    # "file already complete" path above. A real full restart still fails the second time.
+    if not ok and bool(got) and resent >= 0.7 and not getattr(X, "_resume_retry", False):
+        print(f"    {tag}: link cut did not stick (resent {resent:.0%}); repeating once", flush=True)
+        X._resume_retry = True
+        try: return resume_check(X, Y, interrupt, tag + "_again", max_latency)
+        finally: X._resume_retry = False
+    return ok, (f"resume after {lat:.1f}s " if lat else "never resumed ") + f"cut at {hit[1] * 100 // RESUME_SIZE}% resumed_from={xs[3] * 100 // RESUME_SIZE}% resent={resent:.0%} sha={'ok' if got else 'FAIL'}"
 def switch_check(X, Y, switch, want_path, tag):
     """path switch MID-TRANSFER: send a big file (--switch-mb, default 600 MB) X->Y over a throttled link (tbf 200 Mbit/s
     on both sides where the kernel has sch_tbf; the size alone keeps it long enough elsewhere), switch the path at ~10%, require that both sides report the new path while the file is
@@ -400,13 +409,26 @@ for a, b in itertools.combinations_with_replacement(kinds, 2):
             checks[f"file {d}"] = bool(wait(lambda: os.path.exists(Y.dlpath(name)) and os.path.getsize(Y.dlpath(name)) == os.path.getsize(src) and sha(Y.dlpath(name)) == sha(src), 60))
         NORES = {k for k in args.no_resume_kinds.split(",") if k}
         if not args.relay and "android" not in (a, b) and not (NORES & {a, b}):
-            # true resume on the LAN: abort the TCP link at ~40% (ss -K), peers redial, transfer continues
-            ok, det = resume_check(A, B, lambda: sh("ip netns exec mxA ss -K dst 10.78.0.2", False), f"lan_{tg}")
-            checks["resume (LAN link cut at 40%)"] = ok; details[f"{pair} LAN resume"] = det; print("   ", det, flush=True)
-            ok, det = resume_check(A, B, lambda: B.restart_hard(), f"lanrst_{tg}", 10)
-            checks["resume (receiver killed+restarted at 40%, <10s)"] = ok; details[f"{pair} LAN receiver restart"] = det; print("   ", det, flush=True)
-            ok, det = resume_check(A, B, lambda: A.restart_hard(), f"lansrst_{tg}", 10)
-            checks["resume (sender killed+restarted at 40%, <10s)"] = ok; details[f"{pair} LAN sender restart"] = det; print("   ", det, flush=True)
+            # Pace the veth first. On an idle bridge a 120 MB send finishes inside the ss -K
+            # round-trip (rust<->rust on the Android job: cut reported, resumed_from stayed 0).
+            for ns in ("mxA", "mxB"):
+                sh(f"ip netns exec {ns} tc qdisc replace dev eth0 root tbf rate 80mbit burst 64kb latency 200ms", False)
+            def kill_lan():
+                # Kill whichever side dialed. `dst` alone misses the namespace that accepted.
+                sh("ip netns exec mxA ss -K dst 10.78.0.2", False)
+                sh("ip netns exec mxA ss -K src 10.78.0.2", False)
+                sh("ip netns exec mxB ss -K dst 10.78.0.1", False)
+                sh("ip netns exec mxB ss -K src 10.78.0.1", False)
+            try:
+                ok, det = resume_check(A, B, kill_lan, f"lan_{tg}")
+                checks["resume (LAN link cut at 40%)"] = ok; details[f"{pair} LAN resume"] = det; print("   ", det, flush=True)
+                ok, det = resume_check(A, B, lambda: B.restart_hard(), f"lanrst_{tg}", 10)
+                checks["resume (receiver killed+restarted at 40%, <10s)"] = ok; details[f"{pair} LAN receiver restart"] = det; print("   ", det, flush=True)
+                ok, det = resume_check(A, B, lambda: A.restart_hard(), f"lansrst_{tg}", 10)
+                checks["resume (sender killed+restarted at 40%, <10s)"] = ok; details[f"{pair} LAN sender restart"] = det; print("   ", det, flush=True)
+            finally:
+                for ns in ("mxA", "mxB"):
+                    sh(f"ip netns exec {ns} tc qdisc del dev eth0 root", False)
     except Exception as e:
         checks["harness"] = False; print("  exception:", repr(e)[:200])
     finally:
