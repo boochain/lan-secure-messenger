@@ -353,11 +353,9 @@ for th in ("light", "dark"):
         except Exception: pass
         time.sleep(0.5)
         if not on_recovery_page():
-            # Choice cards: 账号模式 enters account mode and opens the recovery key. The old one-row toggle is gone.
-            try:
-                tap_text("账号模式", timeout=8)
-            except Exception:
-                tap_row("恢复密钥")
+            # 账号模式 now opens the relay/password wizard and covers the whole window, including 菜单.
+            # The recovery-key page is the 恢复密钥 row. v0.7.4 key accounts still use that page.
+            tap_row("恢复密钥")
         if not ui_seed.wait(on_recovery_page, 15, 1):
             raise RuntimeError("recovery page did not open (no 复制 / 导出到文件)")
         time.sleep(0.4)
