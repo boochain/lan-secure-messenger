@@ -18,7 +18,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
@@ -36,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -228,13 +230,18 @@ fun LsmAlertDialog(onDismissRequest: () -> Unit, confirmButton: @Composable () -
         Box(Modifier.fillMaxSize().imePadding().clickable(indication = null,
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }) { onDismissRequest() },
             contentAlignment = Alignment.Center) {
+            val maxH = LocalConfiguration.current.screenHeightDp.dp - 48.dp
             Surface(color = p.dialog, contentColor = p.fg, shape = RoundedCornerShape(28.dp),
                 border = BorderStroke(1.dp, p.divider), shadowElevation = 0.dp, tonalElevation = 0.dp,
                 modifier = Modifier.padding(horizontal = 24.dp).widthIn(min = 280.dp, max = 560.dp).fillMaxWidth()
                     .clickable(indication = null, interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }) {}) {
-                Column(Modifier.padding(24.dp)) {
+                Column(Modifier.padding(24.dp).heightIn(max = maxH)) {
                     if (title != null) { ProvideTextStyle(MaterialTheme.typography.headlineSmall) { title() }; Spacer(Modifier.height(16.dp)) }
-                    if (text != null) { ProvideTextStyle(MaterialTheme.typography.bodyMedium) { CompositionLocalProvider(LocalContentColor provides p.fg2) { text() } } }
+                    if (text != null) {
+                        Box(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+                            ProvideTextStyle(MaterialTheme.typography.bodyMedium) { CompositionLocalProvider(LocalContentColor provides p.fg2) { text() } }
+                        }
+                    }
                     Row(Modifier.fillMaxWidth().padding(top = 24.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                         if (dismissButton != null) { dismissButton(); Spacer(Modifier.width(8.dp)) }
                         confirmButton()

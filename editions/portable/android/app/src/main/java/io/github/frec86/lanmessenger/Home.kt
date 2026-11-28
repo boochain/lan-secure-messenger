@@ -49,6 +49,16 @@ fun Home(st: AppState, openPage: (String) -> Unit = {}, open: (String) -> Unit) 
     var showRecovery by remember { mutableStateOf(false) }
     var recoveryForced by remember { mutableStateOf(false) }
     var showAcct by remember { mutableStateOf(false) }
+    val p = LocalPalette.current
+    var tab by rememberSaveable { mutableIntStateOf(0) }; var fileSub by rememberSaveable { mutableIntStateOf(0) }
+    var filter by rememberSaveable { mutableIntStateOf(0) }; var folder by rememberSaveable { mutableStateOf("") }
+    var menu by remember { mutableStateOf(false) }; var dlg by remember { mutableStateOf("") }
+    var upd by remember { mutableStateOf(Triple(2, "", "")) }
+    var updJson by remember { mutableStateOf("") }
+    var updBusy by remember { mutableStateOf(false) }
+    var searching by rememberSaveable { mutableStateOf(false) }; var q by rememberSaveable { mutableStateOf("") }
+    val act = LocalContext.current as? android.app.Activity
+    var lastBack by remember { mutableLongStateOf(0L) }
     DisposableEffect(Unit) {
         val t = Thread {
             var i = 0
@@ -61,9 +71,19 @@ fun Home(st: AppState, openPage: (String) -> Unit = {}, open: (String) -> Unit) 
         t.start()
         onDispose { }
     }
+    BackHandler {
+        when {
+            showFr || showAcct || showRecovery || !booted -> act?.finish()
+            searching -> { searching = false; q = "" }
+            tab != 0 -> tab = 0
+            filter != 0 -> filter = 0
+            android.os.SystemClock.uptimeMillis() - lastBack < 2000 -> act?.finish()
+            else -> { lastBack = android.os.SystemClock.uptimeMillis(); Toast.makeText(act, "再按一次退出", Toast.LENGTH_SHORT).show() }
+        }
+    }
     if (!booted) {
-        Box(Modifier.fillMaxSize().background(LocalPalette.current.window), contentAlignment = androidx.compose.ui.Alignment.Center) {
-            Text("正在打开", color = LocalPalette.current.fg)
+        Box(Modifier.fillMaxSize().background(p.window), contentAlignment = androidx.compose.ui.Alignment.Center) {
+            Text("正在打开", color = p.fg)
         }
         return
     }
@@ -73,27 +93,8 @@ fun Home(st: AppState, openPage: (String) -> Unit = {}, open: (String) -> Unit) 
         RecoveryCodeScreen(forceConfirm = recoveryForced, onDone = { showRecovery = false; recoveryForced = false }, onBack = { if (!recoveryForced) showRecovery = false })
         return
     }
-    val p = LocalPalette.current
     // tabs: 0 聊天, 1 联系人, 2 文件 (传输/文件站子页), 3 设置 — at most 4 destinations
-    var tab by rememberSaveable { mutableIntStateOf(0) }; var fileSub by rememberSaveable { mutableIntStateOf(0) }
-    var filter by rememberSaveable { mutableIntStateOf(0) }; var folder by rememberSaveable { mutableStateOf("") }
-    var menu by remember { mutableStateOf(false) }; var dlg by remember { mutableStateOf("") }
-    var upd by remember { mutableStateOf(Triple(2, "", "")) }
-    var updJson by remember { mutableStateOf("") }
-    var updBusy by remember { mutableStateOf(false) }
-    var searching by rememberSaveable { mutableStateOf(false) }; var q by rememberSaveable { mutableStateOf("") }
     // system Back at the root: close search, then go to the 聊天 tab, then double-press within 2 s to exit
-    val act = LocalContext.current as? android.app.Activity
-    var lastBack by remember { mutableLongStateOf(0L) }
-    BackHandler {
-        when {
-            searching -> { searching = false; q = "" }
-            tab != 0 -> tab = 0
-            filter != 0 -> filter = 0
-            android.os.SystemClock.uptimeMillis() - lastBack < 2000 -> act?.finish()
-            else -> { lastBack = android.os.SystemClock.uptimeMillis(); Toast.makeText(act, "再按一次退出", Toast.LENGTH_SHORT).show() }
-        }
-    }
     val convs = st.convs()
     val totalUnread = convs.sumOf { it.unread }
     Box(Modifier.fillMaxSize().background(p.window)) {
