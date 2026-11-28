@@ -2,23 +2,39 @@
 #define LSM_RK_LEN 48
 #define LSM_LOOKUP_LEN 33
 
+static void pass_hex(const char *p, char *o, size_t n){
+    size_t L=p?strlen(p):0;
+    if(!p || !L || n<L*2+1){ if(n) o[0]=0; return; }
+    hex_enc((const uint8_t*)p, L, o);
+}
+static int pass_unhex(const char *h, char *o, size_t n){
+    size_t L=h?strlen(h):0;
+    if(!L){ if(n) o[0]=0; return 0; }
+    if((L&1) || L/2+1>n) return -1;
+    if(hex_dec(h,(uint8_t*)o,L/2)) return -1;
+    o[L/2]=0; return 0;
+}
 static void acct_save(lsm_core *c){
-    buf_t b={0};
-    bfmt(&b,"%s\n%s\n%s\n%d\n", c->account_mode[0]?c->account_mode:"device",
-         c->account_lookup, c->recovery_key, c->first_run_done);
+    buf_t b={0}; char hx[200];
+    pass_hex(c->account_pass, hx, sizeof hx);
+    bfmt(&b,"%s\n%s\n%s\n%d\n%s\n", c->account_mode[0]?c->account_mode:"device",
+         c->account_lookup, c->recovery_key, c->first_run_done, hx);
     save_sealed(c,"account.dat",&b); b_free(&b);
+    crypto_wipe(hx,sizeof hx);
 }
 static void acct_load(lsm_core *c){
-    char *t=load_sealed(c,"account.dat"), *f[5]; int n=0; char *p;
+    char *t=load_sealed(c,"account.dat"), *f[8]; int n=0; char *p;
     scpy(c->account_mode,"device",sizeof c->account_mode);
-    c->account_lookup[0]=c->recovery_key[0]=0; c->first_run_done=0;
+    c->account_lookup[0]=c->recovery_key[0]=c->account_pass[0]=0; c->first_run_done=0;
+    c->account_auth=0; c->account_sent=0; c->account_auth_msg[0]=0;
     if(!t) return;
-    p=t; f[n++]=p; while(*p && n<5){ if(*p=='\n'){ *p=0; f[n++]=p+1; } p++; }
+    p=t; f[n++]=p; while(*p && n<8){ if(*p=='\n'){ *p=0; f[n++]=p+1; } p++; }
     if(n>=4){
         if(!strcmp(f[0],"account")||!strcmp(f[0],"device")) scpy(c->account_mode,f[0],sizeof c->account_mode);
         scpy(c->account_lookup,f[1],sizeof c->account_lookup);
         scpy(c->recovery_key,f[2],sizeof c->recovery_key);
         c->first_run_done=atoi(f[3])!=0;
+        if(n>=5) pass_unhex(f[4], c->account_pass, sizeof c->account_pass);
     }
     crypto_wipe(t,strlen(t)); free(t);
 }
@@ -119,6 +135,50 @@ int lsm_set_account_mode(lsm_core *c, const char *mode, char *rk_out, size_t n, 
     if(rk_out && n) rk_out[0]=0;
     mu_unlock(&c->mu);
     (void)err; return 0;
+}
+static int acct_user_ok(const char *u){
+    size_t i, n=u?strlen(u):0;
+    if(n<1 || n>32) return 0;
+    for(i=0;i<n;i++){ char ch=u[i];
+        if(ch>='A'&&ch<='Z') continue;
+        if(!((ch>='a'&&ch<='z')||(ch>='0'&&ch<='9')||ch=='_'||ch=='-'||ch=='.')) return 0; }
+    return 1;
+}
+static void acct_sleep(void){
+#ifdef _WIN32
+    Sleep(100);
+#else
+    usleep(100000);
+#endif
+}
+int lsm_account_sign_in(lsm_core *c, const char *host, int port, const char *net_pass, const char *user, const char *pass, int reg, char *err){
+    char name[68], pw[96]; int i, st;
+    if(!c){ if(err) scpy(err,"正在启动，请稍后再试",256); return -1; }
+    if(!host || !host[0] || strchr(host,' ') || strlen(host)>200){ if(err) scpy(err,"请填写中转服务器地址",256); return -1; }
+    if(port<=0 || port>65535) port=9443;
+    if(!acct_user_ok(user)){ if(err) scpy(err,"账号名用 1–32 位字母、数字、点、下划线或减号",256); return -1; }
+    if(!pass || strlen(pass)<8 || strlen(pass)>72 || strchr(pass,'\n')){ if(err) scpy(err,"密码至少 8 位",256); return -1; }
+    scpy(name,user,sizeof name);
+    for(i=0;name[i];i++) if(name[i]>='A'&&name[i]<='Z') name[i]=(char)(name[i]-'A'+'a');
+    scpy(pw,pass,sizeof pw);
+    if(lsm_relay_set(c,1,host,port,net_pass?net_pass:"",err)){ crypto_wipe(pw,sizeof pw); return -1; }
+    mu_lock(&c->mu);
+    scpy(c->account_lookup,name,sizeof c->account_lookup);
+    scpy(c->account_pass,pw,sizeof c->account_pass);
+    scpy(c->account_mode,"account",sizeof c->account_mode);
+    c->account_reg=reg?1:0; c->account_auth=1; c->account_sent=0; c->account_auth_msg[0]=0;
+    c->first_run_done=0; c->acct_backup_dirty=0;
+    mu_unlock(&c->mu);
+    crypto_wipe(pw,sizeof pw);
+    for(i=0;i<200;i++){
+        acct_sleep();
+        mu_lock(&c->mu); st=c->account_auth; if(err && c->account_auth_msg[0]) scpy(err,c->account_auth_msg,256); mu_unlock(&c->mu);
+        if(st==2) return 0;
+        if(st==3) return -1;
+    }
+    mu_lock(&c->mu); if(c->account_auth==1) c->account_auth=0; mu_unlock(&c->mu);
+    if(err) scpy(err,"连不上中转服务器，或服务器没有在 20 秒内响应。请检查地址、端口和网络口令。",256);
+    return -1;
 }
 int lsm_relay_uri(lsm_core *c, char *out, size_t n){
     struct relay_cl *r=c->rl;

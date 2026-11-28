@@ -64,6 +64,8 @@ object Native {
     @JvmStatic external fun firstRunDone(): Boolean
     @JvmStatic external fun accountMode(): String
     @JvmStatic external fun completeFirstRun(name: String, mode: String, restore: String): String
+    /** Blocks until the relay accepts the account, or about 20s. Empty string = ok. */
+    @JvmStatic external fun accountSignIn(host: String, port: Int, netPass: String, user: String, pass: String, register: Boolean): String
     @JvmStatic external fun accountSetup(): String
     @JvmStatic external fun setAccountMode(mode: String): String
     @JvmStatic external fun revealRecoveryKey(): String

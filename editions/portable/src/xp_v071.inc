@@ -16,7 +16,7 @@ static int v071_fr_reshoot, v071_fr_picked;
 static LRESULT CALLBACK v071_fr_proc(HWND h, UINT m, WPARAM w, LPARAM l){
     if(m==WM_CREATE){
         int sp=scale_px(12), y=scale_px(TITLE_H)+sp, w0=scale_px(516)-sp*2; HWND s,b;
-        s=CreateWindowW(L"STATIC",L"请选择身份方式（之后可在设置里更改，不使用服务器密码）。添加联系人、连接服务器、配对新设备都可以通过扫描或粘贴 lsm:// 链接完成。",
+        s=CreateWindowW(L"STATIC",L"请选择身份方式。只问这一次，之后在设置里改。选账号模式会接着填写中转服务器和账号密码。",
             WS_CHILD|WS_VISIBLE, sp,y,w0,scale_px(70),h,NULL,hInst,NULL);
         if(fBody) SendMessageW(s,WM_SETFONT,(WPARAM)fBody,TRUE);
         y+=scale_px(78);
@@ -25,7 +25,7 @@ static LRESULT CALLBACK v071_fr_proc(HWND h, UINT m, WPARAM w, LPARAM l){
         if(fBody) SendMessageW(b,WM_SETFONT,(WPARAM)fBody,TRUE);
         SendMessageW(b,BM_SETCHECK,BST_CHECKED,0);
         y+=scale_px(36);
-        b=CreateWindowW(L"BUTTON",L"账号模式 — 身份加密备份在中转上，换机可用恢复密钥或配对二维码恢复",
+        b=CreateWindowW(L"BUTTON",L"账号模式 — 中转服务器上的账号，换机用同一账号密码登录",
             WS_CHILD|WS_VISIBLE|BS_AUTORADIOBUTTON, sp,y,w0,scale_px(44),h,(HMENU)(INT_PTR)ID_FR_ACC,hInst,NULL);
         if(fBody) SendMessageW(b,WM_SETFONT,(WPARAM)fBody,TRUE);
         y+=scale_px(52);
@@ -67,8 +67,22 @@ static void v071_first_run(void){
     }
     EnableWindow(hMain,TRUE); SetForegroundWindow(hMain);
     if(!lsm_first_run_done(C)){
-        lsm_complete_first_run(C,NULL, v071_fr_picked?"account":"device", NULL, err);
-        if(v071_fr_picked){ char rk[80]=""; if(!lsm_reveal_recovery_key(C,rk,sizeof rk) && rk[0]) v072_show_recovery(1,rk); }
+        if(!v071_fr_picked) lsm_complete_first_run(C,NULL,"device",NULL,err);
+        else {
+            prompt_t host, port, npw, user, pw; char h8[256], p8[32], n8[128], u8[68], w8[96], err2[256]=""; int portn, reg;
+            memset(&host,0,sizeof host); memset(&port,0,sizeof port); memset(&npw,0,sizeof npw); memset(&user,0,sizeof user); memset(&pw,0,sizeof pw);
+            if(!prompt(L"中转服务器",L"服务器地址",L"",&host,1) || !host.text[0]) { msgbox("还没有登录，下次打开还会问一次。",MB_ICONINFORMATION); }
+            else if(!prompt(L"中转服务器",L"端口",L"9443",&port,1)) { msgbox("还没有登录，下次打开还会问一次。",MB_ICONINFORMATION); }
+            else if(!prompt(L"中转服务器",L"网络口令（没有就留空）",L"",&npw,1)) { msgbox("还没有登录，下次打开还会问一次。",MB_ICONINFORMATION); }
+            else if(!prompt(L"账号",L"账号名",L"",&user,1) || !user.text[0]) { msgbox("还没有登录，下次打开还会问一次。",MB_ICONINFORMATION); }
+            else if(!prompt(L"账号",L"密码（至少 8 位）",L"",&pw,1) || !pw.text[0]) { msgbox("还没有登录，下次打开还会问一次。",MB_ICONINFORMATION); }
+            else {
+                reg=MessageBoxW(hMain,L"要注册新账号吗？\n选“是”注册，“否”登录已有账号。",L"账号",MB_YESNO|MB_ICONQUESTION)==IDYES;
+                portn=atoi(U(port.text,p8,sizeof p8));
+                if(lsm_account_sign_in(C, U(host.text,h8,sizeof h8), portn?portn:9443, U(npw.text,n8,sizeof n8), U(user.text,u8,sizeof u8), U(pw.text,w8,sizeof w8), reg, err2))
+                    msgbox(err2[0]?err2:"登录失败。下次打开还会问一次。",MB_ICONWARNING);
+            }
+        }
     }
 }
 static void v071_shot_first_run(void){ if(!getenv("LSM_UI_TEST")) return; v071_fr_reshoot=1; v071_first_run(); }

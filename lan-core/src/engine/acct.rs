@@ -111,12 +111,21 @@ impl Engine {
         if self.settings.account_mode != "account" {
             return;
         }
+        if crate::account::load_account_password(&self.paths).is_some() && !self.settings.account_user.is_empty() {
+            let user = self.settings.account_user.clone();
+            let _ = self.acct_try_upload(&user, "");
+            return;
+        }
         let Some(rk) = account::load_recovery_key(&self.paths) else { return };
         let Ok(lookup) = account::account_lookup(&rk) else { return };
         let _ = self.acct_try_upload(&lookup, &rk);
     }
 
     fn acct_try_upload(&mut self, lookup: &str, rk: &str) -> bool {
+        if let Some(pass) = crate::account::load_account_password(&self.paths) {
+            let user = if self.settings.account_user.is_empty() { lookup.to_string() } else { self.settings.account_user.clone() };
+            return self.acct_put_pass_backup(&user, &pass);
+        }
         let _ = self.history.flush(true);
         let tmp = self.paths.root.join("account-backup.tmp");
         if crate::backup::export_backup(&self.paths, rk, &tmp).is_err() {
@@ -137,6 +146,24 @@ impl Engine {
         tokio::spawn(async move {
             let _ = tokio::time::timeout(std::time::Duration::from_secs(45), rx1).await;
             let _ = tokio::time::timeout(std::time::Duration::from_secs(45), rx2).await;
+        });
+        true
+    }
+
+    fn acct_put_pass_backup(&mut self, user: &str, pass: &str) -> bool {
+        let _ = self.history.flush(true);
+        let tmp = self.paths.root.join("account-backup.tmp");
+        if crate::backup::export_backup(&self.paths, pass, &tmp).is_err() {
+            return false;
+        }
+        let Ok(blob) = std::fs::read(&tmp) else { return false };
+        let _ = std::fs::remove_file(&tmp);
+        let (tx, rx) = oneshot::channel();
+        if self.relay.send(relay::RelayCmd::AccountPutBackup { user: user.to_string(), blob, reply: tx }).is_err() {
+            return false;
+        }
+        tokio::spawn(async move {
+            let _ = tokio::time::timeout(std::time::Duration::from_secs(45), rx).await;
         });
         true
     }

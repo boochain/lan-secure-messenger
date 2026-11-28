@@ -2515,6 +2515,10 @@ impl Engine {
                     relay_host: Option<String>,
                     #[serde(default)]
                     relay_port: Option<u16>,
+                    #[serde(default)]
+                    user: Option<String>,
+                    #[serde(default)]
+                    password: Option<String>,
                 }
                 let a: P = p(params)?;
                 if let Some(n) = a.name {
@@ -2531,6 +2535,24 @@ impl Engine {
                     self.settings.first_run_done = true;
                     let mode = a.mode.as_deref().unwrap_or("device");
                     if mode == "account" {
+                        if let (Some(user), Some(pass)) = (
+                            a.user.as_deref().map(str::trim).filter(|s| !s.is_empty()),
+                            a.password.as_deref().filter(|s| !s.is_empty()),
+                        ) {
+                            if let (Some(h), p) = (a.relay_host.as_deref().filter(|s| !s.is_empty()), a.relay_port.unwrap_or(9443)) {
+                                self.settings.relay_enabled = true;
+                                self.settings.relay_host = h.to_string();
+                                self.settings.relay_port = p;
+                                let _ = self.relay.send(relay::RelayCmd::Configure(relay_cfg(&self.settings)));
+                            }
+                            crate::account::save_account_password(&self.paths, pass).map_err(|e| RpcError::new(-32021, format!("{e:#}")))?;
+                            self.settings.account_mode = "account".into();
+                            self.settings.account_user = user.to_string();
+                            self.settings.first_run_done = true;
+                            self.settings.save(&self.paths)?;
+                            self.emit(Event::MeUpdated { me: self.me_view() });
+                            return ok(self.me_view());
+                        }
                         if let (Some(h), p) = (a.relay_host.as_deref().filter(|s| !s.is_empty()), a.relay_port.unwrap_or(9443)) {
                             self.settings.relay_enabled = true;
                             self.settings.relay_host = h.to_string();

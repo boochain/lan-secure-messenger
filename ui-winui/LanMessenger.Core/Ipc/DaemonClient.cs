@@ -61,7 +61,8 @@ public sealed class DaemonClient
     public Task<Peer> SetTrustAsync(string fingerprint, Trust trust) => Call<Peer>("set_trust", new { fingerprint, trust });
     public Task ForgetPeerAsync(string fingerprint) => Call("forget_peer", new { fingerprint });
     public Task<Me> SetDisplayNameAsync(string name) => Call<Me>("set_display_name", new { name });
-    public Task<Me> CompleteFirstRunAsync(string? name, string? mode = null) => Call<Me>("complete_first_run", new { name, mode });
+    public Task<Me> CompleteFirstRunAsync(string? name, string? mode = null, string? relayHost = null, int relayPort = 0, string? accountUser = null, string? accountPassword = null)
+        => Call<Me>("complete_first_run", new { name, mode, relay_host = relayHost, relay_port = relayPort, user = accountUser, password = accountPassword });
     public Task<JsonElement> AccountSetupAsync(string? relayHost = null, ushort relayPort = 0) => Call("account_setup", new { relay_host = relayHost ?? "", relay_port = relayPort });
     public Task<JsonElement> AccountSetModeAsync(string mode) => Call("account_set_mode", new { mode });
     public Task<JsonElement> RevealRecoveryKeyAsync() => Call("reveal_recovery_key", new { });

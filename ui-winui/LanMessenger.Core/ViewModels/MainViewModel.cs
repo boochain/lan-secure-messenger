@@ -1053,6 +1053,66 @@ public partial class MainViewModel : ObservableObject
         });
     }
 
+    public async Task<string?> SignInAccountAsync(string name, string host, int port, string netPass, string user, string password, bool register)
+    {
+        var c = Client;
+        if (c == null) return "后台服务未连接";
+        host = (host ?? "").Trim();
+        user = (user ?? "").Trim().ToLowerInvariant();
+        netPass ??= "";
+        password ??= "";
+        if (host.Length == 0) return "请填写中转服务器地址";
+        if (user.Length == 0) return "请填写账号";
+        if (password.Length < 8) return "密码至少 8 位";
+        if (port <= 0 || port > 65535) port = 9443;
+        try
+        {
+            var patch = new Dictionary<string, object?>
+            {
+                ["relay_enabled"] = true,
+                ["relay_host"] = host,
+                ["relay_port"] = port,
+            };
+            if (netPass.Length > 0) patch["relay_passphrase"] = netPass;
+            await c.UpdateSettingsAsync(patch);
+            var online = false;
+            var detail = "";
+            for (var i = 0; i < 40; i++)
+            {
+                var snap = await c.GetSnapshotAsync();
+                var st = snap.Relay?.State ?? "";
+                detail = snap.Relay?.Detail ?? "";
+                if (st == "online") { online = true; break; }
+                if (st == "auth_failed") return string.IsNullOrEmpty(detail) ? "中转服务器拒绝了网络口令" : detail;
+                await Task.Delay(250);
+            }
+            if (!online) return string.IsNullOrEmpty(detail) ? "连不上中转服务器。请检查地址、端口和网络口令。" : detail;
+            if (register) await c.AccountRegisterAsync(user, password);
+            else await c.AccountLoginAsync(user, password);
+            try
+            {
+                if (register) await c.AccountBackupPutAsync(user, password);
+                else await c.AccountBackupGetAsync(user, password);
+            }
+            catch (Exception ex) { _ui.Post(() => ShowStatus(ZhAcct(ex.Message), true)); }
+            await c.CompleteFirstRunAsync(string.IsNullOrWhiteSpace(name) ? null : name.Trim(), "account", host, port, user, password);
+            _ui.Post(() => { FirstRunNeeded = false; AccountMode = "account"; OnPropertyChanged(nameof(AccountModeLabel)); });
+            return null;
+        }
+        catch (Exception e) { return ZhAcct(e.Message); }
+    }
+
+    private static string ZhAcct(string m)
+    {
+        if (string.IsNullOrEmpty(m)) return "登录失败";
+        if (m.Contains("user exists")) return "这个账号已经存在，请改用登录";
+        if (m.Contains("no user")) return "没有这个账号，请先注册";
+        if (m.Contains("bad pass")) return "密码不正确";
+        if (m.Contains("bad user")) return "账号名无效";
+        if (m.Contains("relay offline")) return "中转还没连上";
+        return m;
+    }
+
     public async Task SetAccountModeAsync(string mode)
     {
         await SafeCall(async x =>

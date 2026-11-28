@@ -188,6 +188,26 @@ pub fn clear_recovery_key(paths: &ConfigPaths) {
     let _ = std::fs::remove_file(recovery_path(paths));
 }
 
+fn account_pass_path(paths: &ConfigPaths) -> PathBuf {
+    paths.root.join("account-pass.dat")
+}
+
+/// Sealed account password. Used only to encrypt the backup uploaded to the relay.
+/// The server stores a hash of the same password and never sees this file.
+pub fn save_account_password(paths: &ConfigPaths, pass: &str) -> Result<()> {
+    let key = crate::history::load_or_create_key(&paths.history_key)?;
+    atomic_write(&account_pass_path(paths), &crate::crypto::seal_at_rest(&key, pass.as_bytes())?)?;
+    Ok(())
+}
+
+pub fn load_account_password(paths: &ConfigPaths) -> Option<String> {
+    let d = std::fs::read(account_pass_path(paths)).ok()?;
+    let key = crate::history::load_or_create_key(&paths.history_key).ok()?;
+    let pt = crate::crypto::open_at_rest(&key, &d).ok()?;
+    let s = String::from_utf8(pt).ok()?;
+    if s.is_empty() { None } else { Some(s) }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

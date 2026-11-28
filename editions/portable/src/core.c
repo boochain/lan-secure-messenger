@@ -229,9 +229,14 @@ struct lsm_core {
     int64_t last_announce;
     struct relay_cl *rl;     /* optional relay client (relay.c) */
     char account_mode[16];
-    char account_lookup[40];
+    char account_lookup[68];
     char recovery_key[80];
+    char account_pass[96];
     int first_run_done;
+    int account_auth;      /* 0 idle, 1 waiting for register/login, 2 ok, 3 failed */
+    int account_reg;       /* 1 register, 0 login, while account_auth==1 */
+    int account_sent;
+    char account_auth_msg[180];
     int pair_pending, pair_offer;
     int acct_backup_dirty;
     uint8_t pair_token[32], pair_wrap[32];

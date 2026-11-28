@@ -44,10 +44,31 @@ import androidx.compose.ui.unit.sp
 /* ---------------------------------------------------------------- home: app bar · pills · connection banner · chat list · add pill · floating tab capsule */
 @Composable
 fun Home(st: AppState, openPage: (String) -> Unit = {}, open: (String) -> Unit) {
-    var showFr by remember { mutableStateOf(!Native.firstRunDone()) }
+    var booted by remember { mutableStateOf(Native.running()) }
+    var showFr by remember { mutableStateOf(Native.running() && !Native.firstRunDone()) }
     var showRecovery by remember { mutableStateOf(false) }
     var recoveryForced by remember { mutableStateOf(false) }
-    if (showFr) { FirstRunScreen { account -> showFr = false; if (account) { recoveryForced = true; showRecovery = true } }; return }
+    var showAcct by remember { mutableStateOf(false) }
+    DisposableEffect(Unit) {
+        val t = Thread {
+            var i = 0
+            while (!Native.running() && i < 80) { Thread.sleep(50); i++ }
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                booted = true
+                showFr = !Native.firstRunDone()
+            }
+        }
+        t.start()
+        onDispose { }
+    }
+    if (!booted) {
+        Box(Modifier.fillMaxSize().background(LocalPalette.current.window), contentAlignment = androidx.compose.ui.Alignment.Center) {
+            Text("正在打开", color = LocalPalette.current.fg)
+        }
+        return
+    }
+    if (showFr) { FirstRunScreen { showFr = false }; return }
+    if (showAcct) { FirstRunScreen(lockAccount = true) { showAcct = false }; return }
     if (showRecovery) {
         RecoveryCodeScreen(forceConfirm = recoveryForced, onDone = { showRecovery = false; recoveryForced = false }, onBack = { if (!recoveryForced) showRecovery = false })
         return
@@ -136,7 +157,7 @@ fun Home(st: AppState, openPage: (String) -> Unit = {}, open: (String) -> Unit) 
                 else -> if (dlg == "relay") RelayScreen(st) { dlg = "" } else Settings(st, {
                         if (it == "update") { upd = Triple(2, "正在检查…", Updates.RELEASES); updJson = ""; Updates.check(st.me.version) { n, m, u, j -> upd = Triple(n, m, u); updJson = j } }
                         dlg = it
-                    }, openPage, onRecovery = { recoveryForced = false; showRecovery = true })
+                    }, openPage, onRecovery = { recoveryForced = false; showRecovery = true }, onAccount = { showAcct = true })
             }
         }
     }
@@ -376,7 +397,7 @@ fun Transfers(st: AppState) {
 }
 
 @Composable
-fun Settings(st: AppState, dlg: (String) -> Unit, openPage: (String) -> Unit = {}, onRecovery: () -> Unit = { openPage("recovery") }) {
+fun Settings(st: AppState, dlg: (String) -> Unit, openPage: (String) -> Unit = {}, onRecovery: () -> Unit = { openPage("recovery") }, onAccount: () -> Unit = {}) {
     val p = LocalPalette.current
     var storageSub by remember { mutableStateOf("查看占用并清理半成品") }
     var storageAsk by remember { mutableStateOf(false) }
@@ -457,16 +478,8 @@ fun Settings(st: AppState, dlg: (String) -> Unit, openPage: (String) -> Unit = {
                         if (r.isNotEmpty() && !r.startsWith("RK")) Repo.toast.value = r else Repo.toast.value = "已切换到设备模式"
                     }
                 }
-                ChoiceCard(mode == "account", R.drawable.ms_lock, "账号模式", "加密身份在中转上，换机可恢复") {
-                    if (mode != "account") {
-                        val r = Native.setAccountMode("account")
-                        Repo.refresh()
-                        when {
-                            r.startsWith("RK") || Native.revealRecoveryKey().isNotEmpty() -> onRecovery()
-                            r.isNotEmpty() -> Repo.toast.value = r
-                            else -> onRecovery()
-                        }
-                    }
+                ChoiceCard(mode == "account", R.drawable.ms_lock, "账号模式", "中转服务器上的账号，用账号密码登录") {
+                    if (mode != "account") onAccount()
                 }
             }
         }

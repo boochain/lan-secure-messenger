@@ -50,6 +50,12 @@ public sealed partial class FirstRunDialog : ContentDialog
         }
     }
 
+    private void Mode_Checked(object sender, RoutedEventArgs e)
+    {
+        if (AccountExtra == null || AccountModeRadio == null) return;
+        AccountExtra.Visibility = AccountModeRadio.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     private void CopyFp_Click(object sender, RoutedEventArgs e) => App.Platform.CopyToClipboard(FpText.Text);
 
     private async void Dialog_PrimaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
@@ -58,8 +64,15 @@ public sealed partial class FirstRunDialog : ContentDialog
         var mode = AccountModeRadio.IsChecked == true ? "account" : "device";
         try
         {
-            await App.VM.CompleteFirstRunAsync(NameBox.Text.Trim(), mode);
-            if (mode == "account") RecoveryPage.ForceConfirm = true;
+            if (mode == "account")
+            {
+                args.Cancel = true;
+                int port = int.TryParse(RelayPortBox.Text.Trim(), out var p) ? p : 9443;
+                var err = await App.VM.SignInAccountAsync(NameBox.Text.Trim(), RelayHostBox.Text, port, RelayPassBox.Password, AcctUserBox.Text, AcctPassBox.Password, RegRadio.IsChecked == true);
+                if (err != null) FwResult.Text = err;
+                else args.Cancel = false;
+            }
+            else await App.VM.CompleteFirstRunAsync(NameBox.Text.Trim(), mode);
         }
         finally { d.Complete(); }
     }

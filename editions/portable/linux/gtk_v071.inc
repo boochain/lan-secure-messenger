@@ -15,6 +15,28 @@ static GtkWidget *v071_mode_card(GtkWidget *radio, const char *icon, const char 
     gtk_container_add(GTK_CONTAINER(frame),row);
     return frame;
 }
+static int v071_signin_dialog(void){
+    GtkWidget *d,*box,*host,*port,*npw,*user,*pass,*reg;
+    char err[256]=""; int rc, portn;
+    d=gtk_dialog_new_with_buttons("账号登录",GTK_WINDOW(win),GTK_DIALOG_MODAL,"注册并开始",1,"登录已有账号",2,"返回",GTK_RESPONSE_CANCEL,NULL);
+    box=gtk_dialog_get_content_area(GTK_DIALOG(d)); gtk_container_set_border_width(GTK_CONTAINER(box),16); gtk_box_set_spacing(GTK_BOX(box),8);
+    gtk_box_pack_start(GTK_BOX(box),gtk_label_new("填写中转服务器，再用账号密码注册或登录。服务器只存口令哈希，聊天记录用这个密码加密。"),FALSE,FALSE,0);
+    host=gtk_entry_new(); gtk_entry_set_placeholder_text(GTK_ENTRY(host),"服务器地址"); gtk_box_pack_start(GTK_BOX(box),host,FALSE,FALSE,0);
+    port=gtk_entry_new(); gtk_entry_set_text(GTK_ENTRY(port),"9443"); gtk_box_pack_start(GTK_BOX(box),port,FALSE,FALSE,0);
+    npw=gtk_entry_new(); gtk_entry_set_visibility(GTK_ENTRY(npw),FALSE); gtk_entry_set_placeholder_text(GTK_ENTRY(npw),"网络口令，没有就留空"); gtk_box_pack_start(GTK_BOX(box),npw,FALSE,FALSE,0);
+    user=gtk_entry_new(); gtk_entry_set_placeholder_text(GTK_ENTRY(user),"账号"); gtk_box_pack_start(GTK_BOX(box),user,FALSE,FALSE,0);
+    pass=gtk_entry_new(); gtk_entry_set_visibility(GTK_ENTRY(pass),FALSE); gtk_entry_set_placeholder_text(GTK_ENTRY(pass),"密码，至少 8 位"); gtk_box_pack_start(GTK_BOX(box),pass,FALSE,FALSE,0);
+    reg=gtk_label_new("「注册并开始」是新账号。「登录已有账号」用来换机。"); gtk_label_set_line_wrap(GTK_LABEL(reg),TRUE); gtk_box_pack_start(GTK_BOX(box),reg,FALSE,FALSE,0);
+    gtk_widget_show_all(d);
+    rc=gtk_dialog_run(GTK_DIALOG(d));
+    if(rc==1 || rc==2){
+        portn=atoi(gtk_entry_get_text(GTK_ENTRY(port)));
+        if(lsm_account_sign_in(C, gtk_entry_get_text(GTK_ENTRY(host)), portn?portn:9443, gtk_entry_get_text(GTK_ENTRY(npw)), gtk_entry_get_text(GTK_ENTRY(user)), gtk_entry_get_text(GTK_ENTRY(pass)), rc==1, err)){
+            gtk_widget_destroy(d); msgbox(GTK_MESSAGE_WARNING, "%s", err[0]?err:"登录失败"); return 0; }
+        gtk_widget_destroy(d); return 1;
+    }
+    gtk_widget_destroy(d); return 0;
+}
 static void v071_first_run(void){
     GtkWidget *d,*box,*l,*b1,*b2,*hint; char err[256]="";
     int shot=v071_fr_reshoot; v071_fr_reshoot=0;
@@ -22,20 +44,21 @@ static void v071_first_run(void){
     if(!shot && getenv("LSM_UI_TEST") && !getenv("LSM_SHOT_FIRST_RUN")){ lsm_complete_first_run(C,NULL,"device",NULL,err); return; }
     d=gtk_dialog_new_with_buttons("欢迎使用局域网安全通讯",GTK_WINDOW(win),GTK_DIALOG_MODAL,"开始使用",GTK_RESPONSE_OK,NULL);
     box=gtk_dialog_get_content_area(GTK_DIALOG(d)); gtk_container_set_border_width(GTK_CONTAINER(box),16); gtk_box_set_spacing(GTK_BOX(box),10);
-    l=gtk_label_new("请选择身份方式（之后可在设置里更改）。账号模式会生成恢复密钥，不使用服务器密码。");
+    l=gtk_label_new("请选择身份方式。只问这一次，之后在设置里改。选账号模式会接着填写中转服务器和账号密码。");
     gtk_label_set_line_wrap(GTK_LABEL(l),TRUE); gtk_box_pack_start(GTK_BOX(box),l,FALSE,FALSE,0);
     b1=gtk_radio_button_new(NULL);
     b2=gtk_radio_button_new_from_widget(GTK_RADIO_BUTTON(b1));
     gtk_widget_set_name(b1,"LSMF_account_mode"); gtk_widget_set_name(b2,"LSMF_account_mode");
     gtk_box_pack_start(GTK_BOX(box),v071_mode_card(b1,"network-workgroup-symbolic","设备模式","仅本机，局域网直连，不把身份放到服务器"),FALSE,FALSE,0);
-    gtk_box_pack_start(GTK_BOX(box),v071_mode_card(b2,"system-users-symbolic","账号模式","身份加密备份在中转上，换机可用恢复密钥或配对二维码恢复"),FALSE,FALSE,0);
+    gtk_box_pack_start(GTK_BOX(box),v071_mode_card(b2,"system-users-symbolic","账号模式","中转服务器上的账号，换机用同一账号密码登录"),FALSE,FALSE,0);
     hint=gtk_label_new("添加联系人、连接服务器、配对新设备都可以通过扫描或粘贴 lsm:// 链接完成。");
     gtk_label_set_line_wrap(GTK_LABEL(hint),TRUE); gtk_widget_set_name(hint,"LSMF_qr_scan"); gtk_box_pack_start(GTK_BOX(box),hint,FALSE,FALSE,0);
     gtk_widget_show_all(d); gtk_dialog_run(GTK_DIALOG(d));
     if(!lsm_first_run_done(C)){
-      int acc=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(b2));
-      lsm_complete_first_run(C,NULL,acc?"account":"device",NULL,err);
-      if(acc){ char rk[80]=""; if(!lsm_reveal_recovery_key(C,rk,sizeof rk) && rk[0]) v072_show_recovery(1,rk); } }
+      int acc=!shot && gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(b2));
+      if(!acc) lsm_complete_first_run(C,NULL,"device",NULL,err);
+      else { gtk_widget_destroy(d); v071_signin_dialog(); return; }
+    }
     gtk_widget_destroy(d);
 }
 static void v071_shot_first_run(void){ if(!getenv("LSM_UI_TEST")) return; v071_fr_reshoot=1; v071_first_run(); }

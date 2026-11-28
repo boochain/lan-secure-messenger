@@ -5,7 +5,7 @@
 #include <stddef.h>
 
 #ifndef LSM_APP_VERSION
-#define LSM_APP_VERSION "0.7.4" /* set by tools/set-version.py from VERSION */
+#define LSM_APP_VERSION "0.7.5" /* set by tools/set-version.py from VERSION */
 #endif
 #define FP_LEN 20 /* "XXXX-XXXX-XXXX-XXXX" + NUL */
 
@@ -290,6 +290,9 @@ const char *lsm_account_mode(lsm_core *c);
 int lsm_has_recovery_key(lsm_core *c);
 int lsm_reveal_recovery_key(lsm_core *c, char *out, size_t n);
 int lsm_complete_first_run(lsm_core *c, const char *name, const char *mode, const char *restore_key, char *err);
+/* Account mode: connect this relay, then register or log in with a username and password.
+ * Returns 0 only after the server accepts. err is a short Chinese message. */
+int lsm_account_sign_in(lsm_core *c, const char *host, int port, const char *net_pass, const char *user, const char *pass, int reg, char *err);
 int lsm_account_setup(lsm_core *c, char *rk_out, size_t n, char *err);
 int lsm_set_account_mode(lsm_core *c, const char *mode, char *rk_out, size_t n, char *err);
 int lsm_relay_uri(lsm_core *c, char *out, size_t n);

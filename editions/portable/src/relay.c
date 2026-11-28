@@ -9,7 +9,7 @@
 
 enum { RT_HELLO=0x00, RT_AUTH=0x01, RT_AUTH_OK=0x02, RT_AUTH_FAIL=0x03, RT_SEND=0x10, RT_DELIVER=0x11, RT_SEND_FAIL=0x12,
        RT_PING=0x20, RT_PONG=0x21, RT_LIST=0x30, RT_PEER_LIST=0x40, RT_PEER_JOIN=0x41, RT_PEER_LEAVE=0x42, RT_ERROR=0x50,
-       RT_ACCOUNT_REGISTER=0x60, RT_ACCOUNT_OK=0x62, RT_ACCOUNT_FAIL=0x63, RT_ACCOUNT_PUT_BACKUP=0x64, RT_ACCOUNT_GET_BACKUP=0x65, RT_ACCOUNT_BACKUP=0x66,
+       RT_ACCOUNT_REGISTER=0x60, RT_ACCOUNT_LOGIN=0x61, RT_ACCOUNT_OK=0x62, RT_ACCOUNT_FAIL=0x63, RT_ACCOUNT_PUT_BACKUP=0x64, RT_ACCOUNT_GET_BACKUP=0x65, RT_ACCOUNT_BACKUP=0x66,
        RT_PAIR_PUT=0x68, RT_PAIR_GET=0x69, RT_PAIR_DATA=0x6A, RT_PAIR_MISS=0x6B, RT_PAIR_OK=0x6C,
        RT_ACCOUNT_DEVICES=0x6D, RT_ACCOUNT_DEVICE_LIST=0x6E, RT_BYE=0x7f };
 enum { RS_OFF=0, RS_IDLE, RS_CONNECTING, RS_HELLO, RS_AUTH, RS_UP };
@@ -65,6 +65,7 @@ static void rl_disconnect(lsm_core *c, const char *why, int64_t retry_ms){
 
 static void rl_fail(lsm_core *c, const char *status, const char *why){
     struct relay_cl *r=c->rl; int64_t d; r->fails++; d=backoff(r->fails); if(d<1000) d=1000; if(!strcmp(status,"auth_failed")) d=60000;
+    if(c->account_auth==1) c->account_sent=0; /* connection died before the server answered; send again */
     logf_(c,"relay: %s (%s)",status,why); rl_disconnect(c,why,d); rl_set_status(c,r->enabled?status:"off",why); }
 
 static void rl_connect(lsm_core *c){
@@ -171,17 +172,37 @@ static void rl_on_frame(lsm_core *c, uint8_t ty, const uint8_t *b, size_t n){
         }
         break; }
     case RT_ACCOUNT_BACKUP: {
-        char tmp[600], err[256]="", fp[80]="";
+        char tmp[600], err[256]="", fp[80]=""; const char *key=c->account_pass[0]?c->account_pass:c->recovery_key;
         path_join(tmp,sizeof tmp,c->data_dir,"account-restore.tmp");
-        if(!write_atomic(tmp,b,n) && c->recovery_key[0]){
+        if(!write_atomic(tmp,b,n) && key[0]){
             /* import replaces identity files; the process should restart after. */
-            lsm_backup_import(c->data_dir,c->recovery_key,tmp,err,fp);
+            lsm_backup_import(c->data_dir,key,tmp,err,fp);
         }
         break; }
-    case RT_PAIR_OK: case RT_PAIR_MISS: case RT_ACCOUNT_OK: break;
+    case RT_PAIR_OK: case RT_PAIR_MISS: break;
+    case RT_ACCOUNT_OK:
+        if(c->account_auth==1){
+            c->account_auth=2; c->first_run_done=1; acct_save(c);
+            notice(c,"%s","账号已登录");
+            if(!c->account_reg && c->account_lookup[0]){
+                uint8_t hb[80]; uint16_t ln=(uint16_t)strlen(c->account_lookup);
+                if(ln>64) ln=64;
+                hb[0]=(uint8_t)(ln>>8); hb[1]=(uint8_t)ln; memcpy(hb+2,c->account_lookup,ln);
+                rl_frame(r,RT_ACCOUNT_GET_BACKUP,hb,2+ln,NULL,0);
+            } else c->acct_backup_dirty=1;
+        }
+        break;
     case RT_ACCOUNT_FAIL: {
         char m[300]; size_t k=n; if(k>=sizeof m) k=sizeof m-1; memcpy(m,b,k); m[k]=0;
-        if(m[0]) notice(c,"账号操作失败：%s",m);
+        if(c->account_auth==1){
+            c->account_auth=3;
+            if(!strcmp(m,"user exists")) scpy(c->account_auth_msg,"这个账号已经存在，请改用登录",sizeof c->account_auth_msg);
+            else if(!strcmp(m,"no user")) scpy(c->account_auth_msg,"没有这个账号，请先注册",sizeof c->account_auth_msg);
+            else if(!strcmp(m,"bad pass")) scpy(c->account_auth_msg,"密码不正确",sizeof c->account_auth_msg);
+            else if(!strcmp(m,"bad user")) scpy(c->account_auth_msg,"账号名无效",sizeof c->account_auth_msg);
+            else scpy(c->account_auth_msg,"账号操作失败",sizeof c->account_auth_msg);
+            notice(c,"%s",c->account_auth_msg);
+        } else if(m[0]) notice(c,"账号操作失败：%s",m);
         break; }
     case RT_ACCOUNT_DEVICE_LIST: {
         char shown[1600];
@@ -225,19 +246,30 @@ static void rl_tick(lsm_core *c){
     if(r->st==RS_IDLE && now>=r->next_attempt){ rl_connect(c); return; }
     if(r->st>=RS_CONNECTING && r->st<RS_UP && now-r->started>15000){ rl_fail(c,"error","\xe8\xbf\x9e\xe6\x8e\xa5\xe8\xb6\x85\xe6\x97\xb6"); return; } /* 连接超时 */
     if(r->st!=RS_UP) return;
+    if(c->account_auth==1 && !c->account_sent && c->account_lookup[0] && c->account_pass[0]){
+        uint8_t hdr[180]; uint16_t ln=(uint16_t)strlen(c->account_lookup), pn=(uint16_t)strlen(c->account_pass);
+        if(ln>64) ln=64;
+        if(pn>72) pn=72;
+        hdr[0]=(uint8_t)(ln>>8); hdr[1]=(uint8_t)ln; memcpy(hdr+2,c->account_lookup,ln);
+        hdr[2+ln]=(uint8_t)(pn>>8); hdr[3+ln]=(uint8_t)pn; memcpy(hdr+4+ln,c->account_pass,pn);
+        rl_frame(r, c->account_reg?RT_ACCOUNT_REGISTER:RT_ACCOUNT_LOGIN, hdr, 4+ln+pn, NULL, 0);
+        c->account_sent=1;
+    }
     if(now-r->last_ping>=(int64_t)r->hb*1000){ r->last_ping=now; rl_frame(r,RT_PING,"hb",2,NULL,0); }
     if(c->pair_offer && c->pair_blob && c->pair_blob_n){
         uint8_t hdr[36]; memcpy(hdr,c->pair_token,32); rl_be32(hdr+32,600);
         rl_frame(r,RT_PAIR_PUT,hdr,36,c->pair_blob,c->pair_blob_n); c->pair_offer=0;
     }
     if(c->pair_pending==1){ rl_frame(r,RT_PAIR_GET,c->pair_token,32,NULL,0); c->pair_pending=2; }
-    if(c->acct_backup_dirty && c->recovery_key[0] && !strcmp(c->account_mode,"account")){
-        char tmp[600], err[256]="", look[40]; uint8_t hdr[80]; uint16_t ln; size_t bn=0; uint8_t *blob;
+    if(c->acct_backup_dirty && !strcmp(c->account_mode,"account") && c->account_lookup[0] && c->account_auth!=1){
+        char tmp[600], err[256]=""; uint8_t hdr[80]; uint16_t ln; size_t bn=0; uint8_t *blob;
+        const char *key=c->account_pass[0]?c->account_pass:c->recovery_key;
         path_join(tmp,sizeof tmp,c->data_dir,"account-backup.tmp");
-        if(!lsm_backup_export_locked(c,c->recovery_key,tmp,err) && !lsm_acct_lookup(c->recovery_key,look,sizeof look)){
+        if(key[0] && !lsm_backup_export_locked(c,key,tmp,err)){
             blob=read_file(tmp,&bn); remove(tmp);
-            if(blob && bn){ ln=(uint16_t)strlen(look); hdr[0]=(uint8_t)(ln>>8); hdr[1]=(uint8_t)ln; memcpy(hdr+2,look,ln); hdr[2+ln]=0; hdr[3+ln]=0;
-                rl_frame(r,RT_ACCOUNT_REGISTER,hdr,4+ln,NULL,0);
+            if(blob && bn){ ln=(uint16_t)strlen(c->account_lookup); if(ln>64) ln=64;
+                hdr[0]=(uint8_t)(ln>>8); hdr[1]=(uint8_t)ln; memcpy(hdr+2,c->account_lookup,ln);
+                if(!c->account_pass[0]){ hdr[2+ln]=0; hdr[3+ln]=0; rl_frame(r,RT_ACCOUNT_REGISTER,hdr,4+ln,NULL,0); }
                 rl_frame(r,RT_ACCOUNT_PUT_BACKUP,hdr,2+ln,blob,bn); }
             free(blob); c->acct_backup_dirty=0;
         }

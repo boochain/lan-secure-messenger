@@ -2,14 +2,44 @@ static void v072_show_recovery(int force, const char *preset);
 /* v0.7.1: first-run account/device choice + QR URI apply. Hooks: LSMF_account_mode LSMF_qr_scan LSMF_qr_server LSMF_qr_pair LSMF_qr_profile */
 static GtkWidget *v071_acc_btn;
 static int v071_fr_reshoot;
+static GtkWidget *v071_host, *v071_port, *v071_npw, *v071_user, *v071_pass;
+static void v071_acc_fail(const char *err){
+    AdwDialog *e=adw_alert_dialog_new("没有登录", err&&err[0]?err:"登录失败");
+    adw_alert_dialog_add_responses(ADW_ALERT_DIALOG(e),"ok","知道了",NULL);
+    adw_dialog_present(e,win);
+}
+static void v071_acc_done(AdwAlertDialog *d, const char *r, gpointer p){
+    char err[256]=""; int portn; (void)d;(void)p;
+    if(v071_fr_reshoot){ v071_fr_reshoot=0; return; }
+    if(g_strcmp0(r,"reg") && g_strcmp0(r,"login")) return;
+    portn=atoi(gtk_editable_get_text(GTK_EDITABLE(v071_port)));
+    if(lsm_account_sign_in(C, gtk_editable_get_text(GTK_EDITABLE(v071_host)), portn?portn:9443,
+            gtk_editable_get_text(GTK_EDITABLE(v071_npw)), gtk_editable_get_text(GTK_EDITABLE(v071_user)),
+            gtk_editable_get_text(GTK_EDITABLE(v071_pass)), !g_strcmp0(r,"reg"), err))
+        v071_acc_fail(err);
+}
+static void v071_account_dialog(void){
+    GtkWidget *box; AdwDialog *d;
+    box=gtk_box_new(GTK_ORIENTATION_VERTICAL,8);
+    v071_host=gtk_entry_new(); gtk_entry_set_placeholder_text(GTK_ENTRY(v071_host),"服务器地址"); gtk_box_append(GTK_BOX(box),v071_host);
+    v071_port=gtk_entry_new(); gtk_editable_set_text(GTK_EDITABLE(v071_port),"9443"); gtk_box_append(GTK_BOX(box),v071_port);
+    v071_npw=gtk_entry_new(); gtk_entry_set_visibility(GTK_ENTRY(v071_npw),FALSE); gtk_entry_set_placeholder_text(GTK_ENTRY(v071_npw),"网络口令，没有就留空"); gtk_box_append(GTK_BOX(box),v071_npw);
+    v071_user=gtk_entry_new(); gtk_entry_set_placeholder_text(GTK_ENTRY(v071_user),"账号"); gtk_box_append(GTK_BOX(box),v071_user);
+    v071_pass=gtk_entry_new(); gtk_entry_set_visibility(GTK_ENTRY(v071_pass),FALSE); gtk_entry_set_placeholder_text(GTK_ENTRY(v071_pass),"密码，至少 8 位"); gtk_box_append(GTK_BOX(box),v071_pass);
+    d=adw_alert_dialog_new("账号登录","填写中转服务器，再用账号密码注册或登录。服务器只存口令哈希，聊天记录用这个密码加密。");
+    adw_alert_dialog_set_extra_child(ADW_ALERT_DIALOG(d),box);
+    adw_alert_dialog_add_responses(ADW_ALERT_DIALOG(d),"reg","注册并开始","login","登录已有账号","cancel","返回",NULL);
+    g_signal_connect(d,"response",G_CALLBACK(v071_acc_done),NULL);
+    adw_dialog_present(d,win);
+}
 static void v071_fr_done(AdwAlertDialog *d, const char *r, gpointer p){
-    char err[256]="", rk[80]=""; int acc;
+    char err[256]=""; int acc;
     (void)d;(void)p;(void)r;
     if(v071_fr_reshoot){ v071_fr_reshoot=0; return; }
     if(lsm_first_run_done(C)) return;
     acc = v071_acc_btn && gtk_check_button_get_active(GTK_CHECK_BUTTON(v071_acc_btn));
-    lsm_complete_first_run(C,NULL,acc?"account":"device",NULL,err);
-    if(acc && !lsm_reveal_recovery_key(C,rk,sizeof rk) && rk[0]) v072_show_recovery(1,rk);
+    if(!acc) lsm_complete_first_run(C,NULL,"device",NULL,err);
+    else v071_account_dialog();
 }
 static GtkWidget *v071_mode_card(GtkWidget *radio, const char *icon, const char *title, const char *sub){
     GtkWidget *box=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,12);
@@ -36,9 +66,9 @@ static void v071_first_run(void){
     gtk_check_button_set_active(GTK_CHECK_BUTTON(b1), TRUE);
     gtk_widget_set_name(b1,"LSMF_account_mode"); gtk_widget_set_name(b2,"LSMF_account_mode");
     gtk_box_append(GTK_BOX(box),v071_mode_card(b1,"network-workgroup-symbolic","设备模式","仅本机，局域网直连，不把身份放到服务器"));
-    gtk_box_append(GTK_BOX(box),v071_mode_card(b2,"system-users-symbolic","账号模式","身份加密备份在中转上，换机可用恢复密钥或配对二维码恢复"));
+    gtk_box_append(GTK_BOX(box),v071_mode_card(b2,"system-users-symbolic","账号模式","中转服务器上的账号，换机用同一账号密码登录"));
     v071_acc_btn=b2;
-    d=adw_alert_dialog_new("欢迎使用局域网安全通讯","请选择身份方式（之后可在设置里更改）。账号模式会生成恢复密钥，不使用服务器密码。添加联系人、连接服务器、配对新设备都可以通过扫描或粘贴 lsm:// 链接完成。");
+    d=adw_alert_dialog_new("欢迎使用局域网安全通讯","请选择身份方式。只问这一次，之后在设置里改。选账号模式会接着填写中转服务器和账号密码。");
     adw_alert_dialog_add_responses(ADW_ALERT_DIALOG(d),"ok","开始使用",NULL);
     adw_alert_dialog_set_extra_child(ADW_ALERT_DIALOG(d),box);
     g_signal_connect(d,"response",G_CALLBACK(v071_fr_done),NULL);
